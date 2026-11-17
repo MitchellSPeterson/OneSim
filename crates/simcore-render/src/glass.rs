@@ -5,7 +5,13 @@
 //! specular rim + soft outer shadow. CPU-only, deterministic, no threads or SIMD (wasm32-wasip1 safe).
 //! Parameters are fitted to the iOS 26.5 Simulator fixtures (`tests/fixtures/showcase-ios/README.md`).
 
-use crate::raster::gaussian;
+use crate::raster::gaussian_in;
+use std::cell::RefCell;
+use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
+use std::ops::Range;
+use std::rc::Rc;
 use crate::scene::Color;
 pub use simcore_protocol::GlassVariant;
 use tiny_skia::{Mask, Pixmap};
@@ -147,6 +153,35 @@ pub fn snapshot(pm: &Pixmap, shape: Shape, scale: f32, p: &Params) -> Snapshot {
     Snapshot { x0, y0, w, h, rgb }
 }
 
+type BlurKey = (u64, usize, usize, u32, [usize; 4]);
+
+thread_local! {
+    /// Last blurred backdrops keyed by a hash of the unblurred snapshot: while content does not
+    /// move under a glass element (most frames, even while scrolling elsewhere) the blur is skipped.
+    static BLURS: RefCell<HashMap<BlurKey, Rc<[Vec<f32>; 3]>>> = RefCell::new(HashMap::new());
+}
+
+fn blur_cached(rgb: &mut [Vec<f32>; 3], w: usize, h: usize, sigma: f32, (cols, rows): (Range<usize>, Range<usize>)) {
+    let mut hs = DefaultHasher::new();
+    rgb.iter().for_each(|pl| pl.iter().for_each(|v| v.to_bits().hash(&mut hs)));
+    let key = (hs.finish(), w, h, sigma.to_bits(), [cols.start, cols.end, rows.start, rows.end]);
+    let hit = BLURS.with(|c| c.borrow().get(&key).cloned());
+    if let Some(b) = hit {
+        *rgb = (*b).clone();
+        return;
+    }
+    for pl in rgb.iter_mut() {
+        gaussian_in(pl, w, h, sigma, true, (cols.clone(), rows.clone()));
+    }
+    BLURS.with(|c| {
+        let mut c = c.borrow_mut();
+        if c.len() > 32 {
+            c.clear();
+        }
+        c.insert(key, Rc::new(rgb.clone()));
+    });
+}
+
 fn bilinear(pl: &[f32], w: usize, h: usize, x: f32, y: f32) -> f32 {
     let (x, y) = (x.clamp(0.0, w as f32 - 1.0), y.clamp(0.0, h as f32 - 1.0));
     let (xi, yi) = (x.floor() as usize, y.floor() as usize);
@@ -169,11 +204,18 @@ pub fn draw(pm: &mut Pixmap, snap: Snapshot, shape: Shape, spec: &GlassSpec, sca
         return;
     }
     let Snapshot { x0, y0, w, h, mut rgb } = snap;
-    for pl in rgb.iter_mut() {
-        gaussian(pl, w, h, p.sigma * scale, true);
-    }
     let (pw, ph) = (pm.width() as i32, pm.height() as i32);
     let (lens_d, lens_w) = (p.lens_d * scale, (p.lens_w * scale).max(0.5));
+    let (sx0, sy0) = (shape.x.floor() as i32 - 1, shape.y.floor() as i32 - 1);
+    let (sx1, sy1) = ((shape.x + shape.w).ceil() as i32 + 1, (shape.y + shape.h).ceil() as i32 + 1);
+    // Blur only what the lens can sample: the painted pixels displaced by up to `lens_d`.
+    let reach = |a: i32, b: i32, o: i32, n: usize| {
+        let lo = (a as f32 - lens_d - o as f32 - 1.0).floor().clamp(0.0, n as f32 - 1.0) as usize;
+        let hi = (b as f32 + lens_d - o as f32 + 1.0).ceil().clamp(0.0, n as f32 - 1.0) as usize;
+        lo..hi + 1
+    };
+    let win = (reach(sx0, sx1, x0, w), reach(sy0, sy1, y0, h));
+    blur_cached(&mut rgb, w, h, p.sigma * scale, win);
     let tint = spec.tint.map(|t| {
         let sh = p.tint_shift * 255.0;
         ([(t.r * 255.0 + sh).clamp(0.0, 255.0), (t.g * 255.0 + sh).clamp(0.0, 255.0), (t.b * 255.0 + sh).clamp(0.0, 255.0)], t.a)
@@ -181,8 +223,6 @@ pub fn draw(pm: &mut Pixmap, snap: Snapshot, shape: Shape, spec: &GlassSpec, sca
     let rim_w = (p.rim_w * scale).max(1.0);
     let mask_data = mask.map(|m| m.data());
     let data = pm.data_mut();
-    let (sx0, sy0) = (shape.x.floor() as i32 - 1, shape.y.floor() as i32 - 1);
-    let (sx1, sy1) = ((shape.x + shape.w).ceil() as i32 + 1, (shape.y + shape.h).ceil() as i32 + 1);
     for y in sy0.max(0)..sy1.min(ph) {
         for x in sx0.max(0)..sx1.min(pw) {
             let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
@@ -268,12 +308,17 @@ pub fn draw_edge(pm: &mut Pixmap, e: &ScrollEdge, scale: f32, mask: Option<&Mask
         let a = veil(pt - e.bar);
         // Tint: full above bar-32, gone by bar+12.
         let t = e.tint * ((e.bar + 12.0 - pt) / 44.0).clamp(0.0, 1.0);
+        let px = |d: u8, c: usize, m: f32| {
+            let v = mix(d as f32, col[c], a) - t * 255.0;
+            mix(d as f32, v.clamp(0.0, 255.0), m).round() as u8
+        };
+        // a and t are constant along the row: unmasked pixels come from a table (same arithmetic).
+        let lut: [[u8; 256]; 3] = std::array::from_fn(|c| std::array::from_fn(|d| px(d as u8, c, 1.0)));
         for x in 0..pw {
-            let m = mask_data.map_or(1.0, |m| m[y * pw + x] as f32 / 255.0);
+            let mb = mask_data.map_or(255, |m| m[y * pw + x]);
             let i = (y * pw + x) * 4;
             for c in 0..3 {
-                let v = mix(data[i + c] as f32, col[c], a) - t * 255.0;
-                data[i + c] = mix(data[i + c] as f32, v.clamp(0.0, 255.0), m).round() as u8;
+                data[i + c] = if mb == 255 { lut[c][data[i + c] as usize] } else { px(data[i + c], c, mb as f32 / 255.0) };
             }
         }
     }

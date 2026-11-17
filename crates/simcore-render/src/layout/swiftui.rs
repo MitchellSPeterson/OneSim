@@ -116,6 +116,7 @@ struct Ctx<'a> {
     dts: DynamicTypeSize,
     scale: f64,
     scroll: &'a HashMap<String, (f64, f64)>,
+    overscroll: bool,
     focus: Option<&'a str>,
     /// Keyed by (node address, proposal bits). A node's Env is fixed by its ancestors,
     /// so node + proposal fully determines its layout within one pass.
@@ -136,6 +137,9 @@ pub struct SceneParams<'a> {
     pub scroll: &'a HashMap<String, (f64, f64)>,
     /// Node id of the focused text field.
     pub focus: Option<&'a str>,
+    /// Let offsets past the edges show (rubber band) instead of clamping them: only while
+    /// `Interaction::live`, so offsets left over from other content never show as overscroll.
+    pub overscroll: bool,
     pub status_bar: bool,
     pub chrome: crate::chrome::ChromeParams,
 }
@@ -152,6 +156,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         dts: params.dynamic_type,
         scale: params.scale.max(1.0),
         scroll: params.scroll,
+        overscroll: params.overscroll,
         focus: params.focus,
         memo: HashMap::new(),
         unsupported: BTreeSet::new(),
@@ -294,6 +299,13 @@ fn rgba(r: u8, g: u8, b: u8, a: f32) -> Color {
 }
 
 impl Ctx<'_> {
+    /// Offset along a scroll axis: within `[0, max]`, or up to one viewport `len` past an edge
+    /// while overscroll is live (the rubber band never goes further).
+    fn clamp_offset(&self, o: f64, max: f64, len: f64) -> f64 {
+        let slack = if self.overscroll { len } else { 0.0 };
+        o.clamp(-slack, max + slack)
+    }
+
     fn semantic(&self, s: Semantic) -> Color {
         let d = self.dark;
         match s {
@@ -849,7 +861,7 @@ impl Ctx<'_> {
         let h = fin(p.h).unwrap_or(ch);
         let max = ((cw - w).max(0.0), (ch - h).max(0.0));
         let off = self.scroll.get(&v.id).copied().unwrap_or((0.0, 0.0));
-        let off = if vertical { (0.0, off.1.clamp(0.0, max.1)) } else { (off.0.clamp(0.0, max.0), 0.0) };
+        let off = if vertical { (0.0, self.clamp_offset(off.1, max.1, h)) } else { (self.clamp_offset(off.0, max.0, w), 0.0) };
         let mut n = Node::new(&v.id, "scroll");
         n.clip_radius = Some(0.0);
         n.scroll = Some(ScrollInfo { vertical, offset: off, max });
@@ -929,7 +941,7 @@ impl Ctx<'_> {
         let fin_h = p.h.filter(|h| h.is_finite());
         let h = fin_h.unwrap_or(ch);
         let max = (0.0, (ch - h).max(0.0));
-        let off = self.scroll.get(&v.id).map_or(0.0, |o| o.1).clamp(0.0, max.1);
+        let off = self.clamp_offset(self.scroll.get(&v.id).map_or(0.0, |o| o.1), max.1, h);
         let mut n = Node::new(&v.id, "list");
         n.fill = Some(self.semantic(if inset { Semantic::GroupedBackground } else { Semantic::Background }));
         n.clip_radius = Some(0.0);
@@ -1184,6 +1196,7 @@ mod tests {
             dynamic_type: DynamicTypeSize::Large,
             scroll,
             focus,
+            overscroll: false,
             status_bar: safe.0 > 0.0,
             chrome: Default::default(),
         };
@@ -1316,6 +1329,7 @@ mod tests {
                 dynamic_type: DynamicTypeSize::Large,
                 scroll: &HashMap::new(),
                 focus: None,
+                overscroll: false,
                 status_bar: true,
                 chrome: Default::default(),
             },

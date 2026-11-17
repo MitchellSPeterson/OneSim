@@ -48,11 +48,16 @@ Needs several GB free during the toolchain install. The script finds the toolcha
   the guest wire; `simcore-web` calls the Swift action/text callbacks directly and redraws. Label lookup
   (`resolve_label`, the CLI's `--click LABEL`) lives next to it.
 - **JS exports** (small, scratch-buffer based for strings): `simcore_web_pointer(kind,x,y)` (0 down, 1 up,
-  2 click; points), `simcore_web_scroll(x,y,dx,dy)`, `simcore_web_key(kind,len)` (text / `backspace` / `enter`
+  2 click; points), `simcore_web_scroll(x,y,dx,dy)`, `simcore_web_drag(phase,x,y,t_ms)` (0 begin at the
+  touch-down point, 1 move, 2 end), `simcore_web_tick(dt_ms)` (advance momentum/bounce; 1 while moving),
+  `simcore_web_key(kind,len)` (text / `backspace` / `enter`
   from the scratch buffer; only while a field is focused), `set_viewport`, `set_dark`, `set_dynamic_type` (index into the 12 Dynamic Type sizes), `set_scale`, `focused`,
   `inspect`, `find`, and `fb_ptr/len/width/height`. `web/simcore.js` wraps them (shared by browser and Node).
 - **Input (main.js).** Pointer events map CSS px to points; moving more than 8 px turns a press into a
-  drag-scroll; `wheel` deltaY > 0 reveals later content; `keydown` types printable keys, Backspace, Enter while a
+  touch drag (`Interaction::drag`: rubber band past the edges, then UIScrollView momentum and a critically
+  damped bounce after lifting; a touch on moving content stops it). A `requestAnimationFrame` loop calls
+  `tick` after any input until it returns 0. `wheel` scrolls directly (clamped, no physics: trackpads
+  already coast) and deltaY > 0 reveals later content; `keydown` types printable keys, Backspace, Enter while a
   field is focused (tapping a field shows the on-canvas keyboard, whose keys also type).
 - **Fonts and symbols** are the bundled Inter and Phosphor (the same as `SIMCORE_FALLBACK=1`); the output is
   pixel-identical to the native fallback render (`scripts/compare-web.sh`).

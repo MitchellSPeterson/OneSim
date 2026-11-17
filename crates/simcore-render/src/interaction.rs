@@ -34,9 +34,103 @@ pub struct Interaction {
     /// Whether the last `pointer` was an action (control fired or keyboard key tapped).
     pub acted: bool,
     pressed: Option<String>,
+    /// Finger currently scrolling (or holding) a scroller.
+    drag: Option<Drag>,
+    /// Scrollers in flight (momentum or bounce): node id -> velocity along the axis, pt/s.
+    motion: HashMap<String, f64>,
+}
+
+#[derive(Debug)]
+struct Drag {
+    id: String,
+    /// Unrubbered offset along the axis: where the content would be without edge resistance.
+    raw: f64,
+    /// Last finger position along the axis (points).
+    last: f64,
+    /// Recent (time ms, finger position) samples for the release velocity.
+    samples: Vec<(f64, f64)>,
+}
+
+/// Drag gesture phases (`Interaction::drag`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DragPhase {
+    Begin,
+    Move,
+    End,
+}
+
+// UIScrollView feel. ponytail: constants fitted by eye to iOS, the knobs to retune against recordings.
+/// Edge resistance coefficient (UIScrollView's rubber band).
+const RUBBER: f64 = 0.55;
+/// Momentum decay rate, 1/s: `UIScrollView.DecelerationRate.normal` is 0.998 per ms.
+const DECEL: f64 = 2.002;
+/// Bounce spring angular frequency, rad/s (critically damped: stiffness 100, damping 20).
+const SPRING: f64 = 10.0;
+/// Below this speed (pt/s) motion stops.
+const MIN_V: f64 = 10.0;
+/// Release velocity uses the finger samples of this window (ms); an older last sample means the
+/// finger rested before lifting, so no fling.
+const VELOCITY_WINDOW: f64 = 100.0;
+
+/// Displayed overshoot for `x` points dragged past an edge of a `d`-point viewport.
+pub fn rubber(x: f64, d: f64) -> f64 {
+    (1.0 - 1.0 / (x * RUBBER / d + 1.0)) * d
+}
+
+/// Offset as shown for a raw (unresisted) offset within `[0, max]`.
+fn shown(raw: f64, max: f64, d: f64) -> f64 {
+    if raw < 0.0 {
+        -rubber(-raw, d)
+    } else if raw > max {
+        max + rubber(raw - max, d)
+    } else {
+        raw
+    }
+}
+
+/// Inverse of `shown`: picking up content mid-bounce keeps it under the finger.
+fn unshown(o: f64, max: f64, d: f64) -> f64 {
+    let un = |f: f64| f * d / (RUBBER * (d - f).max(1e-6));
+    if o < 0.0 {
+        -un(-o)
+    } else if o > max {
+        max + un(o - max)
+    } else {
+        o
+    }
+}
+
+/// Advance one scroller by `dt` seconds: exponential momentum inside `[0, max]`, a critically
+/// damped spring back to the edge outside it. Returns the new (offset, velocity); velocity 0 = at rest.
+pub fn step(mut o: f64, mut v: f64, max: f64, dt: f64) -> (f64, f64) {
+    // 1 ms sub-steps: exact enough, and momentum hands over to the spring the moment it crosses an edge.
+    let h = 0.001;
+    for _ in 0..(dt / h).round().max(1.0) as usize {
+        let edge = o.clamp(0.0, max);
+        if o == edge {
+            v *= (-DECEL * h).exp();
+            if v.abs() < MIN_V {
+                return (o, 0.0);
+            }
+        } else {
+            let x = o - edge;
+            if x.abs() < 0.1 && v.abs() < MIN_V {
+                return (edge, 0.0);
+            }
+            v += (-SPRING * SPRING * x - 2.0 * SPRING * v) * h;
+        }
+        o += v * h;
+    }
+    (o, v)
 }
 
 impl Interaction {
+    /// A finger is on a scroller or one is still moving: layout should show overscroll
+    /// (`SceneParams::overscroll`).
+    pub fn live(&self) -> bool {
+        self.drag.is_some() || !self.motion.is_empty()
+    }
+
     /// Chrome parameters for the next layout (pair with `focus.as_deref()`).
     pub fn chrome(&self, island: Option<(f64, f64, f64, f64)>) -> ChromeParams {
         ChromeParams { keyboard: self.focus.is_some(), shift: self.shift, island }
@@ -54,8 +148,21 @@ impl Interaction {
             let (ox, oy) = info.offset;
             let new = ((ox + ev.dx).clamp(0.0, info.max.0), (oy + ev.dy).clamp(0.0, info.max.1));
             self.hit = Some(n.id.clone());
+            self.motion.remove(&n.id);
             self.scroll.insert(n.id.clone(), new);
             return if new == info.offset { Effect::None } else { Effect::Redraw };
+        }
+        // A touch on moving content stops it (and is not a tap); lifting releases it.
+        if ev.kind == PointerKind::Down {
+            if let Some(n) = scene.scroll_target(ev.x, ev.y).map(|i| &scene.nodes[i]) {
+                if self.motion.remove(&n.id).is_some() {
+                    self.catch(n, ev.x, ev.y);
+                    return Effect::Redraw;
+                }
+            }
+        }
+        if ev.kind == PointerKind::Up && self.drag.take().is_some() {
+            return Effect::Redraw;
         }
         let hit = scene.hit_test(ev.x, ev.y).map(|i| &scene.nodes[i]);
         self.hit = hit.map(|n| n.id.clone());
@@ -92,6 +199,93 @@ impl Interaction {
         } else {
             Effect::None
         }
+    }
+
+    fn catch(&mut self, n: &crate::Node, x: f64, y: f64) {
+        let info = n.scroll.expect("scroller");
+        let (o, max, d, f) = axis(n, info.offset, x, y);
+        self.drag = Some(Drag { id: n.id.clone(), raw: unshown(o, max, d), last: f, samples: vec![] });
+    }
+
+    /// A finger drag (touch scrolling). `Begin` at the touch-down point, `Move` as it moves, `End`
+    /// when it lifts; `t` is the event time in ms. The content follows the finger, rubber-banding
+    /// past the edges; on release it carries on with the finger's velocity (see `tick`).
+    pub fn drag(&mut self, scene: &Scene, phase: DragPhase, x: f64, y: f64, t: f64) -> Effect {
+        match phase {
+            DragPhase::Begin => {
+                let Some(n) = scene.scroll_target(x, y).map(|i| &scene.nodes[i]) else { return Effect::None };
+                self.pressed = None;
+                self.motion.remove(&n.id);
+                if self.drag.as_ref().is_none_or(|d| d.id != n.id) {
+                    self.catch(n, x, y);
+                }
+                let d = self.drag.as_mut().expect("caught");
+                d.samples = vec![(t, d.last)];
+                Effect::None
+            }
+            DragPhase::Move => {
+                let Some(d) = self.drag.as_mut() else { return Effect::None };
+                let Some(n) = scene.nodes.iter().find(|n| n.id == d.id) else { return Effect::None };
+                let info = n.scroll.expect("scroller");
+                let (_, max, dim, f) = axis(n, info.offset, x, y);
+                d.raw += d.last - f;
+                d.last = f;
+                d.samples.push((t, f));
+                d.samples.retain(|s| t - s.0 <= VELOCITY_WINDOW);
+                let o = shown(d.raw, max, dim);
+                let new = if info.vertical { (info.offset.0, o) } else { (o, info.offset.1) };
+                self.hit = Some(d.id.clone());
+                self.scroll.insert(d.id.clone(), new);
+                if new == info.offset { Effect::None } else { Effect::Redraw }
+            }
+            DragPhase::End => {
+                let Some(d) = self.drag.take() else { return Effect::None };
+                let fresh = d.samples.last().is_some_and(|s| t - s.0 <= VELOCITY_WINDOW);
+                let v = match (d.samples.first(), fresh) {
+                    (Some(a), true) if t > a.0 => -(d.last - a.1) / ((t - a.0) / 1000.0),
+                    _ => 0.0,
+                };
+                let over = scene.nodes.iter().find(|n| n.id == d.id).is_some_and(|n| {
+                    let (o, max, ..) = axis(n, n.scroll.expect("scroller").offset, x, y);
+                    !(0.0..=max).contains(&o)
+                });
+                // Released past an edge: spring back even at zero velocity.
+                if v.abs() >= MIN_V || over {
+                    self.motion.insert(d.id, v);
+                }
+                Effect::None
+            }
+        }
+    }
+
+    /// Advance scroll momentum and bounces by `dt` seconds. Returns true while anything is moving
+    /// (keep calling every frame), after updating `scroll`: re-layout when it returns true.
+    pub fn tick(&mut self, scene: &Scene, dt: f64) -> bool {
+        let held = self.drag.as_ref().map(|d| d.id.clone());
+        let mut moving = false;
+        for n in &scene.nodes {
+            let Some(info) = n.scroll else { continue };
+            if held.as_ref() == Some(&n.id) {
+                continue;
+            }
+            let (o, max, ..) = axis(n, info.offset, 0.0, 0.0);
+            let (o, v) = match self.motion.get(&n.id) {
+                Some(&v) => step(o, v, max, dt),
+                None if (0.0..=max).contains(&o) => continue,
+                // Stale overscroll (the content shrank under it): settle at once, like iOS.
+                None => (o.clamp(0.0, max), 0.0),
+            };
+            if v == 0.0 {
+                self.motion.remove(&n.id);
+            } else {
+                self.motion.insert(n.id.clone(), v);
+                moving = true;
+            }
+            let new = if info.vertical { (info.offset.0, o) } else { (o, info.offset.1) };
+            self.scroll.insert(n.id.clone(), new);
+            moving |= new != info.offset;
+        }
+        moving
     }
 
     fn focused_field(&self, scene: &Scene) -> Option<(u64, String)> {
@@ -172,4 +366,64 @@ pub fn resolve_label(tree: &simcore_protocol::UiNode, spec: &str) -> Result<(f64
         .ok_or_else(|| format!("no button, toggle, text field or key labelled {spec:?}"))?,
     };
     Ok(center(n))
+}
+
+/// A scroller along its axis: (offset, max offset, viewport length, finger coordinate).
+fn axis(n: &crate::Node, off: (f64, f64), x: f64, y: f64) -> (f64, f64, f64, f64) {
+    let info = n.scroll.expect("scroller");
+    if info.vertical {
+        (off.1, info.max.1, n.bounds.h, y)
+    } else {
+        (off.0, info.max.0, n.bounds.w, x)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn settle(mut o: f64, mut v: f64, max: f64) -> (f64, f64, f64) {
+        let mut peak = o;
+        for frame in 0..600 {
+            (o, v) = step(o, v, max, 1.0 / 60.0);
+            peak = peak.max(o);
+            if v == 0.0 {
+                return (o, peak, frame as f64 / 60.0);
+            }
+        }
+        panic!("still moving after 10 s: o={o} v={v}");
+    }
+
+    #[test]
+    fn rubber_band_resists_and_round_trips() {
+        assert_eq!(rubber(0.0, 800.0), 0.0);
+        assert!((rubber(100.0, 800.0) - 51.46).abs() < 0.01, "{}", rubber(100.0, 800.0));
+        assert!(rubber(1e9, 800.0) < 800.0, "never past the viewport");
+        for o in [-120.0, -3.0, 0.0, 500.0, 1000.0, 1090.0] {
+            assert!((shown(unshown(o, 1000.0, 800.0), 1000.0, 800.0) - o).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn flick_decelerates_like_uiscrollview() {
+        // v0 / ln(1/0.998 per ms): a 1000 pt/s flick travels ~500 pt.
+        let (o, _, t) = settle(0.0, 1000.0, 1e6);
+        assert!((o - 495.0).abs() < 10.0, "travelled {o}");
+        assert!((1.5..2.5).contains(&t), "took {t}s");
+    }
+
+    #[test]
+    fn flick_into_edge_bounces_back() {
+        let (o, peak, t) = settle(900.0, 3000.0, 1000.0);
+        assert_eq!(o, 1000.0, "rests at the edge");
+        assert!((1050.0..1300.0).contains(&peak), "overshoot peak {peak}");
+        assert!(t < 1.5, "settles in {t}s");
+    }
+
+    #[test]
+    fn released_overscroll_springs_back() {
+        let (o, _, t) = settle(-80.0, 0.0, 1000.0);
+        assert_eq!(o, 0.0);
+        assert!((0.3..0.9).contains(&t), "bounce back took {t}s");
+    }
 }

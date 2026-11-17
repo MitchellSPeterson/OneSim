@@ -36,7 +36,21 @@ async function main() {
     ctx.putImageData(new ImageData(new Uint8ClampedArray(data.buffer), width, height), 0, 0);
   }
   // Run an input/environment change, then show the new frame.
-  const act = (f) => { const r = f(); present(); return r; };
+  // Animation clock: after any input, run frames while momentum/bounce is moving.
+  let ticking = false;
+  const animate = () => {
+    if (ticking) return;
+    ticking = true;
+    let last = performance.now();
+    const frame = (now) => {
+      const moved = sim.tick(Math.min(now - last, 100)); // a stalled tab must not teleport
+      last = now;
+      if (moved) present();
+      if (moved) requestAnimationFrame(frame); else ticking = false;
+    };
+    requestAnimationFrame(frame);
+  };
+  const act = (f) => { const r = f(); present(); animate(); return r; };
 
   sim.init({ width: vp.width, height: vp.height, scale: fit(), dark, dynamicType: q.get("dynamicType") ?? "large" });
   present();
@@ -51,8 +65,9 @@ async function main() {
     return [((e.clientX - r.left) * sim.width) / r.width, ((e.clientY - r.top) * sim.height) / r.height];
   };
 
-  // Pointer: down/up are taps; moving past a small threshold turns the gesture into a drag-scroll.
-  let drag = null; // { id, x, y: last point, scrolling }
+  // Pointer: down/up are taps; moving past a small threshold turns the gesture into a drag-scroll
+  // (rubber band at the edges, momentum and bounce after lifting).
+  let drag = null; // { id, x, y: touch-down point, scrolling }
   canvas.addEventListener("pointerdown", (e) => {
     if (e.button > 0) return;
     canvas.setPointerCapture(e.pointerId);
@@ -63,18 +78,24 @@ async function main() {
   canvas.addEventListener("pointermove", (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     if (!drag.scrolling && Math.hypot(e.clientX - drag.cx, e.clientY - drag.cy) < 8) return;
+    if (!drag.scrolling) sim.drag("begin", drag.x, drag.y, e.timeStamp);
     drag.scrolling = true;
-    const [x, y] = toPoints(e);
-    act(() => sim.scroll(drag.x, drag.y, drag.x - x, drag.y - y)); // content follows the finger
-    drag.x = x; drag.y = y;
+    for (const c of e.getCoalescedEvents?.() ?? [e]) {
+      const [x, y] = toPoints(c);
+      sim.drag("move", x, y, c.timeStamp);
+    }
+    present();
   });
-  canvas.addEventListener("pointerup", (e) => {
+  const lift = (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     const wasScroll = drag.scrolling;
     drag = null;
-    if (!wasScroll) { const [x, y] = toPoints(e); act(() => sim.pointer("up", x, y)); }
-  });
-  canvas.addEventListener("pointercancel", () => { drag = null; });
+    const [x, y] = toPoints(e);
+    if (wasScroll) act(() => sim.drag("end", x, y, e.timeStamp));
+    else if (e.type === "pointerup") act(() => sim.pointer("up", x, y)); // a cancelled touch is no tap
+  };
+  canvas.addEventListener("pointerup", lift);
+  canvas.addEventListener("pointercancel", lift);
 
   // Wheel: CSS pixels -> points; positive deltaY reveals later content, like native.
   canvas.addEventListener("wheel", (e) => {
@@ -104,6 +125,7 @@ async function main() {
     setDark: (d) => act(() => sim.setAppearance(d ? "dark" : "light")),
     pointer: (kind, x, y) => act(() => sim.pointer(["down", "up", "click"][kind] ?? kind, x, y)), // points
     scroll: (x, y, dx, dy) => act(() => sim.scroll(x, y, dx, dy)),
+    drag: (phase, x, y, t) => act(() => sim.drag(phase, x, y, t)),
     type: (text) => act(() => sim.type(text)),
     key: (name) => act(() => sim.key(name)),
     click: (label) => act(() => sim.clickLabel(label)),

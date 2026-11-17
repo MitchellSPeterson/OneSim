@@ -3,6 +3,7 @@ use crate::symbols;
 use crate::text::{FontSpec, Fonts};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::Range;
 use std::rc::Rc;
 use tiny_skia::{
     FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke, Transform,
@@ -145,40 +146,67 @@ fn draw_symbol(pm: &mut Pixmap, sy: &SymbolRun, b: (f32, f32, f32, f32), op: f32
 
 /// Separable gaussian blur of an `f32` coverage plane (exact kernel, truncated at 3 sigma).
 pub(crate) fn gaussian(plane: &mut [f32], w: usize, h: usize, sigma: f32, replicate: bool) {
-    let r = (sigma * 3.0).ceil() as isize;
-    let mut k: Vec<f32> = (-r..=r).map(|i| (-(i * i) as f32 / (2.0 * sigma * sigma)).exp()).collect();
+    gaussian_in(plane, w, h, sigma, replicate, (0..w, 0..h));
+}
+
+/// `gaussian`, computing only the output window `(columns, rows)`; the rest of `plane` is left
+/// unblurred. Each output pixel is computed exactly as by the full blur.
+pub(crate) fn gaussian_in(plane: &mut [f32], w: usize, h: usize, sigma: f32, replicate: bool, (cols, rows): (Range<usize>, Range<usize>)) {
+    let r = (sigma * 3.0).ceil() as usize;
+    let mut k: Vec<f32> = (-(r as isize)..=r as isize).map(|i| (-(i * i) as f32 / (2.0 * sigma * sigma)).exp()).collect();
     let sum: f32 = k.iter().sum();
     k.iter_mut().for_each(|v| *v /= sum);
-    // One 1-D pass: `n` samples per line, `lines` lines, `stride` between samples, `step` between lines.
-    // `replicate` clamps to the edge sample (backdrops); otherwise outside counts as zero (coverage).
-    let pass = |from: &[f32], to: &mut [f32], n: usize, lines: usize, stride: usize, step: usize| {
-        let ni = n as isize;
-        for l in 0..lines {
-            let base = l * step;
-            for i in 0..ni {
-                let mut acc = 0.0f32;
-                if i >= r && i + r < ni {
-                    let j0 = (i - r) as usize;
-                    for (ki, kv) in k.iter().enumerate() {
-                        acc += kv * from[base + (j0 + ki) * stride];
-                    }
-                } else {
-                    for (ki, kv) in k.iter().enumerate() {
-                        let j = i + ki as isize - r;
-                        if replicate {
-                            acc += kv * from[base + j.clamp(0, ni - 1) as usize * stride];
-                        } else if (0..ni).contains(&j) {
-                            acc += kv * from[base + j as usize * stride];
-                        }
-                    }
-                }
-                to[base + i as usize * stride] = acc;
+    // Output `i` of an `n`-sample line whose kernel overhangs an end: `replicate` clamps to the edge
+    // sample (backdrops); otherwise outside counts as zero (coverage).
+    let edge = |n: usize, i: usize, at: &dyn Fn(usize) -> f32| {
+        let mut acc = 0.0f32;
+        for (ki, kv) in k.iter().enumerate() {
+            let j = (i + ki) as isize - r as isize;
+            if replicate {
+                acc += kv * at(j.clamp(0, n as isize - 1) as usize);
+            } else if (0..n as isize).contains(&j) {
+                acc += kv * at(j as usize);
             }
         }
+        acc
     };
+    // Outputs whose kernel fits inside the line.
+    let inner = |n: usize, o: &Range<usize>| {
+        let a = o.start.max(r);
+        a..o.end.min(n.saturating_sub(r)).max(a)
+    };
+    // `out[i] = sum over taps of k * src[i + tap]`, taps outer so the inner loop vectorizes. Each
+    // output still adds its taps in kernel order, so the result is bit-identical to a per-output loop.
+    fn convolve<'a>(k: &[f32], out: &mut [f32], src: impl Fn(usize) -> &'a [f32]) {
+        out.fill(0.0);
+        for (ki, kv) in k.iter().enumerate() {
+            for (o, v) in out.iter_mut().zip(src(ki)) {
+                *o += kv * v;
+            }
+        }
+    }
+    // Rows first, all of them but only the wanted columns; then those columns, wanted rows only.
     let mut tmp = vec![0f32; plane.len()];
-    pass(plane, &mut tmp, w, h, 1, w);
-    pass(&tmp, plane, h, w, w, 1);
+    let hi = inner(w, &cols);
+    for y in 0..h {
+        let src = &plane[y * w..(y + 1) * w];
+        let dst = &mut tmp[y * w..(y + 1) * w];
+        for i in cols.clone().filter(|i| !hi.contains(i)) {
+            dst[i] = edge(w, i, &|j| src[j]);
+        }
+        convolve(&k, &mut dst[hi.clone()], |ki| &src[hi.start + ki - r..hi.end + ki - r]);
+    }
+    let vi = inner(h, &rows);
+    for i in rows {
+        if vi.contains(&i) {
+            let c = cols.clone();
+            convolve(&k, &mut plane[i * w + c.start..i * w + c.end], |ki| &tmp[(i + ki - r) * w + c.start..(i + ki - r) * w + c.end]);
+        } else {
+            for c in cols.clone() {
+                plane[i * w + c] = edge(h, i, &|j| tmp[j * w + c]);
+            }
+        }
+    }
 }
 
 type ShadowKey = (String, [u32; 7], [u8; 4]);
@@ -228,6 +256,35 @@ fn draw_shadow(pm: &mut Pixmap, n: &crate::scene::Node, sh: &Shadow, b: (f32, f3
             .clone()
     });
     pm.draw_pixmap((px.floor() - pad) as i32, (py.floor() - pad) as i32, img.as_ref().as_ref(), &PixmapPaint::default(), Transform::identity(), mask);
+}
+
+/// Source-over a solid color onto an integer pixel rect, bit-identical to tiny-skia's non-AA
+/// `fill_rect` (lowp pipeline: uniform_color, mask_u8, source_over) but without compiling a
+/// pipeline per call: cosmic-text calls back once per glyph pixel, which made that the bulk of a frame.
+fn blend_rect(pm: &mut Pixmap, (x, y, w, h): (i32, i32, u32, u32), c: [u8; 4], mask: Option<&Mask>) {
+    let pc = tiny_skia::Color::from_rgba8(c[0], c[1], c[2], c[3]).premultiply();
+    let src = [pc.red(), pc.green(), pc.blue(), pc.alpha()].map(|v| (v * 255.0 + 0.5) as u16);
+    if src[3] == 0 {
+        return;
+    }
+    let div255 = |v: u16| (v + 255) >> 8;
+    let (pw, ph) = (pm.width() as i32, pm.height() as i32);
+    let (x0, y0, x1, y1) = (x.max(0), y.max(0), (x + w as i32).min(pw), (y + h as i32).min(ph));
+    let data = pm.data_mut();
+    for py in y0..y1 {
+        for px in x0..x1 {
+            let mut s = src;
+            if let Some(m) = mask {
+                let k = m.data()[(py * m.width() as i32 + px) as usize] as u16;
+                s = s.map(|v| div255(v * k));
+            }
+            let i = (py * pw + px) as usize * 4;
+            let inv = 255 - s[3];
+            for (ch, sv) in s.iter().enumerate() {
+                data[i + ch] = (sv + div255(data[i + ch] as u16 * inv)) as u8;
+            }
+        }
+    }
 }
 
 fn paint(c: Color, opacity: f32) -> Paint<'static> {
@@ -324,13 +381,8 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
             // +2px slack so rounding differences vs layout never re-wrap.
             let base_a = rgba[3] as u32;
             let spans = fonts.draw(&t.text, &spec, bw * s + 2.0, rgba, (ox, oy), |x, y, w, h, c| {
-                if let Some(r) = Rect::from_xywh(x as f32, y as f32, w as f32, h as f32) {
-                    let mut p = Paint::default();
-                    // cosmic-text replaces the colour alpha with glyph coverage; reapply ours.
-                    p.set_color_rgba8(c[0], c[1], c[2], (c[3] as u32 * base_a / 255) as u8);
-                    p.anti_alias = false;
-                    pm.fill_rect(r, &p, Transform::identity(), mask.as_deref());
-                }
+                // cosmic-text replaces the colour alpha with glyph coverage; reapply ours.
+                blend_rect(&mut pm, (x, y, w, h), [c[0], c[1], c[2], (c[3] as u32 * base_a / 255) as u8], mask.as_deref());
             });
             if t.strike {
                 let th = (spec.size * 0.065).max(1.0);
@@ -386,6 +438,91 @@ mod tests {
         let a = |d: f32| pm.pixel(270, ((40.0 - d) * 3.0) as u32).unwrap().alpha() as f32 / 255.0;
         for (d, want) in [(1.0, 0.143), (6.0, 0.052), (12.0, 0.0075)] {
             assert!((a(d) - want).abs() < 0.012, "d={d}: {} vs {want}", a(d));
+        }
+    }
+
+    /// Deterministic pseudo-random bytes (xorshift).
+    fn noise(n: usize, mut x: u32) -> Vec<u8> {
+        (0..n)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                x as u8
+            })
+            .collect()
+    }
+
+    #[test]
+    fn blend_rect_matches_tiny_skia_fill_rect() {
+        let (w, h) = (40u32, 30u32);
+        let mut mask = Mask::new(w, h).unwrap();
+        mask.data_mut().copy_from_slice(&noise((w * h) as usize, 7));
+        let bg = noise((w * h * 4) as usize, 3);
+        let mut base = Pixmap::new(w, h).unwrap();
+        for (px, c) in base.pixels_mut().iter_mut().zip(bg.chunks(4)) {
+            *px = tiny_skia::ColorU8::from_rgba(c[0], c[1], c[2], c[3]).premultiply();
+        }
+        for (i, c) in noise(4 * 64, 11).chunks(4).enumerate() {
+            let c = [c[0], c[1], c[2], if i % 8 == 0 { 255 } else { c[3] }];
+            // On-canvas rects, some clipped at the right/bottom edge. (Wholly off-canvas rects at
+            // negative coordinates differ: tiny-skia still paints pixel 0 there; glyphs never land there.)
+            let (x, y) = (i as i32 * 7 % 40, i as i32 * 5 % 30);
+            for m in [None, Some(&mask)] {
+                let (mut a, mut b) = (base.clone(), base.clone());
+                blend_rect(&mut a, (x, y, 3, 2), c, m);
+                let mut p = Paint::default();
+                p.set_color_rgba8(c[0], c[1], c[2], c[3]);
+                p.anti_alias = false;
+                b.fill_rect(Rect::from_xywh(x as f32, y as f32, 3.0, 2.0).unwrap(), &p, Transform::identity(), m);
+                assert_eq!(a.data(), b.data(), "color {c:?} at ({x},{y}) mask {}", m.is_some());
+            }
+        }
+    }
+
+    #[test]
+    fn windowed_blur_is_bit_identical_to_per_output_loop() {
+        let (w, h, sigma) = (37, 29, 2.3f32);
+        let src: Vec<f32> = noise(w * h, 5).iter().map(|&b| b as f32 / 7.0).collect();
+        // The straightforward blur: each output sums its taps in kernel order.
+        let naive = |replicate: bool| {
+            let r = (sigma * 3.0).ceil() as isize;
+            let mut k: Vec<f32> = (-r..=r).map(|i| (-(i * i) as f32 / (2.0 * sigma * sigma)).exp()).collect();
+            let sum: f32 = k.iter().sum();
+            k.iter_mut().for_each(|v| *v /= sum);
+            let pass = |from: &[f32], n: usize, lines: usize, stride: usize, step: usize| {
+                let mut to = from.to_vec();
+                for l in 0..lines {
+                    for i in 0..n as isize {
+                        let mut acc = 0.0f32;
+                        for (ki, kv) in k.iter().enumerate() {
+                            let j = i + ki as isize - r;
+                            if replicate {
+                                acc += kv * from[l * step + j.clamp(0, n as isize - 1) as usize * stride];
+                            } else if (0..n as isize).contains(&j) {
+                                acc += kv * from[l * step + j as usize * stride];
+                            }
+                        }
+                        to[l * step + i as usize * stride] = acc;
+                    }
+                }
+                to
+            };
+            pass(&pass(&src, w, h, 1, w), h, w, w, 1)
+        };
+        for replicate in [false, true] {
+            let want = naive(replicate);
+            let mut full = src.clone();
+            gaussian(&mut full, w, h, sigma, replicate);
+            assert!(full.iter().zip(&want).all(|(a, b)| a.to_bits() == b.to_bits()), "full, replicate={replicate}");
+            let (cols, rows) = (3..30, 5..11);
+            let mut win = src.clone();
+            gaussian_in(&mut win, w, h, sigma, replicate, (cols.clone(), rows.clone()));
+            for y in rows.clone() {
+                for x in cols.clone() {
+                    assert_eq!(win[y * w + x].to_bits(), want[y * w + x].to_bits(), "({x},{y}) replicate={replicate}");
+                }
+            }
         }
     }
 }

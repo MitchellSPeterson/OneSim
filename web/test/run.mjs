@@ -114,6 +114,37 @@ const suites = {
     assert.equal(sim.scroll(200, 300, 0, 120), true, "scrolls");
     assert.notEqual(Buffer.from(sim.framebuffer().data).toString("base64"), before, "scroll moves pixels");
     assert.equal(sim.scroll(200, 300, 0, -1e6), true, "scroll back to top");
+    // Touch: pull down past the top (rubber band); a still release bounces back to the same frame.
+    const fb = () => Buffer.from(sim.framebuffer().data).toString("base64");
+    const top = fb();
+    sim.drag("begin", 200, 200, 0);
+    assert.equal(sim.drag("move", 200, 300, 50), true, "rubber band moves content");
+    sim.drag("end", 200, 300, 400); // finger rested 350 ms: no fling
+    let frames = 0, t0 = performance.now();
+    while (sim.tick(1000 / 60)) frames++;
+    const ms = (performance.now() - t0) / frames;
+    assert.ok(frames > 15 && frames < 60, `bounce back took ${frames} frames`);
+    assert.equal(fb(), top, "rests exactly at the top");
+    // Flick up: momentum keeps going after the finger lifts, then comes to rest.
+    sim.drag("begin", 200, 400, 1000);
+    sim.drag("move", 200, 360, 1016);
+    sim.drag("move", 200, 320, 1032);
+    const lifted = (sim.drag("end", 200, 320, 1040), fb());
+    assert.equal(sim.tick(1000 / 60), true, "momentum after lift");
+    assert.notEqual(fb(), lifted);
+    frames = 0;
+    while (sim.tick(1000 / 60)) assert.ok(++frames < 600, "comes to rest");
+    // A tap on moving content stops it and is not a tap.
+    sim.scroll(200, 300, 0, -1e6);
+    sim.drag("begin", 200, 400, 2000);
+    sim.drag("move", 200, 360, 2016);
+    sim.drag("end", 200, 360, 2020);
+    sim.tick(1000 / 60);
+    assert.equal(sim.pointer("down", 200, 300), true, "caught");
+    assert.equal(sim.tick(1000 / 60), false, "held content stays put");
+    sim.pointer("up", 200, 300);
+    while (sim.tick(1000 / 60)); // released past an edge: settles
+    console.log(`    scroll frame: ${ms.toFixed(1)} ms at ${sim.scale}x`);
     sim.setViewport(402, 874);
     sim.setAppearance("dark");
     assert.ok(hasText(sim, "Dark appearance"));
