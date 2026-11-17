@@ -23,7 +23,7 @@ fn counter_flow() {
     assert_eq!(host.state(&id).unwrap(), State::Running);
 
     let (w, h, png) = host.screenshot(&id).unwrap();
-    assert_eq!((w, h), (786, 1704));
+    assert_eq!((w, h), (1206, 2622)); // iphone-17-pro: 402x874 @3x
     assert_eq!(&png[1..4], b"PNG");
 
     let (v1, root) = host.inspect(&id).unwrap();
@@ -33,7 +33,7 @@ fn counter_flow() {
     let f = button.frame;
 
     let (hit, acted) = host
-        .pointer(&id, PointerEvent { kind: PointerKind::Click, x: f.x + f.width / 2.0, y: f.y + f.height / 2.0 })
+        .pointer(&id, PointerEvent::new(PointerKind::Click, f.x + f.width / 2.0, f.y + f.height / 2.0))
         .unwrap();
     assert_eq!(hit.as_deref(), Some("0.1"));
     assert!(acted);
@@ -42,7 +42,7 @@ fn counter_flow() {
     assert!(find(&root, &|n| n.text.as_deref() == Some("Count: 1")).is_some());
 
     // click on empty space: no hit
-    assert_eq!(host.pointer(&id, PointerEvent { kind: PointerKind::Click, x: 1.0, y: 1.0 }).unwrap(), (None, false));
+    assert_eq!(host.pointer(&id, PointerEvent::new(PointerKind::Click, 1.0, 1.0)).unwrap(), (None, false));
 
     host.set_appearance(&id, Appearance::Dark).unwrap();
     assert!(host.inspect(&id).unwrap().0 > v2);
@@ -50,7 +50,7 @@ fn counter_flow() {
 
     host.stop_session(&id).unwrap();
     assert_eq!(host.state(&id).unwrap(), State::Stopped);
-    assert_eq!(host.pointer(&id, PointerEvent { kind: PointerKind::Click, x: 1.0, y: 1.0 }).unwrap_err().code, ErrorCode::InvalidState);
+    assert_eq!(host.pointer(&id, PointerEvent::new(PointerKind::Click, 1.0, 1.0)).unwrap_err().code, ErrorCode::InvalidState);
     assert_eq!(host.start_session("nope").unwrap_err().code, ErrorCode::NotFound);
 }
 
@@ -69,8 +69,8 @@ fn crash_is_isolated() {
     host.start_session(&good).unwrap();
 
     // Any action makes the crash guest exit(3).
-    let f = host.inspect(&bad).unwrap().1.children[0].children[1].frame;
-    let click = PointerEvent { kind: PointerKind::Click, x: f.x + 5.0, y: f.y + 5.0 };
+    let f = find(&host.inspect(&bad).unwrap().1, &|n| n.role.as_deref() == Some("button")).unwrap().frame;
+    let click = PointerEvent::new(PointerKind::Click, f.x + 5.0, f.y + 5.0);
     let _ = host.pointer(&bad, click);
     std::thread::sleep(std::time::Duration::from_millis(300));
     assert_eq!(host.state(&bad).unwrap(), State::Crashed);
@@ -101,6 +101,155 @@ fn json_api_basics() {
     assert_eq!(lines[1]["error"]["code"], "protocol_version");
     assert_eq!(lines[2]["result"]["protocol_version"], 1);
     assert_eq!(lines[3]["result"]["session_id"], "s1");
-    assert_eq!(lines[4]["error"]["code"], "unsupported");
+    assert_eq!(lines[4]["error"]["code"], "bad_request"); // malformed keyboard event
     assert_eq!(lines.len(), 6);
+}
+
+fn nav_guest() -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("simcore-nav-{}-{:?}", std::process::id(), std::thread::current().id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let g = dir.join("fake-nav-guest");
+    let _ = std::fs::remove_file(&g);
+    std::os::unix::fs::symlink(GUEST, &g).unwrap();
+    g
+}
+
+fn center(n: &UiNode) -> (f64, f64) {
+    (n.frame.x + n.frame.width / 2.0, n.frame.y + n.frame.height / 2.0)
+}
+
+fn click(host: &mut Host, id: &str, label_pred: &dyn Fn(&UiNode) -> bool) -> (Option<String>, bool) {
+    let root = host.inspect(id).unwrap().1;
+    let n = find(&root, label_pred).expect("node to click");
+    let (x, y) = center(n);
+    host.pointer(id, PointerEvent::new(PointerKind::Click, x, y)).unwrap()
+}
+
+fn labelled<'a>(role: &'a str, label: &'a str) -> impl Fn(&UiNode) -> bool + 'a {
+    move |n| n.role.as_deref() == Some(role) && n.label.as_deref() == Some(label)
+}
+
+fn start_nav(host: &mut Host) -> String {
+    let g = nav_guest();
+    let id = host.create_session(params(g.to_str().unwrap())).unwrap();
+    host.start_session(&id).unwrap();
+    id
+}
+
+#[test]
+fn navigation_list_flow() {
+    let mut host = Host::new();
+    let id = start_nav(&mut host);
+    // Home: whole 52pt row is the hit target of a navigation link, 16pt card margins.
+    let root = host.inspect(&id).unwrap().1;
+    let row = find(&root, &labelled("button", "Typography")).unwrap();
+    assert_eq!((row.frame.x, row.frame.width, row.frame.height), (16.0, 370.0, 52.0));
+    assert!((row.frame.y - 208.3).abs() < 0.5, "first row y {}", row.frame.y);
+    // Click far right of the row (on the chevron), not on the label.
+    let (hit, acted) = host.pointer(&id, PointerEvent::new(PointerKind::Click, 380.0, row.frame.y + 26.0)).unwrap();
+    assert!(acted && hit.is_some());
+    let root = host.inspect(&id).unwrap().1;
+    assert!(find(&root, &|n| n.kind == "navbar" && n.label.as_deref() == Some("Typography")).is_some());
+    // back button: 44x44 at (16, 62) in the glass circle
+    let back = find(&root, &|n| n.id == "n#back").unwrap();
+    assert_eq!((back.frame.x, back.frame.y, back.frame.width, back.frame.height), (16.0, 62.0, 44.0, 44.0));
+    let (x, y) = center(back);
+    assert!(host.pointer(&id, PointerEvent::new(PointerKind::Click, x, y)).unwrap().1);
+    let root = host.inspect(&id).unwrap().1;
+    assert!(find(&root, &|n| n.text.as_deref() == Some("Open todos")).is_some());
+    host.shutdown();
+}
+
+#[test]
+fn scroll_offsets_persist_across_trees() {
+    let mut host = Host::new();
+    let id = start_nav(&mut host);
+    assert!(click(&mut host, &id, &labelled("button", "Typography")).1);
+    let y_of = |host: &mut Host, id: &str| find(&host.inspect(id).unwrap().1, &|n| n.text.as_deref() == Some("Line 10")).unwrap().frame.y;
+    let y0 = y_of(&mut host, &id);
+    let (hit, acted) =
+        host.pointer(&id, PointerEvent { kind: PointerKind::Scroll, x: 200.0, y: 400.0, dx: 0.0, dy: 100.0 }).unwrap();
+    assert_eq!((hit.as_deref(), acted), (Some("sc"), false));
+    assert_eq!(y_of(&mut host, &id), y0 - 100.0);
+    // a new tree (environment change) keeps the offset
+    host.set_appearance(&id, Appearance::Dark).unwrap();
+    assert_eq!(y_of(&mut host, &id), y0 - 100.0);
+    // clamped at both ends
+    host.pointer(&id, PointerEvent { kind: PointerKind::Scroll, x: 200.0, y: 400.0, dx: 0.0, dy: 1.0e6 }).unwrap();
+    let last = find(&host.inspect(&id).unwrap().1, &|n| n.text.as_deref() == Some("Line 39")).unwrap().frame;
+    assert!(last.y + last.height <= 874.0 - 34.0 + 0.5 && last.y + last.height > 874.0 - 34.0 - 40.0, "last line {last:?}");
+    host.pointer(&id, PointerEvent { kind: PointerKind::Scroll, x: 200.0, y: 400.0, dx: 0.0, dy: -1.0e6 }).unwrap();
+    assert_eq!(y_of(&mut host, &id), y0);
+    // scrolling over the status bar finds nothing
+    assert_eq!(host.pointer(&id, PointerEvent { kind: PointerKind::Scroll, x: 200.0, y: 20.0, dx: 0.0, dy: 50.0 }).unwrap().0, None);
+    host.shutdown();
+}
+
+#[test]
+fn text_field_focus_and_typing() {
+    let mut host = Host::new();
+    let id = start_nav(&mut host);
+    assert_eq!(host.keyboard(&id, KeyboardEvent::Text { text: "x".into() }).unwrap_err().code, ErrorCode::InvalidState);
+    assert!(click(&mut host, &id, &labelled("button", "Todos")).1);
+    let field = |host: &mut Host| find(&host.inspect(&id).unwrap().1, &|n| n.role.as_deref() == Some("textfield")).unwrap().clone();
+    assert!(!field(&mut host).focused);
+    assert_eq!(field(&mut host).value.as_deref(), Some(""));
+    // Add is disabled while the draft is empty
+    let add = find(&host.inspect(&id).unwrap().1, &labelled("button", "Add")).unwrap().clone();
+    assert!(add.disabled && add.action.is_none());
+
+    let (hit, acted) = click(&mut host, &id, &labelled("textfield", "New todo"));
+    assert!(hit.is_some() && !acted);
+    assert!(field(&mut host).focused);
+    host.keyboard(&id, KeyboardEvent::Text { text: "Buy".into() }).unwrap();
+    host.keyboard(&id, KeyboardEvent::Text { text: " milk!".into() }).unwrap();
+    host.keyboard(&id, KeyboardEvent::Key { key: "backspace".into() }).unwrap();
+    assert_eq!(field(&mut host).value.as_deref(), Some("Buy milk"));
+    assert!(field(&mut host).focused, "focus survives the new tree");
+    assert_eq!(host.keyboard(&id, KeyboardEvent::Key { key: "tab".into() }).unwrap_err().code, ErrorCode::Unsupported);
+    // caret node exists while focused; the screenshot renders
+    assert!(host.screenshot(&id).unwrap().2.len() > 1000);
+
+    // Add (now enabled) appends a row; tapping elsewhere unfocused the field
+    let (_, acted) = click(&mut host, &id, &labelled("button", "Add"));
+    assert!(acted);
+    let root = host.inspect(&id).unwrap().1;
+    assert!(find(&root, &|n| n.text.as_deref() == Some("Buy milk")).is_some());
+    assert!(!field(&mut host).focused);
+    assert_eq!(field(&mut host).value.as_deref(), Some(""));
+
+    // enter ends editing
+    click(&mut host, &id, &labelled("textfield", "New todo"));
+    assert!(field(&mut host).focused);
+    host.keyboard(&id, KeyboardEvent::Key { key: "enter".into() }).unwrap();
+    assert!(!field(&mut host).focused);
+    host.shutdown();
+}
+
+#[test]
+fn toggle_and_stepper_by_label() {
+    let mut host = Host::new();
+    let id = start_nav(&mut host);
+    assert!(click(&mut host, &id, &labelled("button", "Controls")).1);
+    let sw = |host: &mut Host| find(&host.inspect(&id).unwrap().1, &labelled("toggle", "Notifications")).unwrap().clone();
+    let s = sw(&mut host);
+    assert_eq!((s.frame.width, s.frame.height, s.value.as_deref()), (63.0, 28.0, Some("on")));
+    assert!(click(&mut host, &id, &labelled("toggle", "Notifications")).1);
+    assert_eq!(sw(&mut host).value.as_deref(), Some("off"));
+
+    let stepper = find(&host.inspect(&id).unwrap().1, &labelled("stepper", "Volume: 3")).unwrap().clone();
+    let inc = find(&stepper, &|n| n.id.ends_with("#increment")).unwrap();
+    assert_eq!((inc.frame.width, inc.frame.height), (47.0, 32.0));
+    let (x, y) = center(inc);
+    assert!(host.pointer(&id, PointerEvent::new(PointerKind::Click, x, y)).unwrap().1);
+    assert!(find(&host.inspect(&id).unwrap().1, &labelled("stepper", "Volume: 4")).is_some());
+    host.shutdown();
+}
+
+#[test]
+fn unknown_device_is_unsupported() {
+    let mut host = Host::new();
+    let mut p = params(GUEST);
+    p.device = Some("nokia-3310".into());
+    assert_eq!(host.create_session(p).unwrap_err().code, ErrorCode::Unsupported);
 }

@@ -10,11 +10,11 @@ use base64::Engine;
 use serde::Serialize;
 use serde_json::{json, Value};
 use simcore_protocol::*;
-use simcore_render::{build_scene, render_png, Fonts, Scene};
+use simcore_render::{build_scene, render_png, Fonts, Scene, SceneParams};
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
 
-pub use session::{simcore_home, State};
+pub use session::{device, simcore_home, Device, State, DEVICES};
 use session::Session;
 
 fn err(code: ErrorCode, msg: impl Into<String>) -> ApiError {
@@ -44,6 +44,7 @@ pub const COMMANDS: &[&str] = &[
     "set_viewport",
     "set_appearance",
     "send_pointer_event",
+    "send_keyboard_event",
     "capture_screenshot",
     "inspect_ui_tree",
     "get_errors",
@@ -68,6 +69,12 @@ impl Host {
         }
         if !std::path::Path::new(&p.app_path).exists() {
             return Err(err(ErrorCode::BadRequest, format!("app_path {:?} does not exist", p.app_path)));
+        }
+        if let Some(d) = &p.device {
+            if device(d).is_none() {
+                let known: Vec<&str> = DEVICES.iter().map(|d| d.name).collect();
+                return Err(err(ErrorCode::Unsupported, format!("device {d:?} (known: {})", known.join(", "))));
+            }
         }
         let id = format!("s{}", self.next_id);
         self.next_id += 1;
@@ -96,6 +103,8 @@ impl Host {
         Ok(json!({
             "session_id": s.id, "state": s.state().as_str(), "framework": s.params.framework,
             "platform": s.params.platform, "app_path": s.params.app_path, "viewport": s.viewport,
+            "device": s.device.name, "safe_area": {"top": s.device.safe_top, "bottom": s.device.safe_bottom},
+            "focus": s.focus,
             "scale": s.scale, "appearance": s.appearance, "tree_version": s.tree().map(|t| t.0),
         }))
     }
@@ -128,15 +137,35 @@ impl Host {
         let (version, root) = s
             .tree()
             .ok_or_else(|| err(ErrorCode::InvalidState, format!("session {id} is {} and has no tree", s.state().as_str())))?;
-        let (vp, scale, appearance) = ((s.viewport.width, s.viewport.height), s.scale, s.appearance);
         let fonts = self.fonts.get_or_insert_with(Fonts::new);
-        Ok((build_scene(&root, vp, appearance, fonts), version, scale))
+        let params = SceneParams {
+            viewport: (s.viewport.width, s.viewport.height),
+            safe_top: s.device.safe_top,
+            safe_bottom: s.device.safe_bottom,
+            scale: s.scale,
+            appearance: s.appearance,
+            scroll: &s.scroll,
+            focus: s.focus.as_deref(),
+            status_bar: true,
+        };
+        Ok((build_scene(&root, &params, fonts), version, s.scale))
     }
 
-    /// Returns `(hit node id, action dispatched)`. `click` = down + up.
+    /// Returns `(hit node id, action dispatched)`. `click` = down + up. A hit on a text field
+    /// focuses it (action = false); any other click unfocuses. `scroll` hits the scroller and
+    /// never reaches the guest.
     pub fn pointer(&mut self, id: &str, ev: PointerEvent) -> Result<(Option<String>, bool), ApiError> {
         self.get(id)?.require_running()?;
         let (scene, version, _) = self.scene(id)?;
+        if ev.kind == PointerKind::Scroll {
+            let Some(i) = scene.scroll_target(ev.x, ev.y) else { return Ok((None, false)) };
+            let n = &scene.nodes[i];
+            let info = n.scroll.expect("scroll_target has scroll");
+            let (ox, oy) = info.offset;
+            let new = ((ox + ev.dx).clamp(0.0, info.max.0), (oy + ev.dy).clamp(0.0, info.max.1));
+            self.get(id)?.scroll.insert(n.id.clone(), new);
+            return Ok((Some(n.id.clone()), false));
+        }
         let hit = scene.hit_test(ev.x, ev.y).map(|i| &scene.nodes[i]);
         let hit_id = hit.map(|n| n.id.clone());
         let s = self.get(id)?;
@@ -146,12 +175,47 @@ impl Host {
                 None
             }
             PointerKind::Up => s.pressed.take().filter(|p| Some(p) == hit_id.as_ref()).and(hit.and_then(|n| n.action)),
-            PointerKind::Click => hit.and_then(|n| n.action),
+            _ => hit.and_then(|n| n.action),
         };
+        if ev.kind != PointerKind::Down {
+            s.focus = hit.filter(|n| n.field.is_some()).map(|n| n.id.clone());
+        }
         if let Some(action) = fire {
             s.send_and_wait_tree(&HostMessage::Action { id: action, version })?;
         }
         Ok((hit_id, fire.is_some()))
+    }
+
+    /// Keyboard input for the focused text field. The host computes the new text and sends it
+    /// to the guest as `text_input`.
+    pub fn keyboard(&mut self, id: &str, ev: KeyboardEvent) -> Result<(), ApiError> {
+        self.get(id)?.require_running()?;
+        if let KeyboardEvent::Key { key } = &ev {
+            if !matches!(key.as_str(), "backspace" | "enter") {
+                return Err(err(ErrorCode::Unsupported, format!("unknown key {key:?} (backspace, enter)")));
+            }
+        }
+        let (scene, version, _) = self.scene(id)?;
+        let s = self.get(id)?;
+        let node = s
+            .focus
+            .as_ref()
+            .and_then(|f| scene.nodes.iter().find(|n| &n.id == f && n.field.is_some()))
+            .ok_or_else(|| err(ErrorCode::InvalidState, "no focused text field (click a text field first)"))?;
+        let mut text = node.value.clone().unwrap_or_default();
+        let field = node.field.expect("filtered");
+        match ev {
+            KeyboardEvent::Text { text: t } => text.push_str(&t),
+            KeyboardEvent::Key { key } if key == "backspace" => {
+                text.pop();
+            }
+            KeyboardEvent::Key { .. } => {
+                s.focus = None;
+                return Ok(());
+            }
+        }
+        s.send_and_wait_tree(&HostMessage::TextInput { field, version, text })?;
+        Ok(())
     }
 
     /// PNG bytes plus pixel size.
@@ -208,7 +272,14 @@ impl Host {
             return Err(err(ErrorCode::BadRequest, "first request must be hello"));
         }
         match method {
-            "get_capabilities" => ok(json!({"frameworks": ["swiftui"], "platforms": ["ios"], "commands": COMMANDS, "headless": true})),
+            "get_capabilities" => ok(json!({
+                "frameworks": ["swiftui"], "platforms": ["ios"], "commands": COMMANDS, "headless": true,
+                "devices": DEVICES.iter().map(|d| d.name).collect::<Vec<_>>(),
+                "pointer_events": ["down", "up", "click", "scroll"],
+                "keyboard": {"events": ["text", "key"], "keys": ["backspace", "enter"]},
+                "views": ["text", "vstack", "hstack", "zstack", "spacer", "button", "color", "rectangle", "shape", "divider",
+                          "scroll", "list", "navigation", "toggle", "stepper", "text_field", "empty"],
+            })),
             "create_session" => ok(json!({"session_id": self.create_session(p(params)?)?})),
             "start_session" => {
                 let a: SessionIdParams = p(params)?;
@@ -236,7 +307,11 @@ impl Host {
                 let (hit, action) = self.pointer(&a.session_id, a.event)?;
                 ok(json!({"hit": hit, "action": action}))
             }
-            "send_keyboard_event" => Err(err(ErrorCode::Unsupported, "keyboard events are not supported in v1")),
+            "send_keyboard_event" => {
+                let a: KeyboardParams = p(params)?;
+                self.keyboard(&a.session_id, a.event)?;
+                ok(json!({}))
+            }
             "capture_screenshot" => {
                 let a: ScreenshotParams = p(params)?;
                 let (width, height, png) = self.screenshot(&a.session_id)?;

@@ -1,0 +1,95 @@
+{
+ "kind": "navigation",
+ "id": "n",
+ "title": "Controls",
+ "displayMode": "large",
+ "back": {
+  "action": 99,
+  "label": "Showcase"
+ },
+ "content": {
+  "kind": "list",
+  "id": "l",
+  "style": "insetGrouped",
+  "sections": [
+   {
+    "rows": [
+     {
+      "kind": "toggle",
+      "id": "l.0",
+      "isOn": true,
+      "action": 1,
+      "label": {
+       "kind": "text",
+       "id": "l.0.l",
+       "text": "Notifications"
+      }
+     },
+     {
+      "kind": "stepper",
+      "id": "l.1",
+      "decrement": 2,
+      "increment": 3,
+      "label": {
+       "kind": "text",
+       "id": "l.1.l",
+       "text": "Volume: 3"
+      }
+     },
+     {
+      "kind": "hstack",
+      "id": "l.2",
+      "children": [
+       {
+        "kind": "button",
+        "id": "l.2.0",
+        "action": 4,
+        "style": "bordered",
+        "label": {
+         "kind": "text",
+         "id": "l.2.0.l",
+         "text": "Less"
+        }
+       },
+       {
+        "kind": "text",
+        "id": "l.2.1",
+        "text": "3",
+        "modifiers": [
+         {
+          "frame": {
+           "minWidth": 40
+          }
+         }
+        ]
+       },
+       {
+        "kind": "button",
+        "id": "l.2.2",
+        "action": 5,
+        "style": "borderedProminent",
+        "label": {
+         "kind": "text",
+         "id": "l.2.2.l",
+         "text": "More"
+        }
+       }
+      ]
+     },
+     {
+      "kind": "text",
+      "id": "l.3",
+      "text": "You will be notified",
+      "modifiers": [
+       {
+        "foregroundColor": {
+         "semantic": "secondary"
+        }
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

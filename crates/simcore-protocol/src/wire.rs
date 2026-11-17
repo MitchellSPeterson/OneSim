@@ -28,6 +28,8 @@ pub struct Viewport {
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum HostMessage {
     Action { id: u64, version: u64 },
+    #[serde(rename = "text_input")]
+    TextInput { field: u64, version: u64, text: String },
     Environment { appearance: Appearance, viewport: Viewport },
     Shutdown,
 }
@@ -60,5 +62,9 @@ mod tests {
             r#"{"type":"action","id":1,"version":2}"#
         );
         assert_eq!(serde_json::to_string(&HostMessage::Shutdown).unwrap(), r#"{"type":"shutdown"}"#);
+        assert_eq!(
+            serde_json::to_string(&HostMessage::TextInput { field: 4, version: 2, text: "hi".into() }).unwrap(),
+            r#"{"type":"text_input","field":4,"version":2,"text":"hi"}"#
+        );
     }
 }

@@ -4,9 +4,9 @@
 //!   cargo run -p simcore-render --example counter --features window -- --window
 
 use simcore_protocol::{Appearance, ViewNode};
-use simcore_render::{build_scene, render_png, Fonts, Scene};
+use simcore_render::{build_scene, render_png, Fonts, Scene, SceneParams};
 
-const VIEWPORT: (f64, f64) = (393.0, 852.0);
+const VIEWPORT: (f64, f64) = (402.0, 874.0);
 const INCREMENT: u64 = 1;
 
 fn tree(count: u32) -> ViewNode {
@@ -27,9 +27,23 @@ fn tree(count: u32) -> ViewNode {
     .expect("valid tree")
 }
 
-fn scene(count: u32, vp: (f64, f64), dark: bool, fonts: &mut Fonts) -> Scene {
-    let a = if dark { Appearance::Dark } else { Appearance::Light };
-    build_scene(&tree(count), vp, a, fonts)
+fn build(count: u32, vp: (f64, f64), a: Appearance, scale: f64, fonts: &mut Fonts) -> Scene {
+    let scroll = std::collections::HashMap::new();
+    let p = SceneParams {
+        viewport: vp,
+        safe_top: 62.0,
+        safe_bottom: 34.0,
+        scale,
+        appearance: a,
+        scroll: &scroll,
+        focus: None,
+        status_bar: true,
+    };
+    build_scene(&tree(count), &p, fonts)
+}
+
+fn scene(count: u32, vp: (f64, f64), dark: bool, scale: f64, fonts: &mut Fonts) -> Scene {
+    build(count, vp, if dark { Appearance::Dark } else { Appearance::Light }, scale, fonts)
 }
 
 fn main() {
@@ -51,7 +65,7 @@ fn main() {
 
     let out = value("--out").unwrap_or_else(|| "counter.png".into());
     let scale: f64 = value("--scale").and_then(|s| s.parse().ok()).unwrap_or(2.0);
-    let png = render_png(&scene(0, VIEWPORT, dark, &mut fonts), &mut fonts, scale).expect("png");
+    let png = render_png(&scene(0, VIEWPORT, dark, scale, &mut fonts), &mut fonts, scale).expect("png");
     std::fs::write(&out, png).expect("write png");
     println!("wrote {out}");
 }
@@ -85,7 +99,7 @@ mod window {
             let sf = win.scale_factor();
             let vp = (size.width as f64 / sf, size.height as f64 / sf);
             let a = if self.dark { Appearance::Dark } else { Appearance::Light };
-            let sc = build_scene(&tree(self.count), vp, a, &mut self.fonts);
+            let sc = build(self.count, vp, a, sf, &mut self.fonts);
             let pm = simcore_render::render(&sc, &mut self.fonts, sf);
             surface.resize(w, h).expect("resize");
             let mut buf = surface.buffer_mut().expect("buffer");
@@ -118,7 +132,7 @@ mod window {
                     let sf = win.scale_factor();
                     let size = win.inner_size();
                     let a = if self.dark { Appearance::Dark } else { Appearance::Light };
-                    let sc = build_scene(&tree(self.count), (size.width as f64 / sf, size.height as f64 / sf), a, &mut self.fonts);
+                    let sc = build(self.count, (size.width as f64 / sf, size.height as f64 / sf), a, sf, &mut self.fonts);
                     if let Some(i) = sc.hit_test(self.cursor.0 / sf, self.cursor.1 / sf) {
                         if sc.nodes[i].action == Some(INCREMENT) {
                             self.count += 1;

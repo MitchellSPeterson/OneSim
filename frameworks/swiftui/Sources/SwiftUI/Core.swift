@@ -111,6 +111,17 @@ final class _Runtime {
     var appearance = "light"
     var viewport = (width: 393.0, height: 852.0)
     var render: () -> Node = { [:] }
+    // Per-evaluation context (reset every submit; set while walking modifier subtrees).
+    var fields: [UInt64: (String) -> Void] = [:]
+    var disabled = false
+    var buttonStyle = "automatic"
+    var nav: _NavState?
+
+    func registerField(_ f: @escaping (String) -> Void) -> UInt64 {
+        defer { nextAction += 1 }
+        fields[nextAction] = f
+        return nextAction
+    }
 
     func registerAction(_ f: @escaping () -> Void) -> UInt64 {
         defer { nextAction += 1 }
@@ -123,6 +134,8 @@ final class _Runtime {
 
     private func _submitTree() {
         actions.removeAll(keepingCapacity: true)
+        fields.removeAll(keepingCapacity: true)
+        disabled = false; buttonStyle = "automatic"; nav = nil
         touched.removeAll(keepingCapacity: true)
         let tree = render()
         slots = slots.filter { touched.contains($0.key) }
@@ -169,6 +182,11 @@ public func _simcoreRun<V: View>(_ root: V) -> Never {
         rt.viewport = (w, h)
         rt.submitTree()
     })
+    simcore_runtime_set_text_callback { _, field, text in
+        let rt = _Runtime.shared
+        if let text { let t = String(cString: text); _pool { rt.fields[field]?(t) } }
+        if rt.dirty { rt.submitTree() }
+    }
     rt.submitTree()
     exit(simcore_runtime_run())
 }

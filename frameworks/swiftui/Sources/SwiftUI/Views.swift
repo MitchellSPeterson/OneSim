@@ -17,12 +17,6 @@ public struct Spacer: View, _Primitive {
     func _emit(_ path: String) -> Node { ["kind": "spacer", "id": path, "minLength": minLength.map { _num($0) } ?? NSNull()] }
 }
 
-public struct Rectangle: View, _Primitive {
-    public typealias Body = Never
-    public var body: Never { fatalError() }
-    public init() {}
-    func _emit(_ path: String) -> Node { ["kind": "rectangle", "id": path] }
-}
 
 public struct Button<Label: View>: View, _Primitive {
     public typealias Body = Never
@@ -31,7 +25,9 @@ public struct Button<Label: View>: View, _Primitive {
     let label: Label
     public init(action: @escaping () -> Void, @ViewBuilder label: () -> Label) { self.action = action; self.label = label() }
     func _emit(_ path: String) -> Node {
-        ["kind": "button", "id": path, "action": _Runtime.shared.registerAction(action), "label": _eval(label, path + "/0")]
+        let rt = _Runtime.shared
+        return ["kind": "button", "id": path, "action": rt.disabled ? 0 : rt.registerAction(action), "label": _eval(label, path + "/0"),
+                "style": rt.buttonStyle, "disabled": rt.disabled]
     }
 }
 extension Button where Label == Text {
@@ -139,12 +135,13 @@ public struct Color: View, _Primitive {
     public init(white: Double, opacity: Double = 1) { self.init(red: white, green: white, blue: white, opacity: opacity) }
     func _emit(_ path: String) -> Node { ["kind": "color", "id": path, "color": json] }
 
-    public static let red = Color(red: 1, green: 0.231, blue: 0.188)
+    // iOS 26 system palette (light), sampled from the iOS 26.5 Simulator.
+    public static let red = Color(red: 1, green: 0.22, blue: 0.235)
     public static let green = Color(red: 0.204, green: 0.78, blue: 0.349)
-    public static let blue = Color(red: 0, green: 0.478, blue: 1)
-    public static let orange = Color(red: 1, green: 0.584, blue: 0)
+    public static let blue = Color(red: 0, green: 0.533, blue: 1)
+    public static let orange = Color(red: 1, green: 0.553, blue: 0.157)
     public static let yellow = Color(red: 1, green: 0.8, blue: 0)
-    public static let purple = Color(red: 0.686, green: 0.322, blue: 0.871)
+    public static let purple = Color(red: 0.796, green: 0.188, blue: 0.878)
     public static let pink = Color(red: 1, green: 0.176, blue: 0.333)
     public static let gray = Color(red: 0.557, green: 0.557, blue: 0.576)
     public static let black = Color(red: 0, green: 0, blue: 0)
@@ -163,16 +160,17 @@ struct _ModifiedView<Content: View>: View, _Flattenable {
     typealias Body = Never
     var body: Never { fatalError() }
     let content: Content
-    let modifier: () -> Node   // lazy: `background` evaluates its view at emit time
+    let modifier: (String) -> Node   // lazy: `background`/`overlay` evaluate their view at emit time
     func _children(_ path: String) -> [Node] {
         var n = _eval(content, path)
-        n["modifiers"] = ((n["modifiers"] as? [Node]) ?? []) + [modifier()]
+        n["modifiers"] = ((n["modifiers"] as? [Node]) ?? []) + [modifier(path)]
         return [n]
     }
 }
 
 extension View {
-    func _modified(_ m: @escaping () -> Node) -> some View { _ModifiedView(content: self, modifier: m) }
+    func _modified(_ m: @escaping () -> Node) -> some View { _ModifiedView(content: self, modifier: { _ in m() }) }
+    func _modifiedAt(_ m: @escaping (String) -> Node) -> some View { _ModifiedView(content: self, modifier: m) }
 
     public func padding() -> some View { padding(.all, 16) }
     public func padding(_ length: CGFloat) -> some View { padding(.all, length) }
@@ -187,6 +185,7 @@ extension View {
     public func frame(minWidth: CGFloat? = nil, maxWidth: CGFloat? = nil, minHeight: CGFloat? = nil, maxHeight: CGFloat? = nil, alignment: Alignment = .center) -> some View {
         _modified { ["frame": _frame(nil, nil, minWidth, maxWidth, minHeight, maxHeight, alignment)] }
     }
+    public func foregroundStyle<S: ShapeStyle>(_ style: S) -> some View { _modified { ["foregroundColor": style._json] } }
     public func foregroundColor(_ color: Color?) -> some View {
         _modified { ["foregroundColor": color?.json ?? ["semantic": "primary"]] }
     }

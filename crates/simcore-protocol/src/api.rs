@@ -82,6 +82,9 @@ pub struct CreateSessionParams {
     pub scale: Option<f64>,
     #[serde(default)]
     pub appearance: Option<Appearance>,
+    /// Device profile name (default `iphone-17-pro`).
+    #[serde(default)]
+    pub device: Option<String>,
     /// Test hook: skip the Swift build and spawn `app_path` directly.
     #[serde(default)]
     pub prebuilt: bool,
@@ -115,6 +118,7 @@ pub enum PointerKind {
     Down,
     Up,
     Click,
+    Scroll,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -122,6 +126,30 @@ pub struct PointerEvent {
     pub kind: PointerKind,
     pub x: f64,
     pub y: f64,
+    /// Scroll deltas in points; positive scrolls content forward (reveals later content).
+    #[serde(default)]
+    pub dx: f64,
+    #[serde(default)]
+    pub dy: f64,
+}
+
+impl PointerEvent {
+    pub fn new(kind: PointerKind, x: f64, y: f64) -> Self {
+        Self { kind, x, y, dx: 0.0, dy: 0.0 }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum KeyboardEvent {
+    Text { text: String },
+    Key { key: String },
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct KeyboardParams {
+    pub session_id: String,
+    pub event: KeyboardEvent,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -158,6 +186,13 @@ pub struct UiNode {
     pub label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub action: Option<u64>,
+    /// Current value: toggle "on"/"off", text field contents.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub focused: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub disabled: bool,
     pub children: Vec<UiNode>,
 }
 
@@ -187,6 +222,18 @@ mod tests {
         // params may be omitted
         let r: Request = serde_json::from_str(r#"{"id":3,"method":"shutdown"}"#).unwrap();
         assert!(r.params.is_null());
+    }
+
+    #[test]
+    fn scroll_and_keyboard_events() {
+        let e: PointerEvent = serde_json::from_str(r#"{"kind":"scroll","x":1,"y":2,"dx":0,"dy":-30.5}"#).unwrap();
+        assert_eq!((e.kind, e.dy), (PointerKind::Scroll, -30.5));
+        let c: PointerEvent = serde_json::from_str(r#"{"kind":"click","x":1,"y":2}"#).unwrap();
+        assert_eq!((c.dx, c.dy), (0.0, 0.0));
+        let k: KeyboardEvent = serde_json::from_str(r#"{"kind":"text","text":"abc"}"#).unwrap();
+        assert_eq!(k, KeyboardEvent::Text { text: "abc".into() });
+        let k: KeyboardEvent = serde_json::from_str(r#"{"kind":"key","key":"backspace"}"#).unwrap();
+        assert_eq!(k, KeyboardEvent::Key { key: "backspace".into() });
     }
 
     #[test]

@@ -3,6 +3,7 @@
 use simcore_protocol::{
     ApiError, Appearance, CreateSessionParams, ErrorCode, GuestMessage, HostMessage, SessionError, Viewport, ViewNode,
 };
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -68,12 +69,40 @@ impl Shared {
     }
 }
 
+/// Screen geometry of a simulated device (points).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Device {
+    pub name: &'static str,
+    pub viewport: Viewport,
+    pub scale: f64,
+    pub safe_top: f64,
+    pub safe_bottom: f64,
+}
+
+pub const DEFAULT_DEVICE: &str = "iphone-17-pro";
+pub const DEVICES: &[Device] = &[Device {
+    name: DEFAULT_DEVICE,
+    viewport: Viewport { width: 402.0, height: 874.0 },
+    scale: 3.0,
+    safe_top: 62.0,
+    safe_bottom: 34.0,
+}];
+
+pub fn device(name: &str) -> Option<&'static Device> {
+    DEVICES.iter().find(|d| d.name == name)
+}
+
 pub struct Session {
     pub id: String,
     pub params: CreateSessionParams,
+    pub device: Device,
     pub viewport: Viewport,
     pub scale: f64,
     pub appearance: Appearance,
+    /// Scroll offsets by node id; survive across trees.
+    pub scroll: HashMap<String, (f64, f64)>,
+    /// Node id of the focused text field.
+    pub focus: Option<String>,
     state: State,
     child: Option<Child>,
     stdin: Option<ChildStdin>,
@@ -112,11 +141,15 @@ fn is_prebuilt(p: &CreateSessionParams) -> bool {
 
 impl Session {
     pub fn new(id: String, p: CreateSessionParams) -> Self {
+        let dev = *device(p.device.as_deref().unwrap_or(DEFAULT_DEVICE)).expect("device validated by create_session");
         Self {
             id,
-            viewport: p.viewport.unwrap_or(Viewport { width: 393.0, height: 852.0 }),
-            scale: p.scale.unwrap_or(2.0),
+            device: dev,
+            viewport: p.viewport.unwrap_or(dev.viewport),
+            scale: p.scale.unwrap_or(dev.scale),
             appearance: p.appearance.unwrap_or(Appearance::Light),
+            scroll: HashMap::new(),
+            focus: None,
             params: p,
             state: State::Created,
             child: None,

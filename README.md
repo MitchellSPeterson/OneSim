@@ -6,7 +6,11 @@ Rust-powered preview runtime for mobile UI code. Runs real SwiftUI source (uncha
 $ simcore run examples/swiftui-counter --root-view CounterView --click Increment --screenshot out.png
 ```
 
-Status: v0.1, PRD milestones 0–4 done (see [docs/roadmap.md](docs/roadmap.md)). SwiftUI subset only; Compose and React Native are planned.
+Status: v0.1, PRD milestones 0–4 done (see [docs/roadmap.md](docs/roadmap.md)). SwiftUI subset: navigation, lists, forms controls, shapes, text styles, `@State`/`@Binding`/`ObservableObject`. Compose and React Native are planned.
+
+Rendered output stays within 0.4–2.8% of the iOS 26 Simulator pixel-for-pixel on the [showcase app](examples/swiftui-showcase/Showcase.swift). See [docs/ios-comparison.md](docs/ios-comparison.md).
+
+![SimCore vs iOS Simulator](docs/ios-comparison/cmp-controls-changed.png)
 
 ## How it works
 
@@ -32,6 +36,8 @@ Headless driver:
 cargo run -p simcore-cli -- run examples/swiftui-counter --root-view CounterView \
   --click Increment --click Increment --screenshot counter.png --inspect
 cargo run -p simcore-cli -- run examples/swiftui-app-entry --dark --screenshot app.png   # @main App entry
+cargo run -p simcore-cli -- run examples/swiftui-showcase --click Todos --click "New todo" --type "Buy milk" \
+  --click Add --screenshot todos.png      # --click/--type/--key/--scroll run in order
 ```
 
 JSON-lines API for tools such as DemoKit (protocol §A):

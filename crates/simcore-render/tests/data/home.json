@@ -1,0 +1,94 @@
+{
+ "kind": "navigation",
+ "id": "n",
+ "title": "Showcase",
+ "displayMode": "large",
+ "content": {
+  "kind": "list",
+  "id": "l",
+  "style": "insetGrouped",
+  "sections": [
+   {
+    "header": "Screens",
+    "rows": [
+     {
+      "kind": "button",
+      "id": "l.0",
+      "action": 1,
+      "style": "navigationLink",
+      "label": {
+       "kind": "text",
+       "id": "l.0.l",
+       "text": "Typography"
+      }
+     },
+     {
+      "kind": "button",
+      "id": "l.1",
+      "action": 2,
+      "style": "navigationLink",
+      "label": {
+       "kind": "text",
+       "id": "l.1.l",
+       "text": "Shapes"
+      }
+     },
+     {
+      "kind": "button",
+      "id": "l.2",
+      "action": 3,
+      "style": "navigationLink",
+      "label": {
+       "kind": "text",
+       "id": "l.2.l",
+       "text": "Todos"
+      }
+     },
+     {
+      "kind": "button",
+      "id": "l.3",
+      "action": 4,
+      "style": "navigationLink",
+      "label": {
+       "kind": "text",
+       "id": "l.3.l",
+       "text": "Controls"
+      }
+     }
+    ]
+   },
+   {
+    "header": "Summary",
+    "rows": [
+     {
+      "kind": "hstack",
+      "id": "l.s",
+      "children": [
+       {
+        "kind": "text",
+        "id": "l.s.0",
+        "text": "Open todos"
+       },
+       {
+        "kind": "spacer",
+        "id": "l.s.1"
+       },
+       {
+        "kind": "text",
+        "id": "l.s.2",
+        "text": "1",
+        "modifiers": [
+         {
+          "foregroundColor": {
+           "semantic": "secondary"
+          }
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

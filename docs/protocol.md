@@ -148,3 +148,54 @@ const char *simcore_last_error(void);
 
 All Swift values cross as bytes/C strings; no Swift objects or pointers to
 temporaries are retained by Rust. Single-threaded: all calls from one thread.
+
+---
+
+## D. v1 additions: showcase API surface (additive, protocol version stays 1)
+
+Hosts ignore unknown modifier keys. Guests never send kinds a host doesn't list in `get_capabilities`.
+
+### New ViewNode kinds
+
+| kind | fields |
+|---|---|
+| `shape` | `"shape": "rectangle"\|"circle"\|"capsule"\|"roundedRectangle"`, `"cornerRadius"?`, `"fill"?: Color`, `"stroke"?: {"color": Color, "lineWidth"}`. Greedy like `rectangle`. Neither fill nor stroke means fill with the current foreground color. (`rectangle` kind stays accepted.) |
+| `divider` | – (hairline, 1px at device scale, separator color; spans the cross axis of the enclosing stack) |
+| `scroll` | `"axis": "vertical"\|"horizontal"`, `"child": ViewNode`. Child is proposed unbounded on the axis. Host keeps the scroll offset per node id across trees; it changes via `scroll` pointer events. Clips. |
+| `list` | `"style": "insetGrouped"\|"plain"`, `"sections": [{"header": String?, "footer": String?, "rows": [ViewNode]}]`. Rows outside any `Section` form their own headerless section. `ForEach`/`if` inside lists are already flattened into rows by the guest. Scrolls like `scroll` (vertical). |
+| `navigation` | `"title": String?`, `"displayMode": "large"\|"inline"`, `"back": {"action": u64, "label": String}?`, `"content": ViewNode`. The top of the stack only. The guest owns the push/pop path. |
+| `toggle` | `"isOn": bool`, `"action": u64` (flips it), `"label": ViewNode`, `"disabled"?: bool` |
+| `stepper` | `"label": ViewNode`, `"decrement": u64?`, `"increment": u64?` (null = at bound, rendered disabled) |
+| `text_field` | `"placeholder": String`, `"text": String`, `"field": u64` |
+
+### `button` additions
+
+`"style": "automatic"|"plain"|"bordered"|"borderedProminent"|"navigationLink"` (default automatic) and `"disabled": bool`. A `navigationLink` button is a row with a trailing chevron. Its label is primary-colored, not accent.
+
+### New modifiers
+
+| modifier | shape | notes |
+|---|---|---|
+| font | `{"font": {"style": "largeTitle"\|"title"\|"title2"\|"title3"\|"headline"\|"subheadline"\|"body"\|"callout"\|"footnote"\|"caption"\|"caption2"}}` or `{"font": {"size": f64, "weight": Weight}}` | inherited |
+| fontWeight | `{"fontWeight": Weight}` (`bold()` → `"bold"`) | inherited; Weight = `ultraLight`…`black` |
+| strikethrough | `{"strikethrough": bool}` | inherited |
+| multilineTextAlignment | `{"multilineTextAlignment": "leading"\|"center"\|"trailing"}` | inherited |
+| foregroundColor | also used for `foregroundStyle` | Semantic adds `"tertiary"`, `"separator"`, `"groupedBackground"`, `"secondaryGroupedBackground"` |
+| overlay | `{"overlay": {"view": ViewNode, "alignment": Alignment}}` | proposed the modified view's size, drawn above |
+| shadow | `{"shadow": {"color": Color, "radius", "x", "y"}}` | SwiftUI default color is black at 0.33 opacity |
+| navigationTitle | `{"navigationTitle": String}` | informational; the guest also lifts it into `navigation.title` |
+
+Text styles and weights follow Apple's iOS Dynamic Type "Large" defaults (body 17, largeTitle 34, title 28, title2 22, title3 20, headline 17 semibold, subheadline 15, callout 16, footnote 13, caption 12, caption2 11).
+
+### Input additions
+
+- Pointer event kind `"scroll"`: `{"kind":"scroll","x","y","dx","dy"}` in points. Scrolls the innermost scroll or list under the point, clamped.
+- Tapping a `text_field` focuses it. The host tracks focus by node id. Tapping elsewhere unfocuses.
+- `send_keyboard_event` is now supported: `{"kind":"text","text":"abc"}` inserts at the end, and `{"kind":"key","key":"backspace"|"enter"}` edits or ends editing (enter unfocuses). It returns `unsupported` only for unknown keys, and `invalid_state` when nothing is focused.
+- Guest wire, host → guest: `{"type":"text_input","field": u64, "version": u64, "text": "<full new text>"}`. The guest sets the bound String, re-evaluates, and sends a tree. It is version-gated like `action`.
+
+### Device profile and platform chrome (host)
+
+`create_session` accepts `"device": "iphone-17-pro"` (default). Profile: viewport 402×874 pt, scale 3, safe area top 62 / bottom 34. Content is laid out inside the safe area. The screen background, a `navigation` bar background and a `list` background extend to the screen edges. The host draws an iOS status bar (time "9:41", battery) in the top inset. `viewport` and `scale` params still override.
+
+The guest reads `SIMCORE_APPEARANCE` at launch for `@Environment(\.colorScheme)`.

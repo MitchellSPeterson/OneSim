@@ -2,17 +2,38 @@
 //!
 //! Stacks probe each child at 0 and infinity before the final proposal; `Ctx::memo`
 //! caches results per (node, proposal) so nesting stays polynomial instead of 3^depth.
+//!
+//! Visual constants (row height, card radius, nav bar heights, control sizes) are measured from
+//! an iOS 26 / iPhone 17 Pro simulator, see `tests/fixtures/showcase-ios/README.md`.
 
-use crate::scene::{Color, Node, Rect, Role, Scene, TextRun};
-use crate::text::Fonts;
-use simcore_protocol::{Alignment, Appearance, Modifier, Semantic, ViewKind, ViewNode};
+use crate::scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, Shadow, TextRun};
+use crate::text::{FontSpec, Fonts, TextAlign};
+use simcore_protocol::{
+    Alignment, Appearance, ButtonStyle, DisplayMode, Font, ListStyle, Modifier, Section, Semantic, ShapeKind, Stroke,
+    ViewKind, ViewNode,
+};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
 const INF: f64 = f64::INFINITY;
-const FONT_SIZE: f32 = 17.0;
-const LINE_HEIGHT: f32 = 22.0;
 const DEFAULT_SPACING: f64 = 8.0;
+/// Radius that always clamps to a capsule / circle.
+const PILL: f64 = 1.0e6;
+
+// iOS 26 measurements (points).
+const ROW_MIN_H: f64 = 52.0;
+const ROW_VPAD: f64 = 10.0;
+/// Rows holding bordered buttons get extra vertical padding (measured: 34.3pt button -> 64.3pt row).
+const ROW_VPAD_BORDERED: f64 = 15.0;
+const ROW_HPAD: f64 = 16.0;
+const CARD_MARGIN: f64 = 16.0;
+const CARD_RADIUS: f64 = 26.0;
+const SECTION_GAP: f64 = 17.7;
+const HEADER_PAD: f64 = 20.0;
+const NAV_LARGE_H: f64 = 106.0;
+const NAV_INLINE_H: f64 = 54.0;
+const SWITCH: (f64, f64) = (63.0, 28.0);
+const STEPPER: (f64, f64) = (94.0, 32.0);
 
 #[derive(Clone, Copy)]
 struct Prop {
@@ -32,39 +53,112 @@ struct Lay {
     size: Size,
     node: Option<Node>,
     kids: Vec<(f64, f64, Lay)>,
+    /// Hit/paint bounds growth (left, top, right, bottom) beyond `size`.
+    infl: (f64, f64, f64, f64),
+}
+
+impl Lay {
+    fn new(size: Size, node: Option<Node>, kids: Vec<(f64, f64, Lay)>) -> Self {
+        Self { size, node, kids, infl: (0.0, 0.0, 0.0, 0.0) }
+    }
 }
 
 #[derive(Clone, Copy)]
 struct Env {
     fg: Option<Color>,
-    /// Axis of the directly enclosing stack (true = vertical), for Spacer.
+    /// Axis of the directly enclosing stack (true = vertical), for Spacer/Divider.
     axis: Option<bool>,
+    size: f32,
+    base_weight: u16,
+    weight: Option<u16>,
+    strike: bool,
+    align: TextAlign,
+    /// Accent tint in effect (automatic buttons recolour their label content).
+    tint: Option<Color>,
+    /// Top/bottom safe-area insets for full-bleed scrollers (consumed by list/scroll).
+    safe_top: f64,
+    bottom_inset: f64,
+}
+
+impl Env {
+    fn new() -> Self {
+        Env {
+            fg: None,
+            axis: None,
+            size: 17.0,
+            base_weight: 400,
+            weight: None,
+            strike: false,
+            align: TextAlign::Leading,
+            tint: None,
+            safe_top: 0.0,
+            bottom_inset: 0.0,
+        }
+    }
 }
 
 struct Ctx<'a> {
     fonts: &'a mut Fonts,
     dark: bool,
+    scale: f64,
+    scroll: &'a HashMap<String, (f64, f64)>,
+    focus: Option<&'a str>,
     /// Keyed by (node address, proposal bits). A node's Env is fixed by its ancestors,
     /// so node + proposal fully determines its layout within one pass.
     memo: HashMap<(usize, u64, u64), Lay>,
 }
 
-pub fn layout(root: &ViewNode, viewport: (f64, f64), appearance: Appearance, fonts: &mut Fonts) -> Scene {
-    let mut cx = Ctx { fonts, dark: appearance == Appearance::Dark, memo: HashMap::new() };
-    let lay = cx.view(root, Prop { w: Some(viewport.0), h: Some(viewport.1) }, Env { fg: None, axis: None });
+/// Inputs to one layout pass.
+pub struct SceneParams<'a> {
+    pub viewport: (f64, f64),
+    pub safe_top: f64,
+    pub safe_bottom: f64,
+    pub scale: f64,
+    pub appearance: Appearance,
+    /// Scroll offsets keyed by node id.
+    pub scroll: &'a HashMap<String, (f64, f64)>,
+    /// Node id of the focused text field.
+    pub focus: Option<&'a str>,
+    pub status_bar: bool,
+}
+
+pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
+    let (w, h) = params.viewport;
+    let mut cx = Ctx {
+        fonts,
+        dark: params.appearance == Appearance::Dark,
+        scale: params.scale.max(1.0),
+        scroll: params.scroll,
+        focus: params.focus,
+        memo: HashMap::new(),
+    };
     let mut screen = Node::new("root", "screen");
-    screen.bounds = Rect { x: 0.0, y: 0.0, w: viewport.0, h: viewport.1 };
+    screen.bounds = Rect { x: 0.0, y: 0.0, w, h };
     screen.fill = Some(cx.semantic(Semantic::Background));
     let mut nodes = vec![screen];
-    // Root view is centered in the viewport.
-    let (x, y) = ((viewport.0 - lay.size.w) / 2.0, (viewport.1 - lay.size.h) / 2.0);
-    flatten(lay, x, y, Some(0), 1.0, &mut nodes);
-    Scene { size: viewport, appearance, nodes }
+    let full_bleed = matches!(root.kind, ViewKind::Navigation { .. } | ViewKind::List { .. } | ViewKind::Scroll { .. });
+    if full_bleed {
+        let env = Env { safe_top: params.safe_top, bottom_inset: params.safe_bottom, ..Env::new() };
+        let lay = cx.view(root, Prop { w: Some(w), h: Some(h) }, env);
+        flatten(lay, 0.0, 0.0, Some(0), 1.0, &mut nodes);
+    } else {
+        // Root view is centered in the safe area.
+        let sh = (h - params.safe_top - params.safe_bottom).max(0.0);
+        let lay = cx.view(root, Prop { w: Some(w), h: Some(sh) }, Env::new());
+        let (x, y) = ((w - lay.size.w) / 2.0, params.safe_top + (sh - lay.size.h) / 2.0);
+        flatten(lay, x, y, Some(0), 1.0, &mut nodes);
+    }
+    if params.status_bar {
+        let lay = cx.status_bar(w);
+        flatten(lay, 0.0, 0.0, Some(0), 1.0, &mut nodes);
+    }
+    Scene { size: params.viewport, appearance: params.appearance, nodes }
 }
 
 fn flatten(lay: Lay, x: f64, y: f64, mut parent: Option<usize>, mut opacity: f32, out: &mut Vec<Node>) {
     if let Some(mut n) = lay.node {
-        n.bounds = Rect { x, y, w: lay.size.w, h: lay.size.h };
+        let (l, t, r, b) = lay.infl;
+        n.bounds = Rect { x: x - l, y: y - t, w: lay.size.w + l + r, h: lay.size.h + t + b };
         n.parent = parent;
         opacity *= n.opacity;
         n.opacity = opacity;
@@ -100,23 +194,100 @@ fn first_text(v: &ViewNode) -> Option<String> {
         ViewKind::VStack { children, .. } | ViewKind::HStack { children, .. } | ViewKind::ZStack { children, .. } => {
             children.iter().find_map(first_text)
         }
-        ViewKind::Button { label, .. } => first_text(label),
+        ViewKind::Button { label, .. } | ViewKind::Toggle { label, .. } | ViewKind::Stepper { label, .. } => {
+            first_text(label)
+        }
         _ => None,
     }
+}
+
+/// Corner radius of whatever a modifier chain painted last (for shadows).
+fn lay_radius(l: &Lay) -> f64 {
+    match &l.node {
+        Some(n) if n.clip_radius.is_some() => n.clip_radius.unwrap_or(0.0),
+        Some(n) if n.radius > 0.0 => n.radius,
+        _ if l.kids.len() == 1 => lay_radius(&l.kids[0].2),
+        _ => 0.0,
+    }
+}
+
+/// x offset of the first text inside `l` (separator inset), relative to `l`'s origin.
+fn first_text_x(l: &Lay, ox: f64) -> Option<f64> {
+    if l.node.as_ref().is_some_and(|n| n.text.is_some()) {
+        return Some(ox);
+    }
+    l.kids.iter().find_map(|(dx, _, k)| first_text_x(k, ox + dx))
+}
+
+/// Grow the row's button hit area to the whole row. `row` is (x0,y0,x1,y1) in `l`'s parent space.
+fn expand_button(l: &mut Lay, ox: f64, oy: f64, row: (f64, f64, f64, f64)) -> bool {
+    if let Some(n) = &l.node {
+        if n.kind == "button" && n.action.is_some() {
+            l.infl = (ox - row.0, oy - row.1, row.2 - (ox + l.size.w), row.3 - (oy + l.size.h));
+            return true;
+        }
+        return false;
+    }
+    if l.kids.len() == 1 {
+        let (dx, dy, k) = &mut l.kids[0];
+        return expand_button(k, ox + *dx, oy + *dy, row);
+    }
+    false
+}
+
+fn has_bordered(v: &ViewNode) -> bool {
+    match &v.kind {
+        ViewKind::Button { style, label, .. } => {
+            matches!(style, ButtonStyle::Bordered | ButtonStyle::BorderedProminent) || has_bordered(label)
+        }
+        ViewKind::VStack { children, .. } | ViewKind::HStack { children, .. } | ViewKind::ZStack { children, .. } => {
+            children.iter().any(has_bordered)
+        }
+        _ => false,
+    }
+}
+
+fn is_list(v: &ViewNode) -> bool {
+    matches!(v.kind, ViewKind::List { style: ListStyle::InsetGrouped, .. })
+}
+
+fn is_scroller(v: &ViewNode) -> bool {
+    matches!(v.kind, ViewKind::List { .. } | ViewKind::Scroll { .. })
+}
+
+fn rgba(r: u8, g: u8, b: u8, a: f32) -> Color {
+    Color::rgba(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, a)
 }
 
 impl Ctx<'_> {
     fn semantic(&self, s: Semantic) -> Color {
         let d = self.dark;
         match s {
-            Semantic::Primary if d => Color::rgba(1.0, 1.0, 1.0, 1.0),
-            Semantic::Primary => Color::rgba(0.0, 0.0, 0.0, 1.0),
-            Semantic::Secondary if d => Color::rgba(235.0 / 255.0, 235.0 / 255.0, 245.0 / 255.0, 0.6),
-            Semantic::Secondary => Color::rgba(60.0 / 255.0, 60.0 / 255.0, 67.0 / 255.0, 0.6),
-            Semantic::Accent if d => Color::rgba(10.0 / 255.0, 132.0 / 255.0, 1.0, 1.0),
-            Semantic::Accent => Color::rgba(0.0, 122.0 / 255.0, 1.0, 1.0),
-            Semantic::Background if d => Color::rgba(0.0, 0.0, 0.0, 1.0),
-            Semantic::Background => Color::rgba(1.0, 1.0, 1.0, 1.0),
+            Semantic::Primary if d => rgba(255, 255, 255, 1.0),
+            Semantic::Primary => rgba(0, 0, 0, 1.0),
+            Semantic::Secondary if d => rgba(235, 235, 245, 0.6),
+            Semantic::Secondary => rgba(60, 60, 67, 0.6),
+            Semantic::Tertiary if d => rgba(235, 235, 245, 0.3),
+            Semantic::Tertiary => rgba(60, 60, 67, 0.3),
+            Semantic::Accent if d => rgba(10, 145, 255, 1.0),
+            Semantic::Accent => rgba(0, 136, 255, 1.0),
+            Semantic::Background if d => rgba(0, 0, 0, 1.0),
+            Semantic::Background => rgba(255, 255, 255, 1.0),
+            Semantic::Separator if d => rgba(56, 56, 59, 1.0),
+            Semantic::Separator => rgba(232, 232, 232, 1.0),
+            Semantic::GroupedBackground if d => rgba(0, 0, 0, 1.0),
+            Semantic::GroupedBackground => rgba(242, 242, 247, 1.0),
+            Semantic::SecondaryGroupedBackground if d => rgba(28, 28, 30, 1.0),
+            Semantic::SecondaryGroupedBackground => rgba(255, 255, 255, 1.0),
+        }
+    }
+
+    /// Neutral control fill (systemFill-like) of the given strength.
+    fn control_fill(&self, light_a: f32) -> Color {
+        if self.dark {
+            Color::rgba(120.0 / 255.0, 120.0 / 255.0, 128.0 / 255.0, light_a * 2.0)
+        } else {
+            Color::rgba(120.0 / 255.0, 120.0 / 255.0, 128.0 / 255.0, light_a)
         }
     }
 
@@ -125,6 +296,32 @@ impl Ctx<'_> {
             simcore_protocol::Color::Semantic { semantic } => self.semantic(*semantic),
             simcore_protocol::Color::Rgba { r, g, b, a } => Color::rgba(*r as f32, *g as f32, *b as f32, *a as f32),
         }
+    }
+
+    /// SF line height, rounded up to the device pixel like UIKit.
+    fn line_h(&self, size: f32) -> f32 {
+        let s = self.scale as f32;
+        (size * 1.1934 * s).ceil() / s
+    }
+
+    fn spec(&self, env: &Env) -> FontSpec {
+        FontSpec::new(env.size, self.line_h(env.size), env.weight.unwrap_or(env.base_weight), env.align)
+    }
+
+    fn hairline(&self) -> f64 {
+        1.0 / self.scale
+    }
+
+    /// A text leaf with an explicit font.
+    fn text_lay(&mut self, id: &str, text: &str, spec: FontSpec, color: Color, wrap: Option<f32>) -> Lay {
+        let (w, h) = self.fonts.measure(text, &spec, wrap);
+        // SwiftUI rounds text sizes up to the device pixel.
+        let w = (w * self.scale).ceil() / self.scale;
+        let mut n = Node::new(id, "text");
+        n.text = Some(TextRun { text: text.to_string(), font: spec, color, strike: false, offset_x: 0.0 });
+        n.role = Role::Text;
+        n.label = Some(text.to_string());
+        Lay::new(Size { w, h }, Some(n), vec![])
     }
 
     fn view(&mut self, v: &ViewNode, p: Prop, env: Env) -> Lay {
@@ -154,7 +351,7 @@ impl Ctx<'_> {
                     env,
                 );
                 let size = Size { w: inner.size.w + ph, h: inner.size.h + pv };
-                Lay { size, node: None, kids: vec![(e.leading, e.top, inner)] }
+                Lay::new(size, None, vec![(e.leading, e.top, inner)])
             }
             Modifier::Frame(f) => {
                 let cw = child_prop(p.w, f.width, f.min_width, f.max_width);
@@ -163,31 +360,78 @@ impl Ctx<'_> {
                 let w = frame_len(p.w, inner.size.w, f.width, f.min_width, f.max_width);
                 let h = frame_len(p.h, inner.size.h, f.height, f.min_height, f.max_height);
                 let (dx, dy) = ((w - inner.size.w) * h_frac(f.alignment), (h - inner.size.h) * v_frac(f.alignment));
-                Lay { size: Size { w, h }, node: None, kids: vec![(dx, dy, inner)] }
+                Lay::new(Size { w, h }, None, vec![(dx, dy, inner)])
             }
             Modifier::ForegroundColor(c) => {
-                let env = Env { fg: Some(self.color(c)), ..env };
+                let mut env = Env { fg: Some(self.color(c)), ..env };
+                // Inside a tinted control the hierarchical styles stay accent-coloured, dimmed.
+                if let (Some(t), simcore_protocol::Color::Semantic { semantic }) = (env.tint, c) {
+                    let k = match semantic {
+                        Semantic::Primary => Some(1.0),
+                        Semantic::Secondary => Some(0.5),
+                        Semantic::Tertiary => Some(0.25),
+                        _ => None,
+                    };
+                    if let Some(k) = k {
+                        env.fg = Some(Color { a: t.a * k, ..t });
+                    }
+                }
                 self.mods(v, rest, p, env)
             }
             Modifier::Background(bg) => {
                 let inner = self.mods(v, rest, p, env);
                 let bgl = self.view(bg, Prop { w: Some(inner.size.w), h: Some(inner.size.h) }, Env { axis: None, ..env });
-                Lay { size: inner.size, node: None, kids: vec![(0.0, 0.0, bgl), (0.0, 0.0, inner)] }
+                Lay::new(inner.size, None, vec![(0.0, 0.0, bgl), (0.0, 0.0, inner)])
+            }
+            Modifier::Overlay(o) => {
+                let inner = self.mods(v, rest, p, env);
+                let ovl = self.view(&o.view, Prop { w: Some(inner.size.w), h: Some(inner.size.h) }, Env { axis: None, ..env });
+                let (dx, dy) = ((inner.size.w - ovl.size.w) * h_frac(o.alignment), (inner.size.h - ovl.size.h) * v_frac(o.alignment));
+                Lay::new(inner.size, None, vec![(0.0, 0.0, inner), (dx, dy, ovl)])
             }
             Modifier::CornerRadius(r) => {
                 let inner = self.mods(v, rest, p, env);
                 let mut n = Node::new(format!("{}#clip{}", v.id, rest.len()), "clip");
                 n.clip_radius = Some(*r);
                 n.inspect = false;
-                Lay { size: inner.size, node: Some(n), kids: vec![(0.0, 0.0, inner)] }
+                Lay::new(inner.size, Some(n), vec![(0.0, 0.0, inner)])
             }
             Modifier::Opacity(o) => {
                 let inner = self.mods(v, rest, p, env);
                 let mut n = Node::new(format!("{}#opacity{}", v.id, rest.len()), "opacity");
                 n.opacity = *o as f32;
                 n.inspect = false;
-                Lay { size: inner.size, node: Some(n), kids: vec![(0.0, 0.0, inner)] }
+                Lay::new(inner.size, Some(n), vec![(0.0, 0.0, inner)])
             }
+            Modifier::Shadow(s) => {
+                let inner = self.mods(v, rest, p, env);
+                let mut n = Node::new(format!("{}#shadow{}", v.id, rest.len()), "shadow");
+                n.radius = lay_radius(&inner);
+                n.shadow = Some(Shadow { color: self.color(&s.color), radius: s.radius, dx: s.x, dy: s.y });
+                n.inspect = false;
+                Lay::new(inner.size, Some(n), vec![(0.0, 0.0, inner)])
+            }
+            Modifier::Font(f) => {
+                let (size, weight) = match f {
+                    Font::Style { style } => style.spec(),
+                    Font::System { size, weight } => (*size, *weight),
+                };
+                self.mods(v, rest, p, Env { size: size as f32, base_weight: weight.value(), ..env })
+            }
+            Modifier::FontWeight(w) => {
+                let weight = env.weight.or(Some(w.value()));
+                self.mods(v, rest, p, Env { weight, ..env })
+            }
+            Modifier::Strikethrough(b) => self.mods(v, rest, p, Env { strike: *b, ..env }),
+            Modifier::MultilineTextAlignment(a) => {
+                let align = match a {
+                    Alignment::Center | Alignment::Top | Alignment::Bottom => TextAlign::Center,
+                    a if h_frac(*a) == 1.0 => TextAlign::Trailing,
+                    _ => TextAlign::Leading,
+                };
+                self.mods(v, rest, p, Env { align, ..env })
+            }
+            Modifier::NavigationTitle(_) => self.mods(v, rest, p, env),
         }
     }
 
@@ -197,12 +441,12 @@ impl Ctx<'_> {
         match &v.kind {
             ViewKind::Text { text } => {
                 let wrap = p.w.filter(|w| w.is_finite()).map(|w| w.max(1.0) as f32);
-                let (w, h) = self.fonts.measure(text, FONT_SIZE, LINE_HEIGHT, wrap);
-                let mut n = Node::new(&v.id, "text");
-                n.text = Some(TextRun { text: text.clone(), size: FONT_SIZE, line_height: LINE_HEIGHT, color: fg });
-                n.role = Role::Text;
-                n.label = Some(text.clone());
-                Lay { size: Size { w, h }, node: Some(n), kids: vec![] }
+                let spec = self.spec(&env);
+                let mut l = self.text_lay(&v.id, text, spec, fg, wrap);
+                if let Some(t) = l.node.as_mut().and_then(|n| n.text.as_mut()) {
+                    t.strike = env.strike;
+                }
+                l
             }
             ViewKind::VStack { spacing, alignment, children } => {
                 self.stack(v, "vstack", children, *spacing, *alignment, true, p, child_env)
@@ -220,7 +464,7 @@ impl Ctx<'_> {
                     .into_iter()
                     .map(|l| ((size.w - l.size.w) * h_frac(*alignment), (size.h - l.size.h) * v_frac(*alignment), l))
                     .collect();
-                Lay { size, node: Some(Node::new(&v.id, "zstack")), kids }
+                Lay::new(size, Some(Node::new(&v.id, "zstack")), kids)
             }
             ViewKind::Spacer { min_length } => {
                 let min = min_length.unwrap_or(0.0);
@@ -230,29 +474,417 @@ impl Ctx<'_> {
                     Some(false) => Size { w: main(p.w), h: 0.0 },
                     None => Size { w: min, h: min },
                 };
-                Lay { size, node: Some(Node::new(&v.id, "spacer")), kids: vec![] }
+                Lay::new(size, Some(Node::new(&v.id, "spacer")), vec![])
             }
-            ViewKind::Button { action, label } => {
-                let label_env = Env { fg: Some(env.fg.unwrap_or_else(|| self.semantic(Semantic::Accent))), ..child_env };
-                let l = self.view(label, p, label_env);
-                let mut n = Node::new(&v.id, "button");
-                n.role = Role::Button;
-                n.action = Some(*action);
-                n.label = first_text(label);
-                Lay { size: l.size, node: Some(n), kids: vec![(0.0, 0.0, l)] }
-            }
+            ViewKind::Button { action, label, style, disabled } => self.button(v, *action, label, *style, *disabled, p, env),
             ViewKind::Color { color } => {
                 let mut n = Node::new(&v.id, "color");
                 n.fill = Some(self.color(color));
-                Lay { size: greedy(p), node: Some(n), kids: vec![] }
+                Lay::new(greedy(p), Some(n), vec![])
             }
             ViewKind::Rectangle => {
                 let mut n = Node::new(&v.id, "rectangle");
                 n.fill = Some(fg);
-                Lay { size: greedy(p), node: Some(n), kids: vec![] }
+                Lay::new(greedy(p), Some(n), vec![])
             }
-            ViewKind::Empty => Lay { size: Size::default(), node: Some(Node::new(&v.id, "empty")), kids: vec![] },
+            ViewKind::Shape { shape, corner_radius, fill, stroke } => {
+                let size = if *shape == ShapeKind::Circle {
+                    let side = match (p.w, p.h) {
+                        (Some(w), Some(h)) => w.min(h),
+                        (Some(w), None) => w,
+                        (None, Some(h)) => h,
+                        _ => 10.0,
+                    };
+                    Size { w: side, h: side }
+                } else {
+                    greedy(p)
+                };
+                let mut n = Node::new(&v.id, "shape");
+                n.radius = match shape {
+                    ShapeKind::Rectangle => 0.0,
+                    ShapeKind::Circle | ShapeKind::Capsule => PILL,
+                    ShapeKind::RoundedRectangle => corner_radius.unwrap_or(0.0),
+                };
+                n.fill = fill.as_ref().map(|c| self.color(c));
+                n.stroke = stroke.as_ref().map(|Stroke { color, line_width }| (self.color(color), *line_width));
+                if n.fill.is_none() && n.stroke.is_none() {
+                    n.fill = Some(fg);
+                }
+                Lay::new(size, Some(n), vec![])
+            }
+            ViewKind::Divider => {
+                let hl = self.hairline();
+                let len = |x: Option<f64>| x.filter(|x| x.is_finite()).unwrap_or(0.0);
+                let size = if env.axis == Some(false) { Size { w: hl, h: len(p.h) } } else { Size { w: len(p.w), h: hl } };
+                let mut n = Node::new(&v.id, "divider");
+                // UIKit's translucent separator (measured 198 on white).
+                n.fill = Some(if self.dark { rgba(84, 84, 88, 0.6) } else { rgba(60, 60, 67, 0.29) });
+                Lay::new(size, Some(n), vec![])
+            }
+            ViewKind::Empty => Lay::new(Size::default(), Some(Node::new(&v.id, "empty")), vec![]),
+            ViewKind::Scroll { axis, child } => self.scroll(v, *axis == simcore_protocol::Axis::Vertical, child, p, env),
+            ViewKind::List { style, sections } => self.list(v, *style, sections, p, env),
+            ViewKind::Navigation { title, display_mode, back, content } => {
+                self.navigation(v, title.as_deref(), *display_mode, back.as_ref(), content, p, env)
+            }
+            ViewKind::Toggle { is_on, action, label, disabled } => self.toggle(v, *is_on, *action, label, *disabled, p, env),
+            ViewKind::Stepper { label, decrement, increment } => self.stepper(v, label, *decrement, *increment, p, env),
+            ViewKind::TextField { placeholder, text, field } => self.text_field(v, placeholder, text, *field, p, env),
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn button(&mut self, v: &ViewNode, action: u64, label: &ViewNode, style: ButtonStyle, disabled: bool, p: Prop, env: Env) -> Lay {
+        let child_env = Env { axis: None, ..env };
+        let accent = self.semantic(Semantic::Accent);
+        let dim = self.semantic(Semantic::Tertiary);
+        let mut n = Node::new(&v.id, "button");
+        n.role = Role::Button;
+        n.action = (!disabled).then_some(action);
+        n.disabled = disabled;
+        n.label = first_text(label);
+        match style {
+            ButtonStyle::Automatic | ButtonStyle::Plain => {
+                let (fg, tint) = match (style, disabled) {
+                    (_, true) => (dim, None),
+                    (ButtonStyle::Automatic, _) => (accent, Some(accent)),
+                    _ => (env.fg.unwrap_or_else(|| self.semantic(Semantic::Primary)), None),
+                };
+                let l = self.view(label, p, Env { fg: Some(fg), tint, ..child_env });
+                Lay::new(l.size, Some(n), vec![(0.0, 0.0, l)])
+            }
+            ButtonStyle::Bordered | ButtonStyle::BorderedProminent => {
+                let prominent = style == ButtonStyle::BorderedProminent;
+                let (fg, bg) = match (prominent, disabled) {
+                    (_, true) => (dim, self.control_fill(0.16)),
+                    (true, _) => (rgba(255, 255, 255, 1.0), accent),
+                    (false, _) => (accent, self.control_fill(0.16)),
+                };
+                let (hp, vp) = (12.0, 7.0);
+                let inner_p = Prop { w: p.w.map(|w| (w - 2.0 * hp).max(0.0)), h: None };
+                let l = self.view(label, inner_p, Env { fg: Some(fg), tint: None, ..child_env });
+                let size = Size { w: l.size.w + 2.0 * hp, h: l.size.h + 2.0 * vp };
+                n.fill = Some(bg);
+                n.radius = PILL;
+                Lay::new(size, Some(n), vec![(hp, vp, l)])
+            }
+            ButtonStyle::NavigationLink => {
+                let fg = if disabled { dim } else { env.fg.unwrap_or_else(|| self.semantic(Semantic::Primary)) };
+                let chev_w = 7.0;
+                let inner_p = Prop { w: p.w.filter(|w| w.is_finite()).map(|w| (w - chev_w - 12.0).max(0.0)), h: None };
+                let l = self.view(label, inner_p, Env { fg: Some(fg), tint: None, ..child_env });
+                let w = p.w.filter(|w| w.is_finite()).unwrap_or(l.size.w + 12.0 + chev_w);
+                let h = l.size.h.max(12.0);
+                let mut c = Node::new(format!("{}#chevron", v.id), "chevron");
+                c.glyph = Some((Glyph::Chevron, self.semantic(Semantic::Tertiary)));
+                c.inspect = false;
+                // Chevron sits 2.3pt inside the content edge (measured).
+                let cl = Lay::new(Size { w: chev_w, h: 12.0 }, Some(c), vec![]);
+                let ly = (h - l.size.h) / 2.0;
+                Lay::new(Size { w, h }, Some(n), vec![(0.0, ly, l), (w - chev_w - 2.3, (h - 12.0) / 2.0, cl)])
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn toggle(&mut self, v: &ViewNode, on: bool, action: u64, label: &ViewNode, disabled: bool, p: Prop, env: Env) -> Lay {
+        let child_env = Env { axis: None, ..env };
+        let fin = p.w.filter(|w| w.is_finite());
+        let l = self.view(label, Prop { w: fin.map(|w| (w - SWITCH.0 - 8.0).max(0.0)), h: None }, child_env);
+        let w = fin.unwrap_or(l.size.w + 8.0 + SWITCH.0);
+        let h = l.size.h.max(SWITCH.1);
+        let mut sw = Node::new(format!("{}#switch", v.id), "switch");
+        sw.role = Role::Toggle;
+        sw.label = first_text(label);
+        sw.value = Some(if on { "on" } else { "off" }.into());
+        sw.action = (!disabled).then_some(action);
+        sw.disabled = disabled;
+        sw.radius = PILL;
+        sw.fill = Some(if on { rgba(52, 199, 89, 1.0) } else { self.control_fill(0.16) });
+        if disabled {
+            sw.opacity = 0.5;
+        }
+        let (kw, kh) = (37.0, 24.0);
+        let mut knob = Node::new(format!("{}#knob", v.id), "knob");
+        knob.fill = Some(rgba(255, 255, 255, 1.0));
+        knob.radius = PILL;
+        knob.shadow = Some(Shadow { color: Color::rgba(0.0, 0.0, 0.0, 0.18), radius: 2.0, dx: 0.0, dy: 1.0 });
+        knob.inspect = false;
+        let kx = if on { SWITCH.0 - 2.0 - kw } else { 2.0 };
+        let kl = Lay::new(Size { w: kw, h: kh }, Some(knob), vec![]);
+        let sl = Lay::new(Size { w: SWITCH.0, h: SWITCH.1 }, Some(sw), vec![(kx, (SWITCH.1 - kh) / 2.0, kl)]);
+        let ly = (h - l.size.h) / 2.0;
+        Lay::new(Size { w, h }, Some(Node::new(&v.id, "toggle")), vec![(0.0, ly, l), (w - SWITCH.0 + 2.0, (h - SWITCH.1) / 2.0, sl)])
+    }
+
+    fn stepper(&mut self, v: &ViewNode, label: &ViewNode, dec: Option<u64>, inc: Option<u64>, p: Prop, env: Env) -> Lay {
+        let child_env = Env { axis: None, ..env };
+        let fin = p.w.filter(|w| w.is_finite());
+        let l = self.view(label, Prop { w: fin.map(|w| (w - STEPPER.0 - 8.0).max(0.0)), h: None }, child_env);
+        let w = fin.unwrap_or(l.size.w + 8.0 + STEPPER.0);
+        let h = l.size.h.max(STEPPER.1);
+        let mut root = Node::new(&v.id, "stepper");
+        root.role = Role::Stepper;
+        root.label = first_text(label);
+        let mut ctl = Node::new(format!("{}#control", v.id), "stepper-control");
+        ctl.fill = Some(self.control_fill(0.12));
+        ctl.radius = PILL;
+        ctl.inspect = false;
+        let half = STEPPER.0 / 2.0;
+        let mut kids = vec![];
+        for (name, action, glyph, x) in [("decrement", dec, Glyph::Minus, 0.0), ("increment", inc, Glyph::Plus, half)] {
+            let mut b = Node::new(format!("{}#{name}", v.id), "button");
+            b.role = Role::Button;
+            b.label = Some(name.into());
+            b.action = action;
+            b.disabled = action.is_none();
+            let c = if action.is_some() { self.semantic(Semantic::Primary) } else { self.semantic(Semantic::Tertiary) };
+            b.glyph = Some((glyph, c));
+            kids.push((x, 0.0, Lay::new(Size { w: half, h: STEPPER.1 }, Some(b), vec![])));
+        }
+        let mut div = Node::new(format!("{}#divider", v.id), "divider");
+        div.fill = Some(self.semantic(Semantic::Tertiary));
+        div.inspect = false;
+        kids.push((half - self.hairline() / 2.0, 8.0, Lay::new(Size { w: self.hairline(), h: 16.0 }, Some(div), vec![])));
+        let cl = Lay::new(Size { w: STEPPER.0, h: STEPPER.1 }, Some(ctl), kids);
+        let ly = (h - l.size.h) / 2.0;
+        Lay::new(Size { w, h }, Some(root), vec![(0.0, ly, l), (w - STEPPER.0, (h - STEPPER.1) / 2.0, cl)])
+    }
+
+    fn text_field(&mut self, v: &ViewNode, placeholder: &str, text: &str, field: u64, p: Prop, env: Env) -> Lay {
+        let w = p.w.filter(|w| w.is_finite()).unwrap_or(120.0);
+        let h = 22.0;
+        let spec = self.spec(&Env { align: TextAlign::Leading, ..env });
+        let focused = self.focus == Some(v.id.as_str());
+        let empty = text.is_empty();
+        let shown = if empty { placeholder } else { text };
+        let color = if empty { self.semantic(Semantic::Tertiary) } else { env.fg.unwrap_or_else(|| self.semantic(Semantic::Primary)) };
+        let mut t = self.text_lay(&format!("{}#text", v.id), shown, spec, color, None);
+        let tw = if empty { 0.0 } else { t.size.w };
+        let overflow = (tw - (w - 2.0)).max(0.0);
+        if let Some(tr) = t.node.as_mut().and_then(|n| n.text.as_mut()) {
+            tr.offset_x = -overflow as f32;
+        }
+        if let Some(n) = t.node.as_mut() {
+            n.inspect = false;
+        }
+        let mut n = Node::new(&v.id, "text_field");
+        n.role = Role::TextField;
+        n.field = Some(field);
+        n.value = Some(text.to_string());
+        n.label = Some(placeholder.to_string());
+        n.focused = focused;
+        n.clip_radius = Some(0.0);
+        let mut kids = vec![(0.0, (h - t.size.h) / 2.0, t)];
+        if focused {
+            let mut c = Node::new(format!("{}#caret", v.id), "caret");
+            c.fill = Some(self.semantic(Semantic::Accent));
+            c.radius = 1.0;
+            c.inspect = false;
+            kids.push(((tw - overflow).min(w - 2.0) + 1.0, 1.0, Lay::new(Size { w: 2.0, h: h - 2.0 }, Some(c), vec![])));
+        }
+        Lay::new(Size { w, h }, Some(n), kids)
+    }
+
+    fn scroll(&mut self, v: &ViewNode, vertical: bool, child: &ViewNode, p: Prop, env: Env) -> Lay {
+        let (top, bottom) = (env.safe_top, env.bottom_inset);
+        let child_env = Env { axis: None, safe_top: 0.0, bottom_inset: 0.0, ..env };
+        let cp = if vertical {
+            Prop { w: p.w, h: None }
+        } else {
+            Prop { w: None, h: p.h }
+        };
+        let c = self.view(child, cp, child_env);
+        let fin = |x: Option<f64>| x.filter(|x| x.is_finite());
+        let (cw, ch) = if vertical { (c.size.w, c.size.h + top + bottom) } else { (c.size.w, c.size.h) };
+        let w = fin(p.w).unwrap_or(cw);
+        let h = fin(p.h).unwrap_or(ch);
+        let max = ((cw - w).max(0.0), (ch - h).max(0.0));
+        let off = self.scroll.get(&v.id).copied().unwrap_or((0.0, 0.0));
+        let off = if vertical { (0.0, off.1.clamp(0.0, max.1)) } else { (off.0.clamp(0.0, max.0), 0.0) };
+        let mut n = Node::new(&v.id, "scroll");
+        n.clip_radius = Some(0.0);
+        n.scroll = Some(ScrollInfo { vertical, offset: off, max });
+        n.inspect = true;
+        let cx = if vertical { (w - c.size.w) / 2.0 } else { 0.0 };
+        Lay::new(Size { w, h }, Some(n), vec![(cx - off.0, top - off.1, c)])
+    }
+
+    fn list(&mut self, v: &ViewNode, style: ListStyle, sections: &[Section], p: Prop, env: Env) -> Lay {
+        let inset = style == ListStyle::InsetGrouped;
+        let (top, bottom) = (env.safe_top, env.bottom_inset);
+        let w = p.w.filter(|w| w.is_finite()).unwrap_or(402.0);
+        let margin = if inset { CARD_MARGIN } else { 0.0 };
+        let gw = w - 2.0 * margin;
+        let inner_w = gw - 2.0 * ROW_HPAD;
+        let row_env = Env { axis: None, safe_top: 0.0, bottom_inset: 0.0, fg: None, ..env };
+        let sec_col = self.semantic(Semantic::SecondaryGroupedBackground);
+        let sep_col = self.semantic(Semantic::Separator);
+        let mut y = top;
+        let mut kids: Vec<(f64, f64, Lay)> = vec![];
+        for (si, sec) in sections.iter().enumerate() {
+            let sid = format!("{}#s{si}", v.id);
+            if let Some(h) = &sec.header {
+                let spec = FontSpec::new(17.0, self.line_h(17.0), 600, TextAlign::Leading);
+                let mut t = self.text_lay(&format!("{sid}#header"), h, spec, self.semantic(Semantic::Secondary), Some(inner_w as f32));
+                if let Some(n) = t.node.as_mut() {
+                    n.role = Role::Text;
+                }
+                let hh = t.size.h + HEADER_PAD;
+                kids.push((margin + ROW_HPAD, y + (hh - t.size.h) / 2.0, t));
+                y += hh;
+            }
+            let mut sec_kids: Vec<(f64, f64, Lay)> = vec![];
+            let mut ry = 0.0;
+            for (ri, row) in sec.rows.iter().enumerate() {
+                let mut c = self.view(row, Prop { w: Some(inner_w), h: None }, row_env);
+                let vpad = if has_bordered(row) { ROW_VPAD_BORDERED } else { ROW_VPAD };
+                let rh = ROW_MIN_H.max(c.size.h + 2.0 * vpad);
+                let yo = (rh - c.size.h) / 2.0;
+                expand_button(&mut c, 0.0, yo, (-ROW_HPAD, 0.0, gw - ROW_HPAD, rh));
+                let tx = first_text_x(&c, 0.0).unwrap_or(0.0);
+                let mut rn = Node::new(format!("{sid}#r{ri}"), "row");
+                rn.inspect = false;
+                let last = ri + 1 == sec.rows.len();
+                let mut rkids = vec![(ROW_HPAD, yo, c)];
+                if !last {
+                    let mut sp = Node::new(format!("{sid}#r{ri}#sep"), "separator");
+                    sp.fill = Some(sep_col);
+                    sp.inspect = false;
+                    let x0 = ROW_HPAD + tx;
+                    // Measured: 1pt (3px @3x) solid line ending at the row boundary.
+                    rkids.push((x0, rh - 1.0, Lay::new(Size { w: (gw - ROW_HPAD - x0).max(0.0), h: 1.0 }, Some(sp), vec![])));
+                }
+                sec_kids.push((0.0, ry, Lay::new(Size { w: gw, h: rh }, Some(rn), rkids)));
+                ry += rh;
+            }
+            let mut sn = Node::new(&sid, "section");
+            if inset {
+                sn.fill = Some(sec_col);
+                sn.radius = CARD_RADIUS;
+            }
+            sn.inspect = true;
+            kids.push((margin, y, Lay::new(Size { w: gw, h: ry }, Some(sn), sec_kids)));
+            y += ry;
+            if let Some(f) = &sec.footer {
+                let spec = FontSpec::new(13.0, self.line_h(13.0), 400, TextAlign::Leading);
+                let t = self.text_lay(&format!("{sid}#footer"), f, spec, self.semantic(Semantic::Secondary), Some(inner_w as f32));
+                y += 8.0;
+                let th = t.size.h;
+                kids.push((margin + ROW_HPAD, y, t));
+                y += th;
+            }
+            y += SECTION_GAP;
+        }
+        let ch = y + bottom;
+        let fin_h = p.h.filter(|h| h.is_finite());
+        let h = fin_h.unwrap_or(ch);
+        let max = (0.0, (ch - h).max(0.0));
+        let off = self.scroll.get(&v.id).map_or(0.0, |o| o.1).clamp(0.0, max.1);
+        let mut n = Node::new(&v.id, "list");
+        n.fill = Some(self.semantic(if inset { Semantic::GroupedBackground } else { Semantic::Background }));
+        n.clip_radius = Some(0.0);
+        n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max });
+        let kids = kids.into_iter().map(|(x, ky, k)| (x, ky - off, k)).collect();
+        Lay::new(Size { w, h }, Some(n), kids)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn navigation(
+        &mut self,
+        v: &ViewNode,
+        title: Option<&str>,
+        mode: DisplayMode,
+        back: Option<&simcore_protocol::BackButton>,
+        content: &ViewNode,
+        p: Prop,
+        env: Env,
+    ) -> Lay {
+        let w = p.w.filter(|w| w.is_finite()).unwrap_or(402.0);
+        let h = p.h.filter(|h| h.is_finite()).unwrap_or(874.0);
+        let (top, bottom) = (env.safe_top, env.bottom_inset);
+        let large = mode == DisplayMode::Large && title.is_some();
+        let bar_h = if title.is_none() && back.is_none() {
+            0.0
+        } else if large {
+            NAV_LARGE_H
+        } else {
+            NAV_INLINE_H
+        };
+        let ctop = top + bar_h;
+        let scroller = is_scroller(content);
+        let mut bg = Node::new(&v.id, "navigation");
+        bg.fill = Some(self.semantic(if is_list(content) { Semantic::GroupedBackground } else { Semantic::Background }));
+        bg.label = title.map(str::to_string);
+        let cenv = Env { safe_top: 0.0, bottom_inset: bottom, fg: None, ..env };
+        let mut kids = vec![];
+        if scroller {
+            let c = self.view(content, Prop { w: Some(w), h: Some(h - ctop) }, cenv);
+            kids.push((0.0, ctop, c));
+        } else {
+            let avail = (h - ctop - bottom).max(0.0);
+            let c = self.view(content, Prop { w: Some(w), h: Some(avail) }, Env { bottom_inset: 0.0, ..cenv });
+            kids.push(((w - c.size.w) / 2.0, ctop + (avail - c.size.h) / 2.0, c));
+        }
+        // Bar (no background at rest on iOS 26): title + glass back button above content.
+        let mut bar = Node::new(format!("{}#bar", v.id), "navbar");
+        bar.label = title.map(str::to_string);
+        let mut bar_kids = vec![];
+        if let Some(t) = title {
+            let primary = self.semantic(Semantic::Primary);
+            if large {
+                let spec = FontSpec::new(34.0, self.line_h(34.0), 700, TextAlign::Leading);
+                let tl = self.text_lay(&format!("{}#title", v.id), t, spec, primary, Some((w - 32.0) as f32));
+                bar_kids.push((16.0, 44.0 + 13.7, tl));
+            } else {
+                let spec = FontSpec::new(17.0, self.line_h(17.0), 600, TextAlign::Leading);
+                let tl = self.text_lay(&format!("{}#title", v.id), t, spec, primary, Some((w - 120.0) as f32));
+                let (tw, th) = (tl.size.w, tl.size.h);
+                bar_kids.push(((w - tw) / 2.0, 22.0 - th / 2.0, tl));
+            }
+        }
+        if let Some(b) = back {
+            let mut n = Node::new(format!("{}#back", v.id), "button");
+            n.role = Role::Button;
+            n.action = Some(b.action);
+            n.label = Some(if b.label.is_empty() { "Back".into() } else { b.label.clone() });
+            n.fill = Some(if self.dark { rgba(52, 52, 56, 1.0) } else { rgba(251, 251, 255, 1.0) });
+            n.radius = PILL;
+            n.shadow = Some(Shadow { color: Color::rgba(0.0, 0.0, 0.0, 0.14), radius: 10.0, dx: 0.0, dy: 3.0 });
+            n.glyph = Some((Glyph::BackChevron, self.semantic(Semantic::Primary)));
+            bar_kids.push((16.0, 0.0, Lay::new(Size { w: 44.0, h: 44.0 }, Some(n), vec![])));
+        }
+        kids.push((0.0, top, Lay::new(Size { w, h: bar_h }, Some(bar), bar_kids)));
+        Lay::new(Size { w, h }, Some(bg), kids)
+    }
+
+    /// iOS status bar: "9:41" at the left, signal / wifi / battery at the right.
+    fn status_bar(&mut self, w: f64) -> Lay {
+        let primary = self.semantic(Semantic::Primary);
+        let spec = FontSpec::new(17.0, self.line_h(17.0), 600, TextAlign::Leading);
+        let mut t = self.text_lay("statusbar#time", "9:41", spec, primary, None);
+        if let Some(n) = t.node.as_mut() {
+            n.inspect = false;
+        }
+        let tw = t.size.w;
+        let th = t.size.h;
+        let glyph = |id: &str, g: Glyph, c: Color, sz: Size| {
+            let mut n = Node::new(id, "statusbar");
+            n.glyph = Some((g, c));
+            n.inspect = false;
+            Lay::new(sz, Some(n), vec![])
+        };
+        let dots = glyph("statusbar#signal", Glyph::SignalDots, self.semantic(Semantic::Tertiary), Size { w: 20.0, h: 4.0 });
+        let wifi = glyph("statusbar#wifi", Glyph::Wifi, primary, Size { w: 16.0, h: 12.0 });
+        let batt = glyph("statusbar#battery", Glyph::Battery, primary, Size { w: 27.0, h: 13.0 });
+        let right = w - 402.0 + 340.0; // anchored to the trailing edge of a 402pt screen
+        let mut root = Node::new("statusbar", "statusbar");
+        root.inspect = false;
+        Lay::new(
+            Size { w, h: 62.0 },
+            Some(root),
+            vec![(73.0 - tw / 2.0, 32.4 - th / 2.0, t), (right - 52.0, 34.7, dots), (right - 24.5, 26.2, wifi), (right, 26.0, batt)],
+        )
     }
 
     /// SwiftUI stack algorithm: least flexible children are laid out first, each
@@ -299,14 +931,22 @@ impl Ctx<'_> {
                         (i, hi - lo)
                     })
                     .collect();
-                order.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(Ordering::Equal));
+                // SwiftUI sizes spacers last: other children share the space among
+                // themselves first, spacers split whatever is left.
+                order.sort_by(|a, b| {
+                    (spacer(&children[a.0]), a.1)
+                        .partial_cmp(&(spacer(&children[b.0]), b.1))
+                        .unwrap_or(Ordering::Equal)
+                });
                 let mut remaining = m - total_gap;
-                let mut left = children.len();
+                let n_spacers = children.iter().filter(|c| spacer(c)).count();
+                let mut left = [children.len() - n_spacers, n_spacers];
                 for (i, _) in order {
-                    let share = (remaining / left as f64).max(0.0);
+                    let group = spacer(&children[i]) as usize;
+                    let share = (remaining / left[group] as f64).max(0.0);
                     let l = self.view(&children[i], mk(Some(share)), env);
                     remaining -= main_cross(l.size).0;
-                    left -= 1;
+                    left[group] -= 1;
                     lays[i] = Some(l);
                 }
             }
@@ -324,7 +964,7 @@ impl Ctx<'_> {
             pos += m + gaps.get(i).copied().unwrap_or(0.0);
         }
         let size = if vertical { Size { w: cross, h: pos } } else { Size { w: pos, h: cross } };
-        Lay { size, node: Some(Node::new(&v.id, kind)), kids }
+        Lay::new(size, Some(Node::new(&v.id, kind)), kids)
     }
 }
 
@@ -359,18 +999,46 @@ fn frame_len(prop: Option<f64>, child: f64, fixed: Option<f64>, min: Option<f64>
     r
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::scene::Scene;
 
-    fn scene(json: &str, vp: (f64, f64)) -> Scene {
+    const HOME: &str = include_str!("../../tests/data/home.json");
+    const CONTROLS: &str = include_str!("../../tests/data/controls.json");
+    const TODOS: &str = include_str!("../../tests/data/todos.json");
+    const TYPOGRAPHY: &str = include_str!("../../tests/data/typography.json");
+
+    fn scene_with(json: &str, vp: (f64, f64), dark: bool, safe: (f64, f64), scroll: &HashMap<String, (f64, f64)>, focus: Option<&str>) -> Scene {
         let v: ViewNode = serde_json::from_str(json).unwrap();
-        layout(&v, vp, Appearance::Light, &mut Fonts::new())
+        let params = SceneParams {
+            viewport: vp,
+            safe_top: safe.0,
+            safe_bottom: safe.1,
+            scale: 3.0,
+            appearance: if dark { Appearance::Dark } else { Appearance::Light },
+            scroll,
+            focus,
+            status_bar: safe.0 > 0.0,
+        };
+        layout(&v, &params, &mut Fonts::new())
+    }
+
+    fn scene(json: &str, vp: (f64, f64)) -> Scene {
+        scene_with(json, vp, false, (0.0, 0.0), &HashMap::new(), None)
+    }
+
+    fn phone(json: &str) -> Scene {
+        scene_with(json, (402.0, 874.0), false, (62.0, 34.0), &HashMap::new(), None)
     }
 
     fn by_id<'a>(s: &'a Scene, id: &str) -> &'a Node {
-        s.nodes.iter().find(|n| n.id == id).unwrap()
+        s.nodes.iter().find(|n| n.id == id).unwrap_or_else(|| panic!("no node {id}"))
+    }
+
+    fn near(a: f64, b: f64) {
+        assert!((a - b).abs() < 0.2, "{a} != {b}");
     }
 
     #[test]
@@ -388,6 +1056,17 @@ mod tests {
         assert_eq!(a.w, 180.0);
         assert_eq!(b.y, 340.0); // pushed to bottom: 400 - 10 - 50
         assert_eq!(b.w, 30.0);
+    }
+
+    #[test]
+    fn text_beats_spacer_for_space() {
+        // HStack { Text(long); Spacer() } in 300pt: text must not wrap at half width.
+        let json = r#"{"kind":"hstack","id":"h","alignment":"center","children":[
+            {"kind":"text","id":"t","text":"Ship the SwiftUI subset"},
+            {"kind":"spacer","id":"s"}]}"#;
+        let s = scene(json, (300.0, 400.0));
+        let t = by_id(&s, "t");
+        assert!(t.bounds.h < 30.0, "text wrapped: {:?}", t.bounds);
     }
 
     #[test]
@@ -417,5 +1096,246 @@ mod tests {
         // the very corner is outside the rounded clip
         assert_eq!(s.hit_test(b.bounds.x + 0.2, b.bounds.y + 0.2), None);
         assert_eq!(s.hit_test(1.0, 1.0), None);
+    }
+
+    /// Frames measured on an iOS 26 simulator (tests/fixtures/showcase-ios/README.md).
+    #[test]
+    fn inset_grouped_list_matches_ios_frames() {
+        let s = phone(HOME);
+        let row = by_id(&s, "l.0");
+        near(row.bounds.x, 16.0);
+        near(row.bounds.y, 208.3);
+        near(row.bounds.w, 370.0);
+        near(row.bounds.h, 52.0);
+        near(by_id(&s, "l.1").bounds.y, 260.3);
+        near(by_id(&s, "l.3").bounds.y, 364.3);
+        // header (17pt semibold text, 40.3pt cell) then card
+        near(by_id(&s, "l#s0#header").bounds.h, 20.3);
+        near(by_id(&s, "l#s1").bounds.y, 474.3);
+        // card: 4 rows, radius 26, secondary grouped background
+        let card = by_id(&s, "l#s0");
+        near(card.bounds.h, 208.0);
+        assert_eq!(card.radius, CARD_RADIUS);
+        assert_eq!(card.fill, Some(rgba(255, 255, 255, 1.0)));
+        assert_eq!(by_id(&s, "l").fill, Some(rgba(242, 242, 247, 1.0)));
+        // chevron 7x12, right edge 367.7
+        let ch = by_id(&s, "l.0#chevron").bounds;
+        near(ch.x, 360.7);
+        near(ch.w, 7.0);
+        near(ch.h, 12.0);
+        // 3 separators in the 4-row card, none after the last row; inset to text (x=32)
+        let seps: Vec<_> = s.nodes.iter().filter(|n| n.kind == "separator").collect();
+        assert_eq!(seps.len(), 3);
+        near(seps[0].bounds.x, 32.0);
+        near(seps[0].bounds.x + seps[0].bounds.w, 370.0);
+        near(seps[0].bounds.y + seps[0].bounds.h, 260.3);
+        // the whole row is the hit target, e.g. right next to the chevron
+        let hit = s.hit_test(383.0, 234.0).map(|i| s.nodes[i].id.as_str());
+        assert_eq!(hit, Some("l.0"));
+        // text metrics: 17pt label is 20.3pt tall
+        near(by_id(&s, "l.0.l").bounds.h, 20.33);
+        near(by_id(&s, "l.0.l").bounds.x, 32.0);
+    }
+
+    #[test]
+    fn dark_list_colors() {
+        let v: ViewNode = serde_json::from_str(HOME).unwrap();
+        let s = layout(
+            &v,
+            &SceneParams {
+                viewport: (402.0, 874.0),
+                safe_top: 62.0,
+                safe_bottom: 34.0,
+                scale: 3.0,
+                appearance: Appearance::Dark,
+                scroll: &HashMap::new(),
+                focus: None,
+                status_bar: true,
+            },
+            &mut Fonts::new(),
+        );
+        assert_eq!(by_id(&s, "l#s0").fill, Some(rgba(28, 28, 30, 1.0)));
+        assert_eq!(by_id(&s, "l").fill, Some(rgba(0, 0, 0, 1.0)));
+        assert_eq!(by_id(&s, "root").fill, Some(rgba(0, 0, 0, 1.0)));
+    }
+
+    #[test]
+    fn navigation_bars() {
+        let s = phone(HOME);
+        // large title below the status bar, left aligned at 16
+        let t = by_id(&s, "n#title");
+        near(t.bounds.x, 16.0);
+        near(t.bounds.y, 119.7);
+        near(t.bounds.h, 40.67);
+        assert_eq!(t.text.as_ref().unwrap().font.weight, 700);
+        near(by_id(&s, "n#bar").bounds.h, 106.0);
+        // nav + list are full-bleed
+        assert_eq!(by_id(&s, "n").bounds.h, 874.0);
+        near(by_id(&s, "l").bounds.y, 168.0);
+        // inline title is centered at 17pt semibold, back button is a 44pt circle
+        let s = phone(TYPOGRAPHY);
+        let t = by_id(&s, "n#title");
+        near(t.bounds.x + t.bounds.w / 2.0, 201.0);
+        near(t.bounds.y, 73.7);
+        assert_eq!(t.text.as_ref().unwrap().font.weight, 600);
+        near(by_id(&s, "n#bar").bounds.h, 54.0);
+        let b = by_id(&s, "n#back");
+        assert_eq!((b.bounds.x, b.bounds.y, b.bounds.w, b.bounds.h), (16.0, 62.0, 44.0, 44.0));
+        assert_eq!(b.action, Some(99));
+        // scroll content starts 16pt below the bar (padding)
+        near(by_id(&s, "v.0").bounds.y, 132.0);
+        near(by_id(&s, "v.3").bounds.h, 42.33); // 2 wrapped lines: 20.3 + 22 pitch
+        // status bar chrome is drawn
+        assert!(s.nodes.iter().any(|n| n.id == "statusbar#time"));
+    }
+
+    #[test]
+    fn toggle_stepper_and_buttons() {
+        let s = phone(CONTROLS);
+        let sw = by_id(&s, "l.0#switch");
+        near(sw.bounds.w, 63.0);
+        near(sw.bounds.h, 28.0);
+        near(sw.bounds.x, 309.0);
+        near(sw.bounds.y, 180.0);
+        assert_eq!(sw.fill, Some(rgba(52, 199, 89, 1.0)));
+        assert_eq!(sw.value.as_deref(), Some("on"));
+        // switch hit target; label area does not toggle
+        assert_eq!(s.hit_test(340.0, 194.0).map(|i| s.nodes[i].id.as_str()), Some("l.0#switch"));
+        assert_eq!(s.hit_test(60.0, 194.0), None);
+        let st = by_id(&s, "l.1#control");
+        near(st.bounds.h, 32.0);
+        near(st.bounds.x, 276.0);
+        near(by_id(&s, "l.1#increment").bounds.w, 47.0);
+        // bordered buttons: 34.3pt tall in a 64.3pt row
+        near(by_id(&s, "l.2.0").bounds.h, 34.33);
+        near(by_id(&s, "l.2.2").bounds.h, 34.33);
+        near(by_id(&s, "l#s0#r2").bounds.h, 64.33);
+        assert_eq!(by_id(&s, "l.2.2").fill, Some(rgba(0, 136, 255, 1.0)));
+    }
+
+    #[test]
+    fn tinted_button_label_stays_accent_and_disabled_is_gray() {
+        let s = phone(TODOS);
+        // done todo: strikethrough text in accent at half strength even with .secondary
+        let t = by_id(&s, "l.0.t").text.as_ref().unwrap();
+        assert!(t.strike);
+        assert!((t.color.b - 1.0).abs() < 1e-6 && (t.color.a - 0.5).abs() < 1e-6);
+        // the whole todo row is the button; separators start after the 22pt circle (x=66)
+        let r = by_id(&s, "l.0");
+        near(r.bounds.w, 370.0);
+        let sep = s.nodes.iter().find(|n| n.kind == "separator").unwrap();
+        near(sep.bounds.x, 66.0);
+        // disabled Add: no action, tertiary text
+        let add = by_id(&s, "l.a.b");
+        assert!(add.action.is_none() && add.disabled);
+        assert_eq!(s.nodes.iter().find(|n| n.id == "l.a.bl").unwrap().text.as_ref().unwrap().color.a, 0.3);
+        // text field fills the rest of the row: 299.3 wide at x=32
+        let f = by_id(&s, "l.a.f");
+        near(f.bounds.x, 32.0);
+        assert!((f.bounds.w - 299.3).abs() < 1.0, "field width {}", f.bounds.w); // text widths are within ~1px of iOS
+        near(f.bounds.h, 22.0);
+        assert_eq!(f.field, Some(1));
+        // first headerless section starts right under the nav bar
+        near(by_id(&s, "l#s0").bounds.y, 168.0);
+        near(by_id(&s, "l#s1#header").bounds.y, 237.7 + 10.0); // 40.3pt header cell, text centred
+    }
+
+    #[test]
+    fn text_field_focus_draws_caret_and_value() {
+        let json = TODOS.replace(r#""text": """#, r#""text": "hello""#);
+        let s = scene_with(&json, (402.0, 874.0), false, (62.0, 34.0), &HashMap::new(), Some("l.a.f"));
+        let f = by_id(&s, "l.a.f");
+        assert!(f.focused);
+        assert_eq!(f.value.as_deref(), Some("hello"));
+        let caret = by_id(&s, "l.a.f#caret");
+        assert!(caret.bounds.x > f.bounds.x + 20.0, "caret follows the text end");
+        // unfocused: no caret
+        let s = phone(&json);
+        assert!(s.nodes.iter().all(|n| n.id != "l.a.f#caret"));
+    }
+
+    #[test]
+    fn scroll_offsets_move_and_clip_content() {
+        let none = phone(TYPOGRAPHY);
+        let y0 = by_id(&none, "v.2").bounds.y;
+        let mut off = HashMap::new();
+        off.insert("sc".to_string(), (0.0, 40.0));
+        let s = scene_with(TYPOGRAPHY, (402.0, 874.0), false, (62.0, 34.0), &off, None);
+        // content is short: the offset clamps to the scrollable range (none here)
+        let sc = by_id(&s, "sc");
+        assert_eq!(sc.scroll.unwrap().max, (0.0, 0.0));
+        near(by_id(&s, "v.2").bounds.y, y0);
+    }
+
+    #[test]
+    fn long_list_scrolls_and_clips_hit_tests() {
+        let rows: Vec<String> = (0..30)
+            .map(|i| format!(r#"{{"kind":"button","id":"r{i}","action":{i},"style":"navigationLink","label":{{"kind":"text","id":"r{i}.t","text":"Row {i}"}}}}"#))
+            .collect();
+        let json = format!(
+            r#"{{"kind":"navigation","id":"n","title":"Long","displayMode":"large","content":{{"kind":"list","id":"l","style":"insetGrouped","sections":[{{"rows":[{}]}}]}}}}"#,
+            rows.join(",")
+        );
+        let s = phone(&json);
+        let sc = by_id(&s, "l").scroll.unwrap();
+        assert!(sc.max.1 > 500.0, "content taller than the list: {:?}", sc);
+        // row 20 is below the screen: clipped, cannot be hit
+        assert_eq!(s.hit_test(100.0, by_id(&s, "r20").bounds.y + 10.0), None);
+        // scrolled by 300: row 6 (y=168+312) moves to ~180
+        let mut off = HashMap::new();
+        off.insert("l".to_string(), (0.0, 300.0));
+        let s = scene_with(&json, (402.0, 874.0), false, (62.0, 34.0), &off, None);
+        near(by_id(&s, "r6").bounds.y, 168.0 + 6.0 * 52.0 - 300.0);
+        assert_eq!(s.scroll_target(200.0, 500.0).map(|i| s.nodes[i].id.as_str()), Some("l"));
+        // rows scrolled under the nav bar are clipped: no hit at y=100
+        assert_eq!(s.hit_test(100.0, 100.0), None);
+        // bottom: last row clears the home indicator inset
+        off.insert("l".to_string(), (0.0, 1.0e6));
+        let s = scene_with(&json, (402.0, 874.0), false, (62.0, 34.0), &off, None);
+        let last = by_id(&s, "r29").bounds;
+        assert!(last.y + last.h <= 874.0 - 34.0 + 0.1);
+    }
+
+    #[test]
+    fn shapes_stroke_overlay_shadow() {
+        let s = phone(include_str!("../../tests/data/shapes.json"));
+        let c = by_id(&s, "h.0");
+        assert_eq!((c.bounds.w, c.bounds.h), (60.0, 60.0));
+        assert!(c.radius >= 1.0e5);
+        let r = by_id(&s, "r");
+        assert_eq!(r.stroke.map(|s| s.1), Some(4.0));
+        assert!(r.fill.is_none());
+        // overlay text is centred over the rect
+        let o = by_id(&s, "r.o");
+        near(o.bounds.x + o.bounds.w / 2.0, r.bounds.x + r.bounds.w / 2.0);
+        // shadow follows the 12pt corner radius of the card
+        let sh = s.nodes.iter().find(|n| n.shadow.is_some() && n.id.starts_with("c#shadow")).unwrap();
+        assert_eq!(sh.radius, 12.0);
+        // divider hairline in a vstack spans the width
+        let t = phone(TYPOGRAPHY);
+        let d = by_id(&t, "v.8").bounds;
+        near(d.w, 370.0);
+        near(d.h, 1.0 / 3.0);
+    }
+
+    #[test]
+    fn centered_text_aligns_within_its_box() {
+        let s = phone(TYPOGRAPHY);
+        let t = by_id(&s, "v.9");
+        let run = t.text.as_ref().unwrap();
+        assert_eq!(run.font.align, TextAlign::Center);
+        near(t.bounds.h, 42.33);
+        let mid = t.bounds.x + t.bounds.w / 2.0;
+        near(mid, 201.0);
+    }
+
+    #[test]
+    fn weights_are_distinct() {
+        let mut f = Fonts::new();
+        let w = |f: &mut Fonts, wt| f.measure("Hamburgefonstiv", &FontSpec::new(17.0, 20.33, wt, TextAlign::Leading), None).0;
+        let (r, sb, b) = (w(&mut f, 400), w(&mut f, 600), w(&mut f, 700));
+        if f.has_sf() {
+            assert!(r < sb && sb < b, "variable wght axis applies: {r} {sb} {b}");
+        }
     }
 }

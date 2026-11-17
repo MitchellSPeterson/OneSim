@@ -41,12 +41,30 @@ An `environment` message stores appearance/viewport and re-sends a tree.
 | Colors | `Color(red:green:blue:opacity:)`, `Color(white:opacity:)`, `.red .green .blue .orange .yellow .purple .pink .gray .black .white .clear .primary .secondary .accentColor` |
 | Layout types | `HorizontalAlignment`, `VerticalAlignment`, `Alignment`, `Edge`, `Edge.Set`, `CGFloat` (Foundation) |
 | Modifiers | `padding()`, `padding(_:)`, `padding(_ edges:, _ length:)`, `frame(width:height:alignment:)`, `frame(minWidth:maxWidth:minHeight:maxHeight:alignment:)` (`.infinity` -> `"inf"`), `foregroundColor`, `background(_ view)`, `cornerRadius`, `opacity` |
-| State | `@State` (+ `$x` -> `Binding`), `Binding(get:set:)`, `.constant` |
+| State | `@State` (+ `$x` -> `Binding`), `Binding(get:set:)`, `.constant`, `Binding` dynamic-member (`$item.done`) and collection subscript (`$store.items[i]`) |
+| Objects | `ObservableObject` (`objectWillChange` is a stub), `@Published` (any set/mutation marks dirty), `@StateObject` (slot in the state registry, autoclosure runs once), `@ObservedObject` (+ `$obj.prop` -> `Binding`) |
+| Environment | `@Environment(\.colorScheme)`, `EnvironmentValues.colorScheme`, `ColorScheme`; follows `SIMCORE_APPEARANCE` and `environment` messages |
+| Navigation | `NavigationStack { }`, `NavigationLink(_:destination:)`, `NavigationLink(destination:label:)`, `navigationTitle`, `navigationBarTitleDisplayMode` |
+| Containers | `List`, `Section(_:content:)`, `Section(content:)`, `ForEach` (Range<Int>, `id:` key path, Identifiable), `ScrollView(_ axes:)`, `Divider` |
+| Controls | `TextField(_:text:)`, `Toggle(_:isOn:)`, `Stepper(_:value:in:step:)` (Strideable), `.buttonStyle(.automatic/.plain/.bordered/.borderedProminent)`, `.disabled(_:)` |
+| Shapes/styles | `Shape`, `Rectangle`, `Circle`, `Capsule`, `RoundedRectangle(cornerRadius:)`, `.fill(_:)`, `.stroke(_:lineWidth:)`, `ShapeStyle` (`Color`, `.primary/.secondary/.tertiary`), `foregroundStyle`, `Color.opacity(_:)` |
+| More modifiers | `font` (`Font` text styles, `.system(size:weight:)`), `fontWeight`, `bold`, `strikethrough`, `multilineTextAlignment`, `overlay` (both forms), `shadow` |
+
+### Navigation, lists, input
+
+`NavigationStack` keeps its path in the state registry. Only the top screen is evaluated and emitted as `navigation` (title and
+display mode lifted from the screen's `navigationTitle` / `navigationBarTitleDisplayMode`, which is stripped from the modifiers;
+`back` pops, labelled with the previous screen's title or "Back"). The root is at `<stack>/0`, pushed screens at `<stack>/s<depth>`,
+so `@State` persists while a screen is on the stack (hidden screens' slots are kept alive) and is dropped when popped.
+`List`/`Section`/`ForEach`/`if` flatten into `list` sections and rows; `ForEach` puts the element id in the path.
+`disabled` and `buttonStyle` are evaluation-context values (not wire modifiers): disabled buttons/toggles/steppers emit
+`disabled: true` and action `0` (never registered). `TextField` allocates a `field` id per evaluation; a `text_input` message
+(version-gated) sets the bound String via `simcore_text_cb`.
 
 ## Known limitations
 
-- Not implemented: `font`, `bold`, images, `List`, `ForEach`, `ScrollView`, `Group`, `TextField`/`Toggle`, `NavigationStack`,
-  `@Binding` in child views driving parent updates beyond closures, `@Environment`, `@ObservedObject`/`@StateObject`, animations, `onAppear`.
+- Not implemented: images, `Group`, `List(data)`, `NavigationStack(path:)`, `navigationDestination`, `onAppear`, animations, custom `Shape.path(in:)`,
+  `Text` concatenation, `.environment(_:_:)`; `Color.opacity` on semantic colors is ignored.
 - `@State` only inside `View`s (not `App`); the `WindowGroup` content closure runs once.
 - Structural identity is positional (`if`/`else` branches share a path; state is distinguished by view type).
 - Whole-root re-evaluation on every state change.

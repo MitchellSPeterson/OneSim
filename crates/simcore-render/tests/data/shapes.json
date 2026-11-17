@@ -1,0 +1,239 @@
+{
+ "kind": "navigation",
+ "id": "n",
+ "title": "Shapes",
+ "displayMode": "large",
+ "back": {
+  "action": 99,
+  "label": "Showcase"
+ },
+ "content": {
+  "kind": "vstack",
+  "id": "v",
+  "spacing": 20,
+  "modifiers": [
+   {
+    "padding": {
+     "top": 16,
+     "leading": 16,
+     "bottom": 16,
+     "trailing": 16
+    }
+   }
+  ],
+  "children": [
+   {
+    "kind": "hstack",
+    "id": "h",
+    "spacing": 16,
+    "children": [
+     {
+      "kind": "shape",
+      "id": "h.0",
+      "shape": "circle",
+      "fill": {
+       "r": 1,
+       "g": 0.23,
+       "b": 0.19,
+       "a": 1
+      },
+      "modifiers": [
+       {
+        "frame": {
+         "width": 60,
+         "height": 60
+        }
+       }
+      ]
+     },
+     {
+      "kind": "shape",
+      "id": "h.1",
+      "shape": "capsule",
+      "fill": {
+       "r": 0.2,
+       "g": 0.78,
+       "b": 0.35,
+       "a": 1
+      },
+      "modifiers": [
+       {
+        "frame": {
+         "width": 100,
+         "height": 44
+        }
+       }
+      ]
+     },
+     {
+      "kind": "shape",
+      "id": "h.2",
+      "shape": "roundedRectangle",
+      "cornerRadius": 12,
+      "fill": {
+       "r": 0,
+       "g": 0.533,
+       "b": 1,
+       "a": 1
+      },
+      "modifiers": [
+       {
+        "frame": {
+         "width": 60,
+         "height": 60
+        }
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "kind": "shape",
+    "id": "r",
+    "shape": "roundedRectangle",
+    "cornerRadius": 16,
+    "stroke": {
+     "color": {
+      "r": 1,
+      "g": 0.58,
+      "b": 0,
+      "a": 1
+     },
+     "lineWidth": 4
+    },
+    "modifiers": [
+     {
+      "frame": {
+       "height": 80
+      }
+     },
+     {
+      "overlay": {
+       "alignment": "center",
+       "view": {
+        "kind": "text",
+        "id": "r.o",
+        "text": "Overlay",
+        "modifiers": [
+         {
+          "font": {
+           "style": "headline"
+          }
+         }
+        ]
+       }
+      }
+     }
+    ]
+   },
+   {
+    "kind": "text",
+    "id": "c",
+    "text": "Shadow card",
+    "modifiers": [
+     {
+      "padding": {
+       "top": 16,
+       "leading": 16,
+       "bottom": 16,
+       "trailing": 16
+      }
+     },
+     {
+      "background": {
+       "kind": "color",
+       "id": "c.bg",
+       "color": {
+        "r": 1,
+        "g": 1,
+        "b": 1,
+        "a": 1
+       }
+      }
+     },
+     {
+      "cornerRadius": 12
+     },
+     {
+      "shadow": {
+       "color": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 0.33
+       },
+       "radius": 6,
+       "x": 0,
+       "y": 0
+      }
+     }
+    ]
+   },
+   {
+    "kind": "zstack",
+    "id": "z",
+    "modifiers": [
+     {
+      "frame": {
+       "width": 120,
+       "height": 120
+      }
+     }
+    ],
+    "children": [
+     {
+      "kind": "shape",
+      "id": "z.0",
+      "shape": "circle",
+      "fill": {
+       "r": 0.69,
+       "g": 0.32,
+       "b": 0.87,
+       "a": 0.3
+      }
+     },
+     {
+      "kind": "shape",
+      "id": "z.1",
+      "shape": "circle",
+      "stroke": {
+       "color": {
+        "r": 0.69,
+        "g": 0.32,
+        "b": 0.87,
+        "a": 1
+       },
+       "lineWidth": 2
+      },
+      "modifiers": [
+       {
+        "padding": {
+         "top": 10,
+         "leading": 10,
+         "bottom": 10,
+         "trailing": 10
+        }
+       }
+      ]
+     },
+     {
+      "kind": "text",
+      "id": "z.2",
+      "text": "ZStack",
+      "modifiers": [
+       {
+        "font": {
+         "style": "caption"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "kind": "spacer",
+    "id": "sp"
+   }
+  ]
+ }
+}

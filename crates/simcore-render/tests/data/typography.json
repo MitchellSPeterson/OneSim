@@ -1,0 +1,156 @@
+{
+ "kind": "navigation",
+ "id": "n",
+ "title": "Typography",
+ "displayMode": "inline",
+ "back": {
+  "action": 99,
+  "label": "Showcase"
+ },
+ "content": {
+  "kind": "scroll",
+  "id": "sc",
+  "axis": "vertical",
+  "child": {
+   "kind": "vstack",
+   "id": "v",
+   "alignment": "leading",
+   "spacing": 12,
+   "modifiers": [
+    {
+     "padding": {
+      "top": 16,
+      "leading": 16,
+      "bottom": 16,
+      "trailing": 16
+     }
+    }
+   ],
+   "children": [
+    {
+     "kind": "text",
+     "id": "v.0",
+     "text": "Large Title",
+     "modifiers": [
+      {
+       "font": {
+        "style": "largeTitle"
+       }
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "id": "v.1",
+     "text": "Title",
+     "modifiers": [
+      {
+       "font": {
+        "style": "title"
+       }
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "id": "v.2",
+     "text": "Headline",
+     "modifiers": [
+      {
+       "font": {
+        "style": "headline"
+       }
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "id": "v.3",
+     "text": "Body text that is long enough to wrap onto a second line on a typical phone.",
+     "modifiers": [
+      {
+       "font": {
+        "style": "body"
+       }
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "id": "v.4",
+     "text": "Caption, secondary",
+     "modifiers": [
+      {
+       "font": {
+        "style": "caption"
+       }
+      },
+      {
+       "foregroundColor": {
+        "semantic": "secondary"
+       }
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "id": "v.5",
+     "text": "Bold body",
+     "modifiers": [
+      {
+       "fontWeight": "bold"
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "id": "v.6",
+     "text": "System 22 semibold",
+     "modifiers": [
+      {
+       "font": {
+        "size": 22,
+        "weight": "semibold"
+       }
+      }
+     ]
+    },
+    {
+     "kind": "text",
+     "id": "v.7",
+     "text": "Light appearance",
+     "modifiers": [
+      {
+       "foregroundColor": {
+        "r": 0,
+        "g": 0.533,
+        "b": 1,
+        "a": 1
+       }
+      }
+     ]
+    },
+    {
+     "kind": "divider",
+     "id": "v.8"
+    },
+    {
+     "kind": "text",
+     "id": "v.9",
+     "text": "Centered multiline text that needs to wrap across lines",
+     "modifiers": [
+      {
+       "multilineTextAlignment": "center"
+      },
+      {
+       "frame": {
+        "maxWidth": "inf",
+        "alignment": "center"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

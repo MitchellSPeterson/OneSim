@@ -33,12 +33,16 @@ pub mod inf {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "camelCase")]
 pub enum Semantic {
     Primary,
     Secondary,
+    Tertiary,
     Accent,
     Background,
+    Separator,
+    GroupedBackground,
+    SecondaryGroupedBackground,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -95,6 +99,106 @@ pub struct Frame {
     pub alignment: Alignment,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Weight {
+    UltraLight,
+    Thin,
+    Light,
+    #[default]
+    Regular,
+    Medium,
+    Semibold,
+    Bold,
+    Heavy,
+    Black,
+}
+
+impl Weight {
+    /// OpenType `wght` value.
+    pub fn value(self) -> u16 {
+        match self {
+            Weight::UltraLight => 100,
+            Weight::Thin => 200,
+            Weight::Light => 300,
+            Weight::Regular => 400,
+            Weight::Medium => 500,
+            Weight::Semibold => 600,
+            Weight::Bold => 700,
+            Weight::Heavy => 800,
+            Weight::Black => 900,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TextStyle {
+    LargeTitle,
+    Title,
+    Title2,
+    Title3,
+    Headline,
+    Subheadline,
+    Body,
+    Callout,
+    Footnote,
+    Caption,
+    Caption2,
+}
+
+impl TextStyle {
+    /// (size, weight) at the default Dynamic Type size.
+    pub fn spec(self) -> (f64, Weight) {
+        match self {
+            TextStyle::LargeTitle => (34.0, Weight::Regular),
+            TextStyle::Title => (28.0, Weight::Regular),
+            TextStyle::Title2 => (22.0, Weight::Regular),
+            TextStyle::Title3 => (20.0, Weight::Regular),
+            TextStyle::Headline => (17.0, Weight::Semibold),
+            TextStyle::Subheadline => (15.0, Weight::Regular),
+            TextStyle::Body => (17.0, Weight::Regular),
+            TextStyle::Callout => (16.0, Weight::Regular),
+            TextStyle::Footnote => (13.0, Weight::Regular),
+            TextStyle::Caption => (12.0, Weight::Regular),
+            TextStyle::Caption2 => (11.0, Weight::Regular),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Font {
+    Style { style: TextStyle },
+    System { size: f64, #[serde(default)] weight: Weight },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Shadow {
+    #[serde(default = "default_shadow_color")]
+    pub color: Color,
+    #[serde(default = "default_shadow_radius")]
+    pub radius: f64,
+    #[serde(default)]
+    pub x: f64,
+    #[serde(default)]
+    pub y: f64,
+}
+
+fn default_shadow_color() -> Color {
+    Color::Rgba { r: 0.0, g: 0.0, b: 0.0, a: 0.33 }
+}
+fn default_shadow_radius() -> f64 {
+    3.0
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Overlay {
+    pub view: Box<ViewNode>,
+    #[serde(default)]
+    pub alignment: Alignment,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Modifier {
@@ -104,6 +208,85 @@ pub enum Modifier {
     Background(Box<ViewNode>),
     CornerRadius(f64),
     Opacity(f64),
+    Font(Font),
+    FontWeight(Weight),
+    Strikethrough(bool),
+    MultilineTextAlignment(Alignment),
+    Overlay(Overlay),
+    Shadow(Shadow),
+    NavigationTitle(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ButtonStyle {
+    #[default]
+    Automatic,
+    Plain,
+    Bordered,
+    BorderedProminent,
+    NavigationLink,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ShapeKind {
+    Rectangle,
+    Circle,
+    Capsule,
+    RoundedRectangle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Stroke {
+    pub color: Color,
+    #[serde(rename = "lineWidth", default = "one")]
+    pub line_width: f64,
+}
+
+fn one() -> f64 {
+    1.0
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Axis {
+    #[default]
+    Vertical,
+    Horizontal,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ListStyle {
+    #[default]
+    InsetGrouped,
+    Plain,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Section {
+    #[serde(default)]
+    pub header: Option<String>,
+    #[serde(default)]
+    pub footer: Option<String>,
+    #[serde(default)]
+    pub rows: Vec<ViewNode>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BackButton {
+    pub action: u64,
+    #[serde(default)]
+    pub label: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DisplayMode {
+    #[default]
+    Large,
+    Inline,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -141,6 +324,63 @@ pub enum ViewKind {
     Button {
         action: u64,
         label: Box<ViewNode>,
+        #[serde(default)]
+        style: ButtonStyle,
+        #[serde(default)]
+        disabled: bool,
+    },
+    Shape {
+        shape: ShapeKind,
+        #[serde(default, rename = "cornerRadius")]
+        corner_radius: Option<f64>,
+        #[serde(default)]
+        fill: Option<Color>,
+        #[serde(default)]
+        stroke: Option<Stroke>,
+    },
+    Divider,
+    Scroll {
+        #[serde(default)]
+        axis: Axis,
+        child: Box<ViewNode>,
+    },
+    List {
+        #[serde(default)]
+        style: ListStyle,
+        #[serde(default)]
+        sections: Vec<Section>,
+    },
+    Navigation {
+        #[serde(default)]
+        title: Option<String>,
+        #[serde(default, rename = "displayMode")]
+        display_mode: DisplayMode,
+        #[serde(default)]
+        back: Option<BackButton>,
+        content: Box<ViewNode>,
+    },
+    Toggle {
+        #[serde(rename = "isOn")]
+        is_on: bool,
+        action: u64,
+        label: Box<ViewNode>,
+        #[serde(default)]
+        disabled: bool,
+    },
+    Stepper {
+        label: Box<ViewNode>,
+        #[serde(default)]
+        decrement: Option<u64>,
+        #[serde(default)]
+        increment: Option<u64>,
+    },
+    #[serde(rename = "text_field")]
+    TextField {
+        #[serde(default)]
+        placeholder: String,
+        #[serde(default)]
+        text: String,
+        field: u64,
     },
     Color {
         color: Color,
@@ -194,5 +434,42 @@ mod tests {
     fn semantic_color() {
         let c: Color = serde_json::from_str(r#"{"semantic":"accent"}"#).unwrap();
         assert_eq!(c, Color::Semantic { semantic: Semantic::Accent });
+    }
+
+    #[test]
+    fn section_d_nodes_parse() {
+        let j = json!({"kind":"navigation","id":"n","title":"T","displayMode":"inline","back":{"action":9,"label":"B"},
+          "modifiers":[{"font":{"style":"headline"}},{"font":{"size":22,"weight":"semibold"}},{"fontWeight":"bold"},
+                       {"strikethrough":true},{"multilineTextAlignment":"center"},{"navigationTitle":"T"},
+                       {"shadow":{"color":{"semantic":"separator"},"radius":6,"x":0,"y":2}},
+                       {"overlay":{"view":{"kind":"shape","id":"o","shape":"circle","stroke":{"color":{"semantic":"tertiary"},"lineWidth":2}},"alignment":"topTrailing"}}],
+          "content":{"kind":"list","id":"l","style":"insetGrouped","sections":[{"header":"H","rows":[
+            {"kind":"toggle","id":"a","isOn":true,"action":1,"label":{"kind":"text","id":"a.l","text":"x"}},
+            {"kind":"stepper","id":"b","label":{"kind":"text","id":"b.l","text":"y"},"decrement":null,"increment":3},
+            {"kind":"text_field","id":"c","placeholder":"p","text":"","field":4},
+            {"kind":"button","id":"d","action":5,"style":"borderedProminent","disabled":true,"label":{"kind":"divider","id":"d.l"}},
+            {"kind":"scroll","id":"e","axis":"horizontal","child":{"kind":"shape","id":"e.c","shape":"roundedRectangle","cornerRadius":4,"fill":{"semantic":"groupedBackground"}}}]}]}});
+        let n: ViewNode = serde_json::from_value(j).unwrap();
+        assert_eq!(n.modifiers.len(), 8);
+        assert_eq!(n.modifiers[1], Modifier::Font(Font::System { size: 22.0, weight: Weight::Semibold }));
+        assert_eq!(n.modifiers[0], Modifier::Font(Font::Style { style: TextStyle::Headline }));
+        let ViewKind::Navigation { display_mode, back, content, .. } = &n.kind else { panic!() };
+        assert_eq!(*display_mode, DisplayMode::Inline);
+        assert_eq!(back.as_ref().unwrap().action, 9);
+        let ViewKind::List { sections, .. } = &content.kind else { panic!() };
+        assert!(matches!(sections[0].rows[2].kind, ViewKind::TextField { field: 4, .. }));
+        assert!(matches!(sections[0].rows[3].kind, ViewKind::Button { style: ButtonStyle::BorderedProminent, disabled: true, .. }));
+        let again: ViewNode = serde_json::from_value(serde_json::to_value(&n).unwrap()).unwrap();
+        assert_eq!(n, again);
+        assert_eq!(TextStyle::Body.spec(), (17.0, Weight::Regular));
+        assert_eq!(Weight::Bold.value(), 700);
+    }
+
+    #[test]
+    fn new_semantics_and_button_defaults() {
+        let c: Color = serde_json::from_str(r#"{"semantic":"secondaryGroupedBackground"}"#).unwrap();
+        assert_eq!(c, Color::Semantic { semantic: Semantic::SecondaryGroupedBackground });
+        let b: ViewNode = serde_json::from_str(r#"{"kind":"button","id":"b","action":1,"label":{"kind":"empty","id":"e"}}"#).unwrap();
+        assert!(matches!(b.kind, ViewKind::Button { style: ButtonStyle::Automatic, disabled: false, .. }));
     }
 }

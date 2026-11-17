@@ -21,6 +21,31 @@ def texts(n):
         out += texts(c)
     return out
 
+def kids(n):
+    out = list(n.get("children", []))
+    for k in ("label", "child", "content"):
+        if k in n: out.append(n[k])
+    for sec in n.get("sections", []): out += sec["rows"]
+    return out
+
+def walk(n):
+    yield n
+    for c in kids(n): yield from walk(c)
+
+def alltexts(n): return [m["text"] for m in walk(n) if m.get("kind") == "text"]
+
+def rows(t):
+    lst = next(m for m in walk(t["root"]) if m.get("kind") == "list")
+    return [r for s in lst["sections"] for r in s["rows"]]
+
+def button(t, label):
+    return next(m for m in walk(t["root"]) if m.get("kind") == "button" and label in alltexts(m))
+
+def act(p, t, id_):
+    send(p, type="action", id=id_, version=t["version"]); return recv(p)
+
+def title(t): return t["root"]["title"]
+
 def rss(p):
     return int(subprocess.check_output(["ps", "-o", "rss=", "-p", str(p.pid)]).strip())
 
@@ -61,4 +86,70 @@ p.stdin.close()  # EOF also exits 0
 assert p.wait(timeout=5) == 0
 assert "toggled true" in p.stderr.read(), "print() should reach stderr"
 print("entry: ok, print() on stderr, EOF exit 0")
+
+# --- showcase: navigation, observable objects, controls, text input
+p = spawn(sys.argv[3])
+assert recv(p)["type"] == "hello"
+t = recv(p); r = t["root"]
+assert r["kind"] == "navigation" and r["title"] == "Showcase" and "back" not in r, r
+lst = r["content"]; assert lst["kind"] == "list"
+assert [s.get("header") for s in lst["sections"]] == ["Screens", "Summary"]
+links = lst["sections"][0]["rows"]
+assert len(links) == 4 and all(l["kind"] == "button" and l["style"] == "navigationLink" for l in links)
+assert "1" in alltexts(lst["sections"][1]["rows"][0])
+t = act(p, t, button(t, "Todos")["action"])
+assert title(t) == "Todos" and t["root"]["back"]["label"] == "Showcase", t["root"]
+items = lambda t: next(s for s in next(m for m in walk(t["root"]) if m.get("kind") == "list")["sections"] if s.get("header") == "Items")["rows"]
+assert len(items(t)) == 3
+ship = items(t)[2]
+t = act(p, t, ship["action"])
+ship = items(t)[2]
+assert any(m.get("modifiers") and {"strikethrough": True} in m["modifiers"] for m in walk(ship) if m.get("kind") == "text"), ship
+t = act(p, t, t["root"]["back"]["action"])
+assert title(t) == "Showcase" and "0" in alltexts(rows(t)[-1]), "ObservableObject state must persist across navigation"
+t = act(p, t, button(t, "Todos")["action"])
+assert items(t)[2] and len(items(t)) == 3
+ship = items(t)[2]
+assert any({"strikethrough": True} in (m.get("modifiers") or []) for m in walk(ship) if m.get("kind") == "text"), "done persisted"
+add = button(t, "Add"); assert add["disabled"] is True
+fld = next(m for m in walk(t["root"]) if m.get("kind") == "text_field")
+send(p, type="text_input", field=fld["field"], version=t["version"], text="Buy milk")
+t = recv(p)
+fld = next(m for m in walk(t["root"]) if m.get("kind") == "text_field"); assert fld["text"] == "Buy milk"
+add = button(t, "Add"); assert add["disabled"] is False
+t = act(p, t, add["action"])
+assert len(items(t)) == 4 and "Buy milk" in alltexts(items(t)[3])
+assert next(m for m in walk(t["root"]) if m.get("kind") == "text_field")["text"] == ""
+t = act(p, t, t["root"]["back"]["action"])
+assert title(t) == "Showcase" and "1" in alltexts(rows(t)[-1]), alltexts(t["root"])  # only "Buy milk" is open
+# Controls: toggle, stepper, fresh state on re-entry
+def controls(t): return act(p, t, button(t, "Controls")["action"])
+t = controls(t); assert title(t) == "Controls"
+assert "You will be notified" in alltexts(t["root"])
+tog = next(m for m in walk(t["root"]) if m.get("kind") == "toggle"); assert tog["isOn"] is True
+t = act(p, t, tog["action"])
+assert not next(m for m in walk(t["root"]) if m.get("kind") == "toggle")["isOn"] and "You will be notified" not in alltexts(t["root"])
+stp = next(m for m in walk(t["root"]) if m.get("kind") == "stepper"); assert "Volume: 3" in alltexts(stp)
+t = act(p, t, stp["increment"])
+assert "Volume: 4" in alltexts(t["root"])
+t = act(p, t, t["root"]["back"]["action"])
+t = controls(t)
+assert "You will be notified" in alltexts(t["root"]) and "Volume: 3" in alltexts(t["root"]), "popped screen state must be discarded"
+t = act(p, t, t["root"]["back"]["action"])
+# Typography + environment
+t = act(p, t, button(t, "Typography")["action"])
+assert "Light appearance" in alltexts(t["root"])
+assert t["root"]["displayMode"] == "inline"
+send(p, type="environment", appearance="dark", viewport={"width": 393, "height": 852}); t = recv(p)
+assert "Dark appearance" in alltexts(t["root"]), alltexts(t["root"])
+t = act(p, t, t["root"]["back"]["action"])
+# push/pop cycles: memory stays bounded
+for i in range(300):
+    t = act(p, t, button(t, "Shapes")["action"]); assert title(t) == "Shapes"
+    t = act(p, t, t["root"]["back"]["action"]); assert title(t) == "Showcase"
+    if i == 50: base = rss(p)
+growth = rss(p) - base
+print(f"showcase: ok, RSS growth over 250 push/pop cycles: {growth} KB")
+assert growth < 4096, f"RSS grew {growth} KB"
+finish(p)
 print("PASS")

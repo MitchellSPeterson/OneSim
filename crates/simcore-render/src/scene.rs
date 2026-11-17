@@ -1,3 +1,4 @@
+use crate::text::FontSpec;
 use simcore_protocol::{Appearance, UiFrame, UiNode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -38,6 +39,9 @@ pub enum Role {
     Button,
     Text,
     Image,
+    Toggle,
+    TextField,
+    Stepper,
 }
 
 impl Role {
@@ -47,6 +51,9 @@ impl Role {
             Role::Button => "button",
             Role::Text => "text",
             Role::Image => "image",
+            Role::Toggle => "toggle",
+            Role::TextField => "textfield",
+            Role::Stepper => "stepper",
         }
     }
 }
@@ -54,9 +61,38 @@ impl Role {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextRun {
     pub text: String,
-    pub size: f32,
-    pub line_height: f32,
+    pub font: FontSpec,
     pub color: Color,
+    pub strike: bool,
+    /// Horizontal shift of the text inside its bounds (scrolled text fields).
+    pub offset_x: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Shadow {
+    pub color: Color,
+    pub radius: f64,
+    pub dx: f64,
+    pub dy: f64,
+}
+
+/// Hand-drawn vector glyphs (icons) painted inside a node's bounds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Glyph {
+    Chevron,
+    BackChevron,
+    Minus,
+    Plus,
+    Wifi,
+    SignalDots,
+    Battery,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ScrollInfo {
+    pub vertical: bool,
+    pub offset: (f64, f64),
+    pub max: (f64, f64),
 }
 
 /// One positioned element. `bounds` are absolute, in points.
@@ -67,6 +103,12 @@ pub struct Node {
     pub parent: Option<usize>,
     pub bounds: Rect,
     pub fill: Option<Color>,
+    /// Corner radius of `fill`/`stroke`/`shadow` (capsule/circle: a huge value, clamped on draw).
+    pub radius: f64,
+    /// Stroke centred on the node's outline.
+    pub stroke: Option<(Color, f64)>,
+    pub shadow: Option<Shadow>,
+    pub glyph: Option<(Glyph, Color)>,
     pub text: Option<TextRun>,
     /// Clips all descendants to `bounds` with this corner radius.
     pub clip_radius: Option<f64>,
@@ -75,6 +117,14 @@ pub struct Node {
     pub role: Role,
     pub label: Option<String>,
     pub action: Option<u64>,
+    /// Text field id: tapping focuses the node.
+    pub field: Option<u64>,
+    pub value: Option<String>,
+    pub focused: bool,
+    pub disabled: bool,
+    /// Caret x offset inside bounds (focused text field).
+    pub caret: Option<f64>,
+    pub scroll: Option<ScrollInfo>,
     /// False for layout-only helper nodes (clip/opacity layers); hidden from inspection.
     pub inspect: bool,
 }
@@ -87,12 +137,22 @@ impl Node {
             parent: None,
             bounds: Rect::default(),
             fill: None,
+            radius: 0.0,
+            stroke: None,
+            shadow: None,
+            glyph: None,
             text: None,
             clip_radius: None,
             opacity: 1.0,
             role: Role::None,
             label: None,
             action: None,
+            field: None,
+            value: None,
+            focused: false,
+            disabled: false,
+            caret: None,
+            scroll: None,
             inspect: true,
         }
     }
@@ -111,7 +171,7 @@ impl Scene {
     pub fn hit_test(&self, x: f64, y: f64) -> Option<usize> {
         (0..self.nodes.len()).rev().find(|&i| {
             let n = &self.nodes[i];
-            n.action.is_some() && n.bounds.contains(x, y) && self.clipped_in(i, x, y)
+            (n.action.is_some() || n.field.is_some()) && n.bounds.contains(x, y) && self.clipped_in(i, x, y)
         })
     }
 
@@ -133,6 +193,14 @@ impl Scene {
             i = p;
         }
         true
+    }
+
+    /// Innermost scroll container under the point.
+    pub fn scroll_target(&self, x: f64, y: f64) -> Option<usize> {
+        (0..self.nodes.len()).rev().find(|&i| {
+            let n = &self.nodes[i];
+            n.scroll.is_some() && n.bounds.contains(x, y) && self.clipped_in(i, x, y)
+        })
     }
 
     /// Inspection tree (protocol `UiNode`), skipping layout-only nodes.
@@ -163,6 +231,9 @@ impl Scene {
             role: Some(n.role.as_str().to_string()),
             label: n.label.clone(),
             action: n.action,
+            value: n.value.clone(),
+            focused: n.focused,
+            disabled: n.disabled,
             children: kids[i].iter().map(|&k| self.ui_node(k, kids)).collect(),
         }
     }

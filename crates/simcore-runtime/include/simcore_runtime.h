@@ -24,12 +24,20 @@ extern "C" {
 typedef void (*simcore_action_cb)(void *ctx, uint64_t action_id);
 typedef void (*simcore_env_cb)(void *ctx, const char *appearance, double width, double height);
 
+/* text_input: `text` is the full new field contents (NUL-terminated UTF-8, owned by Rust,
+ * valid only during the callback). Version-gated like actions. */
+typedef void (*simcore_text_cb)(void *ctx, uint64_t field_id, const char *text);
+
 /* Call once, first. dup()s fd 1 as the protocol channel, dup2(2,1), sends hello.
  * Returns 0 on success, nonzero on failure (see simcore_last_error). */
 int32_t simcore_runtime_init(void);
 
 /* ctx is passed back verbatim and must stay valid until simcore_runtime_run returns. */
 void simcore_runtime_set_callbacks(void *ctx, simcore_action_cb on_action, simcore_env_cb on_env);
+
+/* Optional. Registers the text_input callback; `ctx` is the one passed to
+ * simcore_runtime_set_callbacks. Independent of set_callbacks (existing ABI unchanged). */
+void simcore_runtime_set_text_callback(simcore_text_cb on_text);
 
 /* Send a view tree (UTF-8 JSON ViewNode, not NUL-terminated). Validated as JSON
  * and copied. `version` must be strictly increasing. Returns 0 on success. */

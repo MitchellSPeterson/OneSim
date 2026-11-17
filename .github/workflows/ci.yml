@@ -22,3 +22,15 @@ jobs:
         run: |
           cargo run -q -p simcore-cli -- run examples/swiftui-counter --root-view CounterView \
             --click Increment --inspect | grep -q '"Count: 1"'
+      - name: Render showcase fixtures (light + dark PNGs)
+        run: cargo run -q -p simcore-render --example showcase -- --out target/showcase-render
+      - uses: actions/upload-artifact@v4
+        with:
+          name: showcase-render
+          path: target/showcase-render
+      - name: Navigation, text input and scroll through the fake guest
+        run: |
+          ln -sf "$PWD/target/debug/simcore-fake-guest" target/debug/fake-nav-guest
+          cargo run -q -p simcore-cli -- run target/debug/fake-nav-guest \
+            --click Todos --click "New todo" --type "Buy milk" --key backspace --click Add --inspect \
+            --screenshot target/showcase-render/ci-todos.png | grep -q '"Buy mil"'

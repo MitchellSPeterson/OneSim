@@ -6,6 +6,7 @@ use std::io::{BufRead, Write};
 use std::os::fd::FromRawFd;
 
 pub type ActionCb = Option<unsafe extern "C" fn(*mut c_void, u64)>;
+pub type TextCb = Option<unsafe extern "C" fn(*mut c_void, u64, *const c_char)>;
 pub type EnvCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char, f64, f64)>;
 
 #[derive(Default)]
@@ -15,6 +16,7 @@ struct State {
     ctx: usize,
     on_action: ActionCb,
     on_env: EnvCb,
+    on_text: TextCb,
 }
 
 thread_local! {
@@ -78,14 +80,24 @@ fn handle_line(line: &str) -> bool {
         }
     };
     // Copy callbacks out: they re-enter submit_tree, so no borrow may be held.
-    let (ctx, on_action, on_env, last) =
-        STATE.with(|s| { let s = s.borrow(); (s.ctx, s.on_action, s.on_env, s.last_version) });
+    let (ctx, on_action, on_env, on_text, last) =
+        STATE.with(|s| { let s = s.borrow(); (s.ctx, s.on_action, s.on_env, s.on_text, s.last_version) });
     match v["type"].as_str() {
         Some("shutdown") => return false,
         Some("action") => {
             if let (Some(id), Some(ver), Some(cb)) = (v["id"].as_u64(), v["version"].as_u64(), on_action) {
                 if Some(ver) == last {
                     unsafe { cb(ctx as *mut c_void, id) };
+                }
+            }
+        }
+        Some("text_input") => {
+            if let (Some(field), Some(ver), Some(text), Some(cb)) =
+                (v["field"].as_u64(), v["version"].as_u64(), v["text"].as_str(), on_text)
+            {
+                if Some(ver) == last {
+                    let text = CString::new(text.replace('\0', "")).unwrap_or_default();
+                    unsafe { cb(ctx as *mut c_void, field, text.as_ptr()) };
                 }
             }
         }
@@ -129,6 +141,12 @@ pub extern "C" fn simcore_runtime_set_callbacks(ctx: *mut c_void, on_action: Act
         s.on_action = on_action;
         s.on_env = on_env;
     });
+}
+
+/// Optional text_input callback; uses the ctx given to `simcore_runtime_set_callbacks`.
+#[no_mangle]
+pub extern "C" fn simcore_runtime_set_text_callback(on_text: TextCb) {
+    STATE.with(|s| s.borrow_mut().on_text = on_text);
 }
 
 /// # Safety
@@ -191,12 +209,17 @@ mod tests {
         SEEN.with(|s| s.borrow_mut().push(format!("e{}{w}x{h}", CStr::from_ptr(a).to_str().unwrap())))
     }
 
+    unsafe extern "C" fn on_text(_: *mut c_void, f: u64, t: *const c_char) {
+        SEEN.with(|s| s.borrow_mut().push(format!("t{f}={}", CStr::from_ptr(t).to_str().unwrap())))
+    }
+
     fn setup() -> Buf {
         STATE.with(|s| *s.borrow_mut() = State::default());
         SEEN.with(|s| s.borrow_mut().clear());
         let b = Buf::default();
         init_with(Box::new(b.clone())).unwrap();
         simcore_runtime_set_callbacks(std::ptr::null_mut(), Some(on_action), Some(on_env));
+        simcore_runtime_set_text_callback(Some(on_text));
         b
     }
     fn lines(b: &Buf) -> Vec<String> {
@@ -222,9 +245,11 @@ mod tests {
         assert!(handle_line(r#"{"type":"action","id":7,"version":3}"#));
         assert!(handle_line(r#"{"type":"action","id":8,"version":2}"#)); // stale
         assert!(handle_line(r#"{"type":"environment","appearance":"dark","viewport":{"width":10,"height":20}}"#));
+        assert!(handle_line(r#"{"type":"text_input","field":4,"version":3,"text":"hi \u00e9"}"#));
+        assert!(handle_line(r#"{"type":"text_input","field":4,"version":2,"text":"stale"}"#));
         assert!(handle_line("garbage"));
         assert!(!handle_line(r#"{"type":"shutdown"}"#));
-        SEEN.with(|s| assert_eq!(*s.borrow(), vec!["a7", "edark10x20"]));
+        SEEN.with(|s| assert_eq!(*s.borrow(), vec!["a7", "edark10x20", "t4=hi é"]));
         assert!(lines(&b).last().unwrap().contains(r#""type":"error""#));
     }
 }

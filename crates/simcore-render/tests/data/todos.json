@@ -1,0 +1,246 @@
+{
+ "kind": "navigation",
+ "id": "n",
+ "title": "Todos",
+ "displayMode": "large",
+ "back": {
+  "action": 99,
+  "label": "Showcase"
+ },
+ "content": {
+  "kind": "list",
+  "id": "l",
+  "style": "insetGrouped",
+  "sections": [
+   {
+    "rows": [
+     {
+      "kind": "hstack",
+      "id": "l.a",
+      "children": [
+       {
+        "kind": "text_field",
+        "id": "l.a.f",
+        "placeholder": "New todo",
+        "text": "",
+        "field": 1
+       },
+       {
+        "kind": "button",
+        "id": "l.a.b",
+        "action": 2,
+        "disabled": true,
+        "label": {
+         "kind": "text",
+         "id": "l.a.bl",
+         "text": "Add"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "header": "Items",
+    "rows": [
+     {
+      "kind": "button",
+      "id": "l.0",
+      "action": 10,
+      "style": "automatic",
+      "label": {
+       "kind": "hstack",
+       "id": "l.0.h",
+       "spacing": 12,
+       "children": [
+        {
+         "kind": "zstack",
+         "id": "l.0.z",
+         "modifiers": [
+          {
+           "frame": {
+            "width": 22,
+            "height": 22
+           }
+          }
+         ],
+         "children": [
+          {
+           "kind": "shape",
+           "id": "l.0.c",
+           "shape": "circle",
+           "fill": {
+            "r": 0.2,
+            "g": 0.78,
+            "b": 0.35,
+            "a": 1
+           }
+          },
+          {
+           "kind": "shape",
+           "id": "l.0.s",
+           "shape": "circle",
+           "stroke": {
+            "color": {
+             "r": 0.55,
+             "g": 0.55,
+             "b": 0.58,
+             "a": 1
+            },
+            "lineWidth": 1.5
+           }
+          }
+         ]
+        },
+        {
+         "kind": "text",
+         "id": "l.0.t",
+         "text": "Write the PRD",
+         "modifiers": [
+          {
+           "strikethrough": true
+          },
+          {
+           "foregroundColor": {
+            "semantic": "secondary"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     },
+     {
+      "kind": "button",
+      "id": "l.1",
+      "action": 11,
+      "style": "automatic",
+      "label": {
+       "kind": "hstack",
+       "id": "l.1.h",
+       "spacing": 12,
+       "children": [
+        {
+         "kind": "zstack",
+         "id": "l.1.z",
+         "modifiers": [
+          {
+           "frame": {
+            "width": 22,
+            "height": 22
+           }
+          }
+         ],
+         "children": [
+          {
+           "kind": "shape",
+           "id": "l.1.c",
+           "shape": "circle",
+           "fill": {
+            "r": 0.2,
+            "g": 0.78,
+            "b": 0.35,
+            "a": 1
+           }
+          },
+          {
+           "kind": "shape",
+           "id": "l.1.s",
+           "shape": "circle",
+           "stroke": {
+            "color": {
+             "r": 0.55,
+             "g": 0.55,
+             "b": 0.58,
+             "a": 1
+            },
+            "lineWidth": 1.5
+           }
+          }
+         ]
+        },
+        {
+         "kind": "text",
+         "id": "l.1.t",
+         "text": "Build the renderer",
+         "modifiers": [
+          {
+           "strikethrough": true
+          },
+          {
+           "foregroundColor": {
+            "semantic": "secondary"
+           }
+          }
+         ]
+        }
+       ]
+      }
+     },
+     {
+      "kind": "button",
+      "id": "l.2",
+      "action": 12,
+      "style": "automatic",
+      "label": {
+       "kind": "hstack",
+       "id": "l.2.h",
+       "spacing": 12,
+       "children": [
+        {
+         "kind": "zstack",
+         "id": "l.2.z",
+         "modifiers": [
+          {
+           "frame": {
+            "width": 22,
+            "height": 22
+           }
+          }
+         ],
+         "children": [
+          {
+           "kind": "shape",
+           "id": "l.2.c",
+           "shape": "circle",
+           "fill": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+           }
+          },
+          {
+           "kind": "shape",
+           "id": "l.2.s",
+           "shape": "circle",
+           "stroke": {
+            "color": {
+             "r": 0.55,
+             "g": 0.55,
+             "b": 0.58,
+             "a": 1
+            },
+            "lineWidth": 1.5
+           }
+          }
+         ]
+        },
+        {
+         "kind": "text",
+         "id": "l.2.t",
+         "text": "Ship the SwiftUI subset",
+         "modifiers": [
+          {
+           "strikethrough": false
+          }
+         ]
+        }
+       ]
+      }
+     }
+    ]
+   }
+  ]
+ }
+}

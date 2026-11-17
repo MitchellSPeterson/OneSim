@@ -11,12 +11,13 @@ mod scene;
 mod text;
 
 pub use raster::{render, render_png};
-pub use scene::{Color, Node, Rect, Role, Scene, TextRun};
-pub use text::Fonts;
+pub use layout::swiftui::SceneParams;
+pub use scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, Shadow, TextRun};
+pub use text::{tracking_em, FontSpec, Fonts, TextAlign};
 
-use simcore_protocol::{Appearance, ViewNode};
+use simcore_protocol::ViewNode;
 
-/// Convenience: layout a view tree for a viewport.
-pub fn build_scene(root: &ViewNode, viewport: (f64, f64), appearance: Appearance, fonts: &mut Fonts) -> Scene {
-    layout::swiftui::layout(root, viewport, appearance, fonts)
+/// Layout a view tree into a scene (see [`SceneParams`]).
+pub fn build_scene(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
+    layout::swiftui::layout(root, params, fonts)
 }
