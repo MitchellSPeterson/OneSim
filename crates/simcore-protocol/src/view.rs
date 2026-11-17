@@ -49,7 +49,8 @@ pub enum Semantic {
 #[serde(untagged)]
 pub enum Color {
     Semantic { semantic: Semantic },
-    Rgba { r: f64, g: f64, b: f64, a: f64 },
+    /// `dark`: optional rgb used instead of `r,g,b` in dark appearance (adaptive system colors).
+    Rgba { r: f64, g: f64, b: f64, a: f64, #[serde(default, skip_serializing_if = "Option::is_none")] dark: Option<[f64; 3]> },
 }
 
 /// One enum covers stack and frame alignments (vstack: leading/center/trailing,
@@ -169,7 +170,7 @@ impl TextStyle {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Font {
-    Style { style: TextStyle },
+    Style { style: TextStyle, #[serde(default, skip_serializing_if = "Option::is_none")] weight: Option<Weight> },
     System { size: f64, #[serde(default)] weight: Weight },
 }
 
@@ -186,7 +187,7 @@ pub struct Shadow {
 }
 
 fn default_shadow_color() -> Color {
-    Color::Rgba { r: 0.0, g: 0.0, b: 0.0, a: 0.33 }
+    Color::Rgba { r: 0.0, g: 0.0, b: 0.0, a: 0.33, dark: None }
 }
 fn default_shadow_radius() -> f64 {
     3.0
@@ -215,6 +216,23 @@ pub enum Modifier {
     Overlay(Overlay),
     Shadow(Shadow),
     NavigationTitle(String),
+    ImageScale(ImageScale),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ImageScale {
+    Small,
+    #[default]
+    Medium,
+    Large,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ContentMode {
+    Fit,
+    Fill,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -382,6 +400,21 @@ pub enum ViewKind {
         text: String,
         field: u64,
     },
+    /// SF Symbol (host capability).
+    Image {
+        #[serde(rename = "systemName")]
+        system_name: String,
+        #[serde(default)]
+        resizable: bool,
+        #[serde(default, rename = "contentMode")]
+        content_mode: Option<ContentMode>,
+        #[serde(default)]
+        scale: Option<ImageScale>,
+    },
+    Label {
+        title: Box<ViewNode>,
+        icon: Box<ViewNode>,
+    },
     Color {
         color: Color,
     },
@@ -423,7 +456,7 @@ mod tests {
         assert_eq!(children.len(), 5);
         let Modifier::Frame(f) = &n.modifiers[1] else { panic!() };
         assert_eq!(f.max_width, Some(f64::INFINITY));
-        assert_eq!(n.modifiers[5], Modifier::ForegroundColor(Color::Rgba { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }));
+        assert_eq!(n.modifiers[5], Modifier::ForegroundColor(Color::Rgba { r: 1.0, g: 0.0, b: 0.0, a: 1.0, dark: None }));
         // re-serialise and re-parse: stable
         let again: ViewNode = serde_json::from_value(serde_json::to_value(&n).unwrap()).unwrap();
         assert_eq!(n, again);
@@ -452,7 +485,7 @@ mod tests {
         let n: ViewNode = serde_json::from_value(j).unwrap();
         assert_eq!(n.modifiers.len(), 8);
         assert_eq!(n.modifiers[1], Modifier::Font(Font::System { size: 22.0, weight: Weight::Semibold }));
-        assert_eq!(n.modifiers[0], Modifier::Font(Font::Style { style: TextStyle::Headline }));
+        assert_eq!(n.modifiers[0], Modifier::Font(Font::Style { style: TextStyle::Headline, weight: None }));
         let ViewKind::Navigation { display_mode, back, content, .. } = &n.kind else { panic!() };
         assert_eq!(*display_mode, DisplayMode::Inline);
         assert_eq!(back.as_ref().unwrap().action, 9);
@@ -471,5 +504,19 @@ mod tests {
         assert_eq!(c, Color::Semantic { semantic: Semantic::SecondaryGroupedBackground });
         let b: ViewNode = serde_json::from_str(r#"{"kind":"button","id":"b","action":1,"label":{"kind":"empty","id":"e"}}"#).unwrap();
         assert!(matches!(b.kind, ViewKind::Button { style: ButtonStyle::Automatic, disabled: false, .. }));
+    }
+
+    #[test]
+    fn symbol_nodes_parse() {
+        let j = json!({"kind":"label","id":"l","title":{"kind":"text","id":"l.t","text":"A"},
+          "icon":{"kind":"image","id":"l.i","systemName":"star.fill","resizable":true,"contentMode":"fit"},
+          "modifiers":[{"imageScale":"large"},{"font":{"style":"footnote","weight":"semibold"}}]});
+        let n: ViewNode = serde_json::from_value(j).unwrap();
+        assert_eq!(n.modifiers[0], Modifier::ImageScale(ImageScale::Large));
+        assert_eq!(n.modifiers[1], Modifier::Font(Font::Style { style: TextStyle::Footnote, weight: Some(Weight::Semibold) }));
+        let ViewKind::Label { icon, .. } = &n.kind else { panic!() };
+        assert!(matches!(&icon.kind, ViewKind::Image { resizable: true, content_mode: Some(ContentMode::Fit), scale: None, .. }));
+        let again: ViewNode = serde_json::from_value(serde_json::to_value(&n).unwrap()).unwrap();
+        assert_eq!(n, again);
     }
 }

@@ -95,7 +95,7 @@ assert r["kind"] == "navigation" and r["title"] == "Showcase" and "back" not in 
 lst = r["content"]; assert lst["kind"] == "list"
 assert [s.get("header") for s in lst["sections"]] == ["Screens", "Summary"]
 links = lst["sections"][0]["rows"]
-assert len(links) == 4 and all(l["kind"] == "button" and l["style"] == "navigationLink" for l in links)
+assert len(links) == 5 and all(l["kind"] == "button" and l["style"] == "navigationLink" for l in links)
 assert "1" in alltexts(lst["sections"][1]["rows"][0])
 t = act(p, t, button(t, "Todos")["action"])
 assert title(t) == "Todos" and t["root"]["back"]["label"] == "Showcase", t["root"]
@@ -142,6 +142,21 @@ assert "Light appearance" in alltexts(t["root"])
 assert t["root"]["displayMode"] == "inline"
 send(p, type="environment", appearance="dark", viewport={"width": 393, "height": 852}); t = recv(p)
 assert "Dark appearance" in alltexts(t["root"]), alltexts(t["root"])
+t = act(p, t, t["root"]["back"]["action"])
+# Symbols: Image / Label / imageScale / aspect ratio / Font.weight all reach the wire
+t = act(p, t, button(t, "Symbols")["action"]); assert title(t) == "Symbols"
+secs = next(m for m in walk(t["root"]) if m.get("kind") == "list")["sections"]
+labs = secs[0]["rows"]
+assert [l["kind"] for l in labs] == ["label"] * 3, labs
+assert labs[0]["title"]["text"] == "Favorites" and labs[0]["icon"] == {"kind": "image", "id": labs[0]["icon"]["id"], "systemName": "star.fill", "resizable": False}, labs[0]
+assert any("foregroundColor" in m for m in labs[2]["modifiers"]), labs[2]
+imgs = [m for m in walk(secs[1]["rows"][0]) if m.get("kind") == "image"]
+assert [i["systemName"] for i in imgs] == ["heart.fill", "bell", "checkmark.circle.fill", "paperplane", "cloud.sun.fill"], imgs
+assert {"imageScale": "large"} in imgs[2]["modifiers"], imgs[2]
+assert imgs[4]["resizable"] is True and imgs[4]["contentMode"] == "fit", imgs[4]
+assert {"font": {"size": 28.0, "weight": "bold"}} in imgs[3]["modifiers"], imgs[3]
+chev = next(m for m in walk(secs[2]["rows"][0]) if m.get("kind") == "image" and m["systemName"] == "chevron.right")
+assert {"font": {"style": "footnote", "weight": "semibold"}} in chev["modifiers"], chev
 t = act(p, t, t["root"]["back"]["action"])
 # push/pop cycles: memory stays bounded
 for i in range(300):

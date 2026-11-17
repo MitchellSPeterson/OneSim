@@ -215,6 +215,18 @@ New modifier: `{"imageScale": "small"|"medium"|"large"}` (inherited). `Font` als
 
 Symbol rendering is a **host native-API capability**. On macOS hosts, symbols are rasterized from the system's SF Symbols, and nothing Apple-licensed is shipped in the repo. Other hosts draw a placeholder and report `unsupported_symbol` in `get_errors`. `get_capabilities` lists `"symbols": "system"|"placeholder"`.
 
+`Color` rgba gains an optional `"dark": [r, g, b]` (0..1): in dark appearance the host uses it instead of `r,g,b` (alpha unchanged), so adaptive system colors (`.red`, `.pink`, `.green`, `.blue`, ...) follow iOS 26 in dark mode.
+
+Symbol sizing (matches iOS 26 frames, `tests/fixtures/showcase-ios/symbols.json`): the layout box of a non-resizable image is the symbol's
+natural size at (inherited font size, weight, imageScale), i.e. AppKit's `NSImage.size` for `NSImage.SymbolConfiguration(pointSize:weight:scale:)`
+(17pt regular star.fill = 22x20 box; iOS reports the 18x17.6 ink inside it). imageScale small/medium/large changes the glyph (~0.78/1.0/1.29x),
+not the font. A resizable image takes the proposal; with `contentMode` it keeps the symbol's box aspect ratio (`fit` shrinks to fit,
+`fill` occupies the whole proposal and crops). The glyph is rasterized at device scale into an alpha mask, tinted with the foreground color
+and cached by (name, size, weight, scale, device scale, target size). In a list row, `label` puts the icon (imageScale large) centered in a
+24pt leading column and starts the title 16pt later (title at row content x + 40); the row separator aligns with the title.
+Rendering is monochrome only (multicolor, hierarchical and palette modes are out of scope). On a non-macOS host or for an unknown name the
+host draws a rounded-square outline placeholder and records one `get_errors` entry per name, `{"source":"host","message":"unsupported_symbol: ..."}`.
+
 ### Software keyboard (host chrome)
 
 When a `text_field` is focused, the host draws the iOS keyboard for the device profile (light or dark). The keyboard rises from the bottom, so the bottom safe-area inset becomes the keyboard height (keyboard avoidance), and focused content stays above it. Key taps are ordinary pointer clicks on the keyboard:

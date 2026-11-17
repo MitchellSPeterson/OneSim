@@ -148,7 +148,11 @@ impl Host {
             focus: s.focus.as_deref(),
             status_bar: true,
         };
-        Ok((build_scene(&root, &params, fonts), version, s.scale))
+        let scene = build_scene(&root, &params, fonts);
+        for name in &scene.unsupported_symbols {
+            s.report_once("host", format!("unsupported_symbol: no system symbol {name:?} on this host; drew a placeholder"));
+        }
+        Ok((scene, version, s.scale))
     }
 
     /// Returns `(hit node id, action dispatched)`. `click` = down + up. A hit on a text field
@@ -278,7 +282,8 @@ impl Host {
                 "pointer_events": ["down", "up", "click", "scroll"],
                 "keyboard": {"events": ["text", "key"], "keys": ["backspace", "enter"]},
                 "views": ["text", "vstack", "hstack", "zstack", "spacer", "button", "color", "rectangle", "shape", "divider",
-                          "scroll", "list", "navigation", "toggle", "stepper", "text_field", "empty"],
+                          "scroll", "list", "navigation", "toggle", "stepper", "text_field", "image", "label", "empty"],
+                "symbols": simcore_render::symbols_capability(),
             })),
             "create_session" => ok(json!({"session_id": self.create_session(p(params)?)?})),
             "start_session" => {

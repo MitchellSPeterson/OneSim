@@ -1,4 +1,5 @@
-use crate::scene::{Color, Glyph, Scene, Shadow};
+use crate::scene::{Color, Glyph, Scene, Shadow, SymbolRun};
+use crate::symbols;
 use crate::text::{FontSpec, Fonts};
 use std::rc::Rc;
 use tiny_skia::{
@@ -98,6 +99,30 @@ fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: 
     }
 }
 
+/// Tint an SF Symbol's alpha mask with `sy.color`, centred in `b` (points) and cropped to it.
+fn draw_symbol(pm: &mut Pixmap, sy: &SymbolRun, b: (f32, f32, f32, f32), op: f32, s: f32, mask: Option<&Mask>) {
+    let (wpx, hpx) = ((sy.size.0 as f32 * s).round().max(1.0) as u32, (sy.size.1 as f32 * s).round().max(1.0) as u32);
+    let Some(m) = symbols::mask(&sy.spec, wpx, hpx, s as f64) else { return };
+    let (bx, by) = ((b.0 * s).round() as i32, (b.1 * s).round() as i32);
+    let (bw, bh) = ((b.2 * s).round() as i32, (b.3 * s).round() as i32);
+    let (x0, y0) = (bx + (bw - wpx as i32) / 2, by + (bh - hpx as i32) / 2);
+    let Some(mut tmp) = Pixmap::new(wpx, hpx) else { return };
+    let c = sy.color;
+    let k = c.a * op;
+    let (r, g, bl) = (c.r * 255.0, c.g * 255.0, c.b * 255.0);
+    for (i, px) in tmp.pixels_mut().iter_mut().enumerate() {
+        let (x, y) = (x0 + (i as u32 % wpx) as i32, y0 + (i as u32 / wpx) as i32);
+        if x < bx || y < by || x >= bx + bw || y >= by + bh {
+            continue;
+        }
+        let a = m.alpha[i] as f32 / 255.0 * k;
+        let al = (a * 255.0).round() as u8;
+        let ch = |v: f32| ((v * a).round() as u8).min(al);
+        *px = tiny_skia::PremultipliedColorU8::from_rgba(ch(r), ch(g), ch(bl), al).unwrap_or(*px);
+    }
+    pm.draw_pixmap(x0, y0, tmp.as_ref(), &PixmapPaint::default(), Transform::identity(), mask);
+}
+
 /// In-place 3x box blur approximating a gaussian of `sigma` (device px) on RGBA8.
 fn blur(data: &mut [u8], w: usize, h: usize, sigma: f32) {
     let d = ((sigma * 3.0 * (2.0 * std::f32::consts::PI).sqrt() / 4.0 + 0.5).floor() as usize).max(1);
@@ -194,6 +219,9 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
         }
         if let Some((g, c)) = n.glyph {
             draw_glyph(&mut pm, g, c, sh, n.opacity, xf, mask.as_deref());
+        }
+        if let Some(sy) = &n.symbol {
+            draw_symbol(&mut pm, sy, sh, n.opacity, s, mask.as_deref());
         }
         if let Some(t) = &n.text {
             let rgba = [

@@ -1,3 +1,4 @@
+use crate::symbols::SymbolSpec;
 use crate::text::FontSpec;
 use simcore_protocol::{Appearance, UiFrame, UiNode};
 
@@ -88,6 +89,15 @@ pub enum Glyph {
     Battery,
 }
 
+/// An SF Symbol painted as an alpha mask in `color`, `size` points, centred in the node's bounds
+/// (cropped to them, for scaledToFill).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SymbolRun {
+    pub spec: SymbolSpec,
+    pub color: Color,
+    pub size: (f64, f64),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ScrollInfo {
     pub vertical: bool,
@@ -110,6 +120,7 @@ pub struct Node {
     pub shadow: Option<Shadow>,
     pub glyph: Option<(Glyph, Color)>,
     pub text: Option<TextRun>,
+    pub symbol: Option<SymbolRun>,
     /// Clips all descendants to `bounds` with this corner radius.
     pub clip_radius: Option<f64>,
     /// Effective opacity (already multiplied by ancestors).
@@ -142,6 +153,7 @@ impl Node {
             shadow: None,
             glyph: None,
             text: None,
+            symbol: None,
             clip_radius: None,
             opacity: 1.0,
             role: Role::None,
@@ -164,6 +176,8 @@ pub struct Scene {
     pub size: (f64, f64),
     pub appearance: Appearance,
     pub nodes: Vec<Node>,
+    /// Symbol names the host could not render (placeholders were drawn), sorted, deduplicated.
+    pub unsupported_symbols: Vec<String>,
 }
 
 impl Scene {
