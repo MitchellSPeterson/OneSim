@@ -4,6 +4,8 @@ Same unmodified source (`examples/swiftui-showcase/Showcase.swift`) rendered by:
 - **iOS 26.5 Simulator**, iPhone 17 Pro (Apple's SwiftUI), shots in `tests/fixtures/showcase-ios/`
 - **SimCore** (SimCore's SwiftUI module + Rust renderer, headless), 402×874 @3x
 
+**Pass rule:** every state must be < 2% (see CONTRIBUTING.md). CI enforces it.
+
 Reproduce: `scripts/compare-ios.sh` (needs Python + Pillow). Re-capture iOS references: `scripts/build-ios-sim.sh`, then follow `tests/fixtures/showcase-ios/README.md`.
 
 | state | pixels >10% off | mean abs diff | notes |

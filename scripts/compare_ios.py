@@ -1,8 +1,13 @@
-"""Side-by-side iOS vs SimCore comparison. Usage: compare_ios.py IOS_DIR SIMCORE_DIR OUT_DIR"""
+"""Side-by-side iOS vs SimCore comparison. Usage: compare_ios.py IOS_DIR SIMCORE_DIR OUT_DIR
+
+Pass rule: every state must have < MAX_DIFF % of pixels off by more than ~10%
+(luminance of the per-pixel RGB difference > 24 of 255). Exits 1 if any state fails. Override with SIMCORE_MAX_DIFF."""
+import os
 import sys
 from pathlib import Path
 from PIL import Image, ImageChops, ImageDraw
 
+MAX_DIFF = float(os.environ.get("SIMCORE_MAX_DIFF", "2.0"))
 ios_dir, sc_dir, out = map(Path, sys.argv[1:4])
 rows = []
 for ios_png in sorted(ios_dir.glob("*.png")):
@@ -24,6 +29,11 @@ for ios_png in sorted(ios_dir.glob("*.png")):
         ImageDraw.Draw(sheet).text((i * w + 20, 15), label, fill="black", font_size=36)
     sheet.resize((w * 3 // 3, (h + 60) // 3)).save(out / f"cmp-{ios_png.stem}.png")
     rows.append((ios_png.stem, differing, mean))
-print(f"{'state':<18}{'pixels >10% off':>16}{'mean abs diff':>15}")
+print(f"{'state':<18}{'pixels >10% off':>16}{'mean abs diff':>15}  result (< {MAX_DIFF}% to pass)")
+failed = [name for name, d, _ in rows if d >= MAX_DIFF]
 for name, d, m in rows:
-    print(f"{name:<18}{d:>15.1f}%{m:>15.1f}")
+    print(f"{name:<18}{d:>15.2f}%{m:>15.1f}  {'FAIL' if name in failed else 'pass'}")
+if not rows:
+    sys.exit("no states compared")
+print(f"{len(rows) - len(failed)}/{len(rows)} states pass")
+sys.exit(1 if failed else 0)
