@@ -120,10 +120,15 @@ pub struct SceneParams<'a> {
     /// Node id of the focused text field.
     pub focus: Option<&'a str>,
     pub status_bar: bool,
+    pub chrome: crate::chrome::ChromeParams,
 }
 
 pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
     let (w, h) = params.viewport;
+    // Keyboard avoidance: the keyboard top replaces the bottom safe-area inset.
+    let kb = params.chrome.keyboard && params.focus.is_some();
+    let kb_h = crate::chrome::KB_BASE_H + params.safe_bottom;
+    let safe_bottom = if kb { kb_h } else { params.safe_bottom };
     let mut cx = Ctx {
         fonts,
         dark: params.appearance == Appearance::Dark,
@@ -138,12 +143,12 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     let mut nodes = vec![screen];
     let full_bleed = matches!(root.kind, ViewKind::Navigation { .. } | ViewKind::List { .. } | ViewKind::Scroll { .. });
     if full_bleed {
-        let env = Env { safe_top: params.safe_top, bottom_inset: params.safe_bottom, ..Env::new() };
+        let env = Env { safe_top: params.safe_top, bottom_inset: safe_bottom, ..Env::new() };
         let lay = cx.view(root, Prop { w: Some(w), h: Some(h) }, env);
         flatten(lay, 0.0, 0.0, Some(0), 1.0, &mut nodes);
     } else {
         // Root view is centered in the safe area.
-        let sh = (h - params.safe_top - params.safe_bottom).max(0.0);
+        let sh = (h - params.safe_top - safe_bottom).max(0.0);
         let lay = cx.view(root, Prop { w: Some(w), h: Some(sh) }, Env::new());
         let (x, y) = ((w - lay.size.w) / 2.0, params.safe_top + (sh - lay.size.h) / 2.0);
         flatten(lay, x, y, Some(0), 1.0, &mut nodes);
@@ -151,6 +156,13 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     if params.status_bar {
         let lay = cx.status_bar(w);
         flatten(lay, 0.0, 0.0, Some(0), 1.0, &mut nodes);
+    }
+    let dark = params.appearance == Appearance::Dark;
+    if kb {
+        crate::chrome::keyboard(&mut nodes, w, h, kb_h, dark, params.chrome.shift);
+    }
+    if let Some(isl) = params.chrome.island {
+        crate::chrome::island(&mut nodes, isl);
     }
     Scene { size: params.viewport, appearance: params.appearance, nodes }
 }
@@ -608,7 +620,7 @@ impl Ctx<'_> {
         let mut knob = Node::new(format!("{}#knob", v.id), "knob");
         knob.fill = Some(rgba(255, 255, 255, 1.0));
         knob.radius = PILL;
-        knob.shadow = Some(Shadow { color: Color::rgba(0.0, 0.0, 0.0, 0.18), radius: 2.0, dx: 0.0, dy: 1.0 });
+        knob.shadow = Some(Shadow { color: Color::rgba(0.0, 0.0, 0.0, 0.18), radius: 1.0, dx: 0.0, dy: 1.0 });
         knob.inspect = false;
         let kx = if on { SWITCH.0 - 2.0 - kw } else { 2.0 };
         let kl = Lay::new(Size { w: kw, h: kh }, Some(knob), vec![]);
@@ -850,7 +862,7 @@ impl Ctx<'_> {
             n.label = Some(if b.label.is_empty() { "Back".into() } else { b.label.clone() });
             n.fill = Some(if self.dark { rgba(52, 52, 56, 1.0) } else { rgba(251, 251, 255, 1.0) });
             n.radius = PILL;
-            n.shadow = Some(Shadow { color: Color::rgba(0.0, 0.0, 0.0, 0.14), radius: 10.0, dx: 0.0, dy: 3.0 });
+            n.shadow = Some(Shadow { color: Color::rgba(0.0, 0.0, 0.0, 0.10), radius: 18.0, dx: 0.0, dy: 8.0 });
             n.glyph = Some((Glyph::BackChevron, self.semantic(Semantic::Primary)));
             bar_kids.push((16.0, 0.0, Lay::new(Size { w: 44.0, h: 44.0 }, Some(n), vec![])));
         }
@@ -1021,6 +1033,7 @@ mod tests {
             scroll,
             focus,
             status_bar: safe.0 > 0.0,
+            chrome: Default::default(),
         };
         layout(&v, &params, &mut Fonts::new())
     }
@@ -1151,6 +1164,7 @@ mod tests {
                 scroll: &HashMap::new(),
                 focus: None,
                 status_bar: true,
+                chrome: Default::default(),
             },
             &mut Fonts::new(),
         );

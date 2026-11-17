@@ -42,6 +42,8 @@ pub enum Role {
     Toggle,
     TextField,
     Stepper,
+    /// Software keyboard key (chrome).
+    Key,
 }
 
 impl Role {
@@ -54,6 +56,7 @@ impl Role {
             Role::Toggle => "toggle",
             Role::TextField => "textfield",
             Role::Stepper => "stepper",
+            Role::Key => "key",
         }
     }
 }
@@ -86,6 +89,13 @@ pub enum Glyph {
     Wifi,
     SignalDots,
     Battery,
+    // Software keyboard icons, drawn by `chrome`.
+    Shift,
+    ShiftFilled,
+    Backspace,
+    Return,
+    Emoji,
+    Mic,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -171,7 +181,7 @@ impl Scene {
     pub fn hit_test(&self, x: f64, y: f64) -> Option<usize> {
         (0..self.nodes.len()).rev().find(|&i| {
             let n = &self.nodes[i];
-            (n.action.is_some() || n.field.is_some()) && n.bounds.contains(x, y) && self.clipped_in(i, x, y)
+            (n.action.is_some() || n.field.is_some() || n.role == Role::Key) && n.bounds.contains(x, y) && self.clipped_in(i, x, y)
         })
     }
 

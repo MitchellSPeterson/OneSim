@@ -105,10 +105,15 @@ fn resolve_label(tree: &UiNode, spec: &str) -> Result<(f64, f64)> {
             return Ok(center(b));
         }
     }
-    let n = find(tree, &|n| {
-        matches!(n.role.as_deref(), Some("button" | "toggle" | "textfield")) && n.label.as_deref() == Some(spec)
-    })
-    .with_context(|| format!("no button, toggle or text field labelled {spec:?}"))?;
+    // Software keyboard keys (`h`, `space`, `delete`, `shift`, `return`, `123`) win when it is up.
+    let key = find(tree, &|n| n.role.as_deref() == Some("key") && n.label.as_deref().is_some_and(|l| l.eq_ignore_ascii_case(spec)));
+    let n = match key {
+        Some(k) => k,
+        None => find(tree, &|n| {
+            matches!(n.role.as_deref(), Some("button" | "toggle" | "textfield")) && n.label.as_deref() == Some(spec)
+        })
+        .with_context(|| format!("no button, toggle, text field or key labelled {spec:?}"))?,
+    };
     Ok(center(n))
 }
 

@@ -6,11 +6,13 @@
 pub mod layout {
     pub mod swiftui;
 }
+mod chrome;
 mod raster;
 mod scene;
 mod text;
 
 pub use raster::{render, render_png};
+pub use chrome::{autocap, ChromeParams};
 pub use layout::swiftui::SceneParams;
 pub use scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, Shadow, TextRun};
 pub use text::{tracking_em, FontSpec, Fonts, TextAlign};

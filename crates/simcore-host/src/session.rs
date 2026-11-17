@@ -77,6 +77,8 @@ pub struct Device {
     pub scale: f64,
     pub safe_top: f64,
     pub safe_bottom: f64,
+    /// Dynamic Island `(x, y, w, h)`.
+    pub island: Option<(f64, f64, f64, f64)>,
 }
 
 pub const DEFAULT_DEVICE: &str = "iphone-17-pro";
@@ -86,6 +88,8 @@ pub const DEVICES: &[Device] = &[Device {
     scale: 3.0,
     safe_top: 62.0,
     safe_bottom: 34.0,
+    // Measured from simulator screenshots: x 138.3..263.7, y 14..50.7.
+    island: Some((138.4, 13.92, 125.2, 36.83)),
 }];
 
 pub fn device(name: &str) -> Option<&'static Device> {
@@ -103,6 +107,8 @@ pub struct Session {
     pub scroll: HashMap<String, (f64, f64)>,
     /// Node id of the focused text field.
     pub focus: Option<String>,
+    /// Software keyboard shift state. Key taps and focus update it; `send_keyboard_event` does not.
+    pub shift: bool,
     state: State,
     child: Option<Child>,
     stdin: Option<ChildStdin>,
@@ -150,6 +156,7 @@ impl Session {
             appearance: p.appearance.unwrap_or(Appearance::Light),
             scroll: HashMap::new(),
             focus: None,
+            shift: false,
             params: p,
             state: State::Created,
             child: None,
