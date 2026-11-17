@@ -2,14 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>SimCore Web</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #1c1c1e; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1c1c1e; }
   body { display: flex; align-items: center; justify-content: center; }
-  /* 402x874 points: the iphone-17-pro profile. */
-  canvas { height: min(874px, 100vh); aspect-ratio: 402 / 874; touch-action: manipulation; cursor: pointer; }
-  #err { color: #ff6961; font: 14px monospace; white-space: pre-wrap; padding: 1em; }
+  /* main.js sizes the canvas to fit the window (aspect ratio kept, render resolution = CSS px x devicePixelRatio). */
+  canvas { touch-action: none; cursor: pointer; user-select: none; -webkit-user-select: none; }
+  #err { color: #ff6961; font: 14px monospace; white-space: pre-wrap; padding: 1em; position: fixed; left: 0; top: 0; }
 </style>
 </head>
 <body>

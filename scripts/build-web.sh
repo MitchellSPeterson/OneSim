@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage: build-web.sh <app_path> [root_view]
 # Builds a SwiftUI app + SimCore's SwiftUI module + the Rust renderer into ONE Wasm module and
-# assembles a static site in target/web/ (index.html, main.js, app.wasm). See docs/web.md.
+# assembles a static site in target/web/ (index.html, main.js, simcore.js, app.wasm). See docs/web.md.
 set -euo pipefail
 [ $# -ge 1 ] || { echo "usage: $0 <app_path> [root_view]" >&2; exit 2; }
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -76,8 +76,10 @@ elif grep -qs '^[[:space:]]*@main' "${SRCS[@]}"; then PAL=(-parse-as-library); f
 
 # 6. Link ONE reactor module: Swift (main = register app, returns) + Rust (exports for JS).
 echo "swift: app + link"
-EXPORTS=(simcore_web_init simcore_web_set_dark simcore_web_pointer simcore_web_fb_ptr simcore_web_fb_len
-         simcore_web_fb_width simcore_web_fb_height simcore_web_tree_ptr simcore_web_tree_len)
+EXPORTS=(simcore_web_init simcore_web_set_dark simcore_web_set_viewport simcore_web_set_scale
+         simcore_web_pointer simcore_web_scroll simcore_web_key simcore_web_focused simcore_web_buf simcore_web_buf_len
+         simcore_web_inspect simcore_web_find simcore_web_fb_ptr simcore_web_fb_len simcore_web_fb_width
+         simcore_web_fb_height simcore_web_tree_ptr simcore_web_tree_len)
 XL=(); for e in "${EXPORTS[@]}"; do XL+=(-Xlinker "--export=$e"); done
 run "$SWIFTC" "${SW[@]}" -Osize ${PAL[@]+"${PAL[@]}"} -module-name SimCoreApp -I "$CACHE" -I "$FW/SimCoreBridge" \
   "${SRCS[@]}" ${EXTRA[@]+"${EXTRA[@]}"} "$CACHE/SwiftUI.o" "$LIB" \
@@ -88,10 +90,15 @@ run "$SWIFTC" "${SW[@]}" -Osize ${PAL[@]+"${PAL[@]}"} -module-name SimCoreApp -I
 
 if command -v wasm-opt >/dev/null; then
   echo "wasm-opt -Oz"
-  run wasm-opt -Oz --enable-bulk-memory --enable-sign-ext --enable-mutable-globals --enable-nontrapping-float-to-int \
-    --enable-simd --enable-reference-types --enable-multivalue "$OUT/app.wasm" -o "$OUT/app.wasm"
+  # Optimisation is optional: if this wasm-opt rejects the flags or the module, keep the unoptimised build.
+  if wasm-opt -Oz --enable-bulk-memory --enable-sign-ext --enable-mutable-globals --enable-nontrapping-float-to-int \
+      --enable-simd --enable-reference-types --enable-multivalue "$OUT/app.wasm" -o "$OUT/app.opt.wasm" >>"$LOG" 2>&1; then
+    mv "$OUT/app.opt.wasm" "$OUT/app.wasm"
+  else
+    rm -f "$OUT/app.opt.wasm"; echo "note: wasm-opt failed - keeping the unoptimised module (see below)"; tail -5 "$LOG"
+  fi
 else
   echo "note: wasm-opt not found (brew install binaryen) - skipping size optimization"
 fi
-cp "$ROOT/web/index.html" "$ROOT/web/main.js" "$OUT/"
+cp "$ROOT/web/index.html" "$ROOT/web/main.js" "$ROOT/web/simcore.js" "$OUT/"
 echo "built $OUT ($(wc -c < "$OUT/app.wasm" | tr -d ' ') bytes app.wasm)"

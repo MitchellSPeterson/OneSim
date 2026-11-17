@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 simcore-protocol = { path = "../simcore-protocol" }
+simcore-render = { path = "../simcore-render" }
 simcore-host = { path = "../simcore-host" }
 serde_json.workspace = true
 clap = { version = "4.6", features = ["derive"] }

@@ -1874,6 +1874,7 @@ dependencies = [
  "serde_json",
  "simcore-host",
  "simcore-protocol",
+ "simcore-render",
 ]
 
 [[package]]

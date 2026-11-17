@@ -86,35 +86,8 @@ fn steps(m: &ArgMatches) -> Vec<Step> {
     all.into_iter().map(|(_, s)| s).collect()
 }
 
-fn find<'a>(n: &'a UiNode, pred: &dyn Fn(&UiNode) -> bool) -> Option<&'a UiNode> {
-    if pred(n) {
-        return Some(n);
-    }
-    n.children.iter().find_map(|c| find(c, pred))
-}
-
-/// Point to click for a label. Syntax: `Label` (button / toggle switch / text field placeholder),
-/// `Label#increment` or `Label#decrement` (stepper whose label is `Label`).
 fn resolve_label(tree: &UiNode, spec: &str) -> Result<(f64, f64)> {
-    let center = |n: &UiNode| (n.frame.x + n.frame.width / 2.0, n.frame.y + n.frame.height / 2.0);
-    if let Some((label, part)) = spec.rsplit_once('#') {
-        if matches!(part, "increment" | "decrement") {
-            let st = find(tree, &|n| n.role.as_deref() == Some("stepper") && n.label.as_deref() == Some(label))
-                .with_context(|| format!("no stepper labelled {label:?}"))?;
-            let b = find(st, &|n| n.id.ends_with(&format!("#{part}"))).context("stepper half not found")?;
-            return Ok(center(b));
-        }
-    }
-    // Software keyboard keys (`h`, `space`, `delete`, `shift`, `return`, `123`) win when it is up.
-    let key = find(tree, &|n| n.role.as_deref() == Some("key") && n.label.as_deref().is_some_and(|l| l.eq_ignore_ascii_case(spec)));
-    let n = match key {
-        Some(k) => k,
-        None => find(tree, &|n| {
-            matches!(n.role.as_deref(), Some("button" | "toggle" | "textfield")) && n.label.as_deref() == Some(spec)
-        })
-        .with_context(|| format!("no button, toggle, text field or key labelled {spec:?}"))?,
-    };
-    Ok(center(n))
+    simcore_render::resolve_label(tree, spec).map_err(anyhow::Error::msg)
 }
 
 fn parse_nums<const N: usize>(s: &str) -> Option<[f64; N]> {

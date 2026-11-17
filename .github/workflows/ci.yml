@@ -46,3 +46,58 @@ jobs:
         with:
           name: ios-comparison
           path: target/compare/
+
+  web:
+    # Browser (Wasm) backend: build the counter and the showcase, run the Node harness, and gate
+    # pixel parity against the native fallback render. Every step fails the job on error.
+    runs-on: macos-latest
+    env:
+      SWIFT_VERSION: 6.4.2
+      SWIFT_WASM_SHA256: 83baca83553f8c443cda7b84800912e6e709c3acd2e7ebf277794ca5836c0da5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Cache Swift toolchain and Wasm SDK downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/swift-downloads
+          key: swift-${{ env.SWIFT_VERSION }}-wasm-downloads
+      - name: Install swift.org toolchain and Wasm SDK
+        run: |
+          set -euo pipefail
+          mkdir -p ~/swift-downloads && cd ~/swift-downloads
+          pkg="swift-$SWIFT_VERSION-RELEASE-osx.pkg"
+          sdk="swift-${SWIFT_VERSION}-RELEASE_wasm.artifactbundle.tar.gz"
+          [ -f "$pkg" ] || curl -fsSL --retry 3 -o "$pkg" "https://download.swift.org/swift-$SWIFT_VERSION-release/xcode/swift-$SWIFT_VERSION-RELEASE/$pkg"
+          [ -f "$sdk" ] || curl -fsSL --retry 3 -o "$sdk" "https://download.swift.org/swift-$SWIFT_VERSION-release/wasm-sdk/swift-$SWIFT_VERSION-RELEASE/$sdk"
+          installer -pkg "$pkg" -target CurrentUserHomeDirectory
+          export PATH="$HOME/Library/Developer/Toolchains/swift-$SWIFT_VERSION-RELEASE.xctoolchain/usr/bin:$PATH"
+          swift --version
+          swift sdk install "$PWD/$sdk" --checksum "$SWIFT_WASM_SHA256"
+          swift sdk list
+      - name: Optional wasm-opt (binaryen); the build skips optimisation if absent
+        run: brew install binaryen || echo "::warning::binaryen unavailable; app.wasm will not be optimised"
+      - name: Build web, counter (root view) + Node harness
+        run: |
+          scripts/build-web.sh examples/swiftui-counter CounterView
+          node web/test/run.mjs --suite counter
+      - name: Build web, showcase (@main App, no root view) + Node harness
+        run: |
+          scripts/build-web.sh examples/swiftui-showcase
+          node web/test/run.mjs --suite showcase
+      - name: Web vs native pixel parity (every state < 2%)
+        run: |
+          python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
+          scripts/compare-web.sh
+      - name: Upload web comparison sheets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-comparison
+          path: target/compare-web/

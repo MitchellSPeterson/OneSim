@@ -3,7 +3,7 @@
 use simcore_protocol::{
     ApiError, Appearance, CreateSessionParams, ErrorCode, GuestMessage, HostMessage, SessionError, Viewport, ViewNode,
 };
-use std::collections::HashMap;
+use simcore_render::{Effect, Interaction};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -103,18 +103,12 @@ pub struct Session {
     pub viewport: Viewport,
     pub scale: f64,
     pub appearance: Appearance,
-    /// Scroll offsets by node id; survive across trees.
-    pub scroll: HashMap<String, (f64, f64)>,
-    /// Node id of the focused text field.
-    pub focus: Option<String>,
-    /// Software keyboard shift state. Key taps and focus update it; `send_keyboard_event` does not.
-    pub shift: bool,
+    /// Scroll, focus, shift and press state (shared with the browser backend).
+    pub inter: Interaction,
     state: State,
     child: Option<Child>,
     stdin: Option<ChildStdin>,
     shared: Arc<Shared>,
-    /// Node id under the pointer between `down` and `up`.
-    pub pressed: Option<String>,
 }
 
 impl Drop for Session {
@@ -154,15 +148,12 @@ impl Session {
             viewport: p.viewport.unwrap_or(dev.viewport),
             scale: p.scale.unwrap_or(dev.scale),
             appearance: p.appearance.unwrap_or(Appearance::Light),
-            scroll: HashMap::new(),
-            focus: None,
-            shift: false,
+            inter: Interaction::default(),
             params: p,
             state: State::Created,
             child: None,
             stdin: None,
             shared: Arc::default(),
-            pressed: None,
         }
     }
 
@@ -348,6 +339,17 @@ impl Session {
         w.write_all(line.as_bytes())
             .and_then(|_| w.flush())
             .map_err(|e| err(ErrorCode::RuntimeError, format!("guest pipe closed: {e}")))
+    }
+
+    /// Deliver an interaction effect to the guest (no-op for `None`/`Redraw`).
+    pub fn send_effect(&mut self, e: Effect) -> Result<(), ApiError> {
+        match e {
+            Effect::Action { id, version } => self.send_and_wait_tree(&HostMessage::Action { id, version }).map(drop),
+            Effect::TextInput { field, version, text } => {
+                self.send_and_wait_tree(&HostMessage::TextInput { field, version, text }).map(drop)
+            }
+            Effect::None | Effect::Redraw => Ok(()),
+        }
     }
 
     /// Send `msg`, then wait up to `ACTION_TIMEOUT` for the guest's next tree.

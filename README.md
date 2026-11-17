@@ -21,8 +21,11 @@ Your app compiles with `swiftc` against SimCore's own `SwiftUI` module, which sh
 The same unmodified SwiftUI source runs in a browser tab. The app and SimCore's SwiftUI module compile to WebAssembly together with the Rust renderer into one module, which draws to a `<canvas>` and needs only a static file server. Setup: [docs/web.md](docs/web.md).
 
 ```sh
-scripts/build-web.sh examples/swiftui-counter CounterView && python3 -m http.server -d target/web 8000
+scripts/build-web.sh examples/swiftui-showcase && python3 -m http.server -d target/web 8000   # or: ... swiftui-counter CounterView
+node web/test/run.mjs --suite showcase   # headless check; scripts/compare-web.sh = pixel parity vs native
 ```
+
+It is the full app, not a screenshot: pointer, wheel/drag scrolling, text fields with the on-canvas keyboard (and your physical keyboard), `@main App`, `?device=`/`?width=&height=&scale=`/`?dark=1`.
 
 ## Requirements
 
