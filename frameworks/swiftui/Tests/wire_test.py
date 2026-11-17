@@ -95,7 +95,7 @@ assert r["kind"] == "navigation" and r["title"] == "Showcase" and "back" not in 
 lst = r["content"]; assert lst["kind"] == "list"
 assert [s.get("header") for s in lst["sections"]] == ["Screens", "Summary"]
 links = lst["sections"][0]["rows"]
-assert len(links) == 5 and all(l["kind"] == "button" and l["style"] == "navigationLink" for l in links)
+assert len(links) == 6 and all(l["kind"] == "button" and l["style"] == "navigationLink" for l in links)
 assert "1" in alltexts(lst["sections"][1]["rows"][0])
 t = act(p, t, button(t, "Todos")["action"])
 assert title(t) == "Todos" and t["root"]["back"]["label"] == "Showcase", t["root"]
@@ -158,6 +158,16 @@ assert {"font": {"size": 28.0, "weight": "bold"}} in imgs[3]["modifiers"], imgs[
 chev = next(m for m in walk(secs[2]["rows"][0]) if m.get("kind") == "image" and m["systemName"] == "chevron.right")
 assert {"font": {"style": "footnote", "weight": "semibold"}} in chev["modifiers"], chev
 t = act(p, t, t["root"]["back"]["action"])
+# Glass: .glassEffect(...) variants/shapes/tint and glass button styles reach the wire (protocol F)
+t = act(p, t, button(t, "Glass")["action"]); assert title(t) == "Glass"
+gl = [(m["modifiers"][-1]["glass"], m) for m in walk(t["root"]) if any("glass" in x for x in (m.get("modifiers") or []))]
+assert [g["shape"] for g, _ in gl] == [{"shape": "capsule"}, {"shape": "circle"}, {"shape": "circle"}, {"shape": "circle"}, {"shape": "rect", "cornerRadius": 20.0}], gl
+assert [g["variant"] for g, _ in gl] == ["regular", "regular", "regular", "clear", "regular"], gl
+tint = gl[2][0]["tint"]; assert tint["r"] == 1.0 and tint["g"] < 0.3, tint
+assert "tint" not in gl[1][0] and "interactive" not in gl[1][0]
+assert [b["style"] for b in walk(t["root"]) if b.get("kind") == "button" and b["style"].startswith("glass")] == ["glass", "glassProminent"]
+t = act(p, t, button(t, "Glass 0")["action"]); assert "Glass 1" in alltexts(t["root"])
+t = act(p, t, t["root"]["back"]["action"]); assert title(t) == "Showcase"
 # push/pop cycles: memory stays bounded
 for i in range(300):
     t = act(p, t, button(t, "Shapes")["action"]); assert title(t) == "Shapes"

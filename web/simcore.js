@@ -1,5 +1,7 @@
 // SimCore driver shared by the browser (main.js) and Node (test/run.mjs): a minimal WASI shim and a
 // typed wrapper over the `simcore_web_*` exports of app.wasm. No DOM, no Node APIs.
+const DYNAMIC_TYPE = ["xSmall", "small", "medium", "large", "xLarge", "xxLarge", "xxxLarge", "accessibility1", "accessibility2", "accessibility3", "accessibility4", "accessibility5"];
+
 export const DEVICES = { "iphone-17-pro": { width: 402, height: 874, scale: 3 } };
 export const DEFAULT_DEVICE = "iphone-17-pro";
 
@@ -60,10 +62,18 @@ export class SimCore {
   get mem() { return this.wasm.memory.buffer; }
 
   /** Start the app: viewport in points, scale = device pixels per point. Renders the first frame. */
-  init({ width = 402, height = 874, scale = 3, dark = false } = {}) {
+  init({ width = 402, height = 874, scale = 3, dark = false, dynamicType = "large" } = {}) {
     Object.assign(this, { width, height, scale });
+    this.setDynamicType(dynamicType);
     if (this.wasm.simcore_web_init(width, height, scale, dark ? 1 : 0) !== 0) throw new Error("simcore_web_init failed");
     return this;
+  }
+
+  /** Dynamic Type size: xSmall ... large (default) ... xxxLarge, accessibility1 ... accessibility5. */
+  setDynamicType(size) {
+    const i = DYNAMIC_TYPE.indexOf(size);
+    if (i < 0) throw new Error(`unknown dynamic type size ${size}`);
+    return this.wasm.simcore_web_set_dynamic_type(i) === 0;
   }
 
   // Scratch buffer in Wasm memory for strings in and JSON/results out.

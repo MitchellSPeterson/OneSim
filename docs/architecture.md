@@ -23,7 +23,7 @@ app process (one per session)
 | State registry, view identity, action table | Swift module | State is tied to Swift values/closures. |
 | Normalized view tree | Swift → JSON | Framework-specific but language-neutral. |
 | Layout | `simcore-render::layout::swiftui` | Proposal-based SwiftUI semantics. Compose/RN will add their own layout modules (RN: Yoga) emitting the same Scene. |
-| Scene, raster, hit test, inspection | `simcore-render` | Framework-neutral; shared by every future framework. |
+| Scene, raster, hit test, inspection | `simcore-render` | Framework-neutral; shared by every future framework. Liquid Glass is a backdrop effect in `glass.rs` (CPU, deterministic, wasm-safe); nodes are in paint order so a glass node reads the pixels already drawn. |
 | Sessions, isolation, external API | `simcore-host` / `simcore-cli` | Process per session: a guest crash marks that session `crashed` only. |
 
 ## Choices

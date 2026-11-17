@@ -18,6 +18,57 @@ pub enum Appearance {
     Dark,
 }
 
+/// iOS Dynamic Type size (`UIContentSizeCategory`); `Large` is the default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum DynamicTypeSize {
+    #[serde(rename = "xSmall")]
+    XSmall,
+    #[serde(rename = "small")]
+    Small,
+    #[serde(rename = "medium")]
+    Medium,
+    #[default]
+    #[serde(rename = "large")]
+    Large,
+    #[serde(rename = "xLarge")]
+    XLarge,
+    #[serde(rename = "xxLarge")]
+    XxLarge,
+    #[serde(rename = "xxxLarge")]
+    XxxLarge,
+    #[serde(rename = "accessibility1")]
+    Accessibility1,
+    #[serde(rename = "accessibility2")]
+    Accessibility2,
+    #[serde(rename = "accessibility3")]
+    Accessibility3,
+    #[serde(rename = "accessibility4")]
+    Accessibility4,
+    #[serde(rename = "accessibility5")]
+    Accessibility5,
+}
+
+impl DynamicTypeSize {
+    pub const ALL: [DynamicTypeSize; 12] = [
+        Self::XSmall, Self::Small, Self::Medium, Self::Large, Self::XLarge, Self::XxLarge, Self::XxxLarge,
+        Self::Accessibility1, Self::Accessibility2, Self::Accessibility3, Self::Accessibility4, Self::Accessibility5,
+    ];
+    /// Column in Apple's Dynamic Type size table (0 = xSmall ... 11 = accessibility5).
+    pub fn index(self) -> usize {
+        Self::ALL.iter().position(|s| *s == self).unwrap_or(3)
+    }
+    pub fn from_index(i: usize) -> Self {
+        Self::ALL.get(i).copied().unwrap_or_default()
+    }
+    /// Wire/CLI spelling, e.g. `accessibility3`.
+    pub fn name(self) -> String {
+        serde_json::to_value(self).ok().and_then(|v| v.as_str().map(str::to_string)).unwrap_or_default()
+    }
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|d| d.name().eq_ignore_ascii_case(s))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Viewport {
     pub width: f64,
@@ -30,13 +81,31 @@ pub enum HostMessage {
     Action { id: u64, version: u64 },
     #[serde(rename = "text_input")]
     TextInput { field: u64, version: u64, text: String },
-    Environment { appearance: Appearance, viewport: Viewport },
+    Environment {
+        appearance: Appearance,
+        viewport: Viewport,
+        /// Omitted at the default size (`large`).
+        #[serde(default, rename = "dynamicTypeSize", skip_serializing_if = "Option::is_none")]
+        dynamic_type_size: Option<DynamicTypeSize>,
+    },
     Shutdown,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dynamic_type_sizes() {
+        use crate::view::TextStyle;
+        let d = DynamicTypeSize::parse("accessibility5").unwrap();
+        assert_eq!(d.index(), 11);
+        assert_eq!(serde_json::to_string(&d).unwrap(), "\"accessibility5\"");
+        assert_eq!(DynamicTypeSize::parse("xxLarge"), Some(DynamicTypeSize::XxLarge));
+        assert_eq!(DynamicTypeSize::default(), DynamicTypeSize::Large);
+        assert_eq!((TextStyle::Body.size_at(DynamicTypeSize::Large), TextStyle::LargeTitle.size_at(DynamicTypeSize::Large)), (17.0, 34.0));
+        assert_eq!((TextStyle::Body.size_at(d), TextStyle::LargeTitle.size_at(d), TextStyle::Caption.size_at(d)), (53.0, 60.0, 43.0));
+    }
 
     #[test]
     fn round_trips() {
@@ -52,6 +121,7 @@ mod tests {
         let h = HostMessage::Environment {
             appearance: Appearance::Dark,
             viewport: Viewport { width: 393.0, height: 852.0 },
+            dynamic_type_size: None,
         };
         assert_eq!(
             serde_json::to_string(&h).unwrap(),

@@ -49,7 +49,7 @@ Needs several GB free during the toolchain install. The script finds the toolcha
   (`resolve_label`, the CLI's `--click LABEL`) lives next to it.
 - **JS exports** (small, scratch-buffer based for strings): `simcore_web_pointer(kind,x,y)` (0 down, 1 up,
   2 click; points), `simcore_web_scroll(x,y,dx,dy)`, `simcore_web_key(kind,len)` (text / `backspace` / `enter`
-  from the scratch buffer; only while a field is focused), `set_viewport`, `set_dark`, `set_scale`, `focused`,
+  from the scratch buffer; only while a field is focused), `set_viewport`, `set_dark`, `set_dynamic_type` (index into the 12 Dynamic Type sizes), `set_scale`, `focused`,
   `inspect`, `find`, and `fb_ptr/len/width/height`. `web/simcore.js` wraps them (shared by browser and Node).
 - **Input (main.js).** Pointer events map CSS px to points; moving more than 8 px turns a press into a
   drag-scroll; `wheel` deltaY > 0 reveals later content; `keydown` types printable keys, Backspace, Enter while a

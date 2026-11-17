@@ -39,6 +39,7 @@ fn main() {
                 safe_bottom: 34.0,
                 scale: 3.0,
                 appearance: a,
+                dynamic_type: Default::default(),
                 scroll: &scroll,
                 focus: focus.as_deref(),
                 status_bar: true,

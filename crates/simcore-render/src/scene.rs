@@ -128,6 +128,10 @@ pub struct Node {
     /// Stroke centred on the node's outline.
     pub stroke: Option<(Color, f64)>,
     pub shadow: Option<Shadow>,
+    /// Liquid Glass backdrop effect painted before this node's own fill and content.
+    pub glass: Option<crate::glass::GlassSpec>,
+    /// iOS 26 scroll-edge effect over `bounds` (progressive blur + fade of content scrolled under bars).
+    pub edge: Option<crate::glass::ScrollEdge>,
     pub glyph: Option<(Glyph, Color)>,
     pub text: Option<TextRun>,
     pub symbol: Option<SymbolRun>,
@@ -161,6 +165,8 @@ impl Node {
             radius: 0.0,
             stroke: None,
             shadow: None,
+            glass: None,
+            edge: None,
             glyph: None,
             text: None,
             symbol: None,
@@ -193,8 +199,23 @@ pub struct Scene {
 impl Scene {
     /// Topmost node with an action under the point (points, respecting clips).
     pub fn hit_test(&self, x: f64, y: f64) -> Option<usize> {
+        // Content scrolled under the navigation bar / status bar is not tappable there.
+        let bar = self.nodes.iter().position(|n| n.kind == "navbar");
+        let bar_bottom = bar.map_or(0.0, |b| self.nodes[b].bounds.y + self.nodes[b].bounds.h);
+        let under_bar = |mut i: usize| {
+            while let Some(p) = self.nodes[i].parent {
+                if Some(p) == bar {
+                    return false;
+                }
+                i = p;
+            }
+            true
+        };
         (0..self.nodes.len()).rev().find(|&i| {
             let n = &self.nodes[i];
+            if y < bar_bottom && under_bar(i) && n.kind != "keyboard" && n.role != Role::Key {
+                return false;
+            }
             (n.action.is_some() || n.field.is_some() || n.role == Role::Key) && n.bounds.contains(x, y) && self.clipped_in(i, x, y)
         })
     }
@@ -221,6 +242,10 @@ impl Scene {
 
     /// Innermost scroll container under the point.
     pub fn scroll_target(&self, x: f64, y: f64) -> Option<usize> {
+        // Scrollers span the screen (content scrolls under the bars), but the status bar is inert.
+        if self.nodes.iter().any(|n| n.kind == "navbar" && y < n.bounds.y) {
+            return None;
+        }
         (0..self.nodes.len()).rev().find(|&i| {
             let n = &self.nodes[i];
             n.scroll.is_some() && n.bounds.contains(x, y) && self.clipped_in(i, x, y)

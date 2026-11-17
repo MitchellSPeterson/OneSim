@@ -126,7 +126,11 @@ impl Host {
 
     fn push_env(s: &mut Session) -> Result<(), ApiError> {
         if s.state() == State::Running {
-            let m = HostMessage::Environment { appearance: s.appearance, viewport: s.viewport };
+            let m = HostMessage::Environment {
+                appearance: s.appearance,
+                viewport: s.viewport,
+                dynamic_type_size: (s.dynamic_type != DynamicTypeSize::Large).then_some(s.dynamic_type),
+            };
             s.send_and_wait_tree(&m)?;
         }
         Ok(())
@@ -144,6 +148,7 @@ impl Host {
             safe_bottom: s.device.safe_bottom,
             scale: s.scale,
             appearance: s.appearance,
+            dynamic_type: s.dynamic_type,
             scroll: &s.inter.scroll,
             focus: s.inter.focus.as_deref(),
             status_bar: true,

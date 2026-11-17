@@ -5,7 +5,7 @@
 //! JS drives it through the `simcore_web_*` exports at the bottom; input goes through
 //! `simcore_render::Interaction` (the same state machine as the native host) and its effects
 //! call the Swift callbacks directly.
-use simcore_protocol::{Appearance, KeyboardEvent, PointerEvent, PointerKind, ViewNode};
+use simcore_protocol::{Appearance, DynamicTypeSize, KeyboardEvent, PointerEvent, PointerKind, ViewNode};
 use simcore_render::{build_scene, render, resolve_label, Effect, Fonts, Interaction, Scene, SceneParams};
 use std::cell::RefCell;
 use std::ffi::{c_char, c_void, CStr, CString};
@@ -30,6 +30,7 @@ struct State {
     viewport: (f64, f64),
     scale: f64,
     dark: bool,
+    dynamic_type: DynamicTypeSize,
     inter: Interaction,
     /// Set before a guest callback; a tree submit clears it by drawing.
     stale: bool,
@@ -44,7 +45,7 @@ thread_local! {
     // ponytail: thread-local state; protocol says single-threaded.
     static STATE: RefCell<State> = RefCell::new(State {
         ctx: 0, on_action: None, on_env: None, on_text: None, version: None, tree: None, scene: None,
-        fonts: None, viewport: (402.0, 874.0), scale: 3.0, dark: false, inter: Interaction::default(),
+        fonts: None, viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, inter: Interaction::default(),
         stale: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), buf: Vec::new(),
     });
     static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
@@ -64,6 +65,7 @@ fn draw(s: &mut State) {
         safe_bottom: SAFE.1,
         scale: s.scale,
         appearance: if s.dark { Appearance::Dark } else { Appearance::Light },
+        dynamic_type: s.dynamic_type,
         scroll: &s.inter.scroll,
         focus: s.inter.focus.as_deref(),
         status_bar: true,
@@ -195,6 +197,14 @@ fn push_environment() -> i32 {
 pub extern "C" fn simcore_web_set_dark(dark: i32) -> i32 {
     with(|s| s.dark = dark != 0);
     push_environment()
+}
+
+/// Dynamic Type size as an index into `DynamicTypeSize::ALL` (0 = xSmall, 3 = large, 11 = accessibility5).
+#[no_mangle]
+pub extern "C" fn simcore_web_set_dynamic_type(index: i32) -> i32 {
+    with(|s| s.dynamic_type = DynamicTypeSize::from_index(index.max(0) as usize));
+    // Before `init` there is no guest yet; the size is picked up by the first render.
+    if with(|s| s.on_env.is_some()) { push_environment() } else { 0 }
 }
 
 #[no_mangle]

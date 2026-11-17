@@ -1,6 +1,6 @@
 //! External API (client <-> host) request/response types.
 
-use crate::wire::{Appearance, Viewport};
+use crate::wire::{Appearance, DynamicTypeSize, Viewport};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -82,6 +82,9 @@ pub struct CreateSessionParams {
     pub scale: Option<f64>,
     #[serde(default)]
     pub appearance: Option<Appearance>,
+    /// Dynamic Type size (default `large`).
+    #[serde(default, alias = "dynamicTypeSize")]
+    pub dynamic_type_size: Option<DynamicTypeSize>,
     /// Device profile name (default `iphone-17-pro`).
     #[serde(default)]
     pub device: Option<String>,

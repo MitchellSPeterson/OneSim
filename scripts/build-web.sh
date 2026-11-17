@@ -76,7 +76,7 @@ elif grep -qs '^[[:space:]]*@main' "${SRCS[@]}"; then PAL=(-parse-as-library); f
 
 # 6. Link ONE reactor module: Swift (main = register app, returns) + Rust (exports for JS).
 echo "swift: app + link"
-EXPORTS=(simcore_web_init simcore_web_set_dark simcore_web_set_viewport simcore_web_set_scale
+EXPORTS=(simcore_web_init simcore_web_set_dark simcore_web_set_dynamic_type simcore_web_set_viewport simcore_web_set_scale
          simcore_web_pointer simcore_web_scroll simcore_web_key simcore_web_focused simcore_web_buf simcore_web_buf_len
          simcore_web_inspect simcore_web_find simcore_web_fb_ptr simcore_web_fb_len simcore_web_fb_width
          simcore_web_fb_height simcore_web_tree_ptr simcore_web_tree_len)

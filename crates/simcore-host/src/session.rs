@@ -1,7 +1,7 @@
 //! One guest OS process and everything we know about it.
 
 use simcore_protocol::{
-    ApiError, Appearance, CreateSessionParams, ErrorCode, GuestMessage, HostMessage, SessionError, Viewport, ViewNode,
+    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, GuestMessage, HostMessage, SessionError, Viewport, ViewNode,
 };
 use simcore_render::{Effect, Interaction};
 use std::io::{BufRead, BufReader, Write};
@@ -103,6 +103,7 @@ pub struct Session {
     pub viewport: Viewport,
     pub scale: f64,
     pub appearance: Appearance,
+    pub dynamic_type: DynamicTypeSize,
     /// Scroll, focus, shift and press state (shared with the browser backend).
     pub inter: Interaction,
     state: State,
@@ -148,6 +149,7 @@ impl Session {
             viewport: p.viewport.unwrap_or(dev.viewport),
             scale: p.scale.unwrap_or(dev.scale),
             appearance: p.appearance.unwrap_or(Appearance::Light),
+            dynamic_type: p.dynamic_type_size.unwrap_or_default(),
             inter: Interaction::default(),
             params: p,
             state: State::Created,
@@ -290,6 +292,7 @@ impl Session {
         let mut child = Command::new(exe)
             .env("SIMCORE_SESSION_ID", &self.id)
             .env("SIMCORE_VIEWPORT", format!("{}x{}", self.viewport.width, self.viewport.height))
+            .env("SIMCORE_DYNAMIC_TYPE", self.dynamic_type.name())
             .env("SIMCORE_APPEARANCE", if self.appearance == Appearance::Dark { "dark" } else { "light" })
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

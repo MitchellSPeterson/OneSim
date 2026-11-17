@@ -10,7 +10,7 @@ use crate::scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, Shadow, Sy
 use crate::symbols::{self, SymbolSpec};
 use crate::text::{FontSpec, Fonts, TextAlign};
 use simcore_protocol::{
-    Alignment, Appearance, ButtonStyle, ContentMode, DisplayMode, Font, ImageScale, ListStyle, Modifier, Section, Semantic, ShapeKind, Stroke,
+    Alignment, Appearance, ButtonStyle, DynamicTypeSize, GlassShapeKind, GlassVariant, ContentMode, DisplayMode, Font, ImageScale, ListStyle, Modifier, Section, Semantic, ShapeKind, Stroke,
     ViewKind, ViewNode,
 };
 use std::cmp::Ordering;
@@ -113,6 +113,7 @@ impl Env {
 struct Ctx<'a> {
     fonts: &'a mut Fonts,
     dark: bool,
+    dts: DynamicTypeSize,
     scale: f64,
     scroll: &'a HashMap<String, (f64, f64)>,
     focus: Option<&'a str>,
@@ -130,6 +131,7 @@ pub struct SceneParams<'a> {
     pub safe_bottom: f64,
     pub scale: f64,
     pub appearance: Appearance,
+    pub dynamic_type: DynamicTypeSize,
     /// Scroll offsets keyed by node id.
     pub scroll: &'a HashMap<String, (f64, f64)>,
     /// Node id of the focused text field.
@@ -147,25 +149,28 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     let mut cx = Ctx {
         fonts,
         dark: params.appearance == Appearance::Dark,
+        dts: params.dynamic_type,
         scale: params.scale.max(1.0),
         scroll: params.scroll,
         focus: params.focus,
         memo: HashMap::new(),
         unsupported: BTreeSet::new(),
     };
+    // Unstyled text is `.body`, which scales with Dynamic Type.
+    let body = simcore_protocol::TextStyle::Body.size_at(params.dynamic_type) as f32;
     let mut screen = Node::new("root", "screen");
     screen.bounds = Rect { x: 0.0, y: 0.0, w, h };
     screen.fill = Some(cx.semantic(Semantic::Background));
     let mut nodes = vec![screen];
     let full_bleed = matches!(root.kind, ViewKind::Navigation { .. } | ViewKind::List { .. } | ViewKind::Scroll { .. });
     if full_bleed {
-        let env = Env { safe_top: params.safe_top, bottom_inset: safe_bottom, ..Env::new() };
+        let env = Env { safe_top: params.safe_top, bottom_inset: safe_bottom, size: body, ..Env::new() };
         let lay = cx.view(root, Prop { w: Some(w), h: Some(h) }, env);
         flatten(lay, 0.0, 0.0, Some(0), 1.0, &mut nodes);
     } else {
         // Root view is centered in the safe area.
         let sh = (h - params.safe_top - safe_bottom).max(0.0);
-        let lay = cx.view(root, Prop { w: Some(w), h: Some(sh) }, Env::new());
+        let lay = cx.view(root, Prop { w: Some(w), h: Some(sh) }, Env { size: body, ..Env::new() });
         let (x, y) = ((w - lay.size.w) / 2.0, params.safe_top + (sh - lay.size.h) / 2.0);
         flatten(lay, x, y, Some(0), 1.0, &mut nodes);
     }
@@ -311,6 +316,10 @@ impl Ctx<'_> {
         }
     }
 
+    fn glass_spec(&self, variant: GlassVariant, tint: Option<&simcore_protocol::Color>, interactive: bool) -> crate::glass::GlassSpec {
+        crate::glass::GlassSpec { variant, tint: tint.map(|c| self.color(c)), interactive }
+    }
+
     /// Neutral control fill (systemFill-like) of the given strength.
     fn control_fill(&self, light_a: f32) -> Color {
         if self.dark {
@@ -446,8 +455,8 @@ impl Ctx<'_> {
             Modifier::Font(f) => {
                 let (size, weight) = match f {
                     Font::Style { style, weight } => {
-                        let (sz, w) = style.spec();
-                        (sz, weight.unwrap_or(w))
+                        let (_, w) = style.spec();
+                        (style.size_at(self.dts), weight.unwrap_or(w))
                     }
                     Font::System { size, weight } => (*size, *weight),
                 };
@@ -468,6 +477,18 @@ impl Ctx<'_> {
             }
             Modifier::ImageScale(img) => self.mods(v, rest, p, Env { img: *img, ..env }),
             Modifier::NavigationTitle(_) => self.mods(v, rest, p, env),
+            Modifier::Glass(g) => {
+                let inner = self.mods(v, rest, p, env);
+                let mut n = Node::new(format!("{}#glass{}", v.id, rest.len()), "glass");
+                n.radius = match (g.shape.shape, g.shape.corner_radius) {
+                    (GlassShapeKind::Rect, None) => 0.0,
+                    (GlassShapeKind::Rect | GlassShapeKind::RoundedRectangle, r) => r.unwrap_or(0.0),
+                    _ => PILL,
+                };
+                n.glass = Some(self.glass_spec(g.variant, g.tint.as_ref(), g.interactive));
+                n.inspect = false;
+                Lay::new(inner.size, Some(n), vec![(0.0, 0.0, inner)])
+            }
         }
     }
 
@@ -677,6 +698,21 @@ impl Ctx<'_> {
                 let l = self.view(label, inner_p, Env { fg: Some(fg), tint: None, ..child_env });
                 let size = Size { w: l.size.w + 2.0 * hp, h: l.size.h + 2.0 * vp };
                 n.fill = Some(bg);
+                n.radius = PILL;
+                Lay::new(size, Some(n), vec![(hp, vp, l)])
+            }
+            ButtonStyle::Glass | ButtonStyle::GlassProminent => {
+                let prominent = style == ButtonStyle::GlassProminent;
+                let fg = match (prominent, disabled) {
+                    (_, true) => dim,
+                    (true, _) => rgba(255, 255, 255, 1.0),
+                    (false, _) => self.semantic(Semantic::Primary),
+                };
+                let (hp, vp) = (12.0, 7.0);
+                let inner_p = Prop { w: p.w.map(|w| (w - 2.0 * hp).max(0.0)), h: None };
+                let l = self.view(label, inner_p, Env { fg: Some(fg), tint: None, ..child_env });
+                let size = Size { w: l.size.w + 2.0 * hp, h: l.size.h + 2.0 * vp };
+                n.glass = Some(self.glass_spec(GlassVariant::Regular, prominent.then_some(simcore_protocol::Color::Semantic { semantic: Semantic::Accent }).as_ref(), true));
                 n.radius = PILL;
                 Lay::new(size, Some(n), vec![(hp, vp, l)])
             }
@@ -926,14 +962,27 @@ impl Ctx<'_> {
         };
         let ctop = top + bar_h;
         let scroller = is_scroller(content);
+        let edge_bg = self.semantic(if is_list(content) { Semantic::GroupedBackground } else { Semantic::Background });
         let mut bg = Node::new(&v.id, "navigation");
         bg.fill = Some(self.semantic(if is_list(content) { Semantic::GroupedBackground } else { Semantic::Background }));
         bg.label = title.map(str::to_string);
         let cenv = Env { safe_top: 0.0, bottom_inset: bottom, fg: None, ..env };
         let mut kids = vec![];
         if scroller {
-            let c = self.view(content, Prop { w: Some(w), h: Some(h - ctop) }, cenv);
-            kids.push((0.0, ctop, c));
+            // Content scrolls under the bar: the scroller spans the screen with the bar as a top inset.
+            let c = self.view(content, Prop { w: Some(w), h: Some(h) }, Env { safe_top: ctop, ..cenv });
+            let scrolled = c.node.as_ref().and_then(|n| n.scroll).is_some_and(|s| s.offset.1 > 0.0);
+            kids.push((0.0, 0.0, c));
+            if scrolled {
+                let mut e = Node::new(format!("{}#edge", v.id), "scrolledge");
+                e.edge = Some(crate::glass::ScrollEdge {
+                    bar: ctop as f32,
+                    color: edge_bg,
+                    tint: if self.dark { 0.0 } else { 3.0 / 255.0 },
+                });
+                e.inspect = false;
+                kids.push((0.0, 0.0, Lay::new(Size { w, h: ctop + 33.0 }, Some(e), vec![])));
+            }
         } else {
             let avail = (h - ctop - bottom).max(0.0);
             let c = self.view(content, Prop { w: Some(w), h: Some(avail) }, Env { bottom_inset: 0.0, ..cenv });
@@ -950,7 +999,9 @@ impl Ctx<'_> {
                 let tl = self.text_lay(&format!("{}#title", v.id), t, spec, primary, Some((w - 32.0) as f32));
                 bar_kids.push((16.0, 44.0 + 13.7, tl));
             } else {
-                let spec = FontSpec::new(17.0, self.line_h(17.0), 600, TextAlign::Leading);
+                // Inline titles grow with Dynamic Type but cap at x1.225 (measured at accessibility5).
+                let nsz = 17.0 * (simcore_protocol::TextStyle::Body.size_at(self.dts) as f32 / 17.0).min(1.225);
+                let spec = FontSpec::new(nsz, self.line_h(nsz), 600, TextAlign::Leading);
                 let tl = self.text_lay(&format!("{}#title", v.id), t, spec, primary, Some((w - 120.0) as f32));
                 let (tw, th) = (tl.size.w, tl.size.h);
                 bar_kids.push(((w - tw) / 2.0, 22.0 - th / 2.0, tl));
@@ -961,9 +1012,8 @@ impl Ctx<'_> {
             n.role = Role::Button;
             n.action = Some(b.action);
             n.label = Some(if b.label.is_empty() { "Back".into() } else { b.label.clone() });
-            n.fill = Some(if self.dark { rgba(52, 52, 56, 1.0) } else { rgba(251, 251, 255, 1.0) });
+            n.glass = Some(self.glass_spec(GlassVariant::Regular, None, true));
             n.radius = PILL;
-            n.shadow = Some(Shadow { color: Color::rgba(0.0, 0.0, 0.0, 0.10), radius: 18.0, dx: 0.0, dy: 8.0 });
             n.glyph = Some((Glyph::BackChevron, self.semantic(Semantic::Primary)));
             bar_kids.push((16.0, 0.0, Lay::new(Size { w: 44.0, h: 44.0 }, Some(n), vec![])));
         }
@@ -996,7 +1046,7 @@ impl Ctx<'_> {
         Lay::new(
             Size { w, h: 62.0 },
             Some(root),
-            vec![(73.0 - tw / 2.0, 32.4 - th / 2.0, t), (right - 52.0, 34.7, dots), (right - 24.5, 26.2, wifi), (right, 26.0, batt)],
+            vec![(73.0 - tw / 2.0, 32.4 - th / 2.0, t), (right - 52.0, 34.7, dots), (right - 24.7, 26.2, wifi), (right - 0.6, 26.0, batt)],
         )
     }
 
@@ -1131,6 +1181,7 @@ mod tests {
             safe_bottom: safe.1,
             scale: 3.0,
             appearance: if dark { Appearance::Dark } else { Appearance::Light },
+            dynamic_type: DynamicTypeSize::Large,
             scroll,
             focus,
             status_bar: safe.0 > 0.0,
@@ -1262,6 +1313,7 @@ mod tests {
                 safe_bottom: 34.0,
                 scale: 3.0,
                 appearance: Appearance::Dark,
+                dynamic_type: DynamicTypeSize::Large,
                 scroll: &HashMap::new(),
                 focus: None,
                 status_bar: true,
@@ -1286,7 +1338,9 @@ mod tests {
         near(by_id(&s, "n#bar").bounds.h, 106.0);
         // nav + list are full-bleed
         assert_eq!(by_id(&s, "n").bounds.h, 874.0);
-        near(by_id(&s, "l").bounds.y, 168.0);
+        // the list scrolls under the bar: it spans the screen, content starts below the bar
+        near(by_id(&s, "l").bounds.y, 0.0);
+        assert!(by_id(&s, "l#s0").bounds.y >= 168.0);
         // inline title is centered at 17pt semibold, back button is a 44pt circle
         let s = phone(TYPOGRAPHY);
         let t = by_id(&s, "n#title");

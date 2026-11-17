@@ -52,7 +52,9 @@ extension Shape {
 }
 
 func _shapeNode<S: Shape>(_ s: S, _ path: String, fill: Node?, stroke: (Node, Double)?) -> Node {
-    var n: Node = ["kind": s._shapeName == "rectangle" && fill == nil && stroke == nil ? "rectangle" : "shape", "id": path, "shape": s._shapeName]
+    // ponytail: the wire has no ellipse shape view yet; draw it as a capsule (glass uses the real name).
+    let name = s._shapeName == "ellipse" ? "capsule" : s._shapeName
+    var n: Node = ["kind": name == "rectangle" && fill == nil && stroke == nil ? "rectangle" : "shape", "id": path, "shape": name]
     if let r = (s as? RoundedRectangle)?.cornerRadius { n["cornerRadius"] = Double(r) }
     if let fill { n["fill"] = fill }
     if let stroke { n["stroke"] = ["color": stroke.0, "lineWidth": stroke.1] as Node }

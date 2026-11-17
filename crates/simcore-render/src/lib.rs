@@ -7,6 +7,7 @@ pub mod layout {
     pub mod swiftui;
 }
 mod chrome;
+pub mod glass;
 mod interaction;
 mod raster;
 mod scene;

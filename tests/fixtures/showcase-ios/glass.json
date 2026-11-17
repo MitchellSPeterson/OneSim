@@ -1,0 +1,257 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "type": "Other",
+        "role": "_TtC7SwiftUIP33_ACC2C5639A7D76F611E170E831FCA49118SwiftUIApplication",
+        "subrole": "UIApplication",
+        "label": "Showcase",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 0,
+        "pid": 31353,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "other"
+      },
+      {
+        "index": 1,
+        "parentIndex": 0,
+        "type": "NavigationBar",
+        "role": "SwiftUI.UIKitNavigationBar",
+        "subrole": "UINavigationBar",
+        "identifier": "Glass",
+        "rect": {
+          "x": 0,
+          "y": 62,
+          "width": 402,
+          "height": 106
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 31353,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "navigation-bar"
+      },
+      {
+        "index": 2,
+        "parentIndex": 1,
+        "type": "Button",
+        "role": "UIAccessibilityBackButtonElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Showcase",
+        "identifier": "BackButton",
+        "rect": {
+          "x": 16,
+          "y": 62,
+          "width": 44,
+          "height": 44
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 31353,
+        "hittable": true,
+        "ref": "e3",
+        "kind": "button"
+      },
+      {
+        "index": 3,
+        "parentIndex": 1,
+        "type": "StaticText",
+        "role": "UILabel",
+        "label": "Glass",
+        "rect": {
+          "x": 15.999999999999993,
+          "y": 119.66666666666667,
+          "width": 88.66666666666666,
+          "height": 40.66666666666667
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 31353,
+        "hittable": true,
+        "ref": "e4",
+        "kind": "text"
+      },
+      {
+        "index": 4,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Liquid Glass",
+        "rect": {
+          "x": 123.33333333333333,
+          "y": 345,
+          "width": 155.33333333333331,
+          "height": 33.666666666666686
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 31353,
+        "hittable": true,
+        "ref": "e5",
+        "kind": "text"
+      },
+      {
+        "index": 5,
+        "parentIndex": 0,
+        "type": "Image",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Favorite",
+        "identifier": "star.fill",
+        "rect": {
+          "x": 117,
+          "y": 431.3333333333333,
+          "width": 24.33333396911621,
+          "height": 23
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 31353,
+        "hittable": true,
+        "ref": "e6",
+        "kind": "image"
+      },
+      {
+        "index": 6,
+        "parentIndex": 0,
+        "type": "Image",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Love",
+        "identifier": "heart.fill",
+        "rect": {
+          "x": 190,
+          "y": 432.66666666666663,
+          "width": 21.666667938232422,
+          "height": 20
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 31353,
+        "hittable": true,
+        "ref": "e7",
+        "kind": "image"
+      },
+      {
+        "index": 7,
+        "parentIndex": 0,
+        "type": "Image",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Notifications",
+        "identifier": "bell.fill",
+        "rect": {
+          "x": 263,
+          "y": 431.3333333333333,
+          "width": 20.33333396911621,
+          "height": 22.666667938232422
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 31353,
+        "hittable": true,
+        "ref": "e8",
+        "kind": "image"
+      },
+      {
+        "index": 8,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Card",
+        "rect": {
+          "x": 182.66666666666669,
+          "y": 516.5,
+          "width": 36.66666666666666,
+          "height": 20.33333333333337
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 31353,
+        "hittable": true,
+        "ref": "e9",
+        "kind": "text"
+      },
+      {
+        "index": 9,
+        "parentIndex": 0,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Glass 0",
+        "rect": {
+          "x": 160.66666666666666,
+          "y": 582.6666666666666,
+          "width": 80.66666666666666,
+          "height": 34.33333333333337
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 31353,
+        "hittable": true,
+        "ref": "e10",
+        "kind": "button"
+      },
+      {
+        "index": 10,
+        "parentIndex": 0,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Prominent",
+        "rect": {
+          "x": 150,
+          "y": 641,
+          "width": 102,
+          "height": 34.33333333333337
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 31353,
+        "hittable": true,
+        "ref": "e11",
+        "kind": "button"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.showcase",
+    "appBundleId": "dev.simcore.showcase",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 11,
+      "totalNodeCount": 11,
+      "reasons": []
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "absent",
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 18,
+        "p50Ms": 67,
+        "p95Ms": 2753,
+        "maxMs": 2753,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 18
+        }
+      }
+    },
+    "refsGeneration": 436551
+  }
+}

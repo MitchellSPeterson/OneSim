@@ -175,3 +175,67 @@ Icon tint colors (most frequent pixel in icon frame), light / dark:
 | envelope (inline) | (0,0,0) | (255,255,255) |
 | chevron.right (inline) | (191,191,191) | ~ dark gray |
 Dark accent is (0,145,255), system red (255,66,69), pink-red (255,55,95), green (48,209,88). Dark card bg (28,28,30), screen bg (0,0,0).
+
+## Liquid Glass (iOS 26.5, captured 2026-11-17, measured on glass*.png, 3x px unless noted)
+New fixtures: `home`/`home-dark` (recaptured, 6th row "Glass"), `glass`, `glass-dark`, `glass-pressed` (tap "Glass 0" -> label "Glass 1"; only the label differs, glass fill identical),
+`typography-scrolled`, `typography-scrolled-dark`. `symbols-scrolled` SKIPPED: Symbols content (2 sections, 4 rows) does not overflow the screen, so it cannot scroll.
+Dark PNG Dynamic Island is black on black, not verifiable (same as before); light ones verified (603,100)=black.
+
+### Typography scroll offset (IMPORTANT caveat)
+At the default text size the Typography content (ends y~501 of 874) does NOT overflow, so `scroll`/`swipe` do nothing (Large Title stays y=132, scrollbar "1 page").
+To get a scrollable screen the *-scrolled fixtures were captured with Dynamic Type `accessibility-extra-extra-extra-large` (`agent-device settings text-size ...`, then restored to `large`).
+So their layout (font sizes, text y positions) is NOT the standard one; use them only for the scroll-edge/nav-bar effect.
+Procedure: open Typography, `scroll top`, `scroll down 0.06` (agent-device converts to a 52 px finger path), wait 3 s, snapshot, screenshot.
+"Large Title" frame y (snapshot): before = 132.0, after = 92.0 -> scroll offset = 40.0 pt (typography-scrolled and -dark). Title: 184.7 -> 144.7 (frame heights differ at this text size: Large Title 71.7pt).
+Reproducibility: 5 of 7 runs gave exactly 92.0; 2 gave 97.0 (offset 35, probably read mid-settle); fixtures were re-shot until 92.0. Other amounts: 0.02->125.7, 0.03->112.7, 0.04->111, 0.08->85, 0.15->30.3 (max scroll, offset 101.7). Offset is not linear in the amount (momentum).
+
+### Frames (pt, from px edges; snapshot has only text/icon frames for glass content)
+ZStack stripes ignore nothing: they fill the safe-area-inset content only: y 168..840 (px 504..2520), 5 bands of 134.4pt: orange 168-302.3, pink -436.7, purple -571, blue -705.7, green -840; white above/below.
+Raw stripe RGB light: orange 255,141,40 pink 255,45,85 purple 203,48,224 blue 0,136,255 green 52,199,89; dark: 255,146,48 / 255,55,95 / 219,52,242 / 0,145,255 / 48,209,88.
+| element | frame (x,y,w,h) pt | shape |
+|---|---|---|
+| "Liquid Glass" capsule | 99.3,333,203.3,57.3 (text 123.3,345 155x33.7 + padding 24/12) | capsule r=h/2 |
+| star / heart / bell circles | (101|173|245), 414.7, 56x56 (centre y 442.7; heart/bell centre x 201/273) | circle |
+| Card | 91,494.7,220x64 (text centre 201,526.7) | rounded rect r=20 |
+| .glass button "Glass N" | 160.7,582.7,80.7x34.3 | capsule |
+| .glassProminent "Prominent" | 150,641,102x34.3 | capsule |
+| back button | 16,62,44x44 | circle |
+Only the circles straddle a stripe boundary (pink/purple at y=436.7pt = px 1310); capsule/card/buttons sit in one stripe.
+
+### Color transform (glass interior, light | dark). out = a*raw + (1-a)*C
+| variant | light | dark |
+|---|---|---|
+| regular over pink / purple / blue | (255,167,184) / (234,168,243) / (144,208,255) | (164,47,71) / (143,45,157) / (19,99,160) |
+| fit | out = 0.44*raw + 0.56*255, i.e. white veil alpha 0.56, NO saturation change (slope same on all channels, G intercept +4) | out = 0.57*raw + ~17 (black-ish veil alpha ~0.43 of gray ~40, i.e. darken to 57%) |
+| .clear (bell, over purple; pink side = 109 in B) | (229,69,250) = raw + (26,21,26): additive ~ +24/255, slope 1 | (245,73,255) = raw + (26,21,13 clipped) |
+| .tint(.red) (heart) | (239,38,41), independent of stripe (opaque, alpha~1) | (254,74,77) |
+| prominent (accent blue fill) | (0,122,232) (~0.90 x blue 0,136,255) | (10,148,253) |
+Interior is a FLAT colour (no gradient, no inner shading) except the blurred stripe boundary and rim band below.
+
+### Blur
+Star circle (regular): stripe boundary (true y=1310 px) seen inside the glass is a smooth step, 50% at ~1307-1309 (shift <=3 px), 16-84% width ~16-19 px -> Gaussian backdrop blur sigma ~ 8-10 px = ~3 pt (dark: same, 9-11 px). Outside the glass the edge is a 1 px hard step.
+Clear (bell) shows the boundary at the same place (pink cap crossing ~1305-1309), blur not separately fitted; looks similar. Tinted heart hides the backdrop entirely.
+
+### Lensing / refraction
+Interior boundary position stays at ~1307 (+-2 px) for all |dx|<=56 px from the circle centre: NO interior displacement, so interior is not magnified.
+Refraction is confined to a thin rim band: top ~2-4pt (6-12 px) of the star interior shows PURPLE (sampled from >=65 px = 22 pt away, below the boundary) instead of pink; bell (clear) bottom rim shows a ~3pt (8 px) PINK arc (255,77,121) sampled from >=95 px above. => outer ~3pt band samples the backdrop from the far side / displaced >=22 pt (inward, strongly), inner area undisplaced. Pink cap near the top of circles narrows to a "blob" (zero width within ~25-30px of the rim sides). Best simple model: rim band 3pt wide, source offset ~ +-(22..32)pt toward/through the centre.
+
+### Rim highlight
+Flat fill right up to the edge; the rim is one ~1 px (0.33 pt, maybe up to 2px) brighter line, no glow/gradient inside (3x px, inside direction):
+light capsule left edge: x=297 (233,41,78 shadowed bg) | 298 (255,200,224) | 301+ (255,167,184) fill. Peak = fill blended ~35-40% towards white: ~(255,202,226) on pink fill; circles (249,198,252) over lavender fill (234,168,242); heart (249,121,128) over (239,39,41); bell (247,130,255) over (229,69,249).
+dark: (222,55,108) over fill (164,47,71) -> the dark rim is a bright pink-ish 1px (backdrop-ish, ~ +58 R), i.e. white ~ 30% blend. Rim is identical on all sides (no top-only highlight) apart from the lens band above.
+Bottom edge of circles: 1px (248,192,240) over (233,168,242).
+
+### Shadow
+Light, on pink (R channel darkening of raw 255): sides at rim 9.0% -> 7.1%@4pt(12px) -> 4.3%@12pt -> 2%@20pt -> ~0 by ~36pt (108 px). Top: 5.9% at rim, ~0 at 25pt. Bottom: 13% at rim, declining slowly (8.6% at 20pt, overlaps circles): y-offset ~+4..6pt, blur radius ~30pt (sigma ~12pt), peak alpha ~0.13 black (soft, unshaped; roughly gaussian). Dark: ~1-2% (invisible against saturated stripes): black shadow alpha <=0.02, extent same.
+Each glass element has its own shadow (circles, buttons also).
+
+### Back button glass circle (44pt @16,62)
+Light on near-white bar (bg 252-255): fill ~(253,253,253) ~ the bg (white veil), 1 px rim (255), chevron (25,25,25) ~0.1 black. Shadow: bg 252 -> 248 at left edge, 247 at right; below the circle 244 (4.3%) fading to 253 by ~60 px; top only 0.8%: soft shadow y-offset ~+3pt, blur ~20pt, alpha ~0.04 black.
+Dark: fill (25,25,25) = white at 10% over black, rim 1px (54,54,54), chevron (244), no visible shadow on black.
+Over scrolled text: no text reaches under the button in the fixtures (Large Title starts at y>=107pt, button bottom 106pt), so not measured.
+
+### Scroll-edge effect (typography-scrolled / -dark, symmetric)
+No bar fill/blur and no separator. Text is NOT blurred (stem edges stay 1-2 px sharp) - it is a veil with alpha toward the background colour. Overlay alpha derived from a glyph stem (v = alpha*bg for black text, same numbers in dark with white text):
+pt: 107-118 (px 321-354): alpha ~0.40-0.44 plateau; 120: 0.27; 122: 0.16; 124: 0.13; 128: 0.095; 132: 0.063; 136: 0.04; 140: 0.024; 144: 0.016; ~148: 0. (Bar bottom = 116pt; the veil ends sharply after it then has a ~30pt tail; text above ~107pt is clipped by the glyph/frame top so the upper ramp is not observed.)
+Bar background: light page gradient (252,252,252) at y<=84pt -> 253@88 -> 254@108 -> 255@128pt (3 levels, ~1.2%); dark: exactly 0 (nothing). Status bar area has the same tint.

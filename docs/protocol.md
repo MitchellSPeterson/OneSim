@@ -30,7 +30,7 @@ Mismatched major version → `protocol_version` error.
 | method | params | result |
 |---|---|---|
 | `get_capabilities` | – | `{"frameworks":["swiftui"],"platforms":["ios"],"commands":[...],"headless":true}` |
-| `create_session` | `{"framework":"swiftui","platform":"ios","app_path":"<file or dir>","root_view":"CounterView"?,"viewport":{"width":393,"height":852}?,"scale":2.0?,"appearance":"light"\|"dark"?}` | `{"session_id":"s1"}` |
+| `create_session` | `{"framework":"swiftui","platform":"ios","app_path":"<file or dir>","root_view":"CounterView"?,"viewport":{"width":393,"height":852}?,"scale":2.0?,"appearance":"light"\|"dark"?,"dynamic_type_size":"large"?}` | `{"session_id":"s1"}` |
 | `start_session` | `{"session_id"}` | `{"state":"running"}` (blocks until first tree or failure) |
 | `stop_session` | `{"session_id"}` | `{"state":"stopped"}` |
 | `get_session_status` | `{"session_id"}` | `{"session_id","state","framework","platform","app_path","viewport","scale","appearance","tree_version"}` |
@@ -73,7 +73,7 @@ Guest → host:
 Host → guest (guest stdin):
 - `{"type":"action","id":<u64>,"version":<u64>}` — `version` = tree version the
   action id came from. Guest ignores actions whose version is not current.
-- `{"type":"environment","appearance":"light"|"dark","viewport":{"width","height"}}` — guest re-evaluates and sends a new tree.
+- `{"type":"environment","appearance":"light"|"dark","viewport":{"width","height"},"dynamicTypeSize"?:"large"}` — guest re-evaluates and sends a new tree. `dynamicTypeSize` is omitted at the default (`large`); the guest also gets `SIMCORE_DYNAMIC_TYPE` at launch. The host does the text sizing (below); the guest may later expose it as `@Environment(\.dynamicTypeSize)`.
 - `{"type":"shutdown"}` — guest exits 0.
 
 ### ViewNode (normalized view tree, produced by Swift, consumed by Rust)
@@ -248,32 +248,45 @@ When a `text_field` is focused, the host draws the iOS keyboard for the device p
 
 ---
 
-## F. v1 additions: Liquid Glass (additive)
+## F. v1 additions: Liquid Glass and Dynamic Type (additive)
+
+### Dynamic Type
+
+`create_session` accepts `"dynamic_type_size"` (alias `dynamicTypeSize`): `xSmall|small|medium|large|xLarge|xxLarge|xxxLarge|accessibility1..accessibility5` (default `large`). CLI: `simcore run --dynamic-type SIZE`; web: `?dynamicType=SIZE` / `sim.init({dynamicType})` / `sim.setDynamicType(size)`.
+- The host resolves the point size of every text *style* (`.largeTitle` ... `.caption2`, and unstyled text = `.body`) from Apple's Dynamic Type table (iOS, 12 sizes x 11 styles; `TextStyle::size_at`). `.system(size:)` is fixed. Nav bar titles, list headers, symbols and control sizes do not scale in v1.
+- Above 34pt the host uses leading `1.12 x size + 2.6` (measured: 53pt body -> 62pt lines) and per-size tracking fitted to the fixtures.
+- Verified against `typography-scrolled.json`: that fixture was captured at `accessibility-extra-extra-extra-large`, which is `accessibility5` (60/58/53/43pt for large title / title / body / caption), not accessibility3.
 
 ### Modifier
 
 `{"glass": {"variant": "regular"|"clear"|"identity", "tint"?: Color, "interactive"?: bool, "shape": GlassShape}}` comes from `.glassEffect(_ glass: Glass = .regular, in shape: some Shape = .capsule)`.
-- `GlassShape` is `{"shape": "capsule"|"circle"|"rect"|"roundedRectangle"|"ellipse", "cornerRadius"?: f64}`. The default is capsule.
-- The glass is drawn behind the modified view's content and sized to it.
-- `GlassEffectContainer` children are emitted as normal nodes. Merging and morphing between glass shapes is out of scope in v1.
+- `GlassShape` is `{"shape": "capsule"|"circle"|"rect"|"roundedRectangle"|"ellipse", "cornerRadius"?: f64}`. The default is capsule. The Swift side emits `rect` for `.rect(cornerRadius:)` / `RoundedRectangle`; `circle`, `capsule` and `ellipse` all render as a full-radius pill (a non-square `circle`/`ellipse` is a capsule in v1).
+- The glass is drawn behind the modified view's content and sized to it. `identity` draws nothing.
+- `GlassEffectContainer` children are emitted as normal nodes. Merging and morphing between glass shapes is out of scope in v1. `interactive` is carried but has no visual effect (the simulator's press state is not distinguishable in fixtures).
 
 ### Button styles
 
 `button.style` adds `"glass"` and `"glassProminent"`.
-- glass: capsule-shaped regular glass, label in primary.
-- glassProminent: capsule glass tinted with the accent color, label in white.
+- glass: capsule-shaped regular glass (12/7 pt padding like bordered), label in primary.
+- glassProminent: capsule regular glass tinted with the accent color, label in white.
 
 ### Rendering (host)
 
-Liquid Glass is a **backdrop effect**: a glass node samples the pixels already rendered beneath it, inside its shape. In order, the host:
-1. blurs the backdrop (Gaussian);
-2. applies a lensing displacement that bends the backdrop near the rim, strongest at the edge;
-3. adjusts saturation and brightness per variant (`clear` is barely blurred);
-4. mixes in a tint;
-5. adds a specular rim highlight and an inner/outer shadow.
+Liquid Glass is a **backdrop effect**: a glass node samples the pixels already rendered beneath it (scene nodes are in paint order), inside its shape. In order, the host:
+1. blurs the backdrop (Gaussian, sigma 3pt; 1pt for `clear`) with edge replication;
+2. applies a lens in a ~3pt rim band: samples are pulled `30pt * (1 - d/3pt)^2` from further inside, where `d` is the depth from the outline; the interior is undistorted (fixtures show a flat interior);
+3. transforms color per variant (below);
+4. mixes in the tint (opaque: tint color shifted by -17/255 in light and +8/255 in dark, scaled by the tint alpha);
+5. adds a 1.2px specular rim (white mix up to 50%, favouring the top-left/bottom-right) and a soft outer shadow (black 0.13, sigma 12pt, dy +5pt, light only).
 
-All of this adapts to light and dark appearance. Parameters are fitted to the iOS 26 Simulator fixtures.
+| variant | light | dark |
+|---|---|---|
+| regular | `0.43 * raw + 0.575 * 255` | `0.57 * raw + 17` |
+| clear | `raw + 24` (sat 1.03) | `raw + 24` |
+
+Everything is deterministic CPU code (no threads or SIMD), so it also runs in the Wasm build. The snapshot is taken before the node's own shadow is painted.
 
 System chrome uses the same effect:
-- The navigation back button is a glass circle.
-- The scroll-edge effect softly blurs and fades content that scrolls under the navigation bar or status bar.
+- The navigation back button is a regular glass circle (44pt).
+- **Scroll-edge effect.** Scrollers under a navigation bar span the whole screen with the bar as a top inset, so content scrolls under the bar and status bar. Once scrolled (offset > 0) the host veils content toward the background color: alpha 0.42 down to the bar's bottom edge, then 0.27@+4pt, 0.16@+6, 0.095@+12, 0.04@+20, 0.016@+28, 0@+32 (piecewise linear), plus a 3/255 darkening (light only) fading out by bar+12. There is no blur. Content under the bars is not tappable; scrolling over the status bar does nothing.
+- The keyboard panel is not glass in the fixtures and is unchanged.

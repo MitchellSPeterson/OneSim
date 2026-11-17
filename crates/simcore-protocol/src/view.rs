@@ -149,6 +149,24 @@ pub enum TextStyle {
 }
 
 impl TextStyle {
+    /// Point size of this style at a Dynamic Type size (Apple's published iOS table; columns are
+    /// xSmall, small, medium, large, xLarge, xxLarge, xxxLarge, accessibility1...5).
+    pub fn size_at(self, d: crate::wire::DynamicTypeSize) -> f64 {
+        let row: [u8; 12] = match self {
+            TextStyle::LargeTitle => [31, 32, 33, 34, 36, 38, 40, 44, 48, 52, 56, 60],
+            TextStyle::Title => [25, 26, 27, 28, 30, 32, 34, 38, 43, 48, 53, 58],
+            TextStyle::Title2 => [19, 20, 21, 22, 24, 26, 28, 34, 39, 44, 50, 56],
+            TextStyle::Title3 => [17, 18, 19, 20, 22, 24, 26, 31, 37, 43, 49, 55],
+            TextStyle::Headline | TextStyle::Body => [14, 15, 16, 17, 19, 21, 23, 28, 33, 40, 47, 53],
+            TextStyle::Callout => [13, 14, 15, 16, 18, 20, 22, 26, 32, 38, 44, 51],
+            TextStyle::Subheadline => [12, 13, 14, 15, 17, 19, 21, 25, 30, 36, 42, 49],
+            TextStyle::Footnote => [12, 12, 12, 13, 15, 17, 19, 23, 27, 33, 38, 44],
+            TextStyle::Caption => [11, 11, 11, 12, 14, 16, 18, 22, 26, 32, 37, 43],
+            TextStyle::Caption2 => [11, 11, 11, 11, 13, 15, 17, 20, 24, 29, 34, 40],
+        };
+        row[d.index()] as f64
+    }
+
     /// (size, weight) at the default Dynamic Type size.
     pub fn spec(self) -> (f64, Weight) {
         match self {
@@ -217,6 +235,48 @@ pub enum Modifier {
     Shadow(Shadow),
     NavigationTitle(String),
     ImageScale(ImageScale),
+    Glass(GlassMod),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GlassVariant {
+    #[default]
+    Regular,
+    Clear,
+    Identity,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GlassShapeKind {
+    #[default]
+    Capsule,
+    Circle,
+    Rect,
+    RoundedRectangle,
+    Ellipse,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+pub struct GlassShape {
+    #[serde(default)]
+    pub shape: GlassShapeKind,
+    #[serde(default, rename = "cornerRadius", skip_serializing_if = "Option::is_none")]
+    pub corner_radius: Option<f64>,
+}
+
+/// `.glassEffect(_:in:)` (protocol section F).
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+pub struct GlassMod {
+    #[serde(default)]
+    pub variant: GlassVariant,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tint: Option<Color>,
+    #[serde(default)]
+    pub interactive: bool,
+    #[serde(default)]
+    pub shape: GlassShape,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -244,6 +304,8 @@ pub enum ButtonStyle {
     Bordered,
     BorderedProminent,
     NavigationLink,
+    Glass,
+    GlassProminent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

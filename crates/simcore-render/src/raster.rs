@@ -48,7 +48,7 @@ fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: 
     match g {
         Glyph::Chevron => stroke_pts(pm, &[(x + 0.9, y + 0.9), (x + w - 0.9, cy), (x + 0.9, y + h - 0.9)], c, 1.9, xf, mask),
         Glyph::BackChevron => {
-            stroke_pts(pm, &[(cx + 4.5, cy - 8.8), (cx - 6.0, cy), (cx + 4.5, cy + 8.8)], c, 2.3, xf, mask)
+            stroke_pts(pm, &[(cx + 3.1, cy - 10.3), (cx - 7.5, cy), (cx + 3.1, cy + 10.3)], Color { a: c.a * 0.9, ..c }, 2.7, xf, mask)
         }
         Glyph::Minus => stroke_pts(pm, &[(cx - 6.5, cy), (cx + 6.5, cy)], c, 2.0, xf, mask),
         Glyph::Plus => {
@@ -100,6 +100,21 @@ fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: 
             if let Some(r) = Rect::from_xywh(x + 25.2, y + 4.3, 1.5, h - 8.6) {
                 pm.fill_rect(r, &paint(col(0.4), 1.0), xf, mask);
             }
+            // Charging bolt (iOS shows it on the simulator's battery): translucent fill, light outline.
+            let mut bolt = PathBuilder::new();
+            for (i, (bx, by)) in [(12.3, 0.2), (15.6, 0.2), (14.5, 4.2), (17.0, 4.9), (11.2, 12.8), (11.9, 8.1), (7.3, 7.0)].iter().enumerate() {
+                if i == 0 {
+                    bolt.move_to(x + bx, y + by);
+                } else {
+                    bolt.line_to(x + bx, y + by);
+                }
+            }
+            bolt.close();
+            if let Some(p) = bolt.finish() {
+                pm.fill_path(&p, &paint(Color::rgba(0.58, 0.71, 0.62, c.a), 1.0), FillRule::Winding, xf, mask);
+                let st = Stroke { width: 0.8, line_join: LineJoin::Round, ..Stroke::default() };
+                pm.stroke_path(&p, &paint(Color::rgba(0.73, 0.91, 0.80, c.a), 1.0), &st, xf, mask);
+            }
         }
     }
 }
@@ -129,24 +144,35 @@ fn draw_symbol(pm: &mut Pixmap, sy: &SymbolRun, b: (f32, f32, f32, f32), op: f32
 }
 
 /// Separable gaussian blur of an `f32` coverage plane (exact kernel, truncated at 3 sigma).
-fn gaussian(plane: &mut [f32], w: usize, h: usize, sigma: f32) {
+pub(crate) fn gaussian(plane: &mut [f32], w: usize, h: usize, sigma: f32, replicate: bool) {
     let r = (sigma * 3.0).ceil() as isize;
     let mut k: Vec<f32> = (-r..=r).map(|i| (-(i * i) as f32 / (2.0 * sigma * sigma)).exp()).collect();
     let sum: f32 = k.iter().sum();
     k.iter_mut().for_each(|v| *v /= sum);
     // One 1-D pass: `n` samples per line, `lines` lines, `stride` between samples, `step` between lines.
+    // `replicate` clamps to the edge sample (backdrops); otherwise outside counts as zero (coverage).
     let pass = |from: &[f32], to: &mut [f32], n: usize, lines: usize, stride: usize, step: usize| {
+        let ni = n as isize;
         for l in 0..lines {
-            for i in 0..n as isize {
-                let acc: f32 = k
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(ki, kv)| {
+            let base = l * step;
+            for i in 0..ni {
+                let mut acc = 0.0f32;
+                if i >= r && i + r < ni {
+                    let j0 = (i - r) as usize;
+                    for (ki, kv) in k.iter().enumerate() {
+                        acc += kv * from[base + (j0 + ki) * stride];
+                    }
+                } else {
+                    for (ki, kv) in k.iter().enumerate() {
                         let j = i + ki as isize - r;
-                        (0..n as isize).contains(&j).then(|| kv * from[l * step + j as usize * stride])
-                    })
-                    .sum();
-                to[l * step + i as usize * stride] = acc;
+                        if replicate {
+                            acc += kv * from[base + j.clamp(0, ni - 1) as usize * stride];
+                        } else if (0..ni).contains(&j) {
+                            acc += kv * from[base + j as usize * stride];
+                        }
+                    }
+                }
+                to[base + i as usize * stride] = acc;
             }
         }
     };
@@ -188,7 +214,7 @@ fn draw_shadow(pm: &mut Pixmap, n: &crate::scene::Node, sh: &Shadow, b: (f32, f3
                 }
                 let (w, h) = (cov.width() as usize, cov.height() as usize);
                 let mut plane: Vec<f32> = cov.data().chunks(4).map(|px| px[3] as f32 / 255.0).collect();
-                gaussian(&mut plane, w, h, sigma);
+                gaussian(&mut plane, w, h, sigma, false);
                 let a = rgba[3] as f32 / 255.0;
                 for (px, v) in cov.data_mut().chunks_mut(4).zip(&plane) {
                     let al = v * a;
@@ -229,8 +255,28 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
         let b = n.bounds;
         let (bx, by, bw, bh) = (b.x as f32, b.y as f32, b.w as f32, b.h as f32);
         let sh = (bx, by, bw, bh);
+        // Liquid Glass: snapshot the backdrop before our own halo lands on it.
+        let glass = n.glass.as_ref().filter(|g| g.variant != crate::glass::GlassVariant::Identity).map(|g| {
+            let dark = scene.appearance == simcore_protocol::Appearance::Dark;
+            let p = crate::glass::params(g.variant, dark);
+            let r = (n.radius as f32).min(bw / 2.0).min(bh / 2.0) * s;
+            let shape = crate::glass::Shape { x: bx * s, y: by * s, w: bw * s, h: bh * s, r };
+            (g, p, shape, crate::glass::snapshot(&pm, shape, s, &p), dark)
+        });
+        if let Some((_, p, ..)) = &glass {
+            let sd = Shadow { color: Color::rgba(0.0, 0.0, 0.0, p.sh_a), radius: p.sh_sigma as f64, dx: 0.0, dy: p.sh_dy as f64 };
+            if p.sh_a > 0.0 {
+                draw_shadow(&mut pm, n, &sd, sh, s, mask.as_deref());
+            }
+        }
+        if let Some((g, _, shape, snap, dark)) = glass {
+            crate::glass::draw(&mut pm, snap, shape, g, s, dark, n.opacity, mask.as_deref());
+        }
         if let Some(sd) = &n.shadow {
             draw_shadow(&mut pm, n, sd, sh, s, mask.as_deref());
+        }
+        if let Some(e) = &n.edge {
+            crate::glass::draw_edge(&mut pm, e, s, mask.as_deref());
         }
         if let Some(c) = n.fill {
             if n.radius > 0.0 {
@@ -266,12 +312,19 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
                 (t.color.a * n.opacity * 255.0).round() as u8,
             ];
             // Wrapped text uses a larger pitch than the single-line box; keep line 1 where it is.
-            let (ox, oy) = ((bx + t.offset_x) * s, (by - (t.font.pitch - t.font.line_height) / 2.0) * s);
+            // Accessibility sizes: iOS sets the glyphs ~0.01 em higher in the line box (measured).
+            let (lift, ldx) = match (t.font.size > 40.0, fonts.is_sf()) {
+                (false, _) => (0.0, 0.0),
+                (true, true) => (0.0105 * t.font.size, 0.0),
+                // Inter fallback at accessibility sizes: baseline and side bearing differ from SF.
+                (true, false) => (-0.03 * t.font.size, -0.775),
+            };
+            let (ox, oy) = ((bx + t.offset_x + ldx) * s, (by - (t.font.pitch - t.font.line_height).max(0.0) / 2.0 - lift) * s);
             let spec = FontSpec { size: t.font.size * s, line_height: t.font.line_height * s, pitch: t.font.pitch * s, ..t.font };
             // +2px slack so rounding differences vs layout never re-wrap.
             let base_a = rgba[3] as u32;
-            let spans = fonts.draw(&t.text, &spec, bw * s + 2.0, rgba, |x, y, w, h, c| {
-                if let Some(r) = Rect::from_xywh(ox + x as f32, oy + y as f32, w as f32, h as f32) {
+            let spans = fonts.draw(&t.text, &spec, bw * s + 2.0, rgba, (ox, oy), |x, y, w, h, c| {
+                if let Some(r) = Rect::from_xywh(x as f32, y as f32, w as f32, h as f32) {
                     let mut p = Paint::default();
                     // cosmic-text replaces the colour alpha with glyph coverage; reapply ours.
                     p.set_color_rgba8(c[0], c[1], c[2], (c[3] as u32 * base_a / 255) as u8);

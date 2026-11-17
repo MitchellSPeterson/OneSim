@@ -35,6 +35,7 @@ fn build(count: u32, vp: (f64, f64), a: Appearance, scale: f64, fonts: &mut Font
         safe_bottom: 34.0,
         scale,
         appearance: a,
+        dynamic_type: Default::default(),
         scroll: &scroll,
         focus: None,
         status_bar: true,

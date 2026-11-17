@@ -31,6 +31,7 @@ fn forced_fallback_uses_inter_and_phosphor() {
         safe_bottom: 0.0,
         scale: 1.0,
         appearance: Appearance::Light,
+        dynamic_type: Default::default(),
         scroll: &scroll,
         focus: None,
         status_bar: false,

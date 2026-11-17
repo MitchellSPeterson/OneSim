@@ -38,7 +38,7 @@ async function main() {
   // Run an input/environment change, then show the new frame.
   const act = (f) => { const r = f(); present(); return r; };
 
-  sim.init({ width: vp.width, height: vp.height, scale: fit(), dark });
+  sim.init({ width: vp.width, height: vp.height, scale: fit(), dark, dynamicType: q.get("dynamicType") ?? "large" });
   present();
   let resizing = 0;
   addEventListener("resize", () => {

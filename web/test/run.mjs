@@ -2,7 +2,7 @@
 // Headless harness for the browser backend (Node >= 20, no dependencies). Loads app.wasm with the
 // same driver as the browser (web/simcore.js) and drives it like `simcore run`.
 //
-//   node web/test/run.mjs [--wasm target/web/app.wasm] [--width W] [--height H] [--scale S] [--dark]
+//   node web/test/run.mjs [--wasm target/web/app.wasm] [--width W] [--height H] [--scale S] [--dark] [--dynamic-type SIZE]
 //        [--click LABEL|X,Y] [--type TEXT] [--key backspace|enter] [--scroll X,Y,DX,DY] ...   (in order)
 //        [--screenshot out.png] [--inspect] [--expect TEXT]...
 //   node web/test/run.mjs --suite counter|showcase     assertions against the built app
@@ -52,7 +52,7 @@ function savePng(sim, path) {
 }
 
 async function cli(argv) {
-  const o = { wasm: resolve(here, "../../target/web/app.wasm"), width: 402, height: 874, scale: 3, dark: false };
+  const o = { wasm: resolve(here, "../../target/web/app.wasm"), width: 402, height: 874, scale: 3, dark: false, dynamicType: "large" };
   const steps = [], expects = [];
   let shot, inspect = false;
   for (let i = 0; i < argv.length; i++) {
@@ -60,6 +60,7 @@ async function cli(argv) {
     if (f === "--wasm") o.wasm = val();
     else if (f === "--width" || f === "--height" || f === "--scale") o[f.slice(2)] = Number(val());
     else if (f === "--dark") o.dark = true;
+    else if (f === "--dynamic-type") o.dynamicType = val();
     else if (f === "--screenshot") shot = val();
     else if (f === "--inspect") inspect = true;
     else if (f === "--expect") expects.push(val());

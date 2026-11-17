@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use clap::{ArgMatches, CommandFactory, FromArgMatches, Parser, Subcommand};
 use simcore_host::Host;
 use simcore_protocol::{
-    Appearance, CreateSessionParams, KeyboardEvent, PointerEvent, PointerKind, UiNode, Viewport,
+    Appearance, CreateSessionParams, DynamicTypeSize, KeyboardEvent, PointerEvent, PointerKind, UiNode, Viewport,
 };
 
 #[derive(Parser)]
@@ -58,6 +58,9 @@ enum Cmd {
         scale: Option<f64>,
         #[arg(long)]
         dark: bool,
+        /// Dynamic Type size: xSmall ... large (default) ... xxxLarge, accessibility1 ... accessibility5.
+        #[arg(long = "dynamic-type", value_name = "SIZE")]
+        dynamic_type: Option<String>,
     },
 }
 
@@ -107,7 +110,7 @@ fn main() -> Result<()> {
             Host::new().serve(stdin.lock(), std::io::stdout().lock())?;
             Ok(())
         }
-        Cmd::Run { app_path, root_view, screenshot, inspect, device, width, height, scale, dark, .. } => {
+        Cmd::Run { app_path, root_view, screenshot, inspect, device, width, height, scale, dark, dynamic_type, .. } => {
             let run = matches.subcommand_matches("run").expect("run subcommand");
             let steps = steps(run);
             let viewport = match (width, height) {
@@ -123,6 +126,9 @@ fn main() -> Result<()> {
                 viewport,
                 scale,
                 appearance: Some(if dark { Appearance::Dark } else { Appearance::Light }),
+                dynamic_type_size: dynamic_type
+                    .map(|d| DynamicTypeSize::parse(&d).with_context(|| format!("unknown --dynamic-type {d:?}")))
+                    .transpose()?,
                 device,
                 prebuilt: false,
             })?;
