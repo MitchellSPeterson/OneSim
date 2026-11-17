@@ -36,8 +36,9 @@ pub struct Interaction {
     pressed: Option<String>,
     /// Finger currently scrolling (or holding) a scroller.
     drag: Option<Drag>,
-    /// Scrollers in flight (momentum or bounce): node id -> velocity along the axis, pt/s.
-    motion: HashMap<String, f64>,
+    /// Scrollers in flight: node id -> (velocity along the axis in pt/s, spring target). Without a
+    /// target it is momentum (and a bounce past an edge); with one, a spring to that offset.
+    motion: HashMap<String, (f64, Option<f64>)>,
 }
 
 #[derive(Debug)]
@@ -101,13 +102,14 @@ fn unshown(o: f64, max: f64, d: f64) -> f64 {
 }
 
 /// Advance one scroller by `dt` seconds: exponential momentum inside `[0, max]`, a critically
-/// damped spring back to the edge outside it. Returns the new (offset, velocity); velocity 0 = at rest.
-pub fn step(mut o: f64, mut v: f64, max: f64, dt: f64) -> (f64, f64) {
+/// damped spring back to the edge outside it, or a spring to `to` when given. Returns the new
+/// (offset, velocity); velocity 0 = at rest.
+pub fn step(mut o: f64, mut v: f64, max: f64, dt: f64, to: Option<f64>) -> (f64, f64) {
     // 1 ms sub-steps: exact enough, and momentum hands over to the spring the moment it crosses an edge.
     let h = 0.001;
     for _ in 0..(dt / h).round().max(1.0) as usize {
-        let edge = o.clamp(0.0, max);
-        if o == edge {
+        let edge = to.unwrap_or(o.clamp(0.0, max));
+        if to.is_none() && o == edge {
             v *= (-DECEL * h).exp();
             if v.abs() < MIN_V {
                 return (o, 0.0);
@@ -259,13 +261,14 @@ impl Interaction {
                     (Some(a), true) if t > a.0 => -(d.last - a.1) / ((t - a.0) / 1000.0),
                     _ => 0.0,
                 };
-                let over = scene.nodes.iter().find(|n| n.id == d.id).is_some_and(|n| {
-                    let (o, max, ..) = axis(n, n.scroll.expect("scroller").offset, x, y);
-                    !(0.0..=max).contains(&o)
+                let settle = scene.nodes.iter().find(|n| n.id == d.id).is_some_and(|n| {
+                    let info = n.scroll.expect("scroller");
+                    let (o, max, ..) = axis(n, info.offset, x, y);
+                    !(0.0..=max).contains(&o) || info.snap.is_some_and(|s| o > 0.0 && o < s)
                 });
-                // Released past an edge: spring back even at zero velocity.
-                if v.abs() >= MIN_V || over {
-                    self.motion.insert(d.id, v);
+                // Released past an edge or mid-collapse: settle on the next tick even at zero velocity.
+                if v.abs() >= MIN_V || settle {
+                    self.motion.insert(d.id, (v, None));
                 }
                 Effect::None
             }
@@ -284,16 +287,24 @@ impl Interaction {
                 continue;
             }
             let (o, max, ..) = axis(n, info.offset, 0.0, 0.0);
-            let (o, v) = match self.motion.get(&n.id) {
-                Some(&v) => step(o, v, max, dt),
+            let (o, v, to) = match self.motion.get(&n.id) {
+                Some(&(v, to)) => {
+                    let (o, v) = step(o, v, max, dt, to);
+                    (o, v, to)
+                }
                 None if (0.0..=max).contains(&o) => continue,
                 // Stale overscroll (the content shrank under it): settle at once, like iOS.
-                None => (o.clamp(0.0, max), 0.0),
+                None => (o.clamp(0.0, max), 0.0, None),
             };
-            if v == 0.0 {
+            // Never at rest mid-collapse of a large title: spring to expanded or collapsed, whichever is nearer.
+            let snap = info.snap.filter(|&s| info.vertical && to.is_none() && o > 0.0 && o < s);
+            if let (0.0, Some(s)) = (v, snap) {
+                self.motion.insert(n.id.clone(), (0.0, Some(if o < s / 2.0 { 0.0 } else { s })));
+                moving = true;
+            } else if v == 0.0 {
                 self.motion.remove(&n.id);
             } else {
-                self.motion.insert(n.id.clone(), v);
+                self.motion.insert(n.id.clone(), (v, to));
                 moving = true;
             }
             let new = if info.vertical { (info.offset.0, o) } else { (o, info.offset.1) };
@@ -401,7 +412,7 @@ mod tests {
     fn settle(mut o: f64, mut v: f64, max: f64) -> (f64, f64, f64) {
         let mut peak = o;
         for frame in 0..600 {
-            (o, v) = step(o, v, max, 1.0 / 60.0);
+            (o, v) = step(o, v, max, 1.0 / 60.0, None);
             peak = peak.max(o);
             if v == 0.0 {
                 return (o, peak, frame as f64 / 60.0);
@@ -449,7 +460,7 @@ mod tests {
         let screen = |with_scroller: bool| {
             let mut n = Node::new("0/s1", "scroll");
             n.bounds = Rect { x: 0.0, y: 0.0, w: 400.0, h: 800.0 };
-            n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, 0.0), max: (0.0, 500.0) });
+            n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, 0.0), max: (0.0, 500.0), snap: None });
             let nodes = if with_scroller { vec![n] } else { vec![] };
             Scene { size: (400.0, 800.0), appearance: simcore_protocol::Appearance::Light, nodes, unsupported_symbols: vec![] }
         };
@@ -460,5 +471,32 @@ mod tests {
         // Back to a screen without it (the pop), then a new screen reusing the id starts at the top.
         it.pointer(&screen(false), ev(PointerKind::Click, 0.0));
         assert!(it.scroll.is_empty() && !it.live());
+    }
+
+    #[test]
+    fn large_title_never_rests_half_collapsed() {
+        use crate::scene::{Node, Rect, ScrollInfo};
+        let scene = |off: f64| {
+            let mut n = Node::new("l", "list");
+            n.bounds = Rect { x: 0.0, y: 0.0, w: 400.0, h: 800.0 };
+            n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max: (0.0, 500.0), snap: Some(52.0) });
+            Scene { size: (400.0, 800.0), appearance: simcore_protocol::Appearance::Light, nodes: vec![n], unsupported_symbols: vec![] }
+        };
+        for (start, want) in [(20.0, 0.0), (40.0, 52.0)] {
+            let mut it = Interaction::default();
+            // A slow drag to `start`, released without a fling.
+            it.drag(&scene(0.0), DragPhase::Begin, 200.0, 400.0, 0.0);
+            it.drag(&scene(0.0), DragPhase::Move, 200.0, 400.0 - start, 500.0);
+            it.drag(&scene(start), DragPhase::End, 200.0, 400.0 - start, 900.0);
+            let mut off = start;
+            for _ in 0..120 {
+                if !it.tick(&scene(off), 1.0 / 60.0) {
+                    break;
+                }
+                off = it.scroll["l"].1;
+            }
+            assert!((off - want).abs() < 1e-9, "released at {start}: rests at {off}, want {want}");
+            assert!(!it.live());
+        }
     }
 }

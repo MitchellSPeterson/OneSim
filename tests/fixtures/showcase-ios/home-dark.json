@@ -16,7 +16,7 @@
         },
         "enabled": true,
         "depth": 0,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": false,
         "ref": "e1",
         "kind": "other"
@@ -36,7 +36,7 @@
         },
         "enabled": true,
         "depth": 1,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e2",
         "kind": "navigation-bar"
@@ -55,7 +55,7 @@
         },
         "enabled": true,
         "depth": 2,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e3",
         "kind": "text"
@@ -74,7 +74,7 @@
         },
         "enabled": true,
         "depth": 1,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e4",
         "kind": "collection"
@@ -93,7 +93,7 @@
         },
         "enabled": true,
         "depth": 2,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e5",
         "kind": "cell"
@@ -113,7 +113,7 @@
         },
         "enabled": true,
         "depth": 3,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e6",
         "kind": "text"
@@ -132,7 +132,7 @@
         },
         "enabled": true,
         "depth": 2,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e7",
         "kind": "cell"
@@ -152,7 +152,7 @@
         },
         "enabled": true,
         "depth": 3,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e8",
         "kind": "button"
@@ -172,7 +172,7 @@
         },
         "enabled": true,
         "depth": 4,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e9",
         "kind": "text"
@@ -192,7 +192,7 @@
         },
         "enabled": true,
         "depth": 4,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e10",
         "kind": "image"
@@ -211,7 +211,7 @@
         },
         "enabled": true,
         "depth": 2,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e11",
         "kind": "cell"
@@ -231,7 +231,7 @@
         },
         "enabled": true,
         "depth": 3,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e12",
         "kind": "button"
@@ -251,7 +251,7 @@
         },
         "enabled": true,
         "depth": 4,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e13",
         "kind": "text"
@@ -271,7 +271,7 @@
         },
         "enabled": true,
         "depth": 4,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e14",
         "kind": "image"
@@ -290,7 +290,7 @@
         },
         "enabled": true,
         "depth": 2,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e15",
         "kind": "cell"
@@ -310,7 +310,7 @@
         },
         "enabled": true,
         "depth": 3,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e16",
         "kind": "button"
@@ -330,7 +330,7 @@
         },
         "enabled": true,
         "depth": 4,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e17",
         "kind": "text"
@@ -350,7 +350,7 @@
         },
         "enabled": true,
         "depth": 4,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e18",
         "kind": "image"
@@ -369,7 +369,7 @@
         },
         "enabled": true,
         "depth": 2,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e19",
         "kind": "cell"
@@ -389,7 +389,7 @@
         },
         "enabled": true,
         "depth": 3,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e20",
         "kind": "button"
@@ -409,7 +409,7 @@
         },
         "enabled": true,
         "depth": 4,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e21",
         "kind": "text"
@@ -429,7 +429,7 @@
         },
         "enabled": true,
         "depth": 4,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e22",
         "kind": "image"
@@ -448,7 +448,7 @@
         },
         "enabled": true,
         "depth": 2,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e23",
         "kind": "cell"
@@ -468,7 +468,7 @@
         },
         "enabled": true,
         "depth": 3,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e24",
         "kind": "button"
@@ -488,7 +488,7 @@
         },
         "enabled": true,
         "depth": 4,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e25",
         "kind": "text"
@@ -508,7 +508,7 @@
         },
         "enabled": true,
         "depth": 4,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e26",
         "kind": "image"
@@ -527,7 +527,7 @@
         },
         "enabled": true,
         "depth": 2,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e27",
         "kind": "cell"
@@ -547,7 +547,7 @@
         },
         "enabled": true,
         "depth": 3,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e28",
         "kind": "button"
@@ -567,7 +567,7 @@
         },
         "enabled": true,
         "depth": 4,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e29",
         "kind": "text"
@@ -587,7 +587,7 @@
         },
         "enabled": true,
         "depth": 4,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e30",
         "kind": "image"
@@ -596,17 +596,17 @@
         "index": 30,
         "parentIndex": 3,
         "type": "Cell",
-        "role": "SwiftUI.ListCollectionViewHeaderFooter",
+        "role": "SwiftUI.ListCollectionViewCell",
         "subrole": "UICollectionViewListCell",
         "rect": {
           "x": 16,
-          "y": 538,
+          "y": 520.3333333333333,
           "width": 370,
-          "height": 40.33333333333337
+          "height": 52
         },
         "enabled": true,
         "depth": 2,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
         "ref": "e31",
         "kind": "cell"
@@ -614,84 +614,163 @@
       {
         "index": 31,
         "parentIndex": 30,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Long list",
+        "rect": {
+          "x": 16,
+          "y": 520.3333333333333,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 31891,
+        "hittable": true,
+        "ref": "e32",
+        "kind": "button"
+      },
+      {
+        "index": 32,
+        "parentIndex": 31,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Long list",
+        "rect": {
+          "x": 32,
+          "y": 536.1666666666666,
+          "width": 64,
+          "height": 20.333333333333258
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 31891,
+        "hittable": true,
+        "ref": "e33",
+        "kind": "text"
+      },
+      {
+        "index": 33,
+        "parentIndex": 31,
+        "type": "Image",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "identifier": "chevron.forward",
+        "rect": {
+          "x": 360.6666666666667,
+          "y": 540.3333333333333,
+          "width": 7,
+          "height": 12
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 31891,
+        "hittable": true,
+        "ref": "e34",
+        "kind": "image"
+      },
+      {
+        "index": 34,
+        "parentIndex": 3,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewHeaderFooter",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 590,
+          "width": 370,
+          "height": 40.33333333333337
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 31891,
+        "hittable": true,
+        "ref": "e35",
+        "kind": "cell"
+      },
+      {
+        "index": 35,
+        "parentIndex": 34,
         "type": "StaticText",
         "role": "SwiftUI.AccessibilityNode",
         "subrole": "UIResponder",
         "label": "Summary",
         "rect": {
           "x": 16,
-          "y": 538,
+          "y": 590,
           "width": 370,
           "height": 40.33333333333337
         },
         "enabled": true,
         "depth": 3,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
-        "ref": "e32",
+        "ref": "e36",
         "kind": "text"
       },
       {
-        "index": 32,
+        "index": 36,
         "parentIndex": 3,
         "type": "Cell",
         "role": "SwiftUI.ListCollectionViewCell",
         "subrole": "UICollectionViewListCell",
         "rect": {
           "x": 16,
-          "y": 578.3333333333333,
+          "y": 630.3333333333333,
           "width": 370,
           "height": 52
         },
         "enabled": true,
         "depth": 2,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
-        "ref": "e33",
+        "ref": "e37",
         "kind": "cell"
       },
       {
-        "index": 33,
-        "parentIndex": 32,
+        "index": 37,
+        "parentIndex": 36,
         "type": "StaticText",
         "role": "SwiftUI.AccessibilityNode",
         "subrole": "UIResponder",
         "label": "Open todos",
         "rect": {
           "x": 32,
-          "y": 594.1666666666666,
+          "y": 646.1666666666666,
           "width": 89.33333333333333,
           "height": 20.333333333333258
         },
         "enabled": true,
         "depth": 3,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
-        "ref": "e34",
+        "ref": "e38",
         "kind": "text"
       },
       {
-        "index": 34,
-        "parentIndex": 32,
+        "index": 38,
+        "parentIndex": 36,
         "type": "StaticText",
         "role": "SwiftUI.AccessibilityNode",
         "subrole": "UIResponder",
         "label": "1",
         "rect": {
           "x": 362.3333333333333,
-          "y": 594.1666666666666,
+          "y": 646.1666666666666,
           "width": 7.666666666666686,
           "height": 20.333333333333258
         },
         "enabled": true,
         "depth": 3,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
-        "ref": "e35",
+        "ref": "e39",
         "kind": "text"
       },
       {
-        "index": 35,
+        "index": 39,
         "parentIndex": 3,
         "type": "Other",
         "role": "_UIScrollViewScrollIndicator",
@@ -705,13 +784,13 @@
         },
         "enabled": true,
         "depth": 2,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
-        "ref": "e36",
+        "ref": "e40",
         "kind": "other"
       },
       {
-        "index": 36,
+        "index": 40,
         "parentIndex": 3,
         "type": "Other",
         "role": "_UIScrollViewScrollIndicator",
@@ -725,9 +804,9 @@
         },
         "enabled": true,
         "depth": 2,
-        "pid": 34969,
+        "pid": 31891,
         "hittable": true,
-        "ref": "e37",
+        "ref": "e41",
         "kind": "other"
       }
     ],
@@ -736,8 +815,8 @@
     "appBundleId": "dev.simcore.showcase",
     "visibility": {
       "partial": true,
-      "visibleNodeCount": 37,
-      "totalNodeCount": 37,
+      "visibleNodeCount": 41,
+      "totalNodeCount": 41,
       "reasons": [
         "scroll-hidden-below"
       ]
@@ -756,17 +835,17 @@
     ],
     "snapshotDiagnostics": {
       "stats": {
-        "count": 27,
-        "p50Ms": 63,
-        "p95Ms": 381,
-        "maxMs": 2753,
+        "count": 121,
+        "p50Ms": 100,
+        "p95Ms": 188,
+        "maxMs": 335,
         "slowThresholdMs": 1500,
         "platform": "ios",
         "backends": {
-          "xctest": 27
+          "xctest": 121
         }
       }
     },
-    "refsGeneration": 436560
+    "refsGeneration": 433238
   }
 }

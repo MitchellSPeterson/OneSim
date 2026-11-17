@@ -47,7 +47,11 @@ fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: 
     let (cx, cy) = (x + w / 2.0, y + h / 2.0);
     let c = Color { a: c.a * op, ..c };
     match g {
-        Glyph::Chevron => stroke_pts(pm, &[(x + 0.9, y + 0.9), (x + w - 0.9, cy), (x + 0.9, y + h - 0.9)], c, 1.9, xf, mask),
+        Glyph::Chevron => {
+            let k = w / 7.0; // grows with Dynamic Type
+            let i = 0.9 * k;
+            stroke_pts(pm, &[(x + i, y + i), (x + w - i, cy), (x + i, y + h - i)], c, 1.9 * k, xf, mask)
+        }
         Glyph::BackChevron => {
             stroke_pts(pm, &[(cx + 3.1, cy - 10.3), (cx - 7.5, cy), (cx + 3.1, cy + 10.3)], Color { a: c.a * 0.9, ..c }, 2.7, xf, mask)
         }
@@ -395,7 +399,10 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
                 }
             }
         }
-        let child_mask = match n.clip_radius.and_then(|r| rrect(bx, by, bw, bh, r as f32)) {
+        // A square clip covering the whole canvas clips nothing: skip the full-size mask (and the
+        // slower masked blending under it). Full scrollers are exactly that.
+        let covers = n.clip_radius == Some(0.0) && bx * s <= 0.0 && by * s <= 0.0 && (bx + bw) * s >= pw as f32 && (by + bh) * s >= ph as f32;
+        let child_mask = match n.clip_radius.filter(|_| !covers).and_then(|r| rrect(bx, by, bw, bh, r as f32)) {
             Some(path) => {
                 let mut m = match &mask {
                     Some(m) => (**m).clone(),

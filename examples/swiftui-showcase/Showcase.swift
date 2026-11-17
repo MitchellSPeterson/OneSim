@@ -45,6 +45,7 @@ struct ContentView: View {
                     NavigationLink("Controls") { ControlsScreen() }
                     NavigationLink("Symbols") { SymbolsScreen() }
                     NavigationLink("Glass") { GlassScreen() }
+                    NavigationLink("Long list") { LongListScreen() }
                 }
                 Section("Summary") {
                     HStack {
@@ -239,6 +240,20 @@ struct SymbolsScreen: View {
             }
         }
         .navigationTitle("Symbols")
+    }
+}
+
+/// Enough rows to scroll at the default text size: large-title collapse and the scroll edge.
+struct LongListScreen: View {
+    var body: some View {
+        List {
+            Section("Rows") {
+                ForEach(1...30, id: \.self) { i in
+                    Text("Row \(i)")
+                }
+            }
+        }
+        .navigationTitle("Long list")
     }
 }
 

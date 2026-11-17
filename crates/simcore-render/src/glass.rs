@@ -301,28 +301,108 @@ fn veil(rel: f32) -> f32 {
     0.0
 }
 
+// Scroll-edge effect above the bar, fitted to iOS 26.5 captures (typography-scrolled at 40pt,
+// Typography at 337pt, home at AX5 206pt): the veil keeps its measured ramp up to EDGE_KNEE above the
+// bar's bottom, then rises to EDGE_TOP_ALPHA at the top of the screen; a blur (EDGE_SIGMA) is mixed in
+// at EDGE_BLUR_TOP at the top, EDGE_BLUR_BAR at the bar's bottom, fading out EDGE_BLUR_TAIL below it.
+const EDGE_TOP_ALPHA: f32 = 0.95;
+const EDGE_KNEE: f32 = 8.0;
+const EDGE_SIGMA: f32 = 1.5;
+const EDGE_BLUR_TOP: f32 = 1.0;
+const EDGE_BLUR_BAR: f32 = 0.55;
+const EDGE_BLUR_TAIL: f32 = 7.75;
+
+/// Veil alpha at `pt` (screen y, points) for a bar ending at `bar`: the measured ramp around the
+/// bar's bottom edge, rising toward the top of the screen above it.
+fn veil_at(pt: f32, bar: f32) -> f32 {
+    let (rel, knee, top) = (pt - bar, -EDGE_KNEE, EDGE_TOP_ALPHA);
+    if rel >= knee {
+        veil(rel)
+    } else {
+        mix(veil(knee), top, ((knee - rel) / (knee + bar)).clamp(0.0, 1.0))
+    }
+}
+
+/// Weight of the blurred backdrop at `pt`: strongest at the top, fading out below the bar.
+fn blur_at(pt: f32, bar: f32) -> f32 {
+    let (rel, top, at_bar, tail) = (pt - bar, EDGE_BLUR_TOP, EDGE_BLUR_BAR, EDGE_BLUR_TAIL);
+    if rel >= tail {
+        0.0
+    } else if rel >= 0.0 {
+        mix(at_bar, 0.0, rel / tail)
+    } else {
+        mix(at_bar, top, (-rel / bar).clamp(0.0, 1.0))
+    }
+}
+
 pub fn draw_edge(pm: &mut Pixmap, e: &ScrollEdge, scale: f32, mask: Option<&Mask>) {
     let (pw, ph) = (pm.width() as usize, pm.height() as usize);
     let rows = (((e.bar + 32.0) * scale).ceil() as usize).min(ph);
     let col = [e.color.r * 255.0, e.color.g * 255.0, e.color.b * 255.0];
+    // Blurred copy of the band, computed at ~1 px per point (it is soft anyway) and sampled back up.
+    let f = (scale.round() as usize).max(1);
+    let (bw, bh) = (pw.div_ceil(f), rows.div_ceil(f));
+    let mut planes = [vec![0f32; bw * bh], vec![0f32; bw * bh], vec![0f32; bw * bh]];
+    {
+        let data = pm.data();
+        for by in 0..bh {
+            for bx in 0..bw {
+                let (mut acc, mut n) = ([0f32; 3], 0f32);
+                for y in by * f..((by + 1) * f).min(rows) {
+                    for x in bx * f..((bx + 1) * f).min(pw) {
+                        let i = (y * pw + x) * 4;
+                        (0..3).for_each(|c| acc[c] += data[i + c] as f32);
+                        n += 1.0;
+                    }
+                }
+                (0..3).for_each(|c| planes[c][by * bw + bx] = acc[c] / n.max(1.0));
+            }
+        }
+    }
+    let sigma = EDGE_SIGMA * scale / f as f32;
+    for pl in planes.iter_mut() {
+        box_blur3(pl, bw, bh, sigma);
+    }
+    // Bilinear upsampling, separated: one horizontal mapping for all rows, one vertical lerp per row.
+    let xmap: Vec<(usize, usize, f32)> = (0..pw)
+        .map(|x| {
+            let sx = ((x as f32 + 0.5) / f as f32 - 0.5).clamp(0.0, bw as f32 - 1.0);
+            let xi = sx.floor() as usize;
+            (xi, (xi + 1).min(bw - 1), sx - xi as f32)
+        })
+        .collect();
+    let mut row = [vec![0f32; bw], vec![0f32; bw], vec![0f32; bw]];
     let mask_data = mask.map(|m| m.data());
     let data = pm.data_mut();
     for y in 0..rows {
         let pt = (y as f32 + 0.5) / scale;
-        let a = veil(pt - e.bar);
+        let a = veil_at(pt, e.bar);
+        let bwt = blur_at(pt, e.bar);
+        if bwt > 0.0 {
+            let sy = ((y as f32 + 0.5) / f as f32 - 0.5).clamp(0.0, bh as f32 - 1.0);
+            let (yi, fy) = (sy.floor() as usize, sy - sy.floor());
+            let yj = (yi + 1).min(bh - 1);
+            for (r, pl) in row.iter_mut().zip(&planes) {
+                for (bx, v) in r.iter_mut().enumerate() {
+                    *v = pl[yi * bw + bx] * (1.0 - fy) + pl[yj * bw + bx] * fy;
+                }
+            }
+        }
         // Tint: full above bar-32, gone by bar+12.
         let t = e.tint * ((e.bar + 12.0 - pt) / 44.0).clamp(0.0, 1.0);
-        let px = |d: u8, c: usize, m: f32| {
-            let v = mix(d as f32, col[c], a) - t * 255.0;
-            mix(d as f32, v.clamp(0.0, 255.0), m).round() as u8
+        let px = |d: f32, c: usize, m: f32| {
+            let v = mix(d, col[c], a) - t * 255.0;
+            mix(d, v.clamp(0.0, 255.0), m)
         };
-        // a and t are constant along the row: unmasked pixels come from a table (same arithmetic).
-        let lut: [[u8; 256]; 3] = std::array::from_fn(|c| std::array::from_fn(|d| px(d as u8, c, 1.0)));
-        for x in 0..pw {
+        // The veil is constant along the row: unmasked pixels come from a table.
+        let lut: [[u8; 256]; 3] = std::array::from_fn(|c| std::array::from_fn(|d| px(d as f32, c, 1.0).round() as u8));
+        for (x, &(xi, xj, fx)) in xmap.iter().enumerate() {
             let mb = mask_data.map_or(255, |m| m[y * pw + x]);
             let i = (y * pw + x) * 4;
             for c in 0..3 {
-                data[i + c] = if mb == 255 { lut[c][data[i + c] as usize] } else { px(data[i + c], c, mb as f32 / 255.0) };
+                let d = data[i + c] as f32;
+                let d = if bwt > 0.0 { mix(d, row[c][xi] * (1.0 - fx) + row[c][xj] * fx, bwt) } else { d };
+                data[i + c] = if mb == 255 { lut[c][d.round() as usize] } else { px(d, c, mb as f32 / 255.0).round() as u8 };
             }
         }
     }
