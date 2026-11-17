@@ -331,6 +331,7 @@ impl Host {
                 "views": ["text", "vstack", "hstack", "zstack", "spacer", "button", "color", "rectangle", "shape", "divider",
                           "scroll", "list", "navigation", "toggle", "stepper", "text_field", "image", "label", "empty"],
                 "symbols": simcore_render::symbols_capability(),
+                "fonts": simcore_render::fonts_capability(),
             })),
             "create_session" => ok(json!({"session_id": self.create_session(p(params)?)?})),
             "start_session" => {

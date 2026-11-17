@@ -1458,12 +1458,13 @@ mod tests {
     #[test]
     fn symbols_size_like_ios_and_unknown_ones_are_reported() {
         let s = phone(SYMBOLS);
-        let system = crate::symbols::capability() == "system";
+        let cap = crate::symbols::capability();
+        let system = cap == "system";
         // Unknown names fall back to an outlined placeholder and are reported.
         let bad = by_id(&s, "bad.i");
         assert!(bad.symbol.is_none() && bad.stroke.is_some());
         assert!(s.unsupported_symbols.contains(&"no.such.symbol.xyz".to_string()));
-        assert_eq!(s.unsupported_symbols.len(), if system { 1 } else { 5 });
+        assert_eq!(s.unsupported_symbols.len(), if cap == "placeholder" { 5 } else { 1 });
         if !system {
             return; // placeholder host: no glyph metrics to check
         }

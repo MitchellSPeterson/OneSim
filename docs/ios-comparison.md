@@ -51,3 +51,14 @@ Every state still differs by the battery charging bolt, which SimCore doesn't dr
 - Corners are circular, not continuous.
 - The keyboard's suggestions are static, and it has no 123 or emoji layers.
 - Symbols are monochrome only.
+
+## Fallback mode (non-macOS hosts)
+
+When Apple's fonts and symbols are unavailable, or when forced with `SIMCORE_FALLBACK=1`, SimCore uses bundled open assets:
+- **Inter 4.1** (SIL OFL 1.1). Letter spacing is fitted per size so widths and wrapping match SF.
+- **Phosphor Icons 2.1.1** (MIT). 270 SF Symbol names are mapped onto Phosphor's regular, bold and fill styles, sized to SF's layout boxes. Unmapped names draw a placeholder and report `unsupported_symbol`.
+
+Pass rule in this mode is **< 3.5%**: the 2% budget plus the measured glyph-shape gap. CI runs both modes. Worst states are typography (2.85%), keyboard-dark (2.75%), todos-typed (2.24%) and keyboard-shift (2.23%), all driven by Inter's glyph shapes. All 13 states pass.
+
+![fallback symbols](ios-comparison/fallback/cmp-symbols.png)
+![fallback typography](ios-comparison/fallback/cmp-typography.png)

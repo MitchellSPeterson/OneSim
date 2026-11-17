@@ -4,6 +4,9 @@ use std::collections::HashMap;
 /// macOS system UI font (variable SF Pro: wght axis). Family name as registered in fontdb.
 const SF_FILE: &str = "/System/Library/Fonts/SFNS.ttf";
 const SF_FAMILY: &str = ".SF NS";
+/// Open-licensed fallback (Inter, SIL OFL 1.1; variable `wght` axis), embedded for determinism.
+const INTER: &[u8] = include_bytes!("../../../assets/fonts/InterVariable.ttf");
+const INTER_FAMILY: &str = "Inter Variable";
 
 /// Horizontal text alignment inside the text node's own bounds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -56,11 +59,41 @@ pub fn tracking_em(size: f32, weight: u16) -> f32 {
     }
 }
 
+/// Inter has no SF-style optical sizes and is wider than SF Pro's display cut at small sizes, so
+/// its per-size tracking (em) is fitted separately to the same iOS widths (`scripts/compare-ios.sh`).
+/// Used instead of [`tracking_em`] when the bundled font is active.
+pub fn inter_tracking_em(size: f32, weight: u16) -> f32 {
+    fn lerp(pts: &[(f32, f32)], x: f32) -> f32 {
+        let i = pts.iter().position(|p| p.0 >= x).unwrap_or(pts.len() - 1).max(1);
+        let (a, b) = (pts[i - 1], pts[i]);
+        a.1 + (b.1 - a.1) * ((x - a.0) / (b.0 - a.0)).clamp(0.0, 1.0)
+    }
+    // Regular-weight tracking by size, then the extra needed per weight (SF gets heavier faster than Inter).
+    const BY_SIZE: [(f32, f32); 9] = [
+        (11.0, 0.0008), (12.0, -0.0032), (13.0, -0.0082), (15.0, -0.0182), (17.0, -0.0262),
+        (20.0, -0.0412), (22.0, -0.0477), (28.0, -0.0467), (34.0, -0.0492),
+    ];
+    const BY_WEIGHT: [(f32, f32); 3] = [(400.0, 0.0), (600.0, 0.0085), (700.0, 0.0163)];
+    // SF stops tightening heavy text at 20pt+ (see `tracking_em`), so the gap widens there.
+    let big = if size >= 20.0 { 0.007 * ((weight as f32 - 400.0) / 200.0).clamp(0.0, 1.0) } else { 0.0 };
+    lerp(&BY_SIZE, size) + lerp(&BY_WEIGHT, weight as f32) + big
+}
+
+/// `"system"` when Apple's SF Pro is used, `"bundled"` for the Inter fallback.
+pub fn fonts_capability() -> &'static str {
+    if !crate::fallback_forced() && std::path::Path::new(SF_FILE).exists() {
+        "system"
+    } else {
+        "bundled"
+    }
+}
+
 /// System fonts + glyph cache, shared by layout (measuring) and raster (drawing).
 pub struct Fonts {
     sys: FontSystem,
     cache: SwashCache,
     sf: bool,
+    inter: bool,
     measured: HashMap<(String, u32, u16, u32), (f64, f64)>,
 }
 
@@ -78,28 +111,46 @@ impl Default for Fonts {
 }
 
 impl Fonts {
+    /// SF Pro when present, else bundled Inter. `SIMCORE_FALLBACK=1` forces Inter.
     pub fn new() -> Self {
+        Self::with_fallback(crate::fallback_forced())
+    }
+
+    pub fn with_fallback(force_inter: bool) -> Self {
         let mut db = fontdb::Database::new();
         db.load_system_fonts();
         let has = |db: &fontdb::Database| db.faces().any(|f| f.families.iter().any(|(n, _)| n == SF_FAMILY));
-        if !has(&db) {
+        if !force_inter && !has(&db) {
             let _ = db.load_font_file(SF_FILE);
         }
-        let sf = has(&db);
+        let sf = !force_inter && has(&db);
+        let inter = !sf;
+        if inter {
+            db.load_font_data(INTER.to_vec());
+        }
         let sys = FontSystem::new_with_locale_and_db("en-US".into(), db);
-        Self { sys, cache: SwashCache::new(), sf, measured: HashMap::new() }
+        Self { sys, cache: SwashCache::new(), sf, inter, measured: HashMap::new() }
     }
 
-    /// True when Apple's SF Pro was found (otherwise generic sans-serif is used).
+    /// True when Apple's SF Pro is in use.
     pub fn has_sf(&self) -> bool {
         self.sf
+    }
+
+    /// True when the bundled Inter fallback is in use.
+    pub fn has_inter(&self) -> bool {
+        self.inter
     }
 
     fn buffer(&mut self, text: &str, f: &FontSpec, width: Option<f32>) -> Buffer {
         let mut b = Buffer::new(&mut self.sys, Metrics::new(f.size, f.pitch));
         b.set_size(width, None);
-        let family = if self.sf { Family::Name(SF_FAMILY) } else { Family::SansSerif };
-        let attrs = Attrs::new().family(family).weight(Weight(f.weight)).letter_spacing(f.tracking);
+        let (family, tracking) = if self.sf {
+            (Family::Name(SF_FAMILY), f.tracking)
+        } else {
+            (Family::Name(INTER_FAMILY), inter_tracking_em(f.size, f.weight))
+        };
+        let attrs = Attrs::new().family(family).weight(Weight(f.weight)).letter_spacing(tracking);
         b.set_text(text, &attrs, Shaping::Advanced, None);
         let align = match f.align {
             TextAlign::Leading => None,

@@ -76,6 +76,10 @@ cargo run -p simcore-render --example counter --features window -- --window    #
 | `crates/simcore-runtime` | Guest staticlib, C ABI linked into the app |
 | `frameworks/swiftui` | SimCore's `SwiftUI` module and C bridge |
 
+## Fonts and symbols fallback
+
+On macOS the host uses the system SF Pro and SF Symbols. Elsewhere, or with `SIMCORE_FALLBACK=1`, it uses bundled open-licensed substitutes that look close to iOS: Inter ([SIL OFL 1.1](assets/fonts/OFL.txt)) and Phosphor Icons ([MIT](assets/symbols/phosphor/LICENSE)), mapped from SF Symbol names. `get_capabilities` reports `"fonts"` and `"symbols"`; see [docs/protocol.md](docs/protocol.md) section E. `SIMCORE_FALLBACK=1 scripts/compare-ios.sh` measures it.
+
 ## License
 
-MIT
+MIT (bundled assets keep their own licenses, see above)

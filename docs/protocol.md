@@ -213,7 +213,12 @@ The guest reads `SIMCORE_APPEARANCE` at launch for `@Environment(\.colorScheme)`
 
 New modifier: `{"imageScale": "small"|"medium"|"large"}` (inherited). `Font` also supports `.weight(_:)` on text styles, emitted as `{"font": {"style": "footnote", "weight": "semibold"}}`.
 
-Symbol rendering is a **host native-API capability**. On macOS hosts, symbols are rasterized from the system's SF Symbols, and nothing Apple-licensed is shipped in the repo. Other hosts draw a placeholder and report `unsupported_symbol` in `get_errors`. `get_capabilities` lists `"symbols": "system"|"placeholder"`.
+Symbol rendering is a **host native-API capability**. On macOS hosts, symbols are rasterized from the system's SF Symbols, and nothing Apple-licensed is shipped in the repo. `get_capabilities` lists `"symbols": "system"|"bundled"|"placeholder"` and `"fonts": "system"|"bundled"`.
+
+**Fallback chain (open-licensed; nothing Apple-licensed is bundled).** When Apple's resources are unavailable (non-macOS host) or `SIMCORE_FALLBACK=1` is set in the host process's environment (so macOS CI can test this path), the host uses:
+- Fonts `"bundled"`: **Inter** (`assets/fonts/InterVariable.ttf`, SIL OFL 1.1, `assets/fonts/OFL.txt`), embedded in `simcore-render`, variable `wght` axis, with per-size letter-spacing (`inter_tracking_em`) fitted to the iOS/SF widths in `tests/fixtures/showcase-ios`. The SF path (`/System/Library/Fonts/SFNS.ttf`) is unchanged.
+- Symbols `"bundled"`: **Phosphor Icons** (`assets/symbols/phosphor/{regular,bold,fill}`, MIT, `LICENSE`), rendered with resvg into the same alpha-mask pipeline as AppKit symbols. `crates/simcore-render/src/symbols_map.rs` maps SF Symbol name to Phosphor icon (~270 names). A `.fill` suffix selects the fill style, weight semibold or heavier the bold style, otherwise regular; `.circle` variants map to Phosphor's `*-circle` icons where they exist. The layout box approximates AppKit's (ink = icon units x 1.25 x pt / 256 x imageScale, plus a margin), so it differs from AppKit per glyph by a few percent.
+- A name missing from the table (or any name when `"symbols"` is `"placeholder"`) draws the placeholder below and reports `unsupported_symbol`.
 
 `Color` rgba gains an optional `"dark": [r, g, b]` (0..1): in dark appearance the host uses it instead of `r,g,b` (alpha unchanged), so adaptive system colors (`.red`, `.pink`, `.green`, `.blue`, ...) follow iOS 26 in dark mode.
 
@@ -224,7 +229,7 @@ not the font. A resizable image takes the proposal; with `contentMode` it keeps 
 `fill` occupies the whole proposal and crops). The glyph is rasterized at device scale into an alpha mask, tinted with the foreground color
 and cached by (name, size, weight, scale, device scale, target size). In a list row, `label` puts the icon (imageScale large) centered in a
 24pt leading column and starts the title 16pt later (title at row content x + 40); the row separator aligns with the title.
-Rendering is monochrome only (multicolor, hierarchical and palette modes are out of scope). On a non-macOS host or for an unknown name the
+Rendering is monochrome only (multicolor, hierarchical and palette modes are out of scope). For a name with no mapping the
 host draws a rounded-square outline placeholder and records one `get_errors` entry per name, `{"source":"host","message":"unsupported_symbol: ..."}`.
 
 ### Software keyboard (host chrome)

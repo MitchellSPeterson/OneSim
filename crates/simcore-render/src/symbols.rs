@@ -1,7 +1,8 @@
 //! SF Symbols as a host capability. On macOS the system's own symbols are rasterized through
 //! AppKit (`NSImage(systemSymbolName:)` + `NSImage.SymbolConfiguration`) into an alpha mask that the
 //! rasterizer tints with the foreground color. Nothing Apple-licensed is stored in the repo.
-//! Other platforms (and unknown names) get `None`; callers draw a placeholder and report it.
+//! Other platforms, or `SIMCORE_FALLBACK=1`, use bundled Phosphor Icons (MIT) via resvg instead
+//! (see `bundled`). Unmapped names get `None`; callers draw a placeholder and report it.
 //!
 //! ponytail: monochrome only; multicolor / hierarchical / palette rendering modes are out of scope.
 
@@ -34,16 +35,22 @@ pub struct SymbolMask {
     pub alpha: Vec<u8>,
 }
 
-/// `"system"` when symbols are rasterized from the OS, else `"placeholder"`.
+/// Bundled Phosphor fallback instead of AppKit: no AppKit, or forced with `SIMCORE_FALLBACK=1`.
+fn use_bundled() -> bool {
+    !cfg!(target_os = "macos") || crate::fallback_forced()
+}
+
+/// `"system"` when symbols are rasterized from the OS, else `"bundled"` (Phosphor Icons).
+/// (`"placeholder"` is reserved for builds without the bundled set.)
 pub fn capability() -> &'static str {
-    if cfg!(target_os = "macos") {
-        "system"
+    if use_bundled() {
+        "bundled"
     } else {
-        "placeholder"
+        "system"
     }
 }
 
-type MetricsKey = (String, u32, u16, u8);
+type MetricsKey = (String, u32, u16, u8, bool);
 type MaskKey = (MetricsKey, u32, u32, u32);
 
 #[derive(Default)]
@@ -60,7 +67,7 @@ fn with_cache<R>(f: impl FnOnce(&mut Cache) -> R) -> R {
 }
 
 fn key(s: &SymbolSpec) -> MetricsKey {
-    (s.name.clone(), (s.point_size * 100.0).round() as u32, s.weight, s.scale as u8)
+    (s.name.clone(), (s.point_size * 100.0).round() as u32, s.weight, s.scale as u8, use_bundled())
 }
 
 /// Size of the symbol in points, or `None` when the name is unknown / unsupported on this host.
@@ -69,7 +76,7 @@ pub fn metrics(spec: &SymbolSpec) -> Option<SymbolMetrics> {
     if let Some(m) = with_cache(|c| c.metrics.get(&k).copied()) {
         return m;
     }
-    let m = sys::metrics(spec);
+    let m = if use_bundled() { bundled::metrics(spec) } else { sys::metrics(spec) };
     with_cache(|c| c.metrics.insert(k, m));
     m
 }
@@ -81,7 +88,7 @@ pub fn mask(spec: &SymbolSpec, w_px: u32, h_px: u32, device_scale: f64) -> Optio
     if let Some(m) = with_cache(|c| c.masks.get(&k).cloned()) {
         return m;
     }
-    let m = sys::mask(spec, w_px, h_px, device_scale).map(Arc::new);
+    let m = if use_bundled() { bundled::mask(spec, w_px, h_px) } else { sys::mask(spec, w_px, h_px, device_scale) }.map(Arc::new);
     with_cache(|c| c.masks.insert(k, m.clone()));
     m
 }
@@ -165,6 +172,79 @@ mod sys {
     }
     pub fn mask(_: &SymbolSpec, _: u32, _: u32, _: f64) -> Option<SymbolMask> {
         None
+    }
+}
+
+/// Phosphor Icons fallback: SVG -> alpha mask via resvg, sized to approximate AppKit's layout box.
+mod bundled {
+    use super::*;
+    use crate::symbols_map::MAP;
+    use resvg::{tiny_skia, usvg};
+
+    /// Phosphor icons are 256-unit squares. AppKit boxes are the glyph's ink plus a margin, and ink
+    /// scales with the point size: ink = svg_units * K * pt / 256 * (imageScale factor); box = ink + PAD_* * pt.
+    /// K, PAD_W and PAD_H are fitted to AppKit's `NSImage.size` and ink for common symbols.
+    const K: f64 = 1.25;
+    const PAD_W: f64 = 0.2;
+    const PAD_H: f64 = 0.15;
+    const SCALE: [f64; 3] = [0.78, 1.0, 1.29];
+
+    struct Icon {
+        tree: usvg::Tree,
+        /// Tight ink bounds in SVG units.
+        ink: (f32, f32, f32, f32),
+    }
+
+    type IconCache = HashMap<(usize, usize), Option<Arc<Icon>>>;
+    static ICONS: Mutex<Option<IconCache>> = Mutex::new(None);
+
+    /// Table row and style (0 regular, 1 bold, 2 fill) for `spec`.
+    fn lookup(spec: &SymbolSpec) -> Option<(usize, usize)> {
+        let (base, fill) = spec.name.strip_suffix(".fill").map_or((spec.name.as_str(), false), |b| (b, true));
+        let row = MAP.iter().position(|r| r.0 == base)?;
+        Some((row, if fill { 2 } else if spec.weight >= 600 { 1 } else { 0 }))
+    }
+
+    fn icon(spec: &SymbolSpec) -> Option<Arc<Icon>> {
+        let k = lookup(spec)?;
+        let mut g = ICONS.lock().unwrap_or_else(|e| e.into_inner());
+        g.get_or_insert_with(HashMap::new)
+            .entry(k)
+            .or_insert_with(|| {
+                let svg = MAP[k.0].1[k.1].replace("currentColor", "#000");
+                let tree = usvg::Tree::from_str(&svg, &usvg::Options::default()).ok()?;
+                let b = tree.root().abs_bounding_box();
+                (b.width() > 0.0 && b.height() > 0.0).then(|| Arc::new(Icon { ink: (b.x(), b.y(), b.width(), b.height()), tree }))
+            })
+            .clone()
+    }
+
+    /// Ink size in points.
+    fn ink_pt(i: &Icon, spec: &SymbolSpec) -> (f64, f64) {
+        let k = K * spec.point_size * SCALE[spec.scale as usize] / 256.0;
+        (i.ink.2 as f64 * k, i.ink.3 as f64 * k)
+    }
+
+    pub fn metrics(spec: &SymbolSpec) -> Option<SymbolMetrics> {
+        let i = icon(spec)?;
+        let (w, h) = ink_pt(&i, spec);
+        let pad = spec.point_size * SCALE[spec.scale as usize];
+        Some(SymbolMetrics { w: w + PAD_W * pad, h: h + PAD_H * pad })
+    }
+
+    pub fn mask(spec: &SymbolSpec, w_px: u32, h_px: u32) -> Option<SymbolMask> {
+        let i = icon(spec)?;
+        let (w, h) = (w_px as f32, h_px as f32);
+        // Ink occupies the same fraction of the (possibly stretched) box as in the natural box.
+        let m = metrics(spec)?;
+        let (iw, ih) = ink_pt(&i, spec);
+        let (fw, fh) = ((iw / m.w) as f32, (ih / m.h) as f32);
+        let (sx, sy) = (w * fw / i.ink.2, h * fh / i.ink.3);
+        let tf = tiny_skia::Transform::from_translate((w - w * fw) / 2.0, (h - h * fh) / 2.0).pre_scale(sx, sy).pre_translate(-i.ink.0, -i.ink.1);
+        let mut pm = tiny_skia::Pixmap::new(w_px, h_px)?;
+        resvg::render(&i.tree, tf, &mut pm.as_mut());
+        let alpha: Vec<u8> = pm.pixels().iter().map(|p| p.alpha()).collect();
+        alpha.iter().any(|&a| a > 0).then_some(SymbolMask { w: w_px, h: h_px, alpha })
     }
 }
 

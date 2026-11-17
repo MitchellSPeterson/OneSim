@@ -10,6 +10,7 @@ mod chrome;
 mod raster;
 mod scene;
 mod symbols;
+mod symbols_map;
 mod text;
 
 pub use raster::{render, render_png};
@@ -17,11 +18,16 @@ pub use symbols::{capability as symbols_capability, SymbolMask, SymbolMetrics, S
 pub use chrome::{autocap, ChromeParams};
 pub use layout::swiftui::SceneParams;
 pub use scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, Shadow, SymbolRun, TextRun};
-pub use text::{tracking_em, FontSpec, Fonts, TextAlign};
+pub use text::{fonts_capability, inter_tracking_em, tracking_em, FontSpec, Fonts, TextAlign};
 
 use simcore_protocol::ViewNode;
 
 /// Layout a view tree into a scene (see [`SceneParams`]).
 pub fn build_scene(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
     layout::swiftui::layout(root, params, fonts)
+}
+
+/// `SIMCORE_FALLBACK=1` forces the open-licensed fallbacks (Inter, Phosphor Icons) even where Apple's resources exist.
+pub fn fallback_forced() -> bool {
+    std::env::var("SIMCORE_FALLBACK").is_ok_and(|v| v == "1")
 }

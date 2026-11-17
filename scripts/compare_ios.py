@@ -1,13 +1,16 @@
 """Side-by-side iOS vs SimCore comparison. Usage: compare_ios.py IOS_DIR SIMCORE_DIR OUT_DIR
 
-Pass rule: every state must have < MAX_DIFF % of pixels off by more than ~10%
-(luminance of the per-pixel RGB difference > 24 of 255). Exits 1 if any state fails. Override with SIMCORE_MAX_DIFF."""
+Pass rule: every state must have < MAX_DIFF % of its pixels off by more than ~10%
+(luminance of the per-pixel RGB difference > 24 of 255). MAX_DIFF is 2% with Apple's
+SF Pro + SF Symbols and 3.5% in fallback mode (SIMCORE_FALLBACK=1: bundled Inter +
+Phosphor). Exits 1 if any state fails. SIMCORE_MAX_DIFF overrides locally."""
 import os
 import sys
 from pathlib import Path
 from PIL import Image, ImageChops, ImageDraw
 
-MAX_DIFF = float(os.environ.get("SIMCORE_MAX_DIFF", "2.0"))
+FALLBACK = os.environ.get("SIMCORE_FALLBACK") == "1"
+MAX_DIFF = float(os.environ.get("SIMCORE_MAX_DIFF", "3.5" if FALLBACK else "2.0"))
 ios_dir, sc_dir, out = map(Path, sys.argv[1:4])
 rows = []
 for ios_png in sorted(ios_dir.glob("*.png")):
@@ -29,7 +32,7 @@ for ios_png in sorted(ios_dir.glob("*.png")):
         ImageDraw.Draw(sheet).text((i * w + 20, 15), label, fill="black", font_size=36)
     sheet.resize((w * 3 // 3, (h + 60) // 3)).save(out / f"cmp-{ios_png.stem}.png")
     rows.append((ios_png.stem, differing, mean))
-print(f"{'state':<18}{'pixels >10% off':>16}{'mean abs diff':>15}  result (< {MAX_DIFF}% to pass)")
+print(f"{'state':<18}{'pixels >10% off':>16}{'mean abs diff':>15}  result (< {MAX_DIFF}% to pass{', fallback mode' if FALLBACK else ''})")
 failed = [name for name, d, _ in rows if d >= MAX_DIFF]
 for name, d, m in rows:
     print(f"{name:<18}{d:>15.2f}%{m:>15.1f}  {'FAIL' if name in failed else 'pass'}")

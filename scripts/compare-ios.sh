@@ -2,9 +2,13 @@
 # Render the showcase on SimCore in the same states as tests/fixtures/showcase-ios
 # and build side-by-side comparisons (iOS | SimCore | diff) in target/compare/.
 # Requires Python 3 with Pillow (dev-only).
+# SIMCORE_FALLBACK=1 forces the bundled Inter + Phosphor fallbacks (inherited by every `simcore run`,
+# whose host process does the rendering); the capabilities line below shows what is actually in use.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 cargo build -q -p simcore-cli
+printf '{"id":1,"method":"hello","params":{"protocol_version":1}}\n{"id":2,"method":"get_capabilities"}\n' | ./target/debug/simcore serve 2>/dev/null \
+  | python3 -c 'import json,sys; c=json.loads(sys.stdin.readlines()[1])["result"]; print("fonts:", c["fonts"], "| symbols:", c["symbols"], "| SIMCORE_FALLBACK=" + "'"${SIMCORE_FALLBACK:-}"'")'
 out=target/compare; mkdir -p "$out/simcore"
 app=examples/swiftui-showcase
 shot() { local name=$1; shift; ./target/debug/simcore run "$app" "$@" --screenshot "$out/simcore/$name.png" >/dev/null; }

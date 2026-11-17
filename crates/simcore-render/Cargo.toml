@@ -13,6 +13,7 @@ window = ["dep:winit", "dep:softbuffer"]
 simcore-protocol = { path = "../simcore-protocol" }
 tiny-skia = "0.11"
 cosmic-text = "0.19"
+resvg = { version = "0.45", default-features = false }
 winit = { version = "0.30", optional = true }
 softbuffer = { version = "0.4", optional = true }
 
