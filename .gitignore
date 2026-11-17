@@ -5,3 +5,4 @@
 !docs/**/*.png
 .DS_Store
 !tests/fixtures/**/*.png
+.claude/

@@ -17,4 +17,8 @@ shot todos-typed      --click Todos --click "Ship the SwiftUI subset" --click "N
 shot controls         --click Controls
 shot controls-changed --click Controls --click Notifications --click More --click More
 shot home-dark        --dark
+shot symbols          --click Symbols
+shot symbols-dark     --click Symbols --dark
+shot keyboard-shift   --click Todos --click "New todo"
+shot keyboard-dark    --dark --click Todos --click "New todo" --type "Buy milk"
 python3 scripts/compare_ios.py tests/fixtures/showcase-ios "$out/simcore" "$out"

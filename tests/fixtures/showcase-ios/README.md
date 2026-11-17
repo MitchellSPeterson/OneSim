@@ -2,11 +2,12 @@
 
 Real SwiftUI (`examples/swiftui-showcase/Showcase.swift`) built with `scripts/build-ios-sim.sh examples/swiftui-showcase target/ios/Showcase.app`
 and captured on a real iOS Simulator via agent-device. One `<name>.png` + `<name>.json` per state:
-home, typography, shapes, todos, todos-toggled, todos-typed, controls, controls-changed, home-dark.
+home, typography, shapes, todos, todos-toggled, todos-typed, controls, controls-changed, home-dark,
+symbols, symbols-dark, keyboard-dark, keyboard-shift (recaptured 2026-11-17, see "Recapture notes" at the bottom).
 
 - Device: iPhone 17 Pro simulator, iOS 26.5. Screen 402 x 874 pt, scale 3 -> PNGs are 1206 x 2622 px.
 - PNG: `screenshot --pixel-density 3 --normalize-status-bar` (status bar 9:41, wifi, battery full/charging bolt; cellular shows no-service dots).
-  The Dynamic Island pill is drawn in some PNGs only (typography, todos-toggled, controls*, ...) and absent in others (home, home-dark, shapes, todos-typed): screenshot artifact, mask it.
+  The Dynamic Island pill is now present in EVERY PNG (see Recapture notes; in the dark PNGs it is black on black bg so invisible but still there).
 - JSON: raw `agent-device snapshot --json` (`data.nodes[].rect` in points, origin top-left, includes `depth`/`parentIndex`).
   Light appearance except home-dark. App state is not persisted across relaunch (todos reset).
 - Note: `todos` is captured at launch state (item 3 open); `todos-toggled` has ALL three done.
@@ -70,3 +71,107 @@ home, typography, shapes, todos, todos-toggled, todos-typed, controls, controls-
 - Buttons in List (todos rows): text shows accent-tinted even with `.foregroundStyle(.secondary)`: done rows render light-blue (~#7CC0FF) strikethrough text, not gray (Button label tinting in List). Circle fill green (52,199,89) with gray ring.
 - Switch/stepper are iOS 26 controls: switch 63x28 (wider than iOS 17's 51x31), stepper is a rounded-capsule pair with divider (the +/- pair).
 - Keyboard (todos-typed) is the iOS 26 floating-rounded keyboard with predictive bar; caret blue; "Add" turns blue (enabled).
+
+## Recapture notes (2026-11-17)
+Capture: `scripts/build-ios-sim.sh` -> `simctl install`; everything else through agent-device (appearance, relaunch, press, type, snapshot, screenshot).
+Order: light: home, Typography, back, Shapes, back, Todos (todos), tap "Ship the SwiftUI subset" (todos-toggled), tap field at (150,194) + type "Buy milk" (todos-typed, no relaunch);
+relaunch, Controls (controls), tap switch (340,194) + More twice (178,304) (controls-changed), back, Symbols (symbols).
+dark: relaunch, home-dark, Symbols (symbols-dark), back, Todos, tap field, type "Buy milk" (keyboard-dark). light: relaunch, Todos, tap field, no typing (keyboard-shift).
+(`press 'type=TextField'` did not focus the field; a coordinate press did.)
+
+### Dynamic Island: why it was inconsistent, and the fix
+- Plain `screenshot --pixel-density 3` (no `--normalize-status-bar`) NEVER shows the island (0 of 6 samples). With `--normalize-status-bar` it appears in a random ~50% of captures:
+  back-to-back identical calls on an idle app gave island/no-island in no pattern (1,1,1,1,0,0 / 0,0,0,0,0,1 / with 4 s sleeps 0,0,1,0). `--no-stabilize`, a pause, relaunch and the 1x vs 3x density made no difference.
+  Cause is outside the app: a race in the simulator status-bar override / framebuffer capture; the app content is identical either way.
+- Fix: always pass `--normalize-status-bar` and re-shoot until the island pixel is black (check pixel (603,100) px is <12 and differs from (300,100)), up to 30 tries, then snapshot JSON is taken once before. Typical 1-5 tries. All 13 PNGs verified to contain the island.
+  Dark PNGs: island is (0,0,0) on a (0,0,0) background so it cannot be verified by pixels; it is not visible and does not need to be drawn there (a renderer may draw a black pill in all modes).
+- The snapshot JSON does not contain the island; use the measured frame below.
+
+### Dynamic Island (light PNG, 3x px measured, pt = px/3)
+| item | value |
+|---|---|
+| frame | x=138.33, y=14.0, w=125.33, h=36.67 (px 415..790 x 42..151); centred on x=201, i.e. ~125x37 pill at (138.5,14), corner radius = h/2 (full capsule) |
+| color | (0,0,0) |
+| status bar content | time 9:41 left of island, wifi + battery right; island occupies y 14..50.7 inside the 62pt top inset |
+
+### Keyboard (iOS 26, iPhone 17 Pro, light/dark) - measured on keyboard-shift / keyboard-dark
+| item | value |
+|---|---|
+| inputView (whole keyboard incl. suggestion bar) | 0,539, 402x335 (bottom = 874, screen bottom) |
+| suggestion bar | 0,539, 402x44; 3 candidates "I" (0,539,134x44), "The" (134,539,134x44), "I\u2019m" (268,539,134x44); 1-px (0.67pt) separators at x=134 and 268, color (205,206,213) light / (50,50,52) dark |
+| key area (UIKeyboardLayoutStar) | 0,583, 402x233 (to y=816); emoji/mic row below at y~805..874 |
+| panel background | light (223,224,230) ; dark (23,23,23). Above-panel app bg is not tinted by it. |
+| panel shape | floating-rounded: top corners radius ~28pt (fit from the corner profile), spans full width (inset 0); bottom corners follow device corner (outside pixels = app bg). Top edge has a 1px lighter line (light 248,250,253). No outer shadow measured. |
+| key cap color | light: ALL keys (letters and shift/delete/123/space/return) (255,255,255); dark: ALL keys (61,61,61). No separate darker function-key color in this capture. |
+| key cap geometry (visual) | e.g. Q: x 6.67..40.0 (w 33.3), y 591..634 (h 43). Hit frames below are bigger (cell 39.3x54): cap = hit frame inset ~2pt horizontally (gap ~6pt... see x pitch) and 1pt top, 11pt bottom. No visible shadow under the caps (pixel below cap = panel bg). |
+| key corner radius | ~7pt (fit: offset at depth 0/1/2/3/5pt = 6.3/3.7/2.3/1.3/0.3pt) |
+| key label | letters: regular weight, cap-height of "E" = 15.33pt -> ~22pt SF (E glyph 9.0 wide); color light (0,0,0) / dark (255,255,255); "123" and return glyph, emoji, mic same colors |
+| letter case / shift | shift ON (keyboard-shift, keyboard-dark, todos-typed - see surprise): labels UPPERCASE (snapshot labels "Q","W"...), shift glyph solid filled arrow, `selected:true`. Shift OFF (checked by tapping shift; not saved as fixture): labels lowercase "q","w"..., shift glyph hollow outline arrow, selected absent. Return/123/space labels never change. |
+
+Key hit frames (pt, x,y,w,h; identical in light and dark):
+| key | frame |
+|---|---|
+| Q W E R T Y U I O P | y=590 h=54; x = 4.67, 44, 83.67, 123.0, 162.67, 202, 241.67, 281, 320.67, 360 ; w alternates 39.33/39.67 |
+| A S D F G H J K L | y=644 h=54; x = 24.33, 63.67, 103.33, 142.67, 182.33, 221.67, 261.33, 300.67, 340.33 ; w 39.33/39.67 |
+| shift | 4.67,698, 51.33x54 |
+| Z X C V B N M | y=698; x = 63.67, 103.33, 142.67, 182.33, 221.67, 261.33, 300.67 ; w 39.67/39.33 |
+| delete (backspace) | 348,698, 51.67x54 |
+| 123 ("numbers", id `more`) | 4.67,752, 98.67x54 |
+| space | 103.33,752, 197.33x54 |
+| return | 300.67,752, 99x54 |
+| Emoji button | 8.48,805.7, 68.09x68.3 (glyph ~ 22pt emoji smiley centred ~ (42,840)) |
+| Dictate (mic) button | 325.44,805.37, 68.09x68.63 |
+Row pitch 54, key pitch 39.5 (10 keys across 395 = 402 - 2*4.67 -ish), visual caps 33.3 wide with ~6pt gap, 43 tall with ~11pt gap.
+
+### Shadow card (shapes screen, `.shadow(radius: 6)`, .cornerRadius(12), white card on white bg)
+Card geometry from pixels: x 135.33..266.67 (w 131.33), y 364..416.33 (h 52.33), corner radius ~12. Screen bg on Shapes is pure white (255).
+Profile is IDENTICAL on right, bottom, top and left edges => shadow offset (0,0). Fit: shadow = black, alpha 0.33 * (1 - Phi(d/sigma)), **sigma = 5.9pt (~radius 6), peak alpha 0.33 (default SwiftUI shadow color)**, residual err tiny. Extends visibly ~14pt (43px) from the edge.
+Gray channel value leaving the card edge (3 px = 1pt per step, d = distance from edge in pt, bg 255):
+| d(pt) | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| right edge | 214 | 223 | 228 | 233 | 236 | 240 | 243 | 246 | 248 | 250 | 251 | 252 | 253 | 254 | 254 |
+| bottom edge | 214 | 223 | 228 | 233 | 238 | 241 | 245 | 247 | 249 | 250 | 251 | 252 | 253 | 253 | 254 |
+(first px values at 1/3pt steps, right edge: 214,216,218,219,221,223,225,227,228,230,232,233,235,236,238,239,240,241,243,244,245,246,246,247,248,249,249,250,251,251,252,252,252,253,253,253,253,254,254,254,254,254,254,255; bottom nearly identical)
+alpha = (255 - v)/255: 0.161 at the edge (= 0.33/2), 0.04 at 7pt, ~0.004 at 14pt.
+
+### Back button halo (Liquid Glass, 44x44 at 16,62)
+Glass fill (251,251,255) on grouped bg (242,242,247); on white bg (255) it is (253,253,253). Halo is wide, soft and offset DOWN (offset y ~ +4pt, blur sigma ~ 20pt, black alpha ~ 0.06): values on grouped-light bg (242,242,247) (rgb R channel; B is +5):
+| distance from button edge (pt) | 0 | 2 | 4 | 8 | 12 | 16 | 20 | 24 | 28 | 32 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| right (row y=84, edge x=60) | 235 | 235 | 236 | 237 | 239 | 240 | 240 | 241 | 241 | 242 |
+| below (col x=38, edge y=106) | 231 | 232 | 233 | 234 | 236 | 237 | 238 | n/a | n/a | n/a |
+(below column sampled only to y=126 (20pt), still 4 under bg there, so it extends further than the right side). Left of the button (x 0..16): 239 at x=0 -> 235 at x=15; above (button top y=62 going up to y=40): 237 at y=61 -> 241 at y=40.
+On white (shapes): right 247 at edge -> 255 at ~32pt; below 244 at edge -> 251 at 20pt. Halo is strongest below/right-below, symmetric-ish horizontally, i.e. offset roughly (0,+3..4), a very blurry shadow (not a hard ring). Fit with sigma ~15-20pt, alpha ~0.07 if needed.
+Dark: back button is a dark glass circle (visible in symbols-dark), no sampled halo.
+
+### Symbols screen (symbols.json; frames pt)
+| element | frame |
+|---|---|
+| "Labels" header | 16,168, 370x40.33 |
+| row Favorites (cell) | 16,208.33, 370x52; image star.fill 32,223 24x22.67; text frame 16,208.33 370x52 |
+| row Settings | 16,260.33, 370x52; image gear 32.33,275 23.33x23 |
+| row Trash | 16,312.33, 370x52; image trash 33.67,326.33 20.67x24 |
+| label icon column | icons start at x~32 (cell inset 16 + 16 pad), icon box ~24 wide, centre x~44; label text starts at x=64.33 (Messages text x=64.33 in the inline row, icon 34,573 20.3x14.3) |
+| "Images" header | 16,382, 370x40.33; card row 16,422.33, 370x74 |
+| heart.fill | 34,451.67 16.67x15.33 |
+| bell | 75.67,445.33 26x28.33 |
+| checkmark.circle.fill | 126.67,448.67 21.67x21.67 |
+| paperplane | 172.33,444.67 29.67x29.67 |
+| cloud.sun.fill | 225.33,443.67 44x31.33 |
+| "Inline" header | 16,513.67, 370x40.33 |
+| row Messages | 16,554, 370x52; envelope 34,573 20.33x14.33; text "Messages" 64.33,569.83 77.33x20.33; value "12" 335,569.83 17.33x20.33; chevron.right 362.67,574.33 6.67x11.67 |
+Row pitch 52; the trailing section rows first at 208.33.
+Icon tint colors (most frequent pixel in icon frame), light / dark:
+| symbol | light | dark |
+|---|---|---|
+| star.fill (Favorites) | (0,136,255) | (0,145,255) |
+| gear (Settings) | (0,136,255) | (0,145,255) |
+| trash (Trash, red label text too) | (255,56,60) | (255,66,69) |
+| heart.fill | (255,45,85) | (255,55,95) |
+| bell | (0,0,0) | (255,255,255) |
+| checkmark.circle.fill (green, white check) | (52,199,89) | (48,209,88) |
+| paperplane | (0,0,0) | (255,255,255) |
+| cloud.sun.fill | (0,0,0) monochrome | (255,255,255) |
+| envelope (inline) | (0,0,0) | (255,255,255) |
+| chevron.right (inline) | (191,191,191) | ~ dark gray |
+Dark accent is (0,145,255), system red (255,66,69), pink-red (255,55,95), green (48,209,88). Dark card bg (28,28,30), screen bg (0,0,0).
