@@ -6,7 +6,7 @@
 //! `simcore_render::Interaction` (the same state machine as the native host) and its effects
 //! call the Swift callbacks directly.
 use simcore_protocol::{Appearance, DynamicTypeSize, KeyboardEvent, PointerEvent, PointerKind, ViewNode};
-use simcore_render::{build_scene, render, resolve_label, Effect, Fonts, Interaction, Scene, SceneParams};
+use simcore_render::{build_scene, render, resolve_label, DragPhase, Effect, Fonts, Interaction, Scene, SceneParams};
 use std::cell::RefCell;
 use std::ffi::{c_char, c_void, CStr, CString};
 
@@ -68,6 +68,7 @@ fn draw(s: &mut State) {
         dynamic_type: s.dynamic_type,
         scroll: &s.inter.scroll,
         focus: s.inter.focus.as_deref(),
+        overscroll: s.inter.live(),
         status_bar: true,
         chrome: s.inter.chrome(Some(ISLAND)),
     };
@@ -269,6 +270,30 @@ pub extern "C" fn simcore_web_scroll(x: f64, y: f64, dx: f64, dy: f64) -> i32 {
     let ev = PointerEvent { kind: PointerKind::Scroll, x, y, dx, dy };
     let e = with(|s| s.scene.as_ref().map(|sc| s.inter.pointer(sc, ev)));
     e.map_or(0, dispatch)
+}
+
+/// Touch drag (finger scrolling). phase: 0 begin (at the touch-down point), 1 move, 2 end (lift).
+/// x, y in points; `t` is the event time in ms. Returns 1 if the frame changed. After an end,
+/// call `simcore_web_tick` every frame while it returns 1 (momentum, bounce).
+#[no_mangle]
+pub extern "C" fn simcore_web_drag(phase: i32, x: f64, y: f64, t: f64) -> i32 {
+    let phase = match phase {
+        0 => DragPhase::Begin,
+        1 => DragPhase::Move,
+        _ => DragPhase::End,
+    };
+    let e = with(|s| s.scene.as_ref().map(|sc| s.inter.drag(sc, phase, x, y, t)));
+    e.map_or(0, dispatch)
+}
+
+/// Advance scroll animations by `dt_ms`. Returns 1 while anything moved (redrawn); 0 = at rest.
+#[no_mangle]
+pub extern "C" fn simcore_web_tick(dt_ms: f64) -> i32 {
+    let moved = with(|s| s.scene.as_ref().is_some_and(|sc| s.inter.tick(sc, dt_ms / 1000.0)));
+    if moved {
+        with(draw);
+    }
+    moved as i32
 }
 
 /// Keyboard input for the focused field; the payload is `len` UTF-8 bytes in the scratch buffer.

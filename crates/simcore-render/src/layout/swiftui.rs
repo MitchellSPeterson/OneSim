@@ -31,8 +31,9 @@ const CARD_MARGIN: f64 = 16.0;
 const CARD_RADIUS: f64 = 26.0;
 const SECTION_GAP: f64 = 17.7;
 const HEADER_PAD: f64 = 20.0;
-const NAV_LARGE_H: f64 = 106.0;
 const NAV_INLINE_H: f64 = 54.0;
+/// Scroll distance over which the inline title fades in as the large title finishes collapsing.
+const INLINE_FADE: f64 = 12.0;
 const SWITCH: (f64, f64) = (63.0, 28.0);
 const STEPPER: (f64, f64) = (94.0, 32.0);
 /// `Label` in a list row: icon centred in a leading column of this width, title starts after it.
@@ -58,7 +59,8 @@ struct Size {
 #[derive(Clone)]
 struct Lay {
     size: Size,
-    node: Option<Node>,
+    /// Boxed: layout recursion holds many `Lay`s per frame and `Node` is large.
+    node: Option<Box<Node>>,
     kids: Vec<(f64, f64, Lay)>,
     /// Hit/paint bounds growth (left, top, right, bottom) beyond `size`.
     infl: (f64, f64, f64, f64),
@@ -66,7 +68,7 @@ struct Lay {
 
 impl Lay {
     fn new(size: Size, node: Option<Node>, kids: Vec<(f64, f64, Lay)>) -> Self {
-        Self { size, node, kids, infl: (0.0, 0.0, 0.0, 0.0) }
+        Self { size, node: node.map(Box::new), kids, infl: (0.0, 0.0, 0.0, 0.0) }
     }
 }
 
@@ -116,6 +118,7 @@ struct Ctx<'a> {
     dts: DynamicTypeSize,
     scale: f64,
     scroll: &'a HashMap<String, (f64, f64)>,
+    overscroll: bool,
     focus: Option<&'a str>,
     /// Keyed by (node address, proposal bits). A node's Env is fixed by its ancestors,
     /// so node + proposal fully determines its layout within one pass.
@@ -136,6 +139,9 @@ pub struct SceneParams<'a> {
     pub scroll: &'a HashMap<String, (f64, f64)>,
     /// Node id of the focused text field.
     pub focus: Option<&'a str>,
+    /// Let offsets past the edges show (rubber band) instead of clamping them: only while
+    /// `Interaction::live`, so offsets left over from other content never show as overscroll.
+    pub overscroll: bool,
     pub status_bar: bool,
     pub chrome: crate::chrome::ChromeParams,
 }
@@ -152,6 +158,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         dts: params.dynamic_type,
         scale: params.scale.max(1.0),
         scroll: params.scroll,
+        overscroll: params.overscroll,
         focus: params.focus,
         memo: HashMap::new(),
         unsupported: BTreeSet::new(),
@@ -195,7 +202,7 @@ fn flatten(lay: Lay, x: f64, y: f64, mut parent: Option<usize>, mut opacity: f32
         n.parent = parent;
         opacity *= n.opacity;
         n.opacity = opacity;
-        out.push(n);
+        out.push(*n);
         parent = Some(out.len() - 1);
     }
     for (dx, dy, k) in lay.kids {
@@ -294,6 +301,13 @@ fn rgba(r: u8, g: u8, b: u8, a: f32) -> Color {
 }
 
 impl Ctx<'_> {
+    /// Offset along a scroll axis: within `[0, max]`, or up to one viewport `len` past an edge
+    /// while overscroll is live (the rubber band never goes further).
+    fn clamp_offset(&self, o: f64, max: f64, len: f64) -> f64 {
+        let slack = if self.overscroll { len } else { 0.0 };
+        o.clamp(-slack, max + slack)
+    }
+
     fn semantic(&self, s: Semantic) -> Color {
         let d = self.dark;
         match s {
@@ -718,18 +732,19 @@ impl Ctx<'_> {
             }
             ButtonStyle::NavigationLink => {
                 let fg = if disabled { dim } else { env.fg.unwrap_or_else(|| self.semantic(Semantic::Primary)) };
-                let chev_w = 7.0;
+                // 7x12 at body size, growing with Dynamic Type (21.7x37.3, 8.6pt inset at AX5; measured).
+                let k = (simcore_protocol::TextStyle::Body.size_at(self.dts) / 17.0).max(1.0);
+                let (chev_w, chev_h, inset) = (7.0 * k, 12.0 * k, 2.3 + 2.97 * (k - 1.0));
                 let inner_p = Prop { w: p.w.filter(|w| w.is_finite()).map(|w| (w - chev_w - 12.0).max(0.0)), h: None };
                 let l = self.view(label, inner_p, Env { fg: Some(fg), tint: None, ..child_env });
                 let w = p.w.filter(|w| w.is_finite()).unwrap_or(l.size.w + 12.0 + chev_w);
-                let h = l.size.h.max(12.0);
+                let h = l.size.h.max(chev_h);
                 let mut c = Node::new(format!("{}#chevron", v.id), "chevron");
                 c.glyph = Some((Glyph::Chevron, self.semantic(Semantic::Tertiary)));
                 c.inspect = false;
-                // Chevron sits 2.3pt inside the content edge (measured).
-                let cl = Lay::new(Size { w: chev_w, h: 12.0 }, Some(c), vec![]);
+                let cl = Lay::new(Size { w: chev_w, h: chev_h }, Some(c), vec![]);
                 let ly = (h - l.size.h) / 2.0;
-                Lay::new(Size { w, h }, Some(n), vec![(0.0, ly, l), (w - chev_w - 2.3, (h - 12.0) / 2.0, cl)])
+                Lay::new(Size { w, h }, Some(n), vec![(0.0, ly, l), (w - chev_w - inset, (h - chev_h) / 2.0, cl)])
             }
         }
     }
@@ -849,10 +864,10 @@ impl Ctx<'_> {
         let h = fin(p.h).unwrap_or(ch);
         let max = ((cw - w).max(0.0), (ch - h).max(0.0));
         let off = self.scroll.get(&v.id).copied().unwrap_or((0.0, 0.0));
-        let off = if vertical { (0.0, off.1.clamp(0.0, max.1)) } else { (off.0.clamp(0.0, max.0), 0.0) };
+        let off = if vertical { (0.0, self.clamp_offset(off.1, max.1, h)) } else { (self.clamp_offset(off.0, max.0, w), 0.0) };
         let mut n = Node::new(&v.id, "scroll");
         n.clip_radius = Some(0.0);
-        n.scroll = Some(ScrollInfo { vertical, offset: off, max });
+        n.scroll = Some(ScrollInfo { vertical, offset: off, max, snap: None });
         n.inspect = true;
         let cx = if vertical { (w - c.size.w) / 2.0 } else { 0.0 };
         Lay::new(Size { w, h }, Some(n), vec![(cx - off.0, top - off.1, c)])
@@ -873,7 +888,8 @@ impl Ctx<'_> {
         for (si, sec) in sections.iter().enumerate() {
             let sid = format!("{}#s{si}", v.id);
             if let Some(h) = &sec.header {
-                let spec = FontSpec::new(17.0, self.line_h(17.0), 600, TextAlign::Leading);
+                let hs = simcore_protocol::TextStyle::Headline.size_at(self.dts) as f32;
+                let spec = FontSpec::new(hs, self.line_h(hs), 600, TextAlign::Leading);
                 let mut t = self.text_lay(&format!("{sid}#header"), h, spec, self.semantic(Semantic::Secondary), Some(inner_w as f32));
                 if let Some(n) = t.node.as_mut() {
                     n.role = Role::Text;
@@ -923,22 +939,25 @@ impl Ctx<'_> {
                 kids.push((margin + ROW_HPAD, y, t));
                 y += th;
             }
-            y += SECTION_GAP;
+            // Between sections 17.7; after the last one the list ends 20pt above the bottom inset (measured).
+            y += if si + 1 == sections.len() { 20.0 } else { SECTION_GAP };
         }
         let ch = y + bottom;
         let fin_h = p.h.filter(|h| h.is_finite());
         let h = fin_h.unwrap_or(ch);
         let max = (0.0, (ch - h).max(0.0));
-        let off = self.scroll.get(&v.id).map_or(0.0, |o| o.1).clamp(0.0, max.1);
+        let off = self.clamp_offset(self.scroll.get(&v.id).map_or(0.0, |o| o.1), max.1, h);
         let mut n = Node::new(&v.id, "list");
         n.fill = Some(self.semantic(if inset { Semantic::GroupedBackground } else { Semantic::Background }));
         n.clip_radius = Some(0.0);
-        n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max });
+        n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max, snap: None });
         let kids = kids.into_iter().map(|(x, ky, k)| (x, ky - off, k)).collect();
         Lay::new(Size { w, h }, Some(n), kids)
     }
 
     #[allow(clippy::too_many_arguments)]
+    // Out of line: inlined into the recursive `view` dispatcher it inflates every stack frame.
+    #[inline(never)]
     fn navigation(
         &mut self,
         v: &ViewNode,
@@ -953,13 +972,17 @@ impl Ctx<'_> {
         let h = p.h.filter(|h| h.is_finite()).unwrap_or(874.0);
         let (top, bottom) = (env.safe_top, env.bottom_inset);
         let large = mode == DisplayMode::Large && title.is_some();
-        let bar_h = if title.is_none() && back.is_none() {
-            0.0
-        } else if large {
-            NAV_LARGE_H
-        } else {
-            NAV_INLINE_H
-        };
+        let primary = self.semantic(Semantic::Primary);
+        // Large title: LargeTitle bold, growing with Dynamic Type. Its band below the inline bar is
+        // 52pt, or the title's height + 1.33 when taller (measured: 106pt bar at large, 127 at AX5).
+        let large_title = title.filter(|_| large).map(|t| {
+            let sz = simcore_protocol::TextStyle::LargeTitle.size_at(self.dts) as f32;
+            let spec = FontSpec::new(sz, self.line_h(sz), 700, TextAlign::Leading);
+            self.text_lay(&format!("{}#title", v.id), t, spec, primary, Some((w - 32.0) as f32))
+        });
+        let title_h = large_title.as_ref().map_or(0.0, |l| l.size.h);
+        let band = if large { (title_h + 1.33).max(52.0) } else { 0.0 };
+        let bar_h = if title.is_none() && back.is_none() { 0.0 } else { NAV_INLINE_H + band };
         let ctop = top + bar_h;
         let scroller = is_scroller(content);
         let edge_bg = self.semantic(if is_list(content) { Semantic::GroupedBackground } else { Semantic::Background });
@@ -968,15 +991,20 @@ impl Ctx<'_> {
         bg.label = title.map(str::to_string);
         let cenv = Env { safe_top: 0.0, bottom_inset: bottom, fg: None, ..env };
         let mut kids = vec![];
+        let mut offset = 0.0;
         if scroller {
             // Content scrolls under the bar: the scroller spans the screen with the bar as a top inset.
-            let c = self.view(content, Prop { w: Some(w), h: Some(h) }, Env { safe_top: ctop, ..cenv });
-            let scrolled = c.node.as_ref().and_then(|n| n.scroll).is_some_and(|s| s.offset.1 > 0.0);
+            let mut c = self.view(content, Prop { w: Some(w), h: Some(h) }, Env { safe_top: ctop, ..cenv });
+            if let Some(s) = c.node.as_mut().and_then(|n| n.scroll.as_mut()).filter(|_| large) {
+                s.snap = Some(band);
+            }
+            offset = c.node.as_ref().and_then(|n| n.scroll).map_or(0.0, |s| s.offset.1);
             kids.push((0.0, 0.0, c));
-            if scrolled {
+            // Content reaches under the bar once the large title has collapsed.
+            if offset > band {
                 let mut e = Node::new(format!("{}#edge", v.id), "scrolledge");
                 e.edge = Some(crate::glass::ScrollEdge {
-                    bar: ctop as f32,
+                    bar: (top + NAV_INLINE_H) as f32,
                     color: edge_bg,
                     tint: if self.dark { 0.0 } else { 3.0 / 255.0 },
                 });
@@ -989,20 +1017,37 @@ impl Ctx<'_> {
             kids.push(((w - c.size.w) / 2.0, ctop + (avail - c.size.h) / 2.0, c));
         }
         // Bar (no background at rest on iOS 26): title + glass back button above content.
+        // The large title scrolls with the content and disappears under the inline bar; the bar
+        // shrinks with it and the inline title fades in over the last INLINE_FADE points.
+        let collapse = offset.clamp(0.0, band);
         let mut bar = Node::new(format!("{}#bar", v.id), "navbar");
         bar.label = title.map(str::to_string);
         let mut bar_kids = vec![];
-        if let Some(t) = title {
-            let primary = self.semantic(Semantic::Primary);
-            if large {
-                let spec = FontSpec::new(34.0, self.line_h(34.0), 700, TextAlign::Leading);
-                let tl = self.text_lay(&format!("{}#title", v.id), t, spec, primary, Some((w - 32.0) as f32));
-                bar_kids.push((16.0, 44.0 + 13.7, tl));
+        if let Some(tl) = large_title.filter(|_| offset < band) {
+            // Title top: 54pt under the bar's top, lowered when the band has spare room (57.7 at large).
+            let ty = NAV_INLINE_H + (band - title_h - 7.6).max(0.0) - offset;
+            if offset > 0.0 {
+                // Mid-collapse: cut off where it slides under the inline bar.
+                let mut clip = Node::new(format!("{}#largetitle", v.id), "clip");
+                clip.clip_radius = Some(0.0);
+                clip.inspect = false;
+                let clip_h = h - top - NAV_INLINE_H;
+                bar_kids.push((0.0, NAV_INLINE_H, Lay::new(Size { w, h: clip_h }, Some(clip), vec![(16.0, ty - NAV_INLINE_H, tl)])));
             } else {
+                bar_kids.push((16.0, ty, tl));
+            }
+        }
+        if let Some(t) = title {
+            let alpha = if large { ((collapse - (band - INLINE_FADE)) / INLINE_FADE).clamp(0.0, 1.0) as f32 } else { 1.0 };
+            if alpha > 0.0 {
                 // Inline titles grow with Dynamic Type but cap at x1.225 (measured at accessibility5).
                 let nsz = 17.0 * (simcore_protocol::TextStyle::Body.size_at(self.dts) as f32 / 17.0).min(1.225);
                 let spec = FontSpec::new(nsz, self.line_h(nsz), 600, TextAlign::Leading);
-                let tl = self.text_lay(&format!("{}#title", v.id), t, spec, primary, Some((w - 120.0) as f32));
+                let id = if large { format!("{}#inline", v.id) } else { format!("{}#title", v.id) };
+                let mut tl = self.text_lay(&id, t, spec, primary, Some((w - 120.0) as f32));
+                if let Some(n) = tl.node.as_mut() {
+                    n.opacity = alpha;
+                }
                 let (tw, th) = (tl.size.w, tl.size.h);
                 bar_kids.push(((w - tw) / 2.0, 22.0 - th / 2.0, tl));
             }
@@ -1017,7 +1062,7 @@ impl Ctx<'_> {
             n.glyph = Some((Glyph::BackChevron, self.semantic(Semantic::Primary)));
             bar_kids.push((16.0, 0.0, Lay::new(Size { w: 44.0, h: 44.0 }, Some(n), vec![])));
         }
-        kids.push((0.0, top, Lay::new(Size { w, h: bar_h }, Some(bar), bar_kids)));
+        kids.push((0.0, top, Lay::new(Size { w, h: bar_h - collapse }, Some(bar), bar_kids)));
         Lay::new(Size { w, h }, Some(bg), kids)
     }
 
@@ -1184,6 +1229,7 @@ mod tests {
             dynamic_type: DynamicTypeSize::Large,
             scroll,
             focus,
+            overscroll: false,
             status_bar: safe.0 > 0.0,
             chrome: Default::default(),
         };
@@ -1316,6 +1362,7 @@ mod tests {
                 dynamic_type: DynamicTypeSize::Large,
                 scroll: &HashMap::new(),
                 focus: None,
+                overscroll: false,
                 status_bar: true,
                 chrome: Default::default(),
             },
@@ -1324,6 +1371,35 @@ mod tests {
         assert_eq!(by_id(&s, "l#s0").fill, Some(rgba(28, 28, 30, 1.0)));
         assert_eq!(by_id(&s, "l").fill, Some(rgba(0, 0, 0, 1.0)));
         assert_eq!(by_id(&s, "root").fill, Some(rgba(0, 0, 0, 1.0)));
+    }
+
+    #[test]
+    fn large_title_collapses_into_the_bar() {
+        // The HOME list is short; a long one so it can scroll past the 52pt collapse.
+        let rows: Vec<String> = (0..30).map(|i| format!(r#"{{"kind":"text","id":"r{i}","text":"Row {i}"}}"#)).collect();
+        let json = format!(
+            r#"{{"kind":"navigation","id":"n","title":"Long","displayMode":"large","content":{{"kind":"list","id":"l","style":"insetGrouped","sections":[{{"rows":[{}]}}]}}}}"#,
+            rows.join(",")
+        );
+        let at = |off: f64| {
+            let mut m = HashMap::new();
+            m.insert("l".to_string(), (0.0, off));
+            scene_with(&json, (402.0, 874.0), false, (62.0, 34.0), &m, None)
+        };
+        let s = at(0.0);
+        near(by_id(&s, "n#title").bounds.y, 119.7);
+        assert_eq!(by_id(&s, "l").scroll.unwrap().snap, Some(52.0));
+        assert!(s.nodes.iter().all(|n| n.id != "n#inline"), "no inline title while expanded");
+        // halfway: the title moved up with the content, the bar shrank, the inline title not yet in
+        let s = at(26.0);
+        near(by_id(&s, "n#title").bounds.y, 119.7 - 26.0);
+        near(by_id(&s, "n#bar").bounds.h, 80.0);
+        assert!(s.nodes.iter().all(|n| n.id != "n#inline"));
+        // collapsed: large title gone, inline title fully in, inline-height bar
+        let s = at(52.0);
+        assert!(s.nodes.iter().all(|n| n.id != "n#title"));
+        assert_eq!(by_id(&s, "n#inline").opacity, 1.0);
+        near(by_id(&s, "n#bar").bounds.h, 54.0);
     }
 
     #[test]

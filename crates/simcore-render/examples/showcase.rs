@@ -42,6 +42,7 @@ fn main() {
                 dynamic_type: Default::default(),
                 scroll: &scroll,
                 focus: focus.as_deref(),
+                overscroll: false,
                 status_bar: true,
                 chrome: Default::default(),
             };

@@ -38,6 +38,7 @@ fn build(count: u32, vp: (f64, f64), a: Appearance, scale: f64, fonts: &mut Font
         dynamic_type: Default::default(),
         scroll: &scroll,
         focus: None,
+        overscroll: false,
         status_bar: true,
         chrome: Default::default(),
     };

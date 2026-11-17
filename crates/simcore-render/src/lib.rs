@@ -18,7 +18,7 @@ mod text;
 pub use raster::{render, render_png};
 pub use symbols::{capability as symbols_capability, SymbolMask, SymbolMetrics, SymbolSpec};
 pub use chrome::{autocap, ChromeParams};
-pub use interaction::{resolve_label, Effect, Interaction};
+pub use interaction::{resolve_label, DragPhase, Effect, Interaction};
 pub use layout::swiftui::SceneParams;
 pub use scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, Shadow, SymbolRun, TextRun};
 pub use text::{fonts_capability, inter_tracking_em, tracking_em, FontSpec, Fonts, TextAlign};

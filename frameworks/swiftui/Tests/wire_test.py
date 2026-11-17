@@ -95,7 +95,7 @@ assert r["kind"] == "navigation" and r["title"] == "Showcase" and "back" not in 
 lst = r["content"]; assert lst["kind"] == "list"
 assert [s.get("header") for s in lst["sections"]] == ["Screens", "Summary"]
 links = lst["sections"][0]["rows"]
-assert len(links) == 6 and all(l["kind"] == "button" and l["style"] == "navigationLink" for l in links)
+assert len(links) == 7 and all(l["kind"] == "button" and l["style"] == "navigationLink" for l in links)
 assert "1" in alltexts(lst["sections"][1]["rows"][0])
 t = act(p, t, button(t, "Todos")["action"])
 assert title(t) == "Todos" and t["root"]["back"]["label"] == "Showcase", t["root"]

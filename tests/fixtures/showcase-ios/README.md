@@ -236,6 +236,23 @@ Dark: fill (25,25,25) = white at 10% over black, rim 1px (54,54,54), chevron (24
 Over scrolled text: no text reaches under the button in the fixtures (Large Title starts at y>=107pt, button bottom 106pt), so not measured.
 
 ### Scroll-edge effect (typography-scrolled / -dark, symmetric)
-No bar fill/blur and no separator. Text is NOT blurred (stem edges stay 1-2 px sharp) - it is a veil with alpha toward the background colour. Overlay alpha derived from a glyph stem (v = alpha*bg for black text, same numbers in dark with white text):
+No bar fill and no separator. Just under the bar's bottom edge it is mainly a veil with alpha toward the background colour (stems stay fairly sharp there). Correction (2026-11-17, deeper scrolls): further up, behind the inline title and the status bar, iOS also blurs and fades much harder (content is nearly invisible at the top of the screen); see "Long list" below. Overlay alpha derived from a glyph stem (v = alpha*bg for black text, same numbers in dark with white text):
 pt: 107-118 (px 321-354): alpha ~0.40-0.44 plateau; 120: 0.27; 122: 0.16; 124: 0.13; 128: 0.095; 132: 0.063; 136: 0.04; 140: 0.024; 144: 0.016; ~148: 0. (Bar bottom = 116pt; the veil ends sharply after it then has a ~30pt tail; text above ~107pt is clipped by the glyph/frame top so the upper ramp is not observed.)
 Bar background: light page gradient (252,252,252) at y<=84pt -> 253@88 -> 254@108 -> 255@128pt (3 levels, ~1.2%); dark: exactly 0 (nothing). Status bar area has the same tint.
+
+### Long list and large-title collapse (captured 2026-11-17)
+New showcase screen "Long list" (`LongListScreen`, 30 text rows, large title) so the large-title collapse and the
+scroll edge can be captured at the default text size; adding its home row means `home` and `home-dark` were
+recaptured the same day. Offsets are from `Row N` cell rects (cells are 52pt, Row 1 at 208.33 unscrolled).
+- `long-list`: unscrolled (large title expanded, bar 62..168).
+- `long-list-collapsed`: offset 52.0 = exactly the collapse distance; `scroll down --pixels 62 --duration-ms 1500`.
+  iOS never rests between 0 and 52: a release there snaps to expanded or collapsed (bar 106 -> 54pt; the large title
+  scrolls with the content and is hidden under the inline bar, the centred inline title takes over).
+- `long-list-scrolled`: offset 775.66 (`scroll down 0.3`, fling stopped short of the 948pt maximum). Row 14's cell is
+  at y 108.67 - use a row fully on screen: rects of rows clipped by the screen top are reported clipped (y = 0).
+- At AX5 (accessibility-extra-extra-extra-large) the bar collapses after 73pt instead (large title 71.67pt tall, band
+  = title + 1.33); the large title, section headers (Headline semibold) and chevrons (21.7x37.3) grow with Dynamic Type.
+Scroll-edge model (fitted to typography-scrolled at 40pt, Typography at 337pt and AX5 home at 206pt): the measured veil
+ramp holds up to 8pt above the bar's bottom, then rises to 0.95 alpha at the screen top; a blur (sigma 1.5pt) is mixed
+in fully at the top, 0.55 at the bar's bottom, gone 7.75pt below it (`EDGE_*` in `simcore-render/src/glass.rs`).
+

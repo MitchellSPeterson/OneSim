@@ -5,7 +5,6 @@
 //! specular rim + soft outer shadow. CPU-only, deterministic, no threads or SIMD (wasm32-wasip1 safe).
 //! Parameters are fitted to the iOS 26.5 Simulator fixtures (`tests/fixtures/showcase-ios/README.md`).
 
-use crate::raster::gaussian;
 use crate::scene::Color;
 pub use simcore_protocol::GlassVariant;
 use tiny_skia::{Mask, Pixmap};
@@ -147,6 +146,51 @@ pub fn snapshot(pm: &Pixmap, shape: Shape, scale: f32, p: &Params) -> Snapshot {
     Snapshot { x0, y0, w, h, rgb }
 }
 
+/// Gaussian blur approximated by three box blurs (Kovesi's widths), edges replicated. Constant cost
+/// per pixel whatever the sigma; within a few levels of the exact kernel on backdrops, far below
+/// what the pixel-diff rule counts (24/255).
+fn box_blur3(plane: &mut [f32], w: usize, h: usize, sigma: f32) {
+    let wi = (12.0 * sigma * sigma / 3.0 + 1.0).sqrt();
+    let wl = (wi.floor() as usize).max(1);
+    let wl = if wl.is_multiple_of(2) { wl - 1 } else { wl };
+    let m = ((12.0 * sigma * sigma - 3.0 * (wl * wl) as f32 - 12.0 * wl as f32 - 9.0) / (-4.0 * wl as f32 - 4.0)).round() as usize;
+    let radii: [usize; 3] = std::array::from_fn(|i| if i < m { wl / 2 } else { wl / 2 + 1 });
+    let mut tmp = vec![0f32; plane.len()];
+    for r in radii {
+        for (src, dst) in plane.chunks_exact(w).zip(tmp.chunks_exact_mut(w)) {
+            box_line(src, dst, r);
+        }
+        box_columns(&tmp, plane, w, h, r);
+    }
+}
+
+/// Vertical box blur of radius `r`: a running sum over whole rows (vectorizes; no transpose).
+fn box_columns(src: &[f32], dst: &mut [f32], w: usize, h: usize, r: usize) {
+    let row = |y: isize| &src[y.clamp(0, h as isize - 1) as usize * w..][..w];
+    let (r, inv) = (r as isize, 1.0 / (2 * r + 1) as f32);
+    let mut acc = vec![0f32; w];
+    for y in -r..=r {
+        acc.iter_mut().zip(row(y)).for_each(|(a, v)| *a += v);
+    }
+    for (y, out) in dst.chunks_exact_mut(w).enumerate() {
+        out.iter_mut().zip(&acc).for_each(|(o, a)| *o = a * inv);
+        let (add, sub) = (row(y as isize + r + 1), row(y as isize - r));
+        acc.iter_mut().zip(add.iter().zip(sub)).for_each(|(a, (p, m))| *a += p - m);
+    }
+}
+
+/// Mean over `[i - r, i + r]` (edge samples repeated), as a running sum.
+fn box_line(src: &[f32], dst: &mut [f32], r: usize) {
+    let n = src.len() as isize;
+    let at = |i: isize| src[i.clamp(0, n - 1) as usize];
+    let (r, inv) = (r as isize, 1.0 / (2 * r + 1) as f32);
+    let mut acc: f32 = (-r..=r).map(at).sum();
+    for (i, d) in dst.iter_mut().enumerate() {
+        *d = acc * inv;
+        acc += at(i as isize + r + 1) - at(i as isize - r);
+    }
+}
+
 fn bilinear(pl: &[f32], w: usize, h: usize, x: f32, y: f32) -> f32 {
     let (x, y) = (x.clamp(0.0, w as f32 - 1.0), y.clamp(0.0, h as f32 - 1.0));
     let (xi, yi) = (x.floor() as usize, y.floor() as usize);
@@ -169,11 +213,13 @@ pub fn draw(pm: &mut Pixmap, snap: Snapshot, shape: Shape, spec: &GlassSpec, sca
         return;
     }
     let Snapshot { x0, y0, w, h, mut rgb } = snap;
-    for pl in rgb.iter_mut() {
-        gaussian(pl, w, h, p.sigma * scale, true);
-    }
     let (pw, ph) = (pm.width() as i32, pm.height() as i32);
     let (lens_d, lens_w) = (p.lens_d * scale, (p.lens_w * scale).max(0.5));
+    let (sx0, sy0) = (shape.x.floor() as i32 - 1, shape.y.floor() as i32 - 1);
+    let (sx1, sy1) = ((shape.x + shape.w).ceil() as i32 + 1, (shape.y + shape.h).ceil() as i32 + 1);
+    for pl in rgb.iter_mut() {
+        box_blur3(pl, w, h, p.sigma * scale);
+    }
     let tint = spec.tint.map(|t| {
         let sh = p.tint_shift * 255.0;
         ([(t.r * 255.0 + sh).clamp(0.0, 255.0), (t.g * 255.0 + sh).clamp(0.0, 255.0), (t.b * 255.0 + sh).clamp(0.0, 255.0)], t.a)
@@ -181,8 +227,6 @@ pub fn draw(pm: &mut Pixmap, snap: Snapshot, shape: Shape, spec: &GlassSpec, sca
     let rim_w = (p.rim_w * scale).max(1.0);
     let mask_data = mask.map(|m| m.data());
     let data = pm.data_mut();
-    let (sx0, sy0) = (shape.x.floor() as i32 - 1, shape.y.floor() as i32 - 1);
-    let (sx1, sy1) = ((shape.x + shape.w).ceil() as i32 + 1, (shape.y + shape.h).ceil() as i32 + 1);
     for y in sy0.max(0)..sy1.min(ph) {
         for x in sx0.max(0)..sx1.min(pw) {
             let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
@@ -257,23 +301,108 @@ fn veil(rel: f32) -> f32 {
     0.0
 }
 
+// Scroll-edge effect above the bar, fitted to iOS 26.5 captures (typography-scrolled at 40pt,
+// Typography at 337pt, home at AX5 206pt): the veil keeps its measured ramp up to EDGE_KNEE above the
+// bar's bottom, then rises to EDGE_TOP_ALPHA at the top of the screen; a blur (EDGE_SIGMA) is mixed in
+// at EDGE_BLUR_TOP at the top, EDGE_BLUR_BAR at the bar's bottom, fading out EDGE_BLUR_TAIL below it.
+const EDGE_TOP_ALPHA: f32 = 0.95;
+const EDGE_KNEE: f32 = 8.0;
+const EDGE_SIGMA: f32 = 1.5;
+const EDGE_BLUR_TOP: f32 = 1.0;
+const EDGE_BLUR_BAR: f32 = 0.55;
+const EDGE_BLUR_TAIL: f32 = 7.75;
+
+/// Veil alpha at `pt` (screen y, points) for a bar ending at `bar`: the measured ramp around the
+/// bar's bottom edge, rising toward the top of the screen above it.
+fn veil_at(pt: f32, bar: f32) -> f32 {
+    let (rel, knee, top) = (pt - bar, -EDGE_KNEE, EDGE_TOP_ALPHA);
+    if rel >= knee {
+        veil(rel)
+    } else {
+        mix(veil(knee), top, ((knee - rel) / (knee + bar)).clamp(0.0, 1.0))
+    }
+}
+
+/// Weight of the blurred backdrop at `pt`: strongest at the top, fading out below the bar.
+fn blur_at(pt: f32, bar: f32) -> f32 {
+    let (rel, top, at_bar, tail) = (pt - bar, EDGE_BLUR_TOP, EDGE_BLUR_BAR, EDGE_BLUR_TAIL);
+    if rel >= tail {
+        0.0
+    } else if rel >= 0.0 {
+        mix(at_bar, 0.0, rel / tail)
+    } else {
+        mix(at_bar, top, (-rel / bar).clamp(0.0, 1.0))
+    }
+}
+
 pub fn draw_edge(pm: &mut Pixmap, e: &ScrollEdge, scale: f32, mask: Option<&Mask>) {
     let (pw, ph) = (pm.width() as usize, pm.height() as usize);
     let rows = (((e.bar + 32.0) * scale).ceil() as usize).min(ph);
     let col = [e.color.r * 255.0, e.color.g * 255.0, e.color.b * 255.0];
+    // Blurred copy of the band, computed at ~1 px per point (it is soft anyway) and sampled back up.
+    let f = (scale.round() as usize).max(1);
+    let (bw, bh) = (pw.div_ceil(f), rows.div_ceil(f));
+    let mut planes = [vec![0f32; bw * bh], vec![0f32; bw * bh], vec![0f32; bw * bh]];
+    {
+        let data = pm.data();
+        for by in 0..bh {
+            for bx in 0..bw {
+                let (mut acc, mut n) = ([0f32; 3], 0f32);
+                for y in by * f..((by + 1) * f).min(rows) {
+                    for x in bx * f..((bx + 1) * f).min(pw) {
+                        let i = (y * pw + x) * 4;
+                        (0..3).for_each(|c| acc[c] += data[i + c] as f32);
+                        n += 1.0;
+                    }
+                }
+                (0..3).for_each(|c| planes[c][by * bw + bx] = acc[c] / n.max(1.0));
+            }
+        }
+    }
+    let sigma = EDGE_SIGMA * scale / f as f32;
+    for pl in planes.iter_mut() {
+        box_blur3(pl, bw, bh, sigma);
+    }
+    // Bilinear upsampling, separated: one horizontal mapping for all rows, one vertical lerp per row.
+    let xmap: Vec<(usize, usize, f32)> = (0..pw)
+        .map(|x| {
+            let sx = ((x as f32 + 0.5) / f as f32 - 0.5).clamp(0.0, bw as f32 - 1.0);
+            let xi = sx.floor() as usize;
+            (xi, (xi + 1).min(bw - 1), sx - xi as f32)
+        })
+        .collect();
+    let mut row = [vec![0f32; bw], vec![0f32; bw], vec![0f32; bw]];
     let mask_data = mask.map(|m| m.data());
     let data = pm.data_mut();
     for y in 0..rows {
         let pt = (y as f32 + 0.5) / scale;
-        let a = veil(pt - e.bar);
+        let a = veil_at(pt, e.bar);
+        let bwt = blur_at(pt, e.bar);
+        if bwt > 0.0 {
+            let sy = ((y as f32 + 0.5) / f as f32 - 0.5).clamp(0.0, bh as f32 - 1.0);
+            let (yi, fy) = (sy.floor() as usize, sy - sy.floor());
+            let yj = (yi + 1).min(bh - 1);
+            for (r, pl) in row.iter_mut().zip(&planes) {
+                for (bx, v) in r.iter_mut().enumerate() {
+                    *v = pl[yi * bw + bx] * (1.0 - fy) + pl[yj * bw + bx] * fy;
+                }
+            }
+        }
         // Tint: full above bar-32, gone by bar+12.
         let t = e.tint * ((e.bar + 12.0 - pt) / 44.0).clamp(0.0, 1.0);
-        for x in 0..pw {
-            let m = mask_data.map_or(1.0, |m| m[y * pw + x] as f32 / 255.0);
+        let px = |d: f32, c: usize, m: f32| {
+            let v = mix(d, col[c], a) - t * 255.0;
+            mix(d, v.clamp(0.0, 255.0), m)
+        };
+        // The veil is constant along the row: unmasked pixels come from a table.
+        let lut: [[u8; 256]; 3] = std::array::from_fn(|c| std::array::from_fn(|d| px(d as f32, c, 1.0).round() as u8));
+        for (x, &(xi, xj, fx)) in xmap.iter().enumerate() {
+            let mb = mask_data.map_or(255, |m| m[y * pw + x]);
             let i = (y * pw + x) * 4;
             for c in 0..3 {
-                let v = mix(data[i + c] as f32, col[c], a) - t * 255.0;
-                data[i + c] = mix(data[i + c] as f32, v.clamp(0.0, 255.0), m).round() as u8;
+                let d = data[i + c] as f32;
+                let d = if bwt > 0.0 { mix(d, row[c][xi] * (1.0 - fx) + row[c][xj] * fx, bwt) } else { d };
+                data[i + c] = if mb == 255 { lut[c][d.round() as usize] } else { px(d, c, mb as f32 / 255.0).round() as u8 };
             }
         }
     }
@@ -323,5 +452,19 @@ mod tests {
     fn scroll_edge_veil_ramp() {
         assert!((veil(-20.0) - 0.41).abs() < 1e-3 && (veil(0.0) - 0.24).abs() < 1e-6);
         assert!(veil(12.0) > veil(20.0) && veil(32.0) == 0.0 && veil(100.0) == 0.0);
+    }
+
+    #[test]
+    fn box_blur_tracks_the_gaussian() {
+        let (w, h) = (90, 70);
+        // A hard-edged backdrop: worst case for the approximation.
+        let src: Vec<f32> = (0..w * h).map(|i| if (i % w) / 15 % 2 == (i / w) / 12 % 2 { 255.0 } else { 0.0 }).collect();
+        for sigma in [3.0f32, 9.0] {
+            let (mut exact, mut boxed) = (src.clone(), src.clone());
+            crate::raster::gaussian(&mut exact, w, h, sigma, true);
+            box_blur3(&mut boxed, w, h, sigma);
+            let worst = exact.iter().zip(&boxed).map(|(a, b)| (a - b).abs()).fold(0.0, f32::max);
+            assert!(worst < 12.0, "sigma {sigma}: off by {worst} of 255");
+        }
     }
 }

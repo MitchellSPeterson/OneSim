@@ -92,6 +92,14 @@ export class SimCore {
   click(x, y) { return this.pointer("click", x, y); }
   /** Scroll the scroller under (x, y) by (dx, dy) points; positive dy reveals later content. */
   scroll(x, y, dx, dy) { return this.wasm.simcore_web_scroll(x, y, dx, dy) === 1; }
+  /** Finger drag: phase "begin" (touch-down point) | "move" | "end"; points, `t` event time in ms. */
+  drag(phase, x, y, t) {
+    const p = { begin: 0, move: 1, end: 2 }[phase];
+    if (p === undefined) throw new Error(`drag phase must be begin/move/end, got ${phase}`);
+    return this.wasm.simcore_web_drag(p, x, y, t) === 1;
+  }
+  /** Advance momentum/bounce by `ms`. True while moving: call again next frame. */
+  tick(ms) { return this.wasm.simcore_web_tick(ms) === 1; }
   /** Text typed into the focused field. Throws if none is focused. */
   type(text) { return this.#key(0, text); }
   /** Text typed by a person (physical keyboard): software-keyboard shift follows auto-capitalization. */
@@ -150,8 +158,12 @@ export class SimCore {
 
   /** Current frame: RGBA bytes (a copy) and pixel size. */
   framebuffer() {
+    const f = this.frameView();
+    return { ...f, data: new Uint8Array(f.data) };
+  }
+  /** Current frame without copying: a view into Wasm memory, valid only until the next call. */
+  frameView() {
     const w = this.wasm.simcore_web_fb_width(), h = this.wasm.simcore_web_fb_height();
-    const ptr = this.wasm.simcore_web_fb_ptr();
-    return { width: w, height: h, data: new Uint8Array(this.mem, ptr, w * h * 4).slice() };
+    return { width: w, height: h, data: new Uint8ClampedArray(this.mem, this.wasm.simcore_web_fb_ptr(), w * h * 4) };
   }
 }

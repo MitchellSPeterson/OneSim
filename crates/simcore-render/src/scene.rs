@@ -113,6 +113,9 @@ pub struct ScrollInfo {
     pub vertical: bool,
     pub offset: (f64, f64),
     pub max: (f64, f64),
+    /// Vertical offset where a large navigation title has fully collapsed into the inline bar.
+    /// Scrolling never comes to rest between 0 and this (iOS snaps to expanded or collapsed).
+    pub snap: Option<f64>,
 }
 
 /// One positioned element. `bounds` are absolute, in points.

@@ -34,6 +34,7 @@ fn forced_fallback_uses_inter_and_phosphor() {
         dynamic_type: Default::default(),
         scroll: &scroll,
         focus: None,
+        overscroll: false,
         status_bar: false,
         chrome: Default::default(),
     };

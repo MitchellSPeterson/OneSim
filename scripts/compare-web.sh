@@ -33,5 +33,8 @@ shot glass-dark       --dark --click Glass
 shot glass-pressed    --click Glass --click "Glass 0"
 shot typography-scrolled      --dynamic-type accessibility5 --click Typography --scroll 200,500,0,40
 shot typography-scrolled-dark --dynamic-type accessibility5 --dark --click Typography --scroll 200,500,0,40
+shot long-list           --click "Long list"
+shot long-list-collapsed --click "Long list" --scroll 200,500,0,52
+shot long-list-scrolled  --click "Long list" --scroll 200,500,0,775.66
 # native is the reference; both sides are fallback fonts, so the 2% rule applies (never loosen it)
 SIMCORE_MAX_DIFF=2.0 python3 scripts/compare_ios.py "$out/native" "$out/web" "$out"
