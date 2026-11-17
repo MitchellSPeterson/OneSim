@@ -1,6 +1,8 @@
 use crate::scene::{Color, Glyph, Scene, Shadow, SymbolRun};
 use crate::symbols;
 use crate::text::{FontSpec, Fonts};
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use tiny_skia::{
     FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke, Transform,
@@ -83,6 +85,9 @@ fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: 
                 stroke_pts(pm, &arc(r), c, 2.0, xf, mask);
             }
         }
+        Glyph::Shift | Glyph::ShiftFilled | Glyph::Backspace | Glyph::Return | Glyph::Emoji | Glyph::Mic => {
+            crate::chrome::draw_glyph(pm, g, c, b, xf, mask);
+        }
         Glyph::Battery => {
             let col = |a: f32| Color { a: c.a * a, ..c };
             if let Some(p) = rrect(x + 0.5, y + 0.5, 24.0, h - 1.0, 3.8) {
@@ -123,50 +128,80 @@ fn draw_symbol(pm: &mut Pixmap, sy: &SymbolRun, b: (f32, f32, f32, f32), op: f32
     pm.draw_pixmap(x0, y0, tmp.as_ref(), &PixmapPaint::default(), Transform::identity(), mask);
 }
 
-/// In-place 3x box blur approximating a gaussian of `sigma` (device px) on RGBA8.
-fn blur(data: &mut [u8], w: usize, h: usize, sigma: f32) {
-    let d = ((sigma * 3.0 * (2.0 * std::f32::consts::PI).sqrt() / 4.0 + 0.5).floor() as usize).max(1);
-    let r = d / 2;
-    let mut tmp = vec![0u8; data.len()];
-    let pass = |src: &[u8], dst: &mut [u8], horiz: bool| {
-        let (n, lines, stride, step) = if horiz { (w, h, 4, w * 4) } else { (h, w, w * 4, 4) };
+/// Separable gaussian blur of an `f32` coverage plane (exact kernel, truncated at 3 sigma).
+fn gaussian(plane: &mut [f32], w: usize, h: usize, sigma: f32) {
+    let r = (sigma * 3.0).ceil() as isize;
+    let mut k: Vec<f32> = (-r..=r).map(|i| (-(i * i) as f32 / (2.0 * sigma * sigma)).exp()).collect();
+    let sum: f32 = k.iter().sum();
+    k.iter_mut().for_each(|v| *v /= sum);
+    // One 1-D pass: `n` samples per line, `lines` lines, `stride` between samples, `step` between lines.
+    let pass = |from: &[f32], to: &mut [f32], n: usize, lines: usize, stride: usize, step: usize| {
         for l in 0..lines {
-            let base = l * step;
-            for ch in 0..4 {
-                let at = |i: isize| -> u32 {
-                    if i < 0 || i >= n as isize {
-                        0
-                    } else {
-                        src[base + i as usize * stride + ch] as u32
-                    }
-                };
-                let win = (2 * r + 1) as u32;
-                let mut acc: u32 = (-(r as isize)..=r as isize).map(at).sum();
-                for i in 0..n {
-                    dst[base + i * stride + ch] = (acc / win) as u8;
-                    acc = acc + at(i as isize + r as isize + 1) - at(i as isize - r as isize);
-                }
+            for i in 0..n as isize {
+                let acc: f32 = k
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(ki, kv)| {
+                        let j = i + ki as isize - r;
+                        (0..n as isize).contains(&j).then(|| kv * from[l * step + j as usize * stride])
+                    })
+                    .sum();
+                to[l * step + i as usize * stride] = acc;
             }
         }
     };
-    for _ in 0..3 {
-        pass(data, &mut tmp, true);
-        pass(&tmp, data, false);
-    }
+    let mut tmp = vec![0f32; plane.len()];
+    pass(plane, &mut tmp, w, h, 1, w);
+    pass(&tmp, plane, h, w, w, 1);
 }
 
-fn draw_shadow(pm: &mut Pixmap, sh: &Shadow, b: (f32, f32, f32, f32), radius: f32, op: f32, s: f32, mask: Option<&Mask>) {
-    let sigma = (sh.radius as f32 / 2.0 * s).max(0.5);
+type ShadowKey = (String, [u32; 7], [u8; 4]);
+
+thread_local! {
+    /// Blurred shadow bitmaps keyed by node id, geometry (size, radius, sigma, scale, sub-pixel
+    /// phase) and color, so repeated screenshots and unchanged nodes skip the blur.
+    static SHADOWS: RefCell<HashMap<ShadowKey, Rc<Pixmap>>> = RefCell::new(HashMap::new());
+}
+
+/// SwiftUI `shadow(radius:)` is a gaussian with sigma = radius (fitted to simulator renders).
+fn draw_shadow(pm: &mut Pixmap, n: &crate::scene::Node, sh: &Shadow, b: (f32, f32, f32, f32), s: f32, mask: Option<&Mask>) {
+    let (id, op, radius) = (n.id.as_str(), n.opacity, n.radius.max(n.clip_radius.unwrap_or(0.0)) as f32);
+    let sigma = (sh.radius as f32 * s).max(0.5);
     let pad = (sigma * 3.0).ceil() + 2.0;
-    let (w, h) = ((b.2 * s + 2.0 * pad).ceil() as u32, (b.3 * s + 2.0 * pad).ceil() as u32);
-    let Some(mut tmp) = Pixmap::new(w.max(1), h.max(1)) else { return };
-    if let Some(p) = rrect(pad, pad, b.2 * s, b.3 * s, radius * s) {
-        tmp.fill_path(&p, &paint(Color { a: sh.color.a * op, ..sh.color }, 1.0), FillRule::Winding, Transform::identity(), None);
-    }
-    let (tw, th) = (tmp.width() as usize, tmp.height() as usize);
-    blur(tmp.data_mut(), tw, th, sigma);
-    let (x, y) = (b.0 * s - pad + sh.dx as f32 * s, b.1 * s - pad + sh.dy as f32 * s);
-    pm.draw_pixmap(x.round() as i32, y.round() as i32, tmp.as_ref(), &PixmapPaint::default(), Transform::identity(), mask);
+    let (px, py) = (b.0 * s + sh.dx as f32 * s, b.1 * s + sh.dy as f32 * s);
+    let (fx, fy) = (px - px.floor(), py - py.floor());
+    let rgba = [sh.color.r, sh.color.g, sh.color.b, sh.color.a * op].map(|v| (v * 255.0).round() as u8);
+    let key = (id.to_string(), [(b.2 * s).to_bits(), (b.3 * s).to_bits(), (radius * s).to_bits(), sigma.to_bits(), fx.to_bits(), fy.to_bits(), 0], rgba);
+    let img = SHADOWS.with(|c| {
+        let mut c = c.borrow_mut();
+        if c.len() > 256 {
+            c.clear();
+        }
+        c.entry(key)
+            .or_insert_with(|| {
+                let (w, h) = ((b.2 * s + 2.0 * pad).ceil() as u32 + 1, (b.3 * s + 2.0 * pad).ceil() as u32 + 1);
+                let mut cov = Pixmap::new(w.max(1), h.max(1)).expect("shadow size");
+                if let Some(p) = rrect(pad + fx, pad + fy, b.2 * s, b.3 * s, radius * s) {
+                    let mut white = Paint::default();
+                    white.set_color_rgba8(255, 255, 255, 255);
+                    cov.fill_path(&p, &white, FillRule::Winding, Transform::identity(), None);
+                }
+                let (w, h) = (cov.width() as usize, cov.height() as usize);
+                let mut plane: Vec<f32> = cov.data().chunks(4).map(|px| px[3] as f32 / 255.0).collect();
+                gaussian(&mut plane, w, h, sigma);
+                let a = rgba[3] as f32 / 255.0;
+                for (px, v) in cov.data_mut().chunks_mut(4).zip(&plane) {
+                    let al = v * a;
+                    px[0] = (rgba[0] as f32 * al).round() as u8;
+                    px[1] = (rgba[1] as f32 * al).round() as u8;
+                    px[2] = (rgba[2] as f32 * al).round() as u8;
+                    px[3] = (al * 255.0).round() as u8;
+                }
+                Rc::new(cov)
+            })
+            .clone()
+    });
+    pm.draw_pixmap((px.floor() - pad) as i32, (py.floor() - pad) as i32, img.as_ref().as_ref(), &PixmapPaint::default(), Transform::identity(), mask);
 }
 
 fn paint(c: Color, opacity: f32) -> Paint<'static> {
@@ -195,7 +230,7 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
         let (bx, by, bw, bh) = (b.x as f32, b.y as f32, b.w as f32, b.h as f32);
         let sh = (bx, by, bw, bh);
         if let Some(sd) = &n.shadow {
-            draw_shadow(&mut pm, sd, sh, n.radius.max(n.clip_radius.unwrap_or(0.0)) as f32, n.opacity, s, mask.as_deref());
+            draw_shadow(&mut pm, n, sd, sh, s, mask.as_deref());
         }
         if let Some(c) = n.fill {
             if n.radius > 0.0 {
@@ -279,4 +314,25 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
 
 pub fn render_png(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Result<Vec<u8>, String> {
     render(scene, fonts, scale).encode_png().map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scene::{Node, Rect as SRect};
+    use simcore_protocol::Appearance;
+
+    #[test]
+    fn shadow_radius_6_is_gaussian_sigma_6() {
+        let mut n = Node::new("card", "shadow");
+        n.bounds = SRect { x: 40.0, y: 40.0, w: 100.0, h: 60.0 };
+        n.shadow = Some(Shadow { color: Color::rgba(0.0, 0.0, 0.0, 0.33), radius: 6.0, dx: 0.0, dy: 0.0 });
+        let scene = Scene { size: (180.0, 140.0), appearance: Appearance::Light, nodes: vec![n], unsupported_symbols: vec![] };
+        let pm = render(&scene, &mut Fonts::new(), 3.0);
+        // alpha at distance d above the top edge: 0.33 * (1 - Phi(d / 6))
+        let a = |d: f32| pm.pixel(270, ((40.0 - d) * 3.0) as u32).unwrap().alpha() as f32 / 255.0;
+        for (d, want) in [(1.0, 0.143), (6.0, 0.052), (12.0, 0.0075)] {
+            assert!((a(d) - want).abs() < 0.012, "d={d}: {} vs {want}", a(d));
+        }
+    }
 }

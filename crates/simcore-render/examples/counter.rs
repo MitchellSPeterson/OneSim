@@ -38,6 +38,7 @@ fn build(count: u32, vp: (f64, f64), a: Appearance, scale: f64, fonts: &mut Font
         scroll: &scroll,
         focus: None,
         status_bar: true,
+        chrome: Default::default(),
     };
     build_scene(&tree(count), &p, fonts)
 }

@@ -10,7 +10,7 @@ use base64::Engine;
 use serde::Serialize;
 use serde_json::{json, Value};
 use simcore_protocol::*;
-use simcore_render::{build_scene, render_png, Fonts, Scene, SceneParams};
+use simcore_render::{build_scene, render_png, autocap, ChromeParams, Fonts, Role, Scene, SceneParams};
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
 
@@ -104,7 +104,7 @@ impl Host {
             "session_id": s.id, "state": s.state().as_str(), "framework": s.params.framework,
             "platform": s.params.platform, "app_path": s.params.app_path, "viewport": s.viewport,
             "device": s.device.name, "safe_area": {"top": s.device.safe_top, "bottom": s.device.safe_bottom},
-            "focus": s.focus,
+            "focus": s.focus, "island": s.device.island.map(|(x, y, w, h)| json!({"x": x, "y": y, "width": w, "height": h})),
             "scale": s.scale, "appearance": s.appearance, "tree_version": s.tree().map(|t| t.0),
         }))
     }
@@ -147,6 +147,7 @@ impl Host {
             scroll: &s.scroll,
             focus: s.focus.as_deref(),
             status_bar: true,
+            chrome: ChromeParams { keyboard: s.focus.is_some(), shift: s.shift, island: s.device.island },
         };
         let scene = build_scene(&root, &params, fonts);
         for name in &scene.unsupported_symbols {
@@ -172,22 +173,68 @@ impl Host {
         }
         let hit = scene.hit_test(ev.x, ev.y).map(|i| &scene.nodes[i]);
         let hit_id = hit.map(|n| n.id.clone());
+        let on_keyboard = scene.nodes.iter().any(|n| n.kind == "keyboard" && n.bounds.contains(ev.x, ev.y));
+        let key = hit.filter(|n| n.role == Role::Key).and_then(|n| n.label.clone());
+        let shifted = scene.nodes.iter().any(|n| n.kind == "keyboard" && n.value.as_deref() == Some("shift"));
         let s = self.get(id)?;
-        let fire = match ev.kind {
+        let released = match ev.kind {
             PointerKind::Down => {
                 s.pressed = hit_id.clone();
-                None
+                false
             }
-            PointerKind::Up => s.pressed.take().filter(|p| Some(p) == hit_id.as_ref()).and(hit.and_then(|n| n.action)),
-            _ => hit.and_then(|n| n.action),
+            PointerKind::Up => s.pressed.take().is_some_and(|p| Some(&p) == hit_id.as_ref()),
+            _ => true,
         };
-        if ev.kind != PointerKind::Down {
-            s.focus = hit.filter(|n| n.field.is_some()).map(|n| n.id.clone());
+        let fire = if released { hit.and_then(|n| n.action) } else { None };
+        if let Some(label) = key.filter(|_| released) {
+            self.press_key(id, &label, shifted, version, &scene)?;
+            return Ok((hit_id, true));
+        }
+        if ev.kind != PointerKind::Down && !on_keyboard {
+            let s = self.get(id)?;
+            let new = hit.filter(|n| n.field.is_some()).map(|n| n.id.clone());
+            if new != s.focus {
+                s.shift = hit.and_then(|n| n.value.as_deref()).is_some_and(autocap);
+            }
+            s.focus = new;
         }
         if let Some(action) = fire {
-            s.send_and_wait_tree(&HostMessage::Action { id: action, version })?;
+            self.get(id)?.send_and_wait_tree(&HostMessage::Action { id: action, version })?;
         }
         Ok((hit_id, fire.is_some()))
+    }
+
+    /// A tap on a software-keyboard key (`label` as exposed by `inspect_ui_tree`).
+    fn press_key(&mut self, id: &str, label: &str, shifted: bool, version: u64, scene: &Scene) -> Result<(), ApiError> {
+        let s = self.get(id)?;
+        let node = s
+            .focus
+            .as_ref()
+            .and_then(|f| scene.nodes.iter().find(|n| &n.id == f && n.field.is_some()))
+            .ok_or_else(|| err(ErrorCode::InvalidState, "keyboard is not showing"))?;
+        let mut text = node.value.clone().unwrap_or_default();
+        let field = node.field.expect("filtered");
+        match label {
+            "shift" => {
+                s.shift = !shifted;
+                return Ok(());
+            }
+            "return" => {
+                s.focus = None;
+                return Ok(());
+            }
+            "delete" => {
+                text.pop();
+            }
+            "space" => text.push(' '),
+            // ponytail: no number/emoji/dictation layers; those keys are inert.
+            l if l.chars().count() == 1 => text.push_str(&if shifted { l.to_uppercase() } else { l.to_string() }),
+            _ => return Ok(()),
+        }
+        // Typing a letter drops shift; a space after a sentence end or an empty field raises it.
+        s.shift = if label.chars().count() == 1 { false } else { autocap(&text) };
+        s.send_and_wait_tree(&HostMessage::TextInput { field, version, text })?;
+        Ok(())
     }
 
     /// Keyboard input for the focused text field. The host computes the new text and sends it

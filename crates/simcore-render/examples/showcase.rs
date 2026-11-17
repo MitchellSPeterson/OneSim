@@ -42,6 +42,7 @@ fn main() {
                 scroll: &scroll,
                 focus: focus.as_deref(),
                 status_bar: true,
+                chrome: Default::default(),
             };
             let scene = build_scene(&root, &p, &mut fonts);
             let png = render_png(&scene, &mut fonts, 3.0).expect("png");

@@ -227,6 +227,49 @@ fn text_field_focus_and_typing() {
 }
 
 #[test]
+fn software_keyboard_keys_edit_text() {
+    let mut host = Host::new();
+    let id = start_nav(&mut host);
+    assert!(click(&mut host, &id, &labelled("button", "Todos")).1);
+    let tree = |host: &mut Host| host.inspect(&id).unwrap().1;
+    let field = |host: &mut Host| find(&tree(host), &|n| n.role.as_deref() == Some("textfield")).unwrap().clone();
+    let key = |host: &mut Host, l: &str| {
+        click(host, &id, &labelled("key", l));
+    };
+    // no keyboard until a field is focused
+    assert!(find(&tree(&mut host), &|n| n.kind == "keyboard").is_none());
+    click(&mut host, &id, &labelled("textfield", "New todo"));
+    let kb = find(&tree(&mut host), &|n| n.kind == "keyboard").expect("keyboard when focused").clone();
+    assert_eq!((kb.frame.y, kb.frame.height), (539.0, 335.0));
+    assert!(kb.children.iter().filter(|k| k.role.as_deref() == Some("key")).count() >= 30);
+    // keyboard avoidance: the screenshot with keyboard renders and field stays above it
+    assert!(field(&mut host).frame.y + field(&mut host).frame.height < 539.0);
+    assert_eq!(kb.value.as_deref(), Some("shift"), "empty field starts shifted");
+
+    key(&mut host, "h");
+    key(&mut host, "i");
+    assert_eq!(field(&mut host).value.as_deref(), Some("Hi"), "auto-capitalized first letter");
+    assert_eq!(find(&tree(&mut host), &|n| n.kind == "keyboard").unwrap().value.as_deref(), Some("lower"));
+    key(&mut host, "space");
+    key(&mut host, "delete");
+    key(&mut host, "delete");
+    assert_eq!(field(&mut host).value.as_deref(), Some("H"));
+    key(&mut host, "shift");
+    key(&mut host, "x");
+    assert_eq!(field(&mut host).value.as_deref(), Some("HX"));
+    // send_keyboard_event leaves shift alone
+    host.keyboard(&id, KeyboardEvent::Text { text: "y".into() }).unwrap();
+    assert_eq!(field(&mut host).value.as_deref(), Some("HXy"));
+    // tapping the panel (not a key) keeps focus; return hides the keyboard
+    host.pointer(&id, PointerEvent::new(PointerKind::Click, 201.0, 560.0)).unwrap();
+    assert!(field(&mut host).focused);
+    key(&mut host, "return");
+    assert!(!field(&mut host).focused);
+    assert!(find(&tree(&mut host), &|n| n.kind == "keyboard").is_none());
+    host.shutdown();
+}
+
+#[test]
 fn toggle_and_stepper_by_label() {
     let mut host = Host::new();
     let id = start_nav(&mut host);

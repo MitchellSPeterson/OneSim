@@ -6,9 +6,9 @@ Rust-powered preview runtime for mobile UI code. Runs real SwiftUI source (uncha
 $ simcore run examples/swiftui-counter --root-view CounterView --click Increment --screenshot out.png
 ```
 
-Status: v0.1, PRD milestones 0–4 done (see [docs/roadmap.md](docs/roadmap.md)). SwiftUI subset: navigation, lists, forms controls, shapes, text styles, `@State`/`@Binding`/`ObservableObject`. Compose and React Native are planned.
+Status: v0.1, PRD milestones 0–4 done (see [docs/roadmap.md](docs/roadmap.md)). SwiftUI subset: navigation, lists, forms controls, shapes, text styles, SF Symbols, software keyboard, `@State`/`@Binding`/`ObservableObject`. Compose and React Native are planned.
 
-Rendered output stays within 0.4–2.8% of the iOS 26 Simulator pixel-for-pixel on the [showcase app](examples/swiftui-showcase/Showcase.swift). See [docs/ios-comparison.md](docs/ios-comparison.md).
+Rendered output stays within 0.4–1.9% of the iOS 26 Simulator pixel-for-pixel across 13 states, including SF Symbols and the software keyboard, on the [showcase app](examples/swiftui-showcase/Showcase.swift). See [docs/ios-comparison.md](docs/ios-comparison.md).
 
 ![SimCore vs iOS Simulator](docs/ios-comparison/cmp-controls-changed.png)
 

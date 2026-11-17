@@ -8,21 +8,27 @@ Reproduce: `scripts/compare-ios.sh` (needs Python + Pillow). Re-capture iOS refe
 
 | state | pixels >10% off | mean abs diff | notes |
 |---|---:|---:|---|
-| controls-changed | 1.9% | 3.8 | status bar icons, text antialiasing |
-| controls | 1.8% | 3.8 | status bar icons, text antialiasing |
-| home-dark | 0.8% | 1.0 | status bar icons, text antialiasing |
-| home | 1.9% | 4.0 | status bar icons, text antialiasing |
-| shapes | 0.4% | 0.7 | status bar icons, text antialiasing |
-| todos-toggled | 1.8% | 3.5 | status bar icons, text antialiasing |
-| todos-typed | 1.6% | 8.3 | iOS software keyboard not simulated |
-| todos | 0.6% | 0.6 | status bar icons, text antialiasing |
-| typography | 2.8% | 5.3 | glyph-width drift (no SF `opsz` axis) |
+| controls-changed | 0.7% | 0.7 | text antialiasing, status bar icons |
+| controls | 0.6% | 0.7 | text antialiasing, status bar icons |
+| home-dark | 0.7% | 0.9 | text antialiasing, status bar icons |
+| home | 0.7% | 1.0 | text antialiasing, status bar icons |
+| keyboard-dark | 1.9% | 1.8 | Liquid Glass back button (dark) |
+| keyboard-shift | 1.4% | 1.6 | text antialiasing, status bar icons |
+| shapes | 0.4% | 0.6 | text antialiasing, status bar icons |
+| symbols-dark | 1.2% | 1.1 | Liquid Glass back button (dark) |
+| symbols | 0.8% | 1.0 | text antialiasing, status bar icons |
+| todos-toggled | 0.6% | 0.5 | text antialiasing, status bar icons |
+| todos-typed | 1.4% | 1.6 | text antialiasing, status bar icons |
+| todos | 0.6% | 0.6 | text antialiasing, status bar icons |
+| typography | 1.5% | 2.1 | glyph-width drift (no SF `opsz` axis) |
 
-Every state also differs by the Dynamic Island and the charging bolt. SimCore doesn't draw either.
+Every state still differs by the battery charging bolt, which SimCore doesn't draw.
 
+![symbols](ios-comparison/cmp-symbols.png)
+![keyboard](ios-comparison/cmp-todos-typed.png)
+![keyboard dark](ios-comparison/cmp-keyboard-dark.png)
 ![home](ios-comparison/cmp-home.png)
 ![controls](ios-comparison/cmp-controls-changed.png)
-![todos](ios-comparison/cmp-todos-typed.png)
 ![shapes](ios-comparison/cmp-shapes.png)
 ![typography](ios-comparison/cmp-typography.png)
 ![dark](ios-comparison/cmp-home-dark.png)
@@ -30,12 +36,16 @@ Every state also differs by the Dynamic Island and the charging bolt. SimCore do
 ## Fixed by this comparison
 
 - **Spacers in stacks are sized last.** Before, `HStack { Text; Spacer }` split the space evenly, so text wrapped at half width.
-- **System colors now use the iOS 26 palette.** Red #FF383C, orange #FF8D28, blue #0088FF, purple #CB30E0.
+- **System colors now use the iOS 26 palette.** Red #FF383C, orange #FF8D28, blue #0088FF, purple #CB30E0. Dark variants are sent over the wire (`Color.dark`).
+- **SF Symbols** are rasterized from the host's system SF Symbols through AppKit. They are sized like iOS, and Label rows use iOS geometry.
+- **Software keyboard.** Light and dark; keys are tappable; shift and auto-capitalization work; content moves up above it. Before this, the keyboard screen's mean pixel difference was 8.3; now it is 1.6.
+- **Dynamic Island** is part of the device profile.
+- **Shadows are a true Gaussian blur.** iOS uses sigma ≈ `radius` (fitted to the simulator's falloff), not radius/2.
 
 ## Known gaps
 
-- No software keyboard.
-- The Liquid Glass back button is an approximation.
+- The Liquid Glass back button is an approximation, most visible in dark mode.
 - Text widths can drift 1–2 px from iOS.
-- Shadows use a box blur.
 - Corners are circular, not continuous.
+- The keyboard's suggestions are static, and it has no 123 or emoji layers.
+- Symbols are monochrome only.
