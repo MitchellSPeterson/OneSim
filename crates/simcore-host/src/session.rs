@@ -172,6 +172,14 @@ impl Session {
         self.shared.lock().tree.clone()
     }
 
+    /// Record a host-side error once per distinct `(origin, message)`.
+    pub fn report_once(&self, origin: &str, message: String) {
+        let mut g = self.shared.lock();
+        if g.errors.len() < MAX_ERRORS && !g.errors.iter().any(|e| e.source == origin && e.message == message) {
+            g.errors.push(SessionError { message, source: origin.into() });
+        }
+    }
+
     pub fn errors(&self) -> Vec<SessionError> {
         self.shared.lock().errors.clone()
     }

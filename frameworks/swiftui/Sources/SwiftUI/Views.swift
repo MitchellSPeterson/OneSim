@@ -134,16 +134,20 @@ public struct Color: View, _Primitive {
     }
     public init(white: Double, opacity: Double = 1) { self.init(red: white, green: white, blue: white, opacity: opacity) }
     func _emit(_ path: String) -> Node { ["kind": "color", "id": path, "color": json] }
+    /// System color with a distinct dark-appearance rgb (0...255).
+    static func _system(_ l: (Double, Double, Double), dark d: (Double, Double, Double)) -> Color {
+        Color(json: ["r": l.0 / 255, "g": l.1 / 255, "b": l.2 / 255, "a": 1.0, "dark": [d.0 / 255, d.1 / 255, d.2 / 255]])
+    }
 
     // iOS 26 system palette (light), sampled from the iOS 26.5 Simulator.
-    public static let red = Color(red: 1, green: 0.22, blue: 0.235)
-    public static let green = Color(red: 0.204, green: 0.78, blue: 0.349)
-    public static let blue = Color(red: 0, green: 0.533, blue: 1)
-    public static let orange = Color(red: 1, green: 0.553, blue: 0.157)
-    public static let yellow = Color(red: 1, green: 0.8, blue: 0)
-    public static let purple = Color(red: 0.796, green: 0.188, blue: 0.878)
-    public static let pink = Color(red: 1, green: 0.176, blue: 0.333)
-    public static let gray = Color(red: 0.557, green: 0.557, blue: 0.576)
+    public static let red = _system((255, 56, 60), dark: (255, 66, 69))
+    public static let green = _system((52, 199, 89), dark: (48, 209, 88))
+    public static let blue = _system((0, 136, 255), dark: (0, 145, 255))
+    public static let orange = _system((255, 141, 40), dark: (255, 146, 48))
+    public static let yellow = _system((255, 204, 0), dark: (255, 214, 0))
+    public static let purple = _system((203, 48, 224), dark: (219, 52, 242))
+    public static let pink = _system((255, 45, 85), dark: (255, 55, 95))
+    public static let gray = _system((142, 142, 147), dark: (142, 142, 147))
     public static let black = Color(red: 0, green: 0, blue: 0)
     public static let white = Color(red: 1, green: 1, blue: 1)
     public static let clear = Color(red: 0, green: 0, blue: 0, opacity: 0)

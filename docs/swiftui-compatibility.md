@@ -50,6 +50,8 @@ An `environment` message stores appearance/viewport and re-sends a tree.
 | Shapes/styles | `Shape`, `Rectangle`, `Circle`, `Capsule`, `RoundedRectangle(cornerRadius:)`, `.fill(_:)`, `.stroke(_:lineWidth:)`, `ShapeStyle` (`Color`, `.primary/.secondary/.tertiary`), `foregroundStyle`, `Color.opacity(_:)` |
 | More modifiers | `font` (`Font` text styles, `.system(size:weight:)`), `fontWeight`, `bold`, `strikethrough`, `multilineTextAlignment`, `overlay` (both forms), `shadow` |
 
+| SF Symbols | `Image(systemName:)`, `.resizable()`, `.scaledToFit()`, `.scaledToFill()`, `.aspectRatio(contentMode:)`, `.imageScale(_:)`, `Label(_:systemImage:)`, `Label(title:icon:)`, `Font.weight(_:)` / `Font.bold()` on any `Font` |
+
 ### Navigation, lists, input
 
 `NavigationStack` keeps its path in the state registry. Only the top screen is evaluated and emitted as `navigation` (title and
@@ -63,7 +65,10 @@ so `@State` persists while a screen is on the stack (hidden screens' slots are k
 
 ## Known limitations
 
-- Not implemented: images, `Group`, `List(data)`, `NavigationStack(path:)`, `navigationDestination`, `onAppear`, animations, custom `Shape.path(in:)`,
+- Images: only SF Symbols (`Image(systemName:)`), rendered by the host in monochrome (foreground tint); no `Image("asset")`,
+  `renderingMode`, `symbolRenderingMode`, `symbolVariant`, `Image(uiImage:)`. `aspectRatio` applies only to images (other views ignore it);
+  `scaledToFill` crops to the proposed size. A `Label` inside a list row forces its icon to `imageScale(.large)`.
+- Not implemented: `Group`, `List(data)`, `NavigationStack(path:)`, `navigationDestination`, `onAppear`, animations, custom `Shape.path(in:)`,
   `Text` concatenation, `.environment(_:_:)`; `Color.opacity` on semantic colors is ignored.
 - `@State` only inside `View`s (not `App`); the `WindowGroup` content closure runs once.
 - Structural identity is positional (`if`/`else` branches share a path; state is distinguished by view type).

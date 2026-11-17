@@ -104,6 +104,8 @@ public struct Font {
     public static func system(size: CGFloat, weight: Weight = .regular, design: Design = .default) -> Font {
         Font(json: ["size": Double(size), "weight": weight.name])
     }
+    public func weight(_ weight: Weight) -> Font { var j = json; j["weight"] = weight.name; return Font(json: j) }
+    public func bold() -> Font { weight(.bold) }
 }
 
 public enum TextAlignment { case leading, center, trailing }

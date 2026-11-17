@@ -6,14 +6,15 @@
 //! Visual constants (row height, card radius, nav bar heights, control sizes) are measured from
 //! an iOS 26 / iPhone 17 Pro simulator, see `tests/fixtures/showcase-ios/README.md`.
 
-use crate::scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, Shadow, TextRun};
+use crate::scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, Shadow, SymbolRun, TextRun};
+use crate::symbols::{self, SymbolSpec};
 use crate::text::{FontSpec, Fonts, TextAlign};
 use simcore_protocol::{
-    Alignment, Appearance, ButtonStyle, DisplayMode, Font, ListStyle, Modifier, Section, Semantic, ShapeKind, Stroke,
+    Alignment, Appearance, ButtonStyle, ContentMode, DisplayMode, Font, ImageScale, ListStyle, Modifier, Section, Semantic, ShapeKind, Stroke,
     ViewKind, ViewNode,
 };
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 const INF: f64 = f64::INFINITY;
 const DEFAULT_SPACING: f64 = 8.0;
@@ -34,6 +35,12 @@ const NAV_LARGE_H: f64 = 106.0;
 const NAV_INLINE_H: f64 = 54.0;
 const SWITCH: (f64, f64) = (63.0, 28.0);
 const STEPPER: (f64, f64) = (94.0, 32.0);
+/// `Label` in a list row: icon centred in a leading column of this width, title starts after it.
+/// Measured: icon centred 12pt in, title at +40 (column 24 + gap 16), icons at imageScale large.
+const LABEL_ICON_COL: f64 = 24.0;
+const LABEL_ROW_GAP: f64 = 16.0;
+/// Icon-to-title gap of a `Label` outside a list (not measured).
+const LABEL_GAP: f64 = 8.0;
 
 #[derive(Clone, Copy)]
 struct Prop {
@@ -78,6 +85,10 @@ struct Env {
     /// Top/bottom safe-area insets for full-bleed scrollers (consumed by list/scroll).
     safe_top: f64,
     bottom_inset: f64,
+    /// `imageScale` in effect for symbols.
+    img: ImageScale,
+    /// Laid out as (part of) a list row: `Label` uses the fixed icon column and accent icon.
+    in_row: bool,
 }
 
 impl Env {
@@ -93,6 +104,8 @@ impl Env {
             tint: None,
             safe_top: 0.0,
             bottom_inset: 0.0,
+            img: ImageScale::Medium,
+            in_row: false,
         }
     }
 }
@@ -106,6 +119,8 @@ struct Ctx<'a> {
     /// Keyed by (node address, proposal bits). A node's Env is fixed by its ancestors,
     /// so node + proposal fully determines its layout within one pass.
     memo: HashMap<(usize, u64, u64), Lay>,
+    /// Symbols that fell back to a placeholder.
+    unsupported: BTreeSet<String>,
 }
 
 /// Inputs to one layout pass.
@@ -131,6 +146,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         scroll: params.scroll,
         focus: params.focus,
         memo: HashMap::new(),
+        unsupported: BTreeSet::new(),
     };
     let mut screen = Node::new("root", "screen");
     screen.bounds = Rect { x: 0.0, y: 0.0, w, h };
@@ -152,7 +168,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         let lay = cx.status_bar(w);
         flatten(lay, 0.0, 0.0, Some(0), 1.0, &mut nodes);
     }
-    Scene { size: params.viewport, appearance: params.appearance, nodes }
+    Scene { size: params.viewport, appearance: params.appearance, nodes, unsupported_symbols: cx.unsupported.into_iter().collect() }
 }
 
 fn flatten(lay: Lay, x: f64, y: f64, mut parent: Option<usize>, mut opacity: f32, out: &mut Vec<Node>) {
@@ -197,6 +213,7 @@ fn first_text(v: &ViewNode) -> Option<String> {
         ViewKind::Button { label, .. } | ViewKind::Toggle { label, .. } | ViewKind::Stepper { label, .. } => {
             first_text(label)
         }
+        ViewKind::Label { title, .. } => first_text(title),
         _ => None,
     }
 }
@@ -294,7 +311,10 @@ impl Ctx<'_> {
     fn color(&self, c: &simcore_protocol::Color) -> Color {
         match c {
             simcore_protocol::Color::Semantic { semantic } => self.semantic(*semantic),
-            simcore_protocol::Color::Rgba { r, g, b, a } => Color::rgba(*r as f32, *g as f32, *b as f32, *a as f32),
+            simcore_protocol::Color::Rgba { r, g, b, a, dark } => {
+                let [r, g, b] = if self.dark { dark.unwrap_or([*r, *g, *b]) } else { [*r, *g, *b] };
+                Color::rgba(r as f32, g as f32, b as f32, *a as f32)
+            }
         }
     }
 
@@ -413,7 +433,10 @@ impl Ctx<'_> {
             }
             Modifier::Font(f) => {
                 let (size, weight) = match f {
-                    Font::Style { style } => style.spec(),
+                    Font::Style { style, weight } => {
+                        let (sz, w) = style.spec();
+                        (sz, weight.unwrap_or(w))
+                    }
                     Font::System { size, weight } => (*size, *weight),
                 };
                 self.mods(v, rest, p, Env { size: size as f32, base_weight: weight.value(), ..env })
@@ -431,6 +454,7 @@ impl Ctx<'_> {
                 };
                 self.mods(v, rest, p, Env { align, ..env })
             }
+            Modifier::ImageScale(img) => self.mods(v, rest, p, Env { img: *img, ..env }),
             Modifier::NavigationTitle(_) => self.mods(v, rest, p, env),
         }
     }
@@ -530,7 +554,83 @@ impl Ctx<'_> {
             ViewKind::Toggle { is_on, action, label, disabled } => self.toggle(v, *is_on, *action, label, *disabled, p, env),
             ViewKind::Stepper { label, decrement, increment } => self.stepper(v, label, *decrement, *increment, p, env),
             ViewKind::TextField { placeholder, text, field } => self.text_field(v, placeholder, text, *field, p, env),
+            ViewKind::Image { system_name, resizable, content_mode, scale } => {
+                self.image(v, system_name, *resizable, *content_mode, scale.unwrap_or(env.img), p, env, fg)
+            }
+            ViewKind::Label { title, icon } => self.label(v, title, icon, p, child_env),
         }
+    }
+
+    /// SF Symbol. Non-resizable images are glyph-sized from the font; resizable ones stretch to
+    /// the proposal (or fit / fill it keeping the symbol's aspect ratio).
+    #[allow(clippy::too_many_arguments)]
+    fn image(&mut self, v: &ViewNode, name: &str, resizable: bool, mode: Option<ContentMode>, scale: ImageScale, p: Prop, env: Env, fg: Color) -> Lay {
+        let spec = SymbolSpec { name: name.to_string(), point_size: env.size as f64, weight: env.weight.unwrap_or(env.base_weight), scale };
+        let nat = symbols::metrics(&spec);
+        let fin = |x: Option<f64>| x.filter(|x| x.is_finite());
+        let (nw, nh) = nat.map_or((env.size as f64, env.size as f64), |m| (m.w, m.h));
+        let (size, glyph) = if !resizable {
+            (Size { w: nw, h: nh }, (nw, nh))
+        } else {
+            let (pw, ph) = (fin(p.w), fin(p.h));
+            let ratio = nw / nh;
+            match mode {
+                None => {
+                    let s = Size { w: pw.unwrap_or(nw), h: ph.unwrap_or(nh) };
+                    (s, (s.w, s.h))
+                }
+                Some(m) => {
+                    let (bw, bh) = match (pw, ph) {
+                        (Some(w), Some(h)) => (w, h),
+                        (Some(w), None) => (w, w / ratio),
+                        (None, Some(h)) => (h * ratio, h),
+                        (None, None) => (nw, nh),
+                    };
+                    let by_w = (bw, bw / ratio);
+                    let by_h = (bh * ratio, bh);
+                    let fit = if by_w.1 <= bh { by_w } else { by_h };
+                    let fill = if by_w.1 >= bh { by_w } else { by_h };
+                    match m {
+                        // Fit shrink-wraps the symbol; fill occupies the whole proposal and crops.
+                        ContentMode::Fit => (Size { w: fit.0, h: fit.1 }, fit),
+                        ContentMode::Fill => (Size { w: bw, h: bh }, fill),
+                    }
+                }
+            }
+        };
+        let mut n = Node::new(&v.id, "image");
+        n.role = Role::Image;
+        n.label = Some(name.to_string());
+        if nat.is_some() {
+            n.symbol = Some(SymbolRun { spec, color: fg, size: glyph });
+        } else {
+            // Placeholder: rounded-square outline, reported as `unsupported_symbol`.
+            self.unsupported.insert(name.to_string());
+            n.stroke = Some((fg, 1.0));
+            n.radius = size.w.min(size.h) * 0.2;
+        }
+        Lay::new(size, Some(n), vec![])
+    }
+
+    /// iOS `Label`: icon then title. In a list row the icon is centred in a fixed leading column.
+    fn label(&mut self, v: &ViewNode, title: &ViewNode, icon: &ViewNode, p: Prop, env: Env) -> Lay {
+        let icon_fg = env.fg.or_else(|| env.in_row.then(|| self.semantic(Semantic::Accent)));
+        // ponytail: list rows force imageScale large on the icon, an explicit imageScale on the Label is ignored there.
+        let img = if env.in_row { ImageScale::Large } else { env.img };
+        let il = self.view(icon, Prop { w: None, h: None }, Env { fg: icon_fg, img, ..env });
+        let (col, gap) = if env.in_row { (LABEL_ICON_COL, LABEL_ROW_GAP) } else { (il.size.w, LABEL_GAP) };
+        let tw = p.w.filter(|w| w.is_finite()).map(|w| (w - col - gap).max(0.0));
+        let tl = self.view(title, Prop { w: tw, h: None }, env);
+        let h = il.size.h.max(tl.size.h);
+        let w = col + gap + tl.size.w;
+        let ix = (col - il.size.w) / 2.0;
+        let mut n = Node::new(&v.id, "label");
+        n.label = first_text(title);
+        Lay::new(
+            Size { w, h },
+            Some(n),
+            vec![(ix, (h - il.size.h) / 2.0, il), (col + gap, (h - tl.size.h) / 2.0, tl)],
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -717,7 +817,7 @@ impl Ctx<'_> {
         let margin = if inset { CARD_MARGIN } else { 0.0 };
         let gw = w - 2.0 * margin;
         let inner_w = gw - 2.0 * ROW_HPAD;
-        let row_env = Env { axis: None, safe_top: 0.0, bottom_inset: 0.0, fg: None, ..env };
+        let row_env = Env { axis: None, safe_top: 0.0, bottom_inset: 0.0, fg: None, in_row: true, ..env };
         let sec_col = self.semantic(Semantic::SecondaryGroupedBackground);
         let sep_col = self.semantic(Semantic::Separator);
         let mut y = top;
@@ -738,7 +838,8 @@ impl Ctx<'_> {
             let mut ry = 0.0;
             for (ri, row) in sec.rows.iter().enumerate() {
                 let mut c = self.view(row, Prop { w: Some(inner_w), h: None }, row_env);
-                let vpad = if has_bordered(row) { ROW_VPAD_BORDERED } else { ROW_VPAD };
+                // Measured: 34.3pt buttons and 44pt content get 15pt vertical padding, 32pt steppers 10pt.
+                let vpad = if has_bordered(row) || c.size.h > 33.0 { ROW_VPAD_BORDERED } else { ROW_VPAD };
                 let rh = ROW_MIN_H.max(c.size.h + 2.0 * vpad);
                 let yo = (rh - c.size.h) / 2.0;
                 expand_button(&mut c, 0.0, yo, (-ROW_HPAD, 0.0, gw - ROW_HPAD, rh));
@@ -1327,6 +1428,52 @@ mod tests {
         near(t.bounds.h, 42.33);
         let mid = t.bounds.x + t.bounds.w / 2.0;
         near(mid, 201.0);
+    }
+
+    const SYMBOLS: &str = r#"{"kind":"navigation","id":"n","title":"S","displayMode":"large","content":{"kind":"list","id":"l","style":"insetGrouped","sections":[
+        {"rows":[{"kind":"label","id":"lab","title":{"kind":"text","id":"lab.t","text":"Favorites"},"icon":{"kind":"image","id":"lab.i","systemName":"star.fill","resizable":false}},
+                 {"kind":"label","id":"bad","title":{"kind":"text","id":"bad.t","text":"Bad"},"icon":{"kind":"image","id":"bad.i","systemName":"no.such.symbol.xyz","resizable":false},
+                  "modifiers":[{"foregroundColor":{"semantic":"secondary"}}]}]},
+        {"rows":[{"kind":"hstack","id":"h","spacing":20,"alignment":"center","children":[
+            {"kind":"image","id":"h.0","systemName":"heart.fill","resizable":false},
+            {"kind":"image","id":"h.1","systemName":"cloud.sun.fill","resizable":true,"contentMode":"fit","modifiers":[{"frame":{"width":44,"height":44}}]},
+            {"kind":"image","id":"h.2","systemName":"checkmark.circle.fill","resizable":false,"modifiers":[{"imageScale":"large"}]}]}]}]}}"#;
+
+    /// Frames measured on iOS 26 (tests/fixtures/showcase-ios/symbols.json): Label icons are
+    /// imageScale large, centred 12pt into the row, title at +40; the tall HStack row gets 15pt padding.
+    #[test]
+    fn symbols_size_like_ios_and_unknown_ones_are_reported() {
+        let s = phone(SYMBOLS);
+        let system = crate::symbols::capability() == "system";
+        // Unknown names fall back to an outlined placeholder and are reported.
+        let bad = by_id(&s, "bad.i");
+        assert!(bad.symbol.is_none() && bad.stroke.is_some());
+        assert!(s.unsupported_symbols.contains(&"no.such.symbol.xyz".to_string()));
+        assert_eq!(s.unsupported_symbols.len(), if system { 1 } else { 5 });
+        if !system {
+            return; // placeholder host: no glyph metrics to check
+        }
+        let star = by_id(&s, "lab.i");
+        assert!(star.symbol.is_some());
+        let c = star.bounds.center();
+        near(c.0, 44.0);
+        near(star.bounds.w, 28.0); // large star.fill box; ink is 24 wide
+        near(by_id(&s, "lab.t").bounds.x, 72.0);
+        // accent icon, primary title; an explicit foreground colors both (here secondary on the bad row)
+        assert_eq!(star.symbol.as_ref().unwrap().color, rgba(0, 136, 255, 1.0));
+        assert_eq!(by_id(&s, "lab.t").text.as_ref().unwrap().color, rgba(0, 0, 0, 1.0));
+        assert_eq!(by_id(&s, "bad.i").stroke.map(|s| s.0), by_id(&s, "bad.t").text.as_ref().map(|t| t.color));
+        // heart.fill at 17pt: 21x18 box (16.7x15.3 ink on iOS); large is bigger than medium
+        let heart = by_id(&s, "h.0").bounds;
+        near(heart.w, 21.0);
+        near(heart.h, 18.0);
+        assert!(by_id(&s, "h.2").bounds.w > 24.0);
+        // resizable scaledToFit keeps the symbol's aspect inside the 44pt frame
+        let cloud = by_id(&s, "h.1").bounds;
+        near(cloud.w, 44.0);
+        assert!(cloud.h < 40.0 && cloud.h > 30.0, "{cloud:?}");
+        // 44pt content: 74pt row (15pt padding)
+        near(by_id(&s, "l#s1#r0").bounds.h, 74.0);
     }
 
     #[test]
