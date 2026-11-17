@@ -199,3 +199,32 @@ Text styles and weights follow Apple's iOS Dynamic Type "Large" defaults (body 1
 `create_session` accepts `"device": "iphone-17-pro"` (default). Profile: viewport 402×874 pt, scale 3, safe area top 62 / bottom 34. Content is laid out inside the safe area. The screen background, a `navigation` bar background and a `list` background extend to the screen edges. The host draws an iOS status bar (time "9:41", battery) in the top inset. `viewport` and `scale` params still override.
 
 The guest reads `SIMCORE_APPEARANCE` at launch for `@Environment(\.colorScheme)`.
+
+---
+
+## E. v1 additions: SF Symbols, keyboard, Dynamic Island, shadows (additive)
+
+### New ViewNode kinds
+
+| kind | fields |
+|---|---|
+| `image` | `"systemName": String`, `"resizable": bool`, `"contentMode"?: "fit"\|"fill"`, `"scale"?: "small"\|"medium"\|"large"` (imageScale). A non-resizable image sizes from the inherited font (point size and weight) and its scale, like a glyph. A resizable image is greedy, or keeps its aspect ratio when `contentMode` is set. It is tinted with the inherited foreground color. |
+| `label` | `"title": ViewNode`, `"icon": ViewNode`. iOS `Label`: icon then title. In a `list` row the icon sits in a fixed-width leading column and is tinted with the accent color unless a foregroundColor is set. The title stays primary. |
+
+New modifier: `{"imageScale": "small"|"medium"|"large"}` (inherited). `Font` also supports `.weight(_:)` on text styles, emitted as `{"font": {"style": "footnote", "weight": "semibold"}}`.
+
+Symbol rendering is a **host native-API capability**. On macOS hosts, symbols are rasterized from the system's SF Symbols, and nothing Apple-licensed is shipped in the repo. Other hosts draw a placeholder and report `unsupported_symbol` in `get_errors`. `get_capabilities` lists `"symbols": "system"|"placeholder"`.
+
+### Software keyboard (host chrome)
+
+When a `text_field` is focused, the host draws the iOS keyboard for the device profile (light or dark). The keyboard rises from the bottom, so the bottom safe-area inset becomes the keyboard height (keyboard avoidance), and focused content stays above it. Key taps are ordinary pointer clicks on the keyboard:
+- Letter, space and backspace keys edit the text through `text_input`.
+- Return is `enter`: it unfocuses and the keyboard hides.
+- Shift toggles case. Auto-capitalization turns shift on at the start of the text and after ". ".
+
+`send_keyboard_event` keeps working and bypasses the keys. `inspect_ui_tree` includes the keyboard as `kind: "keyboard"` with a child per key (`role: "key"`, `label`). The CLI `--click q` matches a key label when the keyboard is up.
+
+### Dynamic Island and shadows
+
+- Device profiles have `"island": {"x","y","width","height"}` (pt); the iPhone 17 Pro has one. The host draws it as a black capsule above everything, matching the iOS Simulator screenshots.
+- `shadow` is a true Gaussian blur, matching CALayer shadow rendering for SwiftUI's `shadow(radius:)` (radius → blur). It is computed offscreen per node and cached.

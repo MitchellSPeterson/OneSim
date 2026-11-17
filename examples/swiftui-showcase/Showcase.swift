@@ -43,6 +43,7 @@ struct ContentView: View {
                     NavigationLink("Shapes") { ShapesScreen() }
                     NavigationLink("Todos") { TodoScreen(store: store) }
                     NavigationLink("Controls") { ControlsScreen() }
+                    NavigationLink("Symbols") { SymbolsScreen() }
                 }
                 Section("Summary") {
                     HStack {
@@ -195,5 +196,47 @@ struct CounterRow: View {
             Button("More") { value += 1 }
                 .buttonStyle(.borderedProminent)
         }
+    }
+}
+
+struct SymbolsScreen: View {
+    var body: some View {
+        List {
+            Section("Labels") {
+                Label("Favorites", systemImage: "star.fill")
+                Label("Settings", systemImage: "gear")
+                Label("Trash", systemImage: "trash")
+                    .foregroundStyle(.red)
+            }
+            Section("Images") {
+                HStack(spacing: 20) {
+                    Image(systemName: "heart.fill")
+                        .foregroundStyle(.pink)
+                    Image(systemName: "bell")
+                        .font(.title)
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .imageScale(.large)
+                    Image(systemName: "paperplane")
+                        .font(.system(size: 28, weight: .bold))
+                    Image(systemName: "cloud.sun.fill")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 44, height: 44)
+                }
+            }
+            Section("Inline") {
+                HStack {
+                    Image(systemName: "envelope")
+                    Text("Messages")
+                    Spacer()
+                    Text("12").foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .navigationTitle("Symbols")
     }
 }
