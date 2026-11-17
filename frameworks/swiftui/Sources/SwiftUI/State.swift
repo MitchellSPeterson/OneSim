@@ -1,4 +1,6 @@
+#if !os(WASI)
 import Foundation
+#endif
 
 final class _Slot<V> { var value: V; init(_ v: V) { value = v } }
 

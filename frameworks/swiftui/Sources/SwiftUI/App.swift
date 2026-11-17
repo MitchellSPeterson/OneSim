@@ -9,7 +9,13 @@ public struct SceneBuilder {
     public static func buildBlock<C: Scene>(_ c: C) -> C { c }
 }
 
-protocol _Launchable { func _launch() -> Never }
+#if os(WASI)
+typealias _Done = Void  // reactor: launching registers the app and returns
+#else
+typealias _Done = Never
+#endif
+
+protocol _Launchable { func _launch() -> _Done }
 
 public struct WindowGroup<Content: View>: Scene, _Launchable {
     public typealias Body = Never
@@ -17,7 +23,7 @@ public struct WindowGroup<Content: View>: Scene, _Launchable {
     let content: Content
     public init(@ViewBuilder content: () -> Content) { self.content = content() }
     public init(_ title: String, @ViewBuilder content: () -> Content) { self.content = content() }
-    func _launch() -> Never { _simcoreRun(content) }
+    func _launch() -> _Done { _simcoreRun(content) }
 }
 
 public protocol App {
@@ -26,9 +32,9 @@ public protocol App {
     @SceneBuilder var body: Body { get }
 }
 
-func _launchScene<S: Scene>(_ s: S) -> Never {
-    if let l = s as? _Launchable { l._launch() }
-    _launchScene(s.body)
+func _launchScene<S: Scene>(_ s: S) -> _Done {
+    if let l = s as? _Launchable { return l._launch() }
+    return _launchScene(s.body)
 }
 
 extension App {

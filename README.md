@@ -16,6 +16,14 @@ Rendered output stays within 0.4–1.9% of the iOS 26 Simulator pixel-for-pixel 
 
 Your app compiles with `swiftc` against SimCore's own `SwiftUI` module, which shadows Apple's. The app runs as its own process and sends a normalized view tree to the host through a small Rust staticlib over a C ABI. The host lays the tree out with SwiftUI semantics, rasterizes it with tiny-skia and cosmic-text, hit-tests input, and routes button actions back to Swift closures. Details: [docs/architecture.md](docs/architecture.md), [docs/protocol.md](docs/protocol.md), [docs/swiftui-compatibility.md](docs/swiftui-compatibility.md).
 
+## In the browser (WebAssembly)
+
+The same unmodified SwiftUI source runs in a browser tab. The app and SimCore's SwiftUI module compile to WebAssembly together with the Rust renderer into one module, which draws to a `<canvas>` and needs only a static file server. Setup: [docs/web.md](docs/web.md).
+
+```sh
+scripts/build-web.sh examples/swiftui-counter CounterView && python3 -m http.server -d target/web 8000
+```
+
 ## Requirements
 
 macOS with the Swift toolchain (Xcode or Command Line Tools) and Rust stable.

@@ -1,0 +1,14 @@
+[package]
+name = "simcore-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "In-process SimCore runtime for WebAssembly: the simcore-runtime C ABI backed by simcore-render"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+simcore-protocol = { path = "../simcore-protocol" }
+simcore-render = { path = "../simcore-render" }
+serde_json.workspace = true

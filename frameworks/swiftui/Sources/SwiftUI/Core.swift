@@ -1,4 +1,8 @@
+#if os(WASI)
+import WASILibc
+#else
 import Foundation
+#endif
 internal import SimCoreBridge
 
 public protocol View {
@@ -141,11 +145,19 @@ final class _Runtime {
         slots = slots.filter { touched.contains($0.key) }
         dirty = false
         version += 1
+        #if os(WASI)
+        var json = ""
+        _json(tree, &json)
+        let rc = json.withCString { p in
+            p.withMemoryRebound(to: UInt8.self, capacity: json.utf8.count) { simcore_submit_tree($0, json.utf8.count, version) }
+        }
+        #else
         guard let data = try? JSONSerialization.data(withJSONObject: tree, options: [.withoutEscapingSlashes]) else {
             "tree serialization failed".withCString { simcore_report_error($0) }
             return
         }
         let rc = data.withUnsafeBytes { simcore_submit_tree($0.bindMemory(to: UInt8.self).baseAddress, data.count, version) }
+        #endif
         if rc != 0, let e = simcore_last_error() { simcore_report_error(e) }
     }
 }
@@ -159,6 +171,15 @@ func _pool(_ f: () -> Void) {
     #endif
 }
 
+#if os(WASI)
+/// Entry point on WASI (reactor): registers the app and returns. The first render happens when
+/// simcore-web pushes the environment (simcore_web_init); the browser is the event loop.
+public func _simcoreRun<V: View>(_ root: V) {
+    let rt = _Runtime.shared
+    rt.render = { _eval(root, "0") }
+    _simcoreRegisterCallbacks()
+}
+#else
 /// Entry point used by `App.main()` and generated mains. Never returns.
 public func _simcoreRun<V: View>(_ root: V) -> Never {
     let rt = _Runtime.shared
@@ -172,6 +193,13 @@ public func _simcoreRun<V: View>(_ root: V) -> Never {
         rt.viewport = (vp[0], vp[1])
     }
     rt.render = { _eval(root, "0") }
+    _simcoreRegisterCallbacks()
+    rt.submitTree()
+    exit(simcore_runtime_run())
+}
+#endif
+
+func _simcoreRegisterCallbacks() {
     simcore_runtime_set_callbacks(nil, { _, id in
         let rt = _Runtime.shared
         _pool { rt.actions[id]?() }
@@ -187,6 +215,4 @@ public func _simcoreRun<V: View>(_ root: V) -> Never {
         if let text { let t = String(cString: text); _pool { rt.fields[field]?(t) } }
         if rt.dirty { rt.submitTree() }
     }
-    rt.submitTree()
-    exit(simcore_runtime_run())
 }

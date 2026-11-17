@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SimCore Web</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1c1c1e; }
+  body { display: flex; align-items: center; justify-content: center; }
+  /* 402x874 points: the iphone-17-pro profile. */
+  canvas { height: min(874px, 100vh); aspect-ratio: 402 / 874; touch-action: manipulation; cursor: pointer; }
+  #err { color: #ff6961; font: 14px monospace; white-space: pre-wrap; padding: 1em; }
+</style>
+</head>
+<body>
+<canvas id="screen" width="402" height="874"></canvas>
+<div id="err"></div>
+<script type="module" src="main.js"></script>
+</body>
+</html>

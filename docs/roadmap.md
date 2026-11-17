@@ -7,6 +7,7 @@
 | 2 SwiftUI compatibility foundation (`import SwiftUI` unchanged) | done |
 | 3 Stateful SwiftUI rendering (counter increments through Rust) | done |
 | 4 Headless sessions + API (`simcore serve`) | done |
+| WASM execution backend: counter runs in the browser, 0.0% pixel diff vs native (`scripts/build-web.sh`) | prototype |
 | 5 DemoKit integration | not started: PRD section truncated, needs spec |
 
 Next SwiftUI surface: `@Binding`, `@ObservedObject`/`@StateObject`, `ScrollView`, `List`, `TextField` (needs keyboard events), `Toggle`, `NavigationStack`, sheets/alerts, animations, environment values.

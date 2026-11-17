@@ -1,4 +1,6 @@
+#if !os(WASI)
 import Foundation
+#endif
 
 // SF Symbols: the guest only names the symbol; the host rasterizes it (docs/protocol.md section E).
 

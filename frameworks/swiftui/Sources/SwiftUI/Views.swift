@@ -1,4 +1,6 @@
+#if !os(WASI)
 import Foundation
+#endif
 
 public struct Text: View, _Primitive {
     public typealias Body = Never

@@ -1,4 +1,6 @@
+#if !os(WASI)
 import Foundation
+#endif
 
 public enum Axis: Int8, CaseIterable {
     case horizontal = 1, vertical = 2
