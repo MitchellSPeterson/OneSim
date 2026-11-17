@@ -139,6 +139,7 @@ impl Interaction {
     /// `click` = down + up. A hit on a text field focuses it; any other click unfocuses. `scroll`
     /// hits the scroller and never reaches the guest.
     pub fn pointer(&mut self, scene: &Scene, ev: PointerEvent) -> Effect {
+        self.forget_gone(scene);
         self.hit = None;
         self.acted = false;
         if ev.kind == PointerKind::Scroll {
@@ -201,6 +202,18 @@ impl Interaction {
         }
     }
 
+    /// Drop scroll state of scrollers that left the screen. Node ids are positional, so the next
+    /// screen pushed at the same depth reuses them; like the guest's `@State`, a popped screen's
+    /// offsets must not carry over (iOS starts every pushed view at the top).
+    fn forget_gone(&mut self, scene: &Scene) {
+        let live: std::collections::HashSet<&str> = scene.nodes.iter().filter(|n| n.scroll.is_some()).map(|n| n.id.as_str()).collect();
+        self.scroll.retain(|id, _| live.contains(id.as_str()));
+        self.motion.retain(|id, _| live.contains(id.as_str()));
+        if self.drag.as_ref().is_some_and(|d| !live.contains(d.id.as_str())) {
+            self.drag = None;
+        }
+    }
+
     fn catch(&mut self, n: &crate::Node, x: f64, y: f64) {
         let info = n.scroll.expect("scroller");
         let (o, max, d, f) = axis(n, info.offset, x, y);
@@ -211,6 +224,7 @@ impl Interaction {
     /// when it lifts; `t` is the event time in ms. The content follows the finger, rubber-banding
     /// past the edges; on release it carries on with the finger's velocity (see `tick`).
     pub fn drag(&mut self, scene: &Scene, phase: DragPhase, x: f64, y: f64, t: f64) -> Effect {
+        self.forget_gone(scene);
         match phase {
             DragPhase::Begin => {
                 let Some(n) = scene.scroll_target(x, y).map(|i| &scene.nodes[i]) else { return Effect::None };
@@ -261,6 +275,7 @@ impl Interaction {
     /// Advance scroll momentum and bounces by `dt` seconds. Returns true while anything is moving
     /// (keep calling every frame), after updating `scroll`: re-layout when it returns true.
     pub fn tick(&mut self, scene: &Scene, dt: f64) -> bool {
+        self.forget_gone(scene);
         let held = self.drag.as_ref().map(|d| d.id.clone());
         let mut moving = false;
         for n in &scene.nodes {
@@ -321,6 +336,7 @@ impl Interaction {
     /// Keyboard input for the focused text field: text is appended, `backspace` pops, any other
     /// key (`enter`) unfocuses. Err when no field is focused.
     pub fn keyboard(&mut self, scene: &Scene, ev: KeyboardEvent) -> Result<Effect, &'static str> {
+        self.forget_gone(scene);
         let (field, mut text) = self.focused_field(scene).ok_or("no focused text field (click a text field first)")?;
         match ev {
             KeyboardEvent::Text { text: t } => text.push_str(&t),
@@ -425,5 +441,24 @@ mod tests {
         let (o, _, t) = settle(-80.0, 0.0, 1000.0);
         assert_eq!(o, 0.0);
         assert!((0.3..0.9).contains(&t), "bounce back took {t}s");
+    }
+
+    #[test]
+    fn popped_screen_offsets_do_not_carry_over() {
+        use crate::scene::{Node, Rect, ScrollInfo};
+        let screen = |with_scroller: bool| {
+            let mut n = Node::new("0/s1", "scroll");
+            n.bounds = Rect { x: 0.0, y: 0.0, w: 400.0, h: 800.0 };
+            n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, 0.0), max: (0.0, 500.0) });
+            let nodes = if with_scroller { vec![n] } else { vec![] };
+            Scene { size: (400.0, 800.0), appearance: simcore_protocol::Appearance::Light, nodes, unsupported_symbols: vec![] }
+        };
+        let mut it = Interaction::default();
+        let ev = |kind, dy| PointerEvent { kind, x: 100.0, y: 100.0, dx: 0.0, dy };
+        assert_eq!(it.pointer(&screen(true), ev(PointerKind::Scroll, 120.0)), Effect::Redraw);
+        assert_eq!(it.scroll.get("0/s1"), Some(&(0.0, 120.0)));
+        // Back to a screen without it (the pop), then a new screen reusing the id starts at the top.
+        it.pointer(&screen(false), ev(PointerKind::Click, 0.0));
+        assert!(it.scroll.is_empty() && !it.live());
     }
 }

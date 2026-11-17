@@ -5,13 +5,6 @@
 //! specular rim + soft outer shadow. CPU-only, deterministic, no threads or SIMD (wasm32-wasip1 safe).
 //! Parameters are fitted to the iOS 26.5 Simulator fixtures (`tests/fixtures/showcase-ios/README.md`).
 
-use crate::raster::gaussian_in;
-use std::cell::RefCell;
-use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
-use std::ops::Range;
-use std::rc::Rc;
 use crate::scene::Color;
 pub use simcore_protocol::GlassVariant;
 use tiny_skia::{Mask, Pixmap};
@@ -153,33 +146,49 @@ pub fn snapshot(pm: &Pixmap, shape: Shape, scale: f32, p: &Params) -> Snapshot {
     Snapshot { x0, y0, w, h, rgb }
 }
 
-type BlurKey = (u64, usize, usize, u32, [usize; 4]);
-
-thread_local! {
-    /// Last blurred backdrops keyed by a hash of the unblurred snapshot: while content does not
-    /// move under a glass element (most frames, even while scrolling elsewhere) the blur is skipped.
-    static BLURS: RefCell<HashMap<BlurKey, Rc<[Vec<f32>; 3]>>> = RefCell::new(HashMap::new());
+/// Gaussian blur approximated by three box blurs (Kovesi's widths), edges replicated. Constant cost
+/// per pixel whatever the sigma; within a few levels of the exact kernel on backdrops, far below
+/// what the pixel-diff rule counts (24/255).
+fn box_blur3(plane: &mut [f32], w: usize, h: usize, sigma: f32) {
+    let wi = (12.0 * sigma * sigma / 3.0 + 1.0).sqrt();
+    let wl = (wi.floor() as usize).max(1);
+    let wl = if wl.is_multiple_of(2) { wl - 1 } else { wl };
+    let m = ((12.0 * sigma * sigma - 3.0 * (wl * wl) as f32 - 12.0 * wl as f32 - 9.0) / (-4.0 * wl as f32 - 4.0)).round() as usize;
+    let radii: [usize; 3] = std::array::from_fn(|i| if i < m { wl / 2 } else { wl / 2 + 1 });
+    let mut tmp = vec![0f32; plane.len()];
+    for r in radii {
+        for (src, dst) in plane.chunks_exact(w).zip(tmp.chunks_exact_mut(w)) {
+            box_line(src, dst, r);
+        }
+        box_columns(&tmp, plane, w, h, r);
+    }
 }
 
-fn blur_cached(rgb: &mut [Vec<f32>; 3], w: usize, h: usize, sigma: f32, (cols, rows): (Range<usize>, Range<usize>)) {
-    let mut hs = DefaultHasher::new();
-    rgb.iter().for_each(|pl| pl.iter().for_each(|v| v.to_bits().hash(&mut hs)));
-    let key = (hs.finish(), w, h, sigma.to_bits(), [cols.start, cols.end, rows.start, rows.end]);
-    let hit = BLURS.with(|c| c.borrow().get(&key).cloned());
-    if let Some(b) = hit {
-        *rgb = (*b).clone();
-        return;
+/// Vertical box blur of radius `r`: a running sum over whole rows (vectorizes; no transpose).
+fn box_columns(src: &[f32], dst: &mut [f32], w: usize, h: usize, r: usize) {
+    let row = |y: isize| &src[y.clamp(0, h as isize - 1) as usize * w..][..w];
+    let (r, inv) = (r as isize, 1.0 / (2 * r + 1) as f32);
+    let mut acc = vec![0f32; w];
+    for y in -r..=r {
+        acc.iter_mut().zip(row(y)).for_each(|(a, v)| *a += v);
     }
-    for pl in rgb.iter_mut() {
-        gaussian_in(pl, w, h, sigma, true, (cols.clone(), rows.clone()));
+    for (y, out) in dst.chunks_exact_mut(w).enumerate() {
+        out.iter_mut().zip(&acc).for_each(|(o, a)| *o = a * inv);
+        let (add, sub) = (row(y as isize + r + 1), row(y as isize - r));
+        acc.iter_mut().zip(add.iter().zip(sub)).for_each(|(a, (p, m))| *a += p - m);
     }
-    BLURS.with(|c| {
-        let mut c = c.borrow_mut();
-        if c.len() > 32 {
-            c.clear();
-        }
-        c.insert(key, Rc::new(rgb.clone()));
-    });
+}
+
+/// Mean over `[i - r, i + r]` (edge samples repeated), as a running sum.
+fn box_line(src: &[f32], dst: &mut [f32], r: usize) {
+    let n = src.len() as isize;
+    let at = |i: isize| src[i.clamp(0, n - 1) as usize];
+    let (r, inv) = (r as isize, 1.0 / (2 * r + 1) as f32);
+    let mut acc: f32 = (-r..=r).map(at).sum();
+    for (i, d) in dst.iter_mut().enumerate() {
+        *d = acc * inv;
+        acc += at(i as isize + r + 1) - at(i as isize - r);
+    }
 }
 
 fn bilinear(pl: &[f32], w: usize, h: usize, x: f32, y: f32) -> f32 {
@@ -208,14 +217,9 @@ pub fn draw(pm: &mut Pixmap, snap: Snapshot, shape: Shape, spec: &GlassSpec, sca
     let (lens_d, lens_w) = (p.lens_d * scale, (p.lens_w * scale).max(0.5));
     let (sx0, sy0) = (shape.x.floor() as i32 - 1, shape.y.floor() as i32 - 1);
     let (sx1, sy1) = ((shape.x + shape.w).ceil() as i32 + 1, (shape.y + shape.h).ceil() as i32 + 1);
-    // Blur only what the lens can sample: the painted pixels displaced by up to `lens_d`.
-    let reach = |a: i32, b: i32, o: i32, n: usize| {
-        let lo = (a as f32 - lens_d - o as f32 - 1.0).floor().clamp(0.0, n as f32 - 1.0) as usize;
-        let hi = (b as f32 + lens_d - o as f32 + 1.0).ceil().clamp(0.0, n as f32 - 1.0) as usize;
-        lo..hi + 1
-    };
-    let win = (reach(sx0, sx1, x0, w), reach(sy0, sy1, y0, h));
-    blur_cached(&mut rgb, w, h, p.sigma * scale, win);
+    for pl in rgb.iter_mut() {
+        box_blur3(pl, w, h, p.sigma * scale);
+    }
     let tint = spec.tint.map(|t| {
         let sh = p.tint_shift * 255.0;
         ([(t.r * 255.0 + sh).clamp(0.0, 255.0), (t.g * 255.0 + sh).clamp(0.0, 255.0), (t.b * 255.0 + sh).clamp(0.0, 255.0)], t.a)
@@ -368,5 +372,19 @@ mod tests {
     fn scroll_edge_veil_ramp() {
         assert!((veil(-20.0) - 0.41).abs() < 1e-3 && (veil(0.0) - 0.24).abs() < 1e-6);
         assert!(veil(12.0) > veil(20.0) && veil(32.0) == 0.0 && veil(100.0) == 0.0);
+    }
+
+    #[test]
+    fn box_blur_tracks_the_gaussian() {
+        let (w, h) = (90, 70);
+        // A hard-edged backdrop: worst case for the approximation.
+        let src: Vec<f32> = (0..w * h).map(|i| if (i % w) / 15 % 2 == (i / w) / 12 % 2 { 255.0 } else { 0.0 }).collect();
+        for sigma in [3.0f32, 9.0] {
+            let (mut exact, mut boxed) = (src.clone(), src.clone());
+            crate::raster::gaussian(&mut exact, w, h, sigma, true);
+            box_blur3(&mut boxed, w, h, sigma);
+            let worst = exact.iter().zip(&boxed).map(|(a, b)| (a - b).abs()).fold(0.0, f32::max);
+            assert!(worst < 12.0, "sigma {sigma}: off by {worst} of 255");
+        }
     }
 }

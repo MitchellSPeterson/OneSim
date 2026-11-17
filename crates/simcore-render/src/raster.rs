@@ -146,12 +146,7 @@ fn draw_symbol(pm: &mut Pixmap, sy: &SymbolRun, b: (f32, f32, f32, f32), op: f32
 
 /// Separable gaussian blur of an `f32` coverage plane (exact kernel, truncated at 3 sigma).
 pub(crate) fn gaussian(plane: &mut [f32], w: usize, h: usize, sigma: f32, replicate: bool) {
-    gaussian_in(plane, w, h, sigma, replicate, (0..w, 0..h));
-}
-
-/// `gaussian`, computing only the output window `(columns, rows)`; the rest of `plane` is left
-/// unblurred. Each output pixel is computed exactly as by the full blur.
-pub(crate) fn gaussian_in(plane: &mut [f32], w: usize, h: usize, sigma: f32, replicate: bool, (cols, rows): (Range<usize>, Range<usize>)) {
+    let (cols, rows) = (0..w, 0..h);
     let r = (sigma * 3.0).ceil() as usize;
     let mut k: Vec<f32> = (-(r as isize)..=r as isize).map(|i| (-(i * i) as f32 / (2.0 * sigma * sigma)).exp()).collect();
     let sum: f32 = k.iter().sum();
@@ -185,7 +180,7 @@ pub(crate) fn gaussian_in(plane: &mut [f32], w: usize, h: usize, sigma: f32, rep
             }
         }
     }
-    // Rows first, all of them but only the wanted columns; then those columns, wanted rows only.
+    // Rows, then columns.
     let mut tmp = vec![0f32; plane.len()];
     let hi = inner(w, &cols);
     for y in 0..h {
@@ -262,6 +257,9 @@ fn draw_shadow(pm: &mut Pixmap, n: &crate::scene::Node, sh: &Shadow, b: (f32, f3
 /// `fill_rect` (lowp pipeline: uniform_color, mask_u8, source_over) but without compiling a
 /// pipeline per call: cosmic-text calls back once per glyph pixel, which made that the bulk of a frame.
 fn blend_rect(pm: &mut Pixmap, (x, y, w, h): (i32, i32, u32, u32), c: [u8; 4], mask: Option<&Mask>) {
+    if c[3] == 0 {
+        return; // most of a glyph's box
+    }
     let pc = tiny_skia::Color::from_rgba8(c[0], c[1], c[2], c[3]).premultiply();
     let src = [pc.red(), pc.green(), pc.blue(), pc.alpha()].map(|v| (v * 255.0 + 0.5) as u16);
     if src[3] == 0 {
@@ -481,7 +479,7 @@ mod tests {
     }
 
     #[test]
-    fn windowed_blur_is_bit_identical_to_per_output_loop() {
+    fn vectorized_blur_is_bit_identical_to_per_output_loop() {
         let (w, h, sigma) = (37, 29, 2.3f32);
         let src: Vec<f32> = noise(w * h, 5).iter().map(|&b| b as f32 / 7.0).collect();
         // The straightforward blur: each output sums its taps in kernel order.
@@ -514,15 +512,7 @@ mod tests {
             let want = naive(replicate);
             let mut full = src.clone();
             gaussian(&mut full, w, h, sigma, replicate);
-            assert!(full.iter().zip(&want).all(|(a, b)| a.to_bits() == b.to_bits()), "full, replicate={replicate}");
-            let (cols, rows) = (3..30, 5..11);
-            let mut win = src.clone();
-            gaussian_in(&mut win, w, h, sigma, replicate, (cols.clone(), rows.clone()));
-            for y in rows.clone() {
-                for x in cols.clone() {
-                    assert_eq!(win[y * w + x].to_bits(), want[y * w + x].to_bits(), "({x},{y}) replicate={replicate}");
-                }
-            }
+            assert!(full.iter().zip(&want).all(|(a, b)| a.to_bits() == b.to_bits()), "replicate={replicate}");
         }
     }
 }

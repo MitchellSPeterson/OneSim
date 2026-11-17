@@ -31,9 +31,9 @@ async function main() {
     return vp.scale ?? Math.min(4, Math.max(1, Math.round(cssScale * dpr() * 4) / 4));
   }
   function present() {
-    const { width, height, data } = sim.framebuffer();
+    const { width, height, data } = sim.frameView(); // putImageData copies it out at once
     if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
-    ctx.putImageData(new ImageData(new Uint8ClampedArray(data.buffer), width, height), 0, 0);
+    ctx.putImageData(new ImageData(data, width, height), 0, 0);
   }
   // Run an input/environment change, then show the new frame.
   // Animation clock: after any input, run frames while momentum/bounce is moving.

@@ -158,8 +158,12 @@ export class SimCore {
 
   /** Current frame: RGBA bytes (a copy) and pixel size. */
   framebuffer() {
+    const f = this.frameView();
+    return { ...f, data: new Uint8Array(f.data) };
+  }
+  /** Current frame without copying: a view into Wasm memory, valid only until the next call. */
+  frameView() {
     const w = this.wasm.simcore_web_fb_width(), h = this.wasm.simcore_web_fb_height();
-    const ptr = this.wasm.simcore_web_fb_ptr();
-    return { width: w, height: h, data: new Uint8Array(this.mem, ptr, w * h * 4).slice() };
+    return { width: w, height: h, data: new Uint8ClampedArray(this.mem, this.wasm.simcore_web_fb_ptr(), w * h * 4) };
   }
 }
