@@ -63,7 +63,7 @@ System mode: every state < 2% (18/18). Fallback mode: < 3.5% except the two `typ
 
 ## Known gaps
 
-- Fallback mode fails `typography-scrolled` (4.9%, limit 3.5%): Inter's glyph shapes and word spacing differ from SF at 43-60pt (per-line positions already match within ~1pt after fitting size scale 0.93, tracking and baseline; no threshold was changed).
+- Fallback mode fails `typography-scrolled` (4.9%, limit 3.5%): Inter's glyph shapes and word spacing differ from SF at 43-60pt (per-line positions already match within ~1pt after fitting size scale 0.93, tracking and baseline; no threshold was changed). Measured limits: re-fitting every Inter knob (scale, tracking at 43/53/60pt, weight, baseline, x offset) bottoms out at 4.85%. Drawing Inter glyphs at SF Pro's own shaped positions (kerning included) reaches 2.9%, but SF's kerning is essential (5.1% without it), so closing the gap means shipping SF-derived advance and kerning tables, which was declined for licensing reasons.
 - Glass lensing is modelled only in a ~3pt rim band (star/bell crescents are approximate); `interactive` glass has no pressed look (the pressed fixture only differs by its label).
 - Dynamic Type scales text styles only (not nav titles beyond the inline-title cap, list headers, symbols or control sizes).
 - System-mode `typography-scrolled(-dark)` pass at 1.98% / 2.00%, close to the limit: sub-pixel glyph rows differ from CoreText's.
