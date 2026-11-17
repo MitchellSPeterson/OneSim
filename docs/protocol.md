@@ -245,3 +245,35 @@ When a `text_field` is focused, the host draws the iOS keyboard for the device p
 
 - Device profiles have `"island": {"x","y","width","height"}` (pt); the iPhone 17 Pro has one. The host draws it as a black capsule above everything, matching the iOS Simulator screenshots.
 - `shadow` is a true Gaussian blur, matching CALayer shadow rendering for SwiftUI's `shadow(radius:)` (radius → blur). It is computed offscreen per node and cached.
+
+---
+
+## F. v1 additions: Liquid Glass (additive)
+
+### Modifier
+
+`{"glass": {"variant": "regular"|"clear"|"identity", "tint"?: Color, "interactive"?: bool, "shape": GlassShape}}` comes from `.glassEffect(_ glass: Glass = .regular, in shape: some Shape = .capsule)`.
+- `GlassShape` is `{"shape": "capsule"|"circle"|"rect"|"roundedRectangle"|"ellipse", "cornerRadius"?: f64}`. The default is capsule.
+- The glass is drawn behind the modified view's content and sized to it.
+- `GlassEffectContainer` children are emitted as normal nodes. Merging and morphing between glass shapes is out of scope in v1.
+
+### Button styles
+
+`button.style` adds `"glass"` and `"glassProminent"`.
+- glass: capsule-shaped regular glass, label in primary.
+- glassProminent: capsule glass tinted with the accent color, label in white.
+
+### Rendering (host)
+
+Liquid Glass is a **backdrop effect**: a glass node samples the pixels already rendered beneath it, inside its shape. In order, the host:
+1. blurs the backdrop (Gaussian);
+2. applies a lensing displacement that bends the backdrop near the rim, strongest at the edge;
+3. adjusts saturation and brightness per variant (`clear` is barely blurred);
+4. mixes in a tint;
+5. adds a specular rim highlight and an inner/outer shadow.
+
+All of this adapts to light and dark appearance. Parameters are fitted to the iOS 26 Simulator fixtures.
+
+System chrome uses the same effect:
+- The navigation back button is a glass circle.
+- The scroll-edge effect softly blurs and fades content that scrolls under the navigation bar or status bar.

@@ -1,7 +1,7 @@
 import SwiftUI
 
 // A multi-screen app exercising a broad SwiftUI surface. It must compile
-// unchanged against Apple's SwiftUI (iOS 17+) and SimCore's SwiftUI module.
+// unchanged against Apple's SwiftUI (iOS 26+) and SimCore's SwiftUI module.
 
 struct TodoItem: Identifiable {
     let id: Int
@@ -44,6 +44,7 @@ struct ContentView: View {
                     NavigationLink("Todos") { TodoScreen(store: store) }
                     NavigationLink("Controls") { ControlsScreen() }
                     NavigationLink("Symbols") { SymbolsScreen() }
+                    NavigationLink("Glass") { GlassScreen() }
                 }
                 Section("Summary") {
                     HStack {
@@ -238,5 +239,50 @@ struct SymbolsScreen: View {
             }
         }
         .navigationTitle("Symbols")
+    }
+}
+
+struct GlassScreen: View {
+    @State private var taps = 0
+
+    var body: some View {
+        ZStack {
+            VStack(spacing: 0) {
+                Color.orange
+                Color.pink
+                Color.purple
+                Color.blue
+                Color.green
+            }
+            VStack(spacing: 24) {
+                Text("Liquid Glass")
+                    .font(.title.weight(.semibold))
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .glassEffect()
+                HStack(spacing: 16) {
+                    Image(systemName: "star.fill")
+                        .font(.title2)
+                        .frame(width: 56, height: 56)
+                        .glassEffect(in: .circle)
+                    Image(systemName: "heart.fill")
+                        .font(.title2)
+                        .frame(width: 56, height: 56)
+                        .glassEffect(.regular.tint(.red), in: .circle)
+                    Image(systemName: "bell.fill")
+                        .font(.title2)
+                        .frame(width: 56, height: 56)
+                        .glassEffect(.clear, in: .circle)
+                }
+                Text("Card")
+                    .frame(width: 220, height: 64)
+                    .glassEffect(in: .rect(cornerRadius: 20))
+                Button("Glass \(taps)") { taps += 1 }
+                    .buttonStyle(.glass)
+                Button("Prominent") { taps += 1 }
+                    .buttonStyle(.glassProminent)
+            }
+        }
+        .navigationTitle("Glass")
     }
 }
