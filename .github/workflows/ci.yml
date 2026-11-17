@@ -1,0 +1,24 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace
+      - run: cargo build -p simcore-render --examples --features window
+      - run: cargo test --workspace
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: SwiftUI wire test (build, 1100 actions, memory, isolation of stdout)
+        run: frameworks/swiftui/Tests/wire_test.sh
+      - name: End-to-end headless counter
+        run: |
+          cargo run -q -p simcore-cli -- run examples/swiftui-counter --root-view CounterView \
+            --click Increment --inspect | grep -q '"Count: 1"'

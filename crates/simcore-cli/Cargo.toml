@@ -1,0 +1,19 @@
+[package]
+name = "simcore-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The `simcore` command line: JSON-lines API server and headless driver"
+
+[[bin]]
+name = "simcore"
+path = "src/main.rs"
+
+[dependencies]
+simcore-protocol = { path = "../simcore-protocol" }
+simcore-host = { path = "../simcore-host" }
+serde_json.workspace = true
+clap = { version = "4.6", features = ["derive"] }
+anyhow = "1"
+log = "0.4"
+env_logger = "0.11"

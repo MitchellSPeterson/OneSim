@@ -1,0 +1,4 @@
+module SimCoreBridge [system] {
+    header "../../../../crates/simcore-runtime/include/simcore_runtime.h"
+    export *
+}
