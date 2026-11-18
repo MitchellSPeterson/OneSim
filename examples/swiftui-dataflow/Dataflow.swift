@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Exercises Group, List(data), @EnvironmentObject, onAppear/onDisappear, value-based navigation
+// Exercises onChange (3 forms), onTapGesture, @AppStorage, Lazy stacks, Group, List(data), @EnvironmentObject, onAppear/onDisappear, value-based navigation
 // (NavigationPath and [T] paths), destination links in a path-bound stack, unmatched values, modifiers on a Group, dismiss and dynamicTypeSize. Must compile unchanged against Apple's SwiftUI.
 
 final class Session: ObservableObject {
@@ -26,6 +26,7 @@ struct ContentView: View {
         VStack {
             HomeView()
             TypedView()
+            ReactiveView()
         }
     }
 }
@@ -129,5 +130,35 @@ struct TypedView: View {
                 Text("Typed \(n) depth \(ids.count)").navigationTitle("Typed \(n)")
             }
         }
+    }
+}
+
+struct ReactiveView: View {
+    @State private var count = 0
+    @State private var log: [String] = []
+    @State private var tapped = 0
+    @AppStorage("dataflow.launches") private var launches = 0
+    @AppStorage("dataflow.flag") private var flag = false
+    @AppStorage("dataflow.name") private var name = "none"
+
+    var body: some View {
+        LazyVStack(alignment: .leading, spacing: 4, pinnedViews: []) {
+            Text("Count: \(count)")
+            Text("Log: \(log.joined(separator: ","))")
+            Text("Mirror: \(count * 10)")
+            LazyHStack(spacing: 2) {
+                Text("Tapped: \(tapped)")
+                Text("Flag: \(flag ? "on" : "off")")
+                Text("Name: \(name)")
+                Text("Launches: \(launches)")
+            }
+            Button("Bump") { count += 1 }
+            Button("Store") { launches += 1; flag.toggle(); name = "set" }
+            Button("Reset store") { launches = 0; flag = false; name = "none" }
+            Text("Tap me").onTapGesture { tapped += 1 }
+        }
+        .onChange(of: count) { old, new in log.append("\(old)>\(new)") }
+        .onChange(of: count, initial: true) { log.append("c") }
+        .onChange(of: count) { new in if new == 2 { count = 20 } }   // dirties state: re-evaluates and fires the others again
     }
 }

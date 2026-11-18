@@ -11,7 +11,7 @@ use crate::scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, Shadow, Sy
 use crate::symbols::{self, SymbolSpec};
 use crate::text::{FontSpec, Fonts, Span, TextAlign};
 use simcore_protocol::{
-    Alignment, Appearance, ButtonStyle, Detent, Layer, DynamicTypeSize, GlassShapeKind, GlassVariant, ContentMode, DisplayMode, Font, ImageScale, ListStyle, Modifier, Section, Semantic, ShapeKind, Stroke,
+    Alignment, Appearance, ButtonStyle, Detent, Layer, PickerOption, PickerStyle, DynamicTypeSize, GlassShapeKind, GlassVariant, ContentMode, DisplayMode, Font, ImageScale, ListStyle, Modifier, Section, Semantic, ShapeKind, Stroke,
     ViewKind, ViewNode,
 };
 use std::cmp::Ordering;
@@ -90,6 +90,47 @@ const SHEET_RADIUS: f64 = 40.0;
 const PRESENT_BLUR: f32 = 12.0;
 /// Space above the sheet content (a list starts this far below the sheet's top edge).
 const SHEET_CONTENT_TOP: f64 = 35.0;
+
+// Form controls (iOS 26.5, measured on `form*.png` in tests/fixtures/showcase-ios).
+/// Menu picker: chevron.up.chevron.down (pt, weight), gap after the value, trailing inset.
+const PICKER_CHEVRON: (f64, u16) = (13.0, 600);
+const PICKER_CHEVRON_GAP: f64 = 5.0;
+const PICKER_TRAIL_INSET: f64 = 0.0;
+/// Segmented control: height, thumb inset, track fill alpha, font (pt, weight, selected weight).
+const SEGMENTED_H: f64 = 31.0;
+const SEGMENTED_INSET: f64 = 2.0;
+const SEGMENTED_TRACK_A: f32 = 0.12;
+const SEGMENTED_FONT: (f32, u16, u16) = (13.0, 500, 600);
+const SEGMENTED_THUMB_DARK: (u8, u8, u8) = (105, 105, 111);
+/// SecureField bullet: diameter, pitch, first bullet's x in the field (pt).
+const SECURE_BULLET: (f64, f64, f64) = (7.33, 10.22, 1.67);
+/// Slider: thumb (w, h), track thickness and fill alpha, thumb shadow (alpha, radius, dy).
+const SLIDER_THUMB: (f64, f64) = (37.0, 24.0);
+const SLIDER_H: f64 = 31.0;
+const SLIDER_TRACK: f64 = 6.0;
+/// Unfilled slider track (light, dark).
+const SLIDER_TRACK_FILL: ((u8, u8, u8), (u8, u8, u8)) = ((230, 230, 230), (50, 50, 52));
+const SLIDER_SHADOW: (f32, f64, f64) = (0.15, 3.0, 1.0);
+/// Linear progress: bar thickness, track alpha, gap under a label; spinner box.
+const PROGRESS_H: f64 = 4.0;
+/// Linear progress track (light, dark).
+const PROGRESS_TRACK_FILL: ((u8, u8, u8), (u8, u8, u8)) = ((228, 228, 230), (61, 61, 65));
+const PROGRESS_LABEL_GAP: f64 = 8.0;
+const SPINNER: f64 = 20.0;
+/// Picker menu: row height, vertical padding, text x, right padding, min width, radius,
+/// checkmark (pt, weight) and centre x, offset from the anchor, glass mix (light, dark).
+const MENU_ROW_H: f64 = 42.0;
+const MENU_PAD_V: f64 = 10.0;
+const MENU_TEXT_X: f64 = 43.7;
+const MENU_PAD_R: f64 = 24.0;
+const MENU_MIN_W: f64 = 250.0;
+const MENU_RADIUS: f64 = 26.0;
+const MENU_CHECK: (f64, u16) = (13.0, 600);
+const MENU_CHECK_X: f64 = 27.67;
+const MENU_DX: f64 = 0.0;
+/// Half the height of the picker's hit area: the card's bottom lines up with it.
+const MENU_DY: f64 = 17.17;
+const MENU_GLASS: ((f32, f32), (f32, f32)) = ((0.196, 0.76), (0.35, 0.118));
 
 // iOS 26 measurements (points).
 const ROW_MIN_H: f64 = 52.0;
@@ -336,6 +377,41 @@ pub(crate) fn rn_nav_bar(params: &SceneParams, fonts: &mut Fonts, id: &str, top:
     flatten(cx.nav_bar(bar), 0.0, top, Some(parent), 1.0, out);
 }
 
+/// Bottom safe-area inset under an iOS 26 tab bar (the 61 pt capsule 20 pt above the bottom, plus its margin).
+pub(crate) const TAB_BAR_INSET: f64 = 83.0;
+
+/// One tab bar item: SwiftUI `TabView` or Expo Router native tabs. Node ids are `<host>#tab-<key>`.
+pub(crate) struct TabBarItem {
+    pub key: String,
+    pub title: String,
+    /// Icon bitmaps (guest-downloaded) or an SF symbol name, normal and selected.
+    pub icon: Option<String>,
+    pub selected_icon: Option<String>,
+    pub symbol: Option<String>,
+    pub badge: Option<String>,
+    pub action: Option<u64>,
+}
+
+pub(crate) struct TabBar {
+    pub items: Vec<TabBarItem>,
+    pub selected: usize,
+    pub tint: Option<Color>,
+}
+
+/// Append the tab bar of the React Native tab host `host` to `out`.
+pub(crate) fn rn_tab_bar(params: &SceneParams, fonts: &mut Fonts, t: &TabBar, host: &str, parent: usize, opacity: f32, out: &mut Vec<Node>) {
+    let (w, h) = params.viewport;
+    let start = out.len();
+    flatten(ctx(params, fonts).tab_bar(t, host, w, h), 0.0, 0.0, Some(parent), opacity, out);
+    // Bitmap icons fill their node; `dest` is absolute.
+    for n in &mut out[start..] {
+        let b = n.bounds;
+        if let Some(im) = n.image.as_mut() {
+            im.dest = b;
+        }
+    }
+}
+
 pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
     let (w, h) = params.viewport;
     // Keyboard avoidance: the keyboard top replaces the bottom safe-area inset.
@@ -370,6 +446,10 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
             }
             Layer::Cover { content } => cx.cover(content, &geo),
             Layer::Alert { title, message, actions } => cx.alert(title, message.as_deref(), actions, &geo),
+            Layer::Menu { anchor, items, dismiss } => {
+                let rect = anchor.as_ref().and_then(|a| nodes.iter().find(|n| &n.id == a)).map(|n| n.bounds);
+                cx.menu(items, rect, *dismiss, &geo)
+            }
             Layer::Dialog { title, title_visible, message, actions, anchor, dismiss } => {
                 // The popover points at the anchor's label (its first text), not the whole row.
                 let rect = anchor.as_ref().and_then(|a| nodes.iter().position(|n| &n.id == a)).map(|i| {
@@ -442,7 +522,7 @@ fn first_text(v: &ViewNode) -> Option<String> {
         ViewKind::VStack { children, .. } | ViewKind::HStack { children, .. } | ViewKind::ZStack { children, .. } => {
             children.iter().find_map(first_text)
         }
-        ViewKind::Button { label, .. } | ViewKind::Toggle { label, .. } | ViewKind::Stepper { label, .. } => {
+        ViewKind::Button { label, .. } | ViewKind::Toggle { label, .. } | ViewKind::Stepper { label, .. } | ViewKind::Picker { label, .. } => {
             first_text(label)
         }
         ViewKind::Label { title, .. } => first_text(title),
@@ -465,6 +545,10 @@ fn first_text_x(l: &Lay, ox: f64) -> Option<f64> {
     if l.node.as_ref().is_some_and(|n| n.text.is_some()) {
         return Some(ox);
     }
+    // A segmented control's labels don't set the separator inset.
+    if l.node.as_ref().is_some_and(|n| n.kind == "segmented") {
+        return None;
+    }
     l.kids.iter().find_map(|(dx, _, k)| first_text_x(k, ox + dx))
 }
 
@@ -484,8 +568,10 @@ fn expand_button(l: &mut Lay, ox: f64, oy: f64, row: (f64, f64, f64, f64)) -> bo
     false
 }
 
+/// Rows holding bordered buttons, segmented pickers or sliders get the taller row padding.
 fn has_bordered(v: &ViewNode) -> bool {
     match &v.kind {
+        ViewKind::Picker { style: PickerStyle::Segmented, .. } | ViewKind::Slider { .. } => true,
         ViewKind::Button { style, label, .. } => {
             matches!(style, ButtonStyle::Bordered | ButtonStyle::BorderedProminent) || has_bordered(label)
         }
@@ -551,6 +637,12 @@ impl Ctx<'_> {
 
     fn glass_spec(&self, variant: GlassVariant, tint: Option<&simcore_protocol::Color>, interactive: bool) -> crate::glass::GlassSpec {
         crate::glass::GlassSpec { variant, tint: tint.map(|c| self.color(c)), interactive, blur: None, mix: None, shadow: None }
+    }
+
+    /// Opaque (light, dark) color pair for the current appearance.
+    fn pick(&self, (l, d): ((u8, u8, u8), (u8, u8, u8))) -> Color {
+        let c = if self.dark { d } else { l };
+        rgba(c.0, c.1, c.2, 1.0)
     }
 
     /// Neutral control fill (systemFill-like) of the given strength.
@@ -834,12 +926,43 @@ impl Ctx<'_> {
             ViewKind::Presentation { content, .. } => self.view(content, p, env),
             ViewKind::Scroll { axis, child } => self.scroll(v, *axis == simcore_protocol::Axis::Vertical, child, p, env),
             ViewKind::List { style, sections } => self.list(v, *style, sections, p, env),
+            ViewKind::TabView { selected, tabs, content } => self.tab_view(v, *selected, tabs, content, p, env),
             ViewKind::Navigation { title, display_mode, back, content } => {
                 self.navigation(v, title.as_deref(), *display_mode, back.as_ref(), content, p, env)
             }
             ViewKind::Toggle { is_on, action, label, disabled } => self.toggle(v, *is_on, *action, label, *disabled, p, env),
             ViewKind::Stepper { label, decrement, increment } => self.stepper(v, label, *decrement, *increment, p, env),
-            ViewKind::TextField { placeholder, text, field } => self.text_field(v, placeholder, text, *field, p, env),
+            ViewKind::TextField { placeholder, text, field, secure } => {
+                if !*secure || text.is_empty() {
+                    return self.text_field(v, placeholder, text, *field, p, env);
+                }
+                // SecureField: one bullet (a dot) per character.
+                let mut l = self.text_field(v, placeholder, "", *field, p, env);
+                let fg = env.fg.unwrap_or_else(|| self.semantic(Semantic::Primary));
+                let (d, pitch, x0) = SECURE_BULLET;
+                let y = (l.size.h - d) / 2.0;
+                l.kids.retain(|(_, _, k)| k.node.as_ref().is_none_or(|n| n.kind != "text"));
+                for i in 0..text.chars().count() {
+                    let mut b = Node::new(format!("{}#bullet{i}", v.id), "bullet");
+                    b.fill = Some(fg);
+                    b.radius = PILL;
+                    b.inspect = false;
+                    l.kids.push((x0 + i as f64 * pitch, y, Lay::new(Size { w: d, h: d }, Some(b), vec![])));
+                }
+                if let Some(n) = l.node.as_mut() {
+                    n.value = Some(text.clone());
+                }
+                l
+            }
+            ViewKind::Picker { label, style, options, selected, open, disabled } => {
+                if *style == PickerStyle::Segmented {
+                    self.segmented(v, options, *selected, *disabled, p)
+                } else {
+                    self.menu_picker(v, label, options, *selected, *open, *disabled, p, child_env)
+                }
+            }
+            ViewKind::Slider { value, min, max, field, disabled, .. } => self.slider(v, *value, (*min, *max), *field, *disabled, p),
+            ViewKind::Progress { value, label } => self.progress(v, *value, label.as_deref(), p, child_env),
             ViewKind::Image { system_name, resizable, content_mode, scale } => {
                 self.image(v, system_name, *resizable, *content_mode, scale.unwrap_or(env.img), p, env, fg)
             }
@@ -1074,6 +1197,211 @@ impl Ctx<'_> {
             kids.push(((tw - overflow).min(w - 2.0) + 1.0, 1.0, Lay::new(Size { w: 2.0, h: h - 2.0 }, Some(c), vec![])));
         }
         Lay::new(Size { w, h }, Some(n), kids)
+    }
+
+    /// An SF Symbol leaf at `pt` points.
+    fn symbol_lay(&mut self, id: String, name: &str, pt: f64, weight: u16, color: Color) -> Lay {
+        let spec = SymbolSpec { name: name.into(), point_size: pt, weight, scale: ImageScale::Medium };
+        let (w, h) = symbols::metrics(&spec).map_or((pt, pt), |m| (m.w, m.h));
+        let mut n = Node::new(id, "image");
+        n.symbol = Some(SymbolRun { spec, color, size: (w, h) });
+        n.inspect = false;
+        Lay::new(Size { w, h }, Some(n), vec![])
+    }
+
+    /// Menu `Picker` row: label leading; selected value and chevron.up.chevron.down trailing, secondary.
+    /// The whole control is a button that opens the menu layer.
+    #[allow(clippy::too_many_arguments)]
+    fn menu_picker(&mut self, v: &ViewNode, label: &ViewNode, options: &[PickerOption], selected: Option<usize>, open: Option<u64>, disabled: bool, p: Prop, env: Env) -> Lay {
+        let fin = p.w.filter(|w| w.is_finite());
+        let tint = if disabled { self.semantic(Semantic::Tertiary) } else { self.semantic(Semantic::Secondary) };
+        let text = selected.and_then(|i| options.get(i)).map_or("", |o| o.text.as_str());
+        let spec = self.spec(&Env { align: TextAlign::Leading, ..env });
+        let mut vl = self.text_lay(&format!("{}#value", v.id), text, spec, tint, None);
+        if let Some(n) = vl.node.as_mut() {
+            n.inspect = false;
+        }
+        let cl = self.symbol_lay(format!("{}#chevron", v.id), "chevron.up.chevron.down", PICKER_CHEVRON.0, PICKER_CHEVRON.1, tint);
+        let trail = vl.size.w + PICKER_CHEVRON_GAP + cl.size.w;
+        let l = self.view(label, Prop { w: fin.map(|w| (w - trail - 8.0).max(0.0)), h: None }, env);
+        let w = fin.unwrap_or(l.size.w + 8.0 + trail);
+        let h = l.size.h.max(vl.size.h);
+        let mut n = Node::new(&v.id, "picker");
+        n.role = Role::Button;
+        n.action = open.filter(|_| !disabled);
+        n.disabled = disabled;
+        n.label = first_text(label);
+        n.value = Some(text.to_string());
+        let (lh, vh, ch) = (l.size.h, vl.size.h, cl.size.h);
+        Lay::new(Size { w, h }, Some(n), vec![(0.0, (h - lh) / 2.0, l), (w - trail - PICKER_TRAIL_INSET, (h - vh) / 2.0, vl), (w - cl.size.w - PICKER_TRAIL_INSET, (h - ch) / 2.0, cl)])
+    }
+
+    /// Segmented `Picker`: a capsule track, the selected segment a raised white capsule.
+    fn segmented(&mut self, v: &ViewNode, options: &[PickerOption], selected: Option<usize>, disabled: bool, p: Prop) -> Lay {
+        let w = p.w.filter(|w| w.is_finite()).unwrap_or(options.len() as f64 * 80.0);
+        let h = SEGMENTED_H;
+        let mut root = Node::new(&v.id, "segmented");
+        root.fill = Some(self.control_fill(SEGMENTED_TRACK_A));
+        root.radius = PILL;
+        root.disabled = disabled;
+        root.value = selected.and_then(|i| options.get(i)).map(|o| o.text.clone());
+        let n = options.len().max(1) as f64;
+        let sw = w / n;
+        let primary = self.semantic(Semantic::Primary);
+        let mut kids = vec![];
+        for (i, o) in options.iter().enumerate() {
+            let on = selected == Some(i);
+            if on {
+                let mut thumb = Node::new(format!("{}#thumb", v.id), "segment-thumb");
+                thumb.fill = Some(if self.dark { rgba(SEGMENTED_THUMB_DARK.0, SEGMENTED_THUMB_DARK.1, SEGMENTED_THUMB_DARK.2, 1.0) } else { rgba(255, 255, 255, 1.0) });
+                thumb.radius = PILL;
+                thumb.shadow = (!self.dark).then_some(Shadow { color: Color::rgba(0.0, 0.0, 0.0, 0.12), radius: 4.0, dx: 0.0, dy: 2.0 });
+                thumb.inspect = false;
+                kids.push((i as f64 * sw + SEGMENTED_INSET, SEGMENTED_INSET, Lay::new(Size { w: sw - 2.0 * SEGMENTED_INSET, h: h - 2.0 * SEGMENTED_INSET }, Some(thumb), vec![])));
+            }
+            let fs = SEGMENTED_FONT.0;
+            let spec = FontSpec::new(fs, self.line_h(fs), if on { SEGMENTED_FONT.2 } else { SEGMENTED_FONT.1 }, TextAlign::Leading);
+            let mut t = self.text_lay(&format!("{}#seg{i}#text", v.id), &o.text, spec, if disabled { self.semantic(Semantic::Tertiary) } else { primary }, None);
+            if let Some(tn) = t.node.as_mut() {
+                tn.inspect = false;
+            }
+            let mut b = Node::new(format!("{}#seg{i}", v.id), "button");
+            b.role = Role::Button;
+            b.label = Some(o.text.clone());
+            b.action = (!disabled && !on).then_some(o.action);
+            b.disabled = disabled;
+            let (tw, th) = (t.size.w, t.size.h);
+            kids.push((i as f64 * sw, 0.0, Lay::new(Size { w: sw, h }, Some(b), vec![((sw - tw) / 2.0, (h - th) / 2.0, t)])));
+        }
+        Lay::new(Size { w, h }, Some(root), kids)
+    }
+
+    /// `Slider`: capsule track, accent fill up to the value, a white capsule thumb. Tapping or
+    /// dragging sets the value (see `Interaction`), through `field`.
+    fn slider(&mut self, v: &ViewNode, value: f64, range: (f64, f64), field: Option<u64>, disabled: bool, p: Prop) -> Lay {
+        let w = p.w.filter(|w| w.is_finite()).unwrap_or(200.0);
+        let h = SLIDER_H;
+        let span = range.1 - range.0;
+        let frac = if span > 0.0 { ((value - range.0) / span).clamp(0.0, 1.0) } else { 0.0 };
+        let (tw, th) = SLIDER_THUMB;
+        let tx = frac * (w - tw);
+        let mut n = Node::new(&v.id, "slider");
+        n.role = Role::Slider;
+        n.field = field.filter(|_| !disabled);
+        n.range = Some((range.0, range.1, tw));
+        n.value = Some(format!("{value}"));
+        n.disabled = disabled;
+        let ty = (h - SLIDER_TRACK) / 2.0;
+        let mut track = Node::new(format!("{}#track", v.id), "slider-track");
+        track.fill = Some(self.pick(SLIDER_TRACK_FILL));
+        track.radius = PILL;
+        track.inspect = false;
+        let mut fill = Node::new(format!("{}#fill", v.id), "slider-fill");
+        fill.fill = Some(self.semantic(Semantic::Accent));
+        fill.radius = PILL;
+        fill.inspect = false;
+        let mut thumb = Node::new(format!("{}#thumb", v.id), "slider-thumb");
+        thumb.fill = Some(rgba(255, 255, 255, 1.0));
+        thumb.radius = PILL;
+        thumb.shadow = Some(Shadow { color: Color::rgba(0.0, 0.0, 0.0, SLIDER_SHADOW.0), radius: SLIDER_SHADOW.1, dx: 0.0, dy: SLIDER_SHADOW.2 });
+        thumb.inspect = false;
+        let kids = vec![
+            (0.0, ty, Lay::new(Size { w, h: SLIDER_TRACK }, Some(track), vec![])),
+            (0.0, ty, Lay::new(Size { w: tx + tw / 2.0, h: SLIDER_TRACK }, Some(fill), vec![])),
+            (tx, (h - th) / 2.0, Lay::new(Size { w: tw, h: th }, Some(thumb), vec![])),
+        ];
+        let mut l = Lay::new(Size { w, h }, Some(n), kids);
+        if disabled {
+            if let Some(n) = l.node.as_mut() {
+                n.opacity = 0.5;
+            }
+        }
+        l
+    }
+
+    /// `ProgressView`: a linear capsule bar with a value, else the spinner; a label sits above the
+    /// bar or below the spinner.
+    fn progress(&mut self, v: &ViewNode, value: Option<f64>, label: Option<&ViewNode>, p: Prop, env: Env) -> Lay {
+        let fin = p.w.filter(|w| w.is_finite());
+        let ll = label.map(|l| self.view(l, Prop { w: fin, h: None }, env));
+        let lh = ll.as_ref().map_or(0.0, |l| l.size.h + PROGRESS_LABEL_GAP);
+        let mut n = Node::new(&v.id, "progress");
+        n.value = value.map(|f| format!("{f}"));
+        n.label = label.and_then(first_text);
+        let mut kids = vec![];
+        let size = if let Some(f) = value {
+            let w = fin.unwrap_or(200.0);
+            let mut track = Node::new(format!("{}#track", v.id), "progress-track");
+            track.fill = Some(self.pick(PROGRESS_TRACK_FILL));
+            track.radius = PILL;
+            track.inspect = false;
+            let mut bar = Node::new(format!("{}#bar", v.id), "progress-bar");
+            bar.fill = Some(self.semantic(Semantic::Accent));
+            bar.radius = PILL;
+            bar.inspect = false;
+            let fw = (w * f.clamp(0.0, 1.0)).max(if f > 0.0 { PROGRESS_H } else { 0.0 });
+            let bl = Lay::new(Size { w: fw, h: PROGRESS_H }, Some(bar), vec![]);
+            kids.push((0.0, lh, Lay::new(Size { w, h: PROGRESS_H }, Some(track), vec![(0.0, 0.0, bl)])));
+            if let Some(l) = ll {
+                kids.push((0.0, 0.0, l));
+            }
+            Size { w, h: lh + PROGRESS_H }
+        } else {
+            let lw = ll.as_ref().map_or(0.0, |l| l.size.w);
+            let w = SPINNER.max(lw);
+            let mut sp = Node::new(format!("{}#spinner", v.id), "spinner");
+            sp.glyph = Some((Glyph::Spinner, self.semantic(Semantic::Secondary)));
+            sp.inspect = false;
+            kids.push(((w - SPINNER) / 2.0, 0.0, Lay::new(Size { w: SPINNER, h: SPINNER }, Some(sp), vec![])));
+            if let Some(l) = ll {
+                kids.push(((w - lw) / 2.0, SPINNER + PROGRESS_LABEL_GAP, l));
+            }
+            Size { w, h: SPINNER + lh }
+        };
+        Lay::new(size, Some(n), kids)
+    }
+
+    /// Menu of a menu `Picker` (iOS 26): a glass card under (or over) the anchor row's trailing
+    /// edge, one row per option, a checkmark before the selected one. A tap outside closes it.
+    fn menu(&mut self, items: &[PickerOption], anchor: Option<Rect>, dismiss: Option<u64>, g: &Geo) -> Lay {
+        let (w, h) = (g.w, g.h);
+        let primary = self.semantic(Semantic::Primary);
+        let spec = FontSpec::new(17.0, self.line_h(17.0), 400, TextAlign::Leading);
+        let texts: Vec<Lay> = items.iter().enumerate().map(|(i, o)| {
+            let mut t = self.text_lay(&format!("menu#{i}#text"), &o.text, spec, primary, None);
+            if let Some(n) = t.node.as_mut() {
+                n.inspect = false;
+            }
+            t
+        }).collect();
+        let cw = (texts.iter().map(|t| t.size.w).fold(0.0, f64::max) + MENU_TEXT_X + MENU_PAD_R).clamp(MENU_MIN_W, w - 2.0 * POPOVER_MARGIN);
+        let ch = items.len() as f64 * MENU_ROW_H + 2.0 * MENU_PAD_V;
+        let mut kids = vec![];
+        for (i, (o, t)) in items.iter().zip(texts).enumerate() {
+            let mut b = Node::new(format!("menu#{i}"), "button");
+            b.role = Role::Button;
+            b.label = Some(o.text.clone());
+            b.action = Some(o.action);
+            b.value = o.checked.then(|| "checked".into());
+            let th = t.size.h;
+            let mut bk = vec![(MENU_TEXT_X, (MENU_ROW_H - th) / 2.0, t)];
+            if o.checked {
+                let c = self.symbol_lay(format!("menu#{i}#check"), "checkmark", MENU_CHECK.0, MENU_CHECK.1, primary);
+                let (cw2, chh) = (c.size.w, c.size.h);
+                bk.push((MENU_CHECK_X - cw2 / 2.0, (MENU_ROW_H - chh) / 2.0, c));
+            }
+            kids.push((0.0, MENU_PAD_V + i as f64 * MENU_ROW_H, Lay::new(Size { w: cw, h: MENU_ROW_H }, Some(b), bk)));
+        }
+        let mut card = Node::new("menu", "menu");
+        card.radius = MENU_RADIUS;
+        card.glass = Some(crate::glass::GlassSpec { blur: Some(PRESENT_BLUR), mix: Some(if self.dark { MENU_GLASS.1 } else { MENU_GLASS.0 }), shadow: Some(POPOVER_SHADOW), ..self.glass_spec(GlassVariant::Regular, None, false) });
+        let a = anchor.unwrap_or(Rect { x: w / 2.0, y: h / 2.0, w: 0.0, h: 0.0 });
+        // Trailing and bottom edges line up with the picker's button; it hangs down from it when there is no room above.
+        let x = (a.x + a.w - cw + MENU_DX).clamp(POPOVER_MARGIN, w - cw - POPOVER_MARGIN);
+        let (top, bottom) = (a.center().1 - MENU_DY, a.center().1 + MENU_DY);
+        let y = if bottom - ch >= g.safe_top { bottom - ch } else { top.min(h - g.dev_bottom - ch) };
+        let scrim = Lay::new(Size { w, h }, Some(self.scrim("menu#scrim", (w, h), 0.0, dismiss)), vec![]);
+        Lay::new(Size { w, h }, None, vec![(0.0, 0.0, scrim), (x, y, Lay::new(Size { w: cw, h: ch }, Some(card), kids))])
     }
 
     fn scroll(&mut self, v: &ViewNode, vertical: bool, child: &ViewNode, p: Prop, env: Env) -> Lay {
@@ -1340,6 +1668,93 @@ impl Ctx<'_> {
         Lay::new(Size { w, h: bar_h - collapse }, Some(bar), bar_kids)
     }
 
+    /// The iOS 26 floating Liquid Glass tab bar over a `w` x `h` screen (measured: 188 x 61 pt capsule for two tabs,
+    /// 22 pt above the bottom, items 94 x 54 pt at an 86 pt pitch, 4 pt inside the capsule; badge an 18 pt red disc
+    /// centred 18 pt right of the item centre, its top at the item's).
+    fn tab_bar(&mut self, t: &TabBar, host: &str, w: f64, h: f64) -> Lay {
+        let n = t.items.len().max(1) as f64;
+        let bar_w = 8.0 + 94.0 + (n - 1.0) * 86.0;
+        let mut bar = Node::new(format!("{host}#tabbar"), "tabbar");
+        bar.radius = PILL;
+        bar.glass = Some(crate::glass::GlassSpec { variant: GlassVariant::Regular, tint: None, interactive: false, blur: None, mix: None, shadow: None });
+        let (label, accent) = if self.dark { (rgba(255, 255, 255, 1.0), rgba(10, 132, 255, 1.0)) } else { (rgba(0, 0, 0, 1.0), rgba(0, 136, 255, 1.0)) };
+        let mut kids = vec![];
+        for (i, tab) in t.items.iter().enumerate() {
+            let sel = i == t.selected;
+            let mut item = Node::new(format!("{host}#tab-{}", tab.key), "button");
+            item.role = Role::Button;
+            item.label = Some(tab.title.clone());
+            // React Native items have no action: the host's numeric tag makes them hit-testable (the host sends `SelectTab`).
+            item.action = tab.action.or_else(|| host.parse().ok());
+            item.radius = PILL;
+            if sel {
+                item.fill = Some(if self.dark { rgba(58, 58, 60, 1.0) } else { rgba(233, 233, 235, 1.0) });
+            }
+            let tint = if sel { t.tint.unwrap_or(accent) } else { label };
+            let path = if sel { tab.selected_icon.as_ref().or(tab.icon.as_ref()) } else { tab.icon.as_ref() };
+            let mut icon = Node::new(format!("{host}#tab-{}#icon", tab.key), "image");
+            icon.inspect = false;
+            let mut isz = (0.0, 0.0);
+            if let Some(pm) = path.and_then(|p| crate::image::load(p)) {
+                isz = (pm.width() as f64 / self.scale, pm.height() as f64 / self.scale);
+                let dest = Rect { x: 0.0, y: 0.0, w: isz.0, h: isz.1 };
+                icon.image = super::rn::tinted(&pm, tint).map(|pixmap| crate::ImageRun { pixmap, dest, rotation: 0.0 });
+            } else if let Some(name) = &tab.symbol {
+                let spec = crate::SymbolSpec { name: name.clone(), point_size: 22.0, weight: 400, scale: ImageScale::Medium };
+                isz = crate::symbols::metrics(&spec).map_or((22.0, 22.0), |m| (m.w, m.h));
+                icon.symbol = Some(crate::SymbolRun { spec, color: tint, size: isz });
+            }
+            let mut lb = Node::new(format!("{host}#tab-{}#label", tab.key), "text");
+            lb.inspect = false;
+            lb.text = Some(TextRun { text: tab.title.clone(), font: FontSpec::new(10.0, 12.0, if sel { 600 } else { 500 }, TextAlign::Center), color: label, strike: false, offset_x: 0.0, spans: vec![] });
+            let mut ikids = vec![
+                ((94.0 - isz.0) / 2.0, 6.0, Lay::new(Size { w: isz.0, h: isz.1 }, Some(icon), vec![])),
+                (0.0, 31.0, Lay::new(Size { w: 94.0, h: 14.0 }, Some(lb), vec![])),
+            ];
+            if let Some(b) = &tab.badge {
+                let spec = FontSpec::new(12.0, 14.0, 400, TextAlign::Center);
+                let bw = (self.fonts.measure(b, &spec, None, &[]).0 + 10.0).max(18.0);
+                let mut bn = Node::new(format!("{host}#tab-{}#badge", tab.key), "badge");
+                bn.inspect = false;
+                bn.radius = PILL;
+                bn.fill = Some(if self.dark { rgba(255, 66, 69, 1.0) } else { rgba(255, 56, 60, 1.0) });
+                let mut bt = Node::new(format!("{host}#tab-{}#badge#text", tab.key), "text");
+                bt.inspect = false;
+                bt.text = Some(TextRun { text: b.clone(), font: spec, color: rgba(255, 255, 255, 1.0), strike: false, offset_x: 0.0, spans: vec![] });
+                let text = Lay::new(Size { w: bw, h: 14.0 }, Some(bt), vec![]);
+                ikids.push((65.0 - bw / 2.0, 0.0, Lay::new(Size { w: bw, h: 18.0 }, Some(bn), vec![(0.0, 2.0, text)])));
+            }
+            kids.push((4.0 + i as f64 * 86.0, 4.0, Lay::new(Size { w: 94.0, h: 54.0 }, Some(item), ikids)));
+        }
+        let bar = Lay::new(Size { w: bar_w, h: 61.0 }, Some(bar), kids);
+        Lay::new(Size { w, h }, None, vec![((w - bar_w) / 2.0, h - 20.0 - 61.0, bar)])
+    }
+
+    /// `TabView`: the selected tab's content placed like a root above the tab bar's inset, then the bar.
+    fn tab_view(&mut self, v: &ViewNode, selected: usize, tabs: &[simcore_protocol::TabItem], content: &ViewNode, p: Prop, env: Env) -> Lay {
+        let w = p.w.filter(|w| w.is_finite()).unwrap_or(402.0);
+        let h = p.h.filter(|h| h.is_finite()).unwrap_or(874.0);
+        let g = Geo { w, h, safe_top: env.safe_top, safe_bottom: env.bottom_inset.max(TAB_BAR_INSET), dev_bottom: TAB_BAR_INSET, body: env.size };
+        let inner = self.place_root(content, &g);
+        let items = tabs
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                // Tab bars draw the filled variant of a symbol when there is one.
+                let symbol = t.system_image.as_ref().map(|s| {
+                    let fill = format!("{s}.fill");
+                    let spec = crate::SymbolSpec { name: fill.clone(), point_size: 22.0, weight: 400, scale: ImageScale::Medium };
+                    if s.ends_with(".fill") || crate::symbols::metrics(&spec).is_none() { s.clone() } else { fill }
+                });
+                TabBarItem { key: i.to_string(), title: t.title.clone(), icon: None, selected_icon: None, symbol, badge: t.badge.clone(), action: Some(t.action) }
+            })
+            .collect();
+        let bar = self.tab_bar(&TabBar { items, selected, tint: None }, &v.id, w, h);
+        let mut n = Node::new(&v.id, "tabview");
+        n.inspect = false;
+        Lay::new(Size { w, h }, Some(n), vec![(0.0, 0.0, inner), (0.0, 0.0, bar)])
+    }
+
     /// Scale a laid-out subtree by `k` about its origin: geometry, fonts, symbols, strokes, radii, shadows.
     fn scale_lay(&mut self, l: &mut Lay, k: f64) {
         let one_line = l.node.as_ref().and_then(|n| n.text.as_ref()).is_some_and(|t| l.size.h <= t.font.line_height as f64 * 1.5);
@@ -1394,7 +1809,7 @@ impl Ctx<'_> {
 
     /// The root view: full-bleed scrollers span the screen, anything else is centered in the safe area.
     fn place_root(&mut self, root: &ViewNode, g: &Geo) -> Lay {
-        let full_bleed = matches!(root.kind, ViewKind::Navigation { .. } | ViewKind::List { .. } | ViewKind::Scroll { .. });
+        let full_bleed = matches!(root.kind, ViewKind::Navigation { .. } | ViewKind::List { .. } | ViewKind::Scroll { .. } | ViewKind::TabView { .. });
         if full_bleed {
             let env = Env { safe_top: g.safe_top, bottom_inset: g.safe_bottom, size: g.body, ..Env::new() };
             let lay = self.view(root, Prop { w: Some(g.w), h: Some(g.h) }, env);
@@ -1830,6 +2245,28 @@ mod tests {
     }
 
     #[test]
+    fn tab_view_bar_badge_and_inset() {
+        let s = phone(
+            r#"{"kind":"tabview","id":"t","selected":1,"tabs":[{"title":"Home","systemImage":"house","action":1},{"title":"Counter","action":2},{"title":"Settings","systemImage":"gearshape","badge":"3","action":3}],
+               "content":{"kind":"text","id":"c","text":"Hi"}}"#,
+        );
+        // Measured on iOS 26.5 (3 tabs, PNG pixels): items 94 x 54 at x 68 / 154 / 240 (y 797; the a11y frame says 795); badge 18 pt disc centred at (305, 806).
+        let item = |i: usize| by_id(&s, &format!("t#tab-{i}"));
+        for (i, x) in [68.0, 154.0, 240.0].into_iter().enumerate() {
+            near(item(i).bounds.x, x);
+            near(item(i).bounds.y, 797.0);
+            assert_eq!(item(i).action, Some(i as u64 + 1));
+        }
+        assert!(item(1).fill.is_some() && item(0).fill.is_none(), "selected item has the capsule");
+        let b = by_id(&s, "t#tab-2#badge").bounds;
+        near(b.x + b.w / 2.0, 305.0);
+        near(b.y + b.h / 2.0, 806.0);
+        // Non-scrolling content is centred between the status bar and the bar's 83 pt inset.
+        let c = by_id(&s, "c").bounds;
+        near(c.y + c.h / 2.0, 62.0 + (874.0 - 62.0 - TAB_BAR_INSET) / 2.0);
+    }
+
+    #[test]
     fn spacer_pushes_and_padding_applies() {
         let s = scene(
             r#"{"kind":"vstack","id":"v","spacing":0,"modifiers":[{"padding":{"top":10,"leading":10,"bottom":10,"trailing":10}},{"frame":{"maxWidth":"inf","maxHeight":"inf"}}],
@@ -2257,6 +2694,47 @@ mod tests {
         let s = show(&inter, &json(""));
         assert_eq!(swipe(&mut inter, &s, 400.0), Effect::Redraw);
         assert!((top(&show(&inter, &json(""))) - 415.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn form_controls_layout_and_slider_input() {
+        use crate::{Effect, Interaction};
+        use simcore_protocol::{PointerEvent, PointerKind};
+        let s = scene(
+            r#"{"kind":"vstack","id":"v","alignment":"leading","children":[
+                {"kind":"picker","id":"pm","label":{"kind":"text","id":"pl","text":"Size"},"options":[{"text":"S","action":1},{"text":"M","action":2}],"selected":1,"open":9},
+                {"kind":"picker","id":"ps","style":"segmented","label":{"kind":"text","id":"sl","text":"x"},"options":[{"text":"A","action":3},{"text":"B","action":4}],"selected":0},
+                {"kind":"slider","id":"sd","value":25,"min":0,"max":100,"field":5},
+                {"kind":"progress","id":"pv","value":0.5},
+                {"kind":"progress","id":"sp"}]}"#,
+            (300.0, 600.0),
+        );
+        let pm = by_id(&s, "pm");
+        assert_eq!((pm.action, pm.value.as_deref()), (Some(9), Some("M")), "menu picker opens its menu, shows the selection");
+        let ps = by_id(&s, "ps");
+        near(ps.bounds.h, SEGMENTED_H);
+        assert_eq!(ps.value.as_deref(), Some("A"));
+        assert_eq!(by_id(&s, "ps#seg0").action, None, "selected segment is inert");
+        assert_eq!(by_id(&s, "ps#seg1").action, Some(4));
+        let sd = by_id(&s, "sd");
+        near(sd.bounds.w, 300.0);
+        near(sd.bounds.h, SLIDER_H);
+        near(by_id(&s, "sd#thumb").bounds.x, 0.25 * (300.0 - SLIDER_THUMB.0));
+        near(by_id(&s, "pv#bar").bounds.w, 150.0);
+        near(by_id(&s, "pv").bounds.h, PROGRESS_H);
+        assert!(matches!(by_id(&s, "sp#spinner").glyph, Some((Glyph::Spinner, _))));
+
+        // A tap at the track's end sets max; a drag ends where the finger lifts.
+        let mut it = Interaction::default();
+        let (y, x0, w) = (sd.bounds.center().1, sd.bounds.x, sd.bounds.w);
+        let text = |e: Effect| match e {
+            Effect::TextInput { field: 5, text, .. } => text.parse::<f64>().unwrap(),
+            e => panic!("{e:?}"),
+        };
+        assert_eq!(text(it.pointer(&s, PointerEvent::new(PointerKind::Click, x0 + w - 1.0, y))), 100.0);
+        let mid = x0 + SLIDER_THUMB.0 / 2.0 + (w - SLIDER_THUMB.0) / 2.0;
+        let drag = PointerEvent { dx: mid - (x0 + 5.0), ..PointerEvent::new(PointerKind::Drag, x0 + 5.0, y) };
+        assert!((text(it.pointer(&s, drag)) - 50.0).abs() < 1e-6);
     }
 
     #[test]

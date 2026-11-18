@@ -205,3 +205,81 @@ extension View {
     public func onAppear(perform action: (() -> Void)? = nil) -> some View { _LifecycleView(content: self, onAppear: action, onDisappear: nil) }
     public func onDisappear(perform action: (() -> Void)? = nil) -> some View { _LifecycleView(content: self, onAppear: nil, onDisappear: action) }
 }
+
+struct _ChangeView<Content: View, V: Equatable>: View, _Flattenable {
+    typealias Body = Never
+    var body: Never { fatalError() }
+    let content: Content, value: V, initial: Bool, action: (V, V) -> Void
+    func _children(_ path: String) -> [Node] {
+        _Runtime.shared.noteChange(path, value, initial: initial, action)
+        return SwiftUI._children(content, path)
+    }
+}
+
+extension View {
+    public func onChange<V: Equatable>(of value: V, initial: Bool = false, _ action: @escaping (V, V) -> Void) -> some View {
+        _ChangeView(content: self, value: value, initial: initial, action: action)
+    }
+    public func onChange<V: Equatable>(of value: V, initial: Bool = false, _ action: @escaping () -> Void) -> some View {
+        _ChangeView(content: self, value: value, initial: initial) { _, _ in action() }
+    }
+    public func onChange<V: Equatable>(of value: V, perform action: @escaping (V) -> Void) -> some View {
+        _ChangeView(content: self, value: value, initial: false) { _, new in action(new) }
+    }
+
+    /// Wraps the content in a plain-style button node, so the host's button hit testing handles it. Only `count: 1` is supported.
+    public func onTapGesture(count: Int = 1, perform action: @escaping () -> Void) -> some View {
+        _TapView(content: self, action: action)
+    }
+}
+
+struct _TapView<Content: View>: View, _Primitive {
+    typealias Body = Never
+    var body: Never { fatalError() }
+    let content: Content, action: () -> Void
+    func _emit(_ path: String) -> Node {
+        let rt = _Runtime.shared
+        return ["kind": "button", "id": path, "action": rt.disabled ? 0 : rt.registerAction(action), "label": _eval(content, path + "/0"),
+                "style": "plain", "disabled": rt.disabled]
+    }
+}
+
+// MARK: - AppStorage
+
+#if os(WASI)
+// No Foundation on WASI: an in-memory store (lives for the session, not persisted).
+var _defaultsStore: [String: Any] = [:]
+func _defaultsGet(_ key: String) -> Any? { _defaultsStore[key] }
+func _defaultsSet(_ key: String, _ v: Any) { _defaultsStore[key] = v }
+#else
+func _defaultsGet(_ key: String) -> Any? { UserDefaults.standard.object(forKey: key) }
+func _defaultsSet(_ key: String, _ v: Any) { UserDefaults.standard.set(v, forKey: key) }
+#endif
+
+/// Persists in `UserDefaults.standard` (in memory on the web build). Bool/Int/Double/String and RawRepresentable with String/Int raw values.
+@propertyWrapper
+public struct AppStorage<Value> {
+    let key: String, fallback: Value
+    let read: (Any) -> Value?, write: (Value) -> Any
+    init(_ key: String, _ fallback: Value, read: @escaping (Any) -> Value?, write: @escaping (Value) -> Any) {
+        self.key = key; self.fallback = fallback; self.read = read; self.write = write
+    }
+    public var wrappedValue: Value {
+        get { _defaultsGet(key).flatMap(read) ?? fallback }
+        nonmutating set { _defaultsSet(key, write(newValue)); _Runtime.shared.dirty = true }
+    }
+    public var projectedValue: Binding<Value> { Binding(get: { self.wrappedValue }, set: { self.wrappedValue = $0 }) }
+}
+
+extension AppStorage {
+    public init(wrappedValue: Value, _ key: String) where Value == Bool { self.init(key, wrappedValue, read: { $0 as? Bool }, write: { $0 }) }
+    public init(wrappedValue: Value, _ key: String) where Value == Int { self.init(key, wrappedValue, read: { $0 as? Int }, write: { $0 }) }
+    public init(wrappedValue: Value, _ key: String) where Value == Double { self.init(key, wrappedValue, read: { $0 as? Double }, write: { $0 }) }
+    public init(wrappedValue: Value, _ key: String) where Value == String { self.init(key, wrappedValue, read: { $0 as? String }, write: { $0 }) }
+    public init(wrappedValue: Value, _ key: String) where Value: RawRepresentable, Value.RawValue == String {
+        self.init(key, wrappedValue, read: { ($0 as? String).flatMap(Value.init(rawValue:)) }, write: { $0.rawValue })
+    }
+    public init(wrappedValue: Value, _ key: String) where Value: RawRepresentable, Value.RawValue == Int {
+        self.init(key, wrappedValue, read: { ($0 as? Int).flatMap(Value.init(rawValue:)) }, write: { $0.rawValue })
+    }
+}

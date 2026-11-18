@@ -96,6 +96,10 @@ fn stroke_pts(pm: &mut Pixmap, pts: &[(f32, f32)], c: Color, w: f32, xf: Transfo
     }
 }
 
+/// Spinner spokes as fractions of the box: inner radius, outer radius, width; alpha lost across the 8 spokes.
+const SPINNER_SPOKE: (f32, f32, f32) = (0.24, 0.44, 0.115);
+const SPINNER_FADE: f32 = 0.85;
+
 /// Icons drawn inside `(x, y, w, h)` (points).
 fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: f32, xf: Transform, mask: Option<&Mask>) {
     let (x, y, w, h) = b;
@@ -191,6 +195,17 @@ fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: 
                     pm.stroke_path(&p, &paint(Color::rgba(0.0, 0.0, 0.0, 0.016), 1.0), &st, xf, mask);
                 }
                 pm.fill_path(&p, &paint(c, 1.0), FillRule::Winding, xf, mask);
+            }
+        }
+        Glyph::Spinner => {
+            // 8 rounded spokes, the leading one opaque, the rest fading (the indicator at rest).
+            let s = w.min(h);
+            for i in 0..8 {
+                let a = (i as f32 * 45.0).to_radians();
+                let (dx, dy) = (a.sin(), -a.cos());
+                let (r0, r1) = (SPINNER_SPOKE.0 * s, SPINNER_SPOKE.1 * s);
+                let alpha = 1.0 - (i as f32 / 8.0) * SPINNER_FADE;
+                stroke_pts(pm, &[(cx + dx * r0, cy + dy * r0), (cx + dx * r1, cy + dy * r1)], Color { a: c.a * alpha, ..c }, SPINNER_SPOKE.2 * s, xf, mask);
             }
         }
         Glyph::Battery => {

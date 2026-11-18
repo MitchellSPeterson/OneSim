@@ -470,3 +470,18 @@ JS-driven push/pop needs no message. The guest spaces appear events by 350 ms
   `navigation.changed` (`{route,params,stack}`, Expo Router pathnames), `module.unsupported`,
   `module.called`.
 - The v2 JSON-RPC/WebSocket API (`simcore serve --listen ADDR`) is specified in `docs/api.md`.
+
+## I. v1 additions: form controls (additive, protocol version stays 1)
+
+- `text_field` gains `"secure"?: bool` (`SecureField`): the host draws one bullet per character; `text` is still the real value.
+- New kind `picker`: `{"kind":"picker","id","label": ViewNode,"style":"menu"|"segmented","options":[{"text","action"}],"selected": index|null,"open"?: u64,"disabled"}`. `options` come from the content children carrying `.tag(_:)` (their first text); `selected` indexes the option whose tag equals the selection (null when none does). Running an option's `action` selects it. Menu style (also `.automatic`) is a row: label leading, selected text and `chevron.up.chevron.down` trailing, accent tinted; `open` toggles the menu. Segmented style is a capsule segmented control spanning the proposed width.
+- New layer `menu` (in `presentation.layers`, section G): `{"kind":"menu","anchor": picker id,"items":[{"text","action","checked"?: bool}],"dismiss": u64}`, present while a menu picker is open. The host draws a glass card at the anchor; an item's action selects and closes, `dismiss` (tap outside) only closes.
+- New kind `slider`: `{"kind":"slider","id","value","min","max","step"?,"field"?: u64,"disabled"}`. The host sets the value by sending `text_input` (section B) to `field` with the number as decimal text; the guest clamps it to `min...max` and snaps it to `step`. A tap on the slider or a `drag` pointer gesture that starts on it sends the value under the point where the finger ends (thumb centre travels between half a thumb width from each end). Disabled sliders have no `field`.
+- New kind `progress`: `{"kind":"progress","id","value": fraction 0...1 | null,"label"?: ViewNode}` (`ProgressView`). With a value: a linear capsule bar (label above it). Null: the activity indicator, drawn as a static frame (label below it).
+- `LabeledContent` and `Form` add no wire kinds: they are an `hstack` (label, spacer, content with `foregroundColor` secondary) and an inset-grouped `list`.
+- Inspection: the picker row is a `button` labelled with the picker label (its `value` is the selected text), segments and menu items are `button`s labelled with their text, a slider has role `slider` and its value as `value`.
+
+## J. v1 additions: tab views (additive, protocol version stays 1)
+
+- New kind `tabview` (`TabView`): `{"kind":"tabview","id","selected": index,"tabs":[{"title","systemImage"?: SF symbol,"badge"?: string,"action": u64}],"content": ViewNode}`. Only the selected tab's content is sent. Running a tab's `action` (the ordinary `action` message, section B) selects it; no new host-to-guest message. Guest paths: tab `i` lives at `<tabview>/t/<i>` and the guest keeps the hidden tabs' state alive, so `@State` and a `NavigationStack`'s path persist across switches.
+- Host: the content is placed like a root view with a bottom safe-area inset of 83 pt (scrollers and navigation stacks run under the bar, other content is centred above it), then the iOS 26 floating Liquid Glass tab bar shared with Expo Router native tabs (section H, milestone 3): a capsule 20 pt above the bottom, 94 x 54 pt items at an 86 pt pitch, the selected one on a gray capsule with an accent `<symbol>.fill`, `badge` as a red 18 pt capsule at the icon's top right. Items are buttons `<tabview>#tab-<i>` labelled with the title.

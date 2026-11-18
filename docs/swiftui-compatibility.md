@@ -47,9 +47,14 @@ An `environment` message stores appearance/viewport and re-sends a tree.
 | Navigation | `NavigationStack { }`, `NavigationLink(_:destination:)`, `NavigationLink(destination:label:)`, `navigationTitle`, `navigationBarTitleDisplayMode`, `NavigationLink(_:value:)`, `NavigationLink(value:label:)`, `.navigationDestination(for:destination:)`, `NavigationStack(path:)` (`Binding<NavigationPath>` or `Binding<[T]>`), `NavigationPath` (`append`, `removeLast`, `count`, `isEmpty`) |
 | Containers | `Group`, `List`, `List(data, rowContent:)` / `List(data, id:, rowContent:)` (Identifiable, key path, `Range<Int>`), `Section(_:content:)`, `Section(content:)`, `ForEach` (Range<Int>, `id:` key path, Identifiable), `ScrollView(_ axes:)`, `Divider` |
 | Controls | `TextField(_:text:)`, `Toggle(_:isOn:)`, `Stepper(_:value:in:step:)` (Strideable), `.buttonStyle(.automatic/.plain/.bordered/.borderedProminent)`, `.disabled(_:)` |
+| Tabs | `TabView { }`, `TabView(selection:)` with `.tag(_:)`, `.tabItem { Label(_:systemImage:) }` / `.tabItem { Image(systemName:); Text(_:) }`, iOS 18 `Tab(_:systemImage:content:)` / `Tab(_:systemImage:value:content:)`, `.badge(_:)` (`Int`, 0 hides it; `StringProtocol`). Only the selected tab is evaluated; each tab's `@State` and `NavigationStack` path survive switching (protocol section J). |
+| Forms | `Form { }` (inset-grouped list), `SecureField(_:text:)`, `LabeledContent(_:value:)`, `LabeledContent(_:content:)`, `LabeledContent(content:label:)`, `Picker(_:selection:content:)` / `Picker(selection:content:label:)` with `.tag(_:)`, `.pickerStyle(.automatic/.menu/.segmented)`, `Slider(value:in:)`, `Slider(value:in:step:)` (+ `label:` variants; `BinaryFloatingPoint`), `ProgressView()`, `ProgressView(_:)`, `ProgressView(value:total:)`, `ProgressView(_:value:total:)`, `ProgressView(label:)` |
 | Shapes/styles | `Shape`, `Rectangle`, `Circle`, `Capsule`, `RoundedRectangle(cornerRadius:)`, `.fill(_:)`, `.stroke(_:lineWidth:)`, `ShapeStyle` (`Color`, `.primary/.secondary/.tertiary`), `foregroundStyle`, `Color.opacity(_:)` |
 | More modifiers | `font` (`Font` text styles, `.system(size:weight:)`), `fontWeight`, `bold`, `strikethrough`, `multilineTextAlignment`, `overlay` (both forms), `shadow` |
-| Lifecycle | `.onAppear { }`, `.onDisappear { }` |
+| Lifecycle | `.onAppear { }`, `.onDisappear { }`, `.onChange(of:initial:_:)` (`{ old, new in }` and `{ }`), `.onChange(of:perform:)` |
+| Gestures | `.onTapGesture(count:perform:)` (`count` 1 only) |
+| Storage | `@AppStorage("key")` for Bool/Int/Double/String and `RawRepresentable` (String/Int raw), `$x` -> `Binding` |
+| Lazy containers | `LazyVStack`, `LazyHStack` (`alignment:spacing:pinnedViews:content:`), `PinnedScrollableViews` |
 | Liquid Glass (iOS 26) | `Glass` (`.regular .clear .identity`, `.tint(_:)`, `.interactive(_:)`), `.glassEffect()`, `.glassEffect(_:in:)` with `Shape` static members `.circle .capsule .ellipse .rect .rect(cornerRadius:)`, `Ellipse`, `GlassEffectContainer(spacing:content:)` (pass-through), `.buttonStyle(.glass)`, `.buttonStyle(.glassProminent)`. Emitted per docs/protocol.md F. |
 | SF Symbols | `Image(systemName:)`, `.resizable()`, `.scaledToFit()`, `.scaledToFill()`, `.aspectRatio(contentMode:)`, `.imageScale(_:)`, `Label(_:systemImage:)`, `Label(title:icon:)`, `Font.weight(_:)` / `Font.bold()` on any `Font` |
 
@@ -62,7 +67,8 @@ so `@State` persists while a screen is on the stack (hidden screens' slots are k
 `List`/`Section`/`ForEach`/`if` flatten into `list` sections and rows; `ForEach` puts the element id in the path.
 `disabled` and `buttonStyle` are evaluation-context values (not wire modifiers): disabled buttons/toggles/steppers emit
 `disabled: true` and action `0` (never registered). `TextField` allocates a `field` id per evaluation; a `text_input` message
-(version-gated) sets the bound String via `simcore_text_cb`.
+(version-gated) sets the bound String via `simcore_text_cb`. `SecureField` and `Slider` reuse this: a slider's new value arrives as `text_input`
+on its `field` and is clamped and snapped to `step` in the guest. A `Picker` registers one action per tagged option (protocol section I).
 
 ### Presentation
 
@@ -100,12 +106,18 @@ SwiftUI apps reach for more than `SwiftUI`. Each of these will be reimplemented 
 
 ## Known limitations
 
+- Form controls (protocol section I): picker options are the tagged children's first text (no images in options); only menu and segmented picker styles (`.inline`, `.wheel`, `.navigationLink`, `.palette` are not available). The menu is a static card (no open animation, no scroll for long lists). `Slider` has no `onEditingChanged`, `minimumValueLabel`/`maximumValueLabel` or tint; it moves on a tap or a whole `drag` gesture, not live while dragging. `ProgressView()` draws one static spinner frame; no `progressViewStyle`, `.circular` with a value, or `currentValueLabel`. `LabeledContent` styles its content `.secondary` (also non-text content), no `labeledContentStyle`. `SecureField` has no reveal toggle or `prompt:`; `Form` has no `formStyle`.
 - Images: only SF Symbols (`Image(systemName:)`), rendered by the host in monochrome (foreground tint); no `Image("asset")`,
   `renderingMode`, `symbolRenderingMode`, `symbolVariant`, `Image(uiImage:)`. `aspectRatio` applies only to images (other views ignore it);
   `scaledToFill` crops to the proposed size. A `Label` inside a list row forces its icon to `imageScale(.large)`.
 - Liquid Glass: `GlassEffectContainer` does not merge/morph shapes, `glassEffectID`/`glassEffectUnion`/`glassEffectTransition` are missing, `interactive` has no visual effect, `Ellipse` as a plain shape view draws as a capsule, and a non-square `.circle` is a capsule.
 - Dynamic Type is a host setting (`--dynamic-type`) that scales text styles only; `@Environment(\.dynamicTypeSize)` is read once from `SIMCORE_DYNAMIC_TYPE` at launch. A session's size is fixed at `create_session` (no API changes it later), so that value stays correct; the web demo's `setDynamicType` re-renders on the host only and the guest is not told.
 - Value navigation: destinations registered by `navigationDestination` are remembered per stack (only the top screen is evaluated, so a stack that starts with a non-empty `path` has no destinations until its root has been evaluated once). A value with no registered destination pushes nothing and logs SwiftUI's "no matching navigationDestination" warning to stderr (there is no guest-to-host error channel). Destination-style `NavigationLink`s in a `NavigationStack(path:)` push on top of the path-driven screens and back pops them first; a value pushed from such a screen goes on that screen stack rather than into the bound path.
+- `onChange` values must be `Equatable`; the last value is kept per structural path and compared after each evaluation pass (callbacks run after `onAppear`; if they dirty state the root re-evaluates, within the same 8-pass cap). A view that leaves the tree forgets its value, so `initial: false` does not fire when it returns.
+- `onTapGesture` emits a plain-style `button` node (the host's button hit testing, no accent tint), so only `count: 1` works; it also behaves as a button for accessibility and swallows taps meant for an enclosing button/row.
+- `@AppStorage` uses `UserDefaults.standard` (persisted, per process name) on the native build and an in-memory store on the web/WASI build; no `store:`, optional or `URL`/`Data`/`Date` values, and changes made outside the wrapper (other `UserDefaults` writes) show up on the next evaluation only.
+- Tabs: no `TabSection`, `Tab(role: .search)`, `.tabViewStyle` (always the iPhone floating glass bar; `.page` is missing), `tabBarMinimizeBehavior`, `tabViewBottomAccessory`, customization, or `ForEach` of tabs (tabs must be listed). `Tab` is a `View`, so it shares `@ViewBuilder` with `.tabItem` children. Re-selecting the current tab does not pop its `NavigationStack`. Symbols always draw the `.fill` variant when one exists, like the iOS tab bar. `.badge` elsewhere (list rows) is ignored.
+- `LazyVStack`/`LazyHStack` are plain `VStack`/`HStack` (no laziness, `pinnedViews` ignored); `LazyVGrid`/`LazyHGrid` are not implemented.
 - A modifier on a multi-child `Group` applies to each child, as in SwiftUI (other multi-root views are still wrapped in a vstack).
 - `onAppear`/`onDisappear` fire per structural path after the evaluation pass (a screen covered by a push disappears, and appears again on pop); if they dirty state the root is re-evaluated, at most 8 times, before the tree is sent. `@EnvironmentObject`/`@Environment` are snapshotted when a view's `body` runs.
 - Not implemented: animations, custom `Shape.path(in:)`,

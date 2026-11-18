@@ -5,6 +5,7 @@ and captured on a real iOS Simulator via agent-device. One `<name>.png` + `<name
 home, typography, shapes, todos, todos-toggled, todos-typed, controls, controls-changed, home-dark,
 symbols, symbols-dark, keyboard-dark, keyboard-shift (recaptured 2026-11-17, see "Recapture notes" at the bottom);
 alert, alert-dark, sheet, sheet-dark, sheet-medium, sheet-medium-dark, sheet-nested, sheet-nested-dark, dialog, dialog-dark, cover, cover-dark (new 2026-11-18, see "Alert and sheet"; `controls`/`controls-changed` recaptured the same day: Controls has a second section with "Show alert" / "Show sheet").
+form, form-dark, form-menu, form-changed (new 2026-11-18, see "Form"; `home`/`home-dark` recaptured the same day: Home has an 8th row "Form").
 
 - Device: iPhone 17 Pro simulator, iOS 26.5. Screen 402 x 874 pt, scale 3 -> PNGs are 1206 x 2622 px.
 - PNG: `screenshot --pixel-density 3 --normalize-status-bar` (status bar 9:41, wifi, battery full/charging bolt; cellular shows no-service dots).
@@ -354,3 +355,42 @@ a popover switched to dark while open kept light styling (grey popover with blac
 
 #### Nested sheet, dark (sheet-nested-dark.png/json)
 Same frames as `sheet-nested` (second sheet top y=72, first row 107, "Done" 159). Colors: sheet bg (28,28,30), row card (44,44,46); above the sheet (y<72, x outside the corners) plain (0,0,0) (dim over black unobservable); no first sheet visible. Also added the states `cover-dark` and `sheet-nested-dark` to the list above.
+
+## Form (captured 2026-11-18; Home row "Form", `FormScreen` in Showcase.swift)
+States: `form` / `form-dark` (launch state: password "hunter2", flavor Vanilla, size Medium, volume 4, progress 40%),
+`form-menu` (Flavor tapped: menu open), `form-changed` (Chocolate picked, segment Large, slider dragged to the end -> volume 10, progress 100%).
+`home` / `home-dark` were recaptured: rows now run Typography..Form (8 rows, 16,208.33 + 52n, 370x52); Summary header 16,642, its row 16,682.33.
+All light PNGs retaken until the Dynamic Island showed. Renderer constants derived from these are in `crates/simcore-render/src/layout/swiftui.rs` ("Form controls").
+
+### Frames (pt, x,y,w,h; form.json)
+| element | frame |
+|---|---|
+| nav bar | large title "Form" 16,119.67 81x40.67; bar 0,62 402x106 |
+| section headers | "Account" 16,168 370x40.33; "Preferences" 16,382 370x40.33 (gap after a section card 29.67 -> 382) |
+| TextField row | cell 16,208.33 370x52; field 32,223.33 338x22 |
+| SecureField row | cell 16,260.33 370x52; field 32,276.33 338x20.33; 7 bullets, diameter 7.33, pitch 10.22, first at field x+1.67 |
+| LabeledContent | cell 16,312.33 370x52; "Version" 32,328.17; value "1.0" right-aligned, secondary |
+| menu Picker | cell 16,422.33 370x52; button 32,431.33 338x34.33; value "Vanilla" 304.33,438.33 49.33x20.33 (secondary gray, not tinted), then `chevron.up.chevron.down` ~13pt semibold, gap 5, ending at x=370 |
+| segmented Picker | cell 16,474.33 370x61 (row padding 15 top/bottom); control 32,489.33 338x31; segments 112/113/113 wide; thumb inset 2 |
+| Slider | cell 16,535.33 370x61; slider 32,550.33 338x31; track 6 thick, thumb 37x24 capsule with soft shadow |
+| LabeledContent "Volume" | cell 16,596.33 370x52 (value tracks the slider) |
+| ProgressView(value:) | cell 16,648.33 370x52; indicator 32,662.33 338x24, bar 4 thick centred in it |
+| ProgressView("Syncing") row | cell 16,700.33 370x52; spinner 350,716.33 20x20 (trailing, label left) |
+
+### Menu (form-menu.json/png)
+| element | value |
+|---|---|
+| card | 120,319.67 250x146 (rows 3x42 = 120,329.67..455.67, plus 10 padding top and bottom), radius ~26, Liquid Glass; right edge x=370 and bottom y=465.67 line up with the picker button (32,431.33 338x34.33) |
+| rows | "Vanilla" 120,329.67 250x42; "Chocolate" 371.67; "Strawberry" 413.67; text x = card x + 43.7 |
+| checkmark | on the selected row: 141,344.67 13.33x12.33 (~13pt semibold, centre x = card x + 27.67) |
+| backdrop | screen not dimmed; tap outside dismisses |
+
+### Colors (sampled, RGB; light | dark)
+| element | light | dark |
+|---|---|---|
+| background / card | (242,242,247) / (255,255,255) | (0,0,0) / (28,28,30) |
+| slider track (unfilled) | (230,230,230) | (50,50,52) |
+| slider fill, progress bar (accent) | (0,136,255) | (0,145,255) |
+| progress track | (228,228,230) | (61,61,65) |
+| segmented track | (238,238,239) | (49,49,54) |
+| segmented selected thumb | white with a soft shadow | (105,105,111), no shadow |

@@ -46,6 +46,7 @@ struct ContentView: View {
                     NavigationLink("Symbols") { SymbolsScreen() }
                     NavigationLink("Glass") { GlassScreen() }
                     NavigationLink("Long list") { LongListScreen() }
+                    NavigationLink("Form") { FormScreen() }
                 }
                 Section("Summary") {
                     HStack {
@@ -375,5 +376,47 @@ struct GlassScreen: View {
             }
         }
         .navigationTitle("Glass")
+    }
+}
+
+struct FormScreen: View {
+    @State private var name = ""
+    @State private var password = "hunter2"
+    @State private var flavor = "Vanilla"
+    @State private var size = 1
+    @State private var volume = 4.0
+
+    var body: some View {
+        Form {
+            Section("Account") {
+                TextField("Name", text: $name)
+                SecureField("Password", text: $password)
+                LabeledContent("Version", value: "1.0")
+            }
+            Section("Preferences") {
+                Picker("Flavor", selection: $flavor) {
+                    Text("Vanilla").tag("Vanilla")
+                    Text("Chocolate").tag("Chocolate")
+                    Text("Strawberry").tag("Strawberry")
+                }
+                Picker("Size", selection: $size) {
+                    Text("Small").tag(0)
+                    Text("Medium").tag(1)
+                    Text("Large").tag(2)
+                }
+                .pickerStyle(.segmented)
+                Slider(value: $volume, in: 0...10, step: 1)
+                LabeledContent("Volume") {
+                    Text("\(Int(volume))")
+                }
+                ProgressView(value: volume, total: 10)
+                HStack {
+                    Text("Syncing")
+                    Spacer()
+                    ProgressView()
+                }
+            }
+        }
+        .navigationTitle("Form")
     }
 }

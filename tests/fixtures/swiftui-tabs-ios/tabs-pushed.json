@@ -1,0 +1,274 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "type": "Other",
+        "role": "_TtC7SwiftUIP33_ACC2C5639A7D76F611E170E831FCA49118SwiftUIApplication",
+        "subrole": "UIApplication",
+        "label": "Tabs",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 0,
+        "pid": 95637,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "other"
+      },
+      {
+        "index": 1,
+        "parentIndex": 0,
+        "type": "NavigationBar",
+        "role": "SwiftUI.UIKitNavigationBar",
+        "subrole": "UINavigationBar",
+        "identifier": "Apple",
+        "rect": {
+          "x": 0,
+          "y": 62,
+          "width": 402,
+          "height": 106
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 95637,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "navigation-bar"
+      },
+      {
+        "index": 2,
+        "parentIndex": 1,
+        "type": "Button",
+        "role": "UIAccessibilityBackButtonElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Home",
+        "identifier": "BackButton",
+        "rect": {
+          "x": 16,
+          "y": 62,
+          "width": 44,
+          "height": 44
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 95637,
+        "hittable": true,
+        "ref": "e3",
+        "kind": "button"
+      },
+      {
+        "index": 3,
+        "parentIndex": 1,
+        "type": "StaticText",
+        "role": "UILabel",
+        "label": "Apple",
+        "rect": {
+          "x": 15.999999999999993,
+          "y": 119.66666666666667,
+          "width": 93,
+          "height": 40.66666666666667
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 95637,
+        "hittable": true,
+        "ref": "e4",
+        "kind": "text"
+      },
+      {
+        "index": 4,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "You picked Apple",
+        "rect": {
+          "x": 135.16666666666669,
+          "y": 469.3333333333333,
+          "width": 131.66666666666669,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 95637,
+        "hittable": true,
+        "ref": "e5",
+        "kind": "text"
+      },
+      {
+        "index": 5,
+        "parentIndex": 0,
+        "type": "TabBar",
+        "role": "UITabBar",
+        "label": "Tab Bar",
+        "rect": {
+          "x": 0,
+          "y": 791,
+          "width": 402,
+          "height": 83
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 95637,
+        "hittable": true,
+        "ref": "e6",
+        "kind": "tab-bar"
+      },
+      {
+        "index": 6,
+        "parentIndex": 5,
+        "type": "Button",
+        "role": "_UITabButton",
+        "label": "Home",
+        "identifier": "house",
+        "rect": {
+          "x": 68,
+          "y": 795,
+          "width": 94,
+          "height": 54
+        },
+        "enabled": true,
+        "selected": true,
+        "depth": 2,
+        "pid": 95637,
+        "hittable": true,
+        "ref": "e7",
+        "kind": "button"
+      },
+      {
+        "index": 7,
+        "parentIndex": 6,
+        "type": "Image",
+        "role": "UIImageView",
+        "label": "home",
+        "identifier": "house.fill",
+        "rect": {
+          "x": 98,
+          "y": 801,
+          "width": 33.33333333333334,
+          "height": 28
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 95637,
+        "hittable": true,
+        "ref": "e8",
+        "kind": "image"
+      },
+      {
+        "index": 8,
+        "parentIndex": 5,
+        "type": "Button",
+        "role": "_UITabButton",
+        "label": "Counter",
+        "identifier": "star",
+        "rect": {
+          "x": 154,
+          "y": 795,
+          "width": 94,
+          "height": 54
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 95637,
+        "hittable": true,
+        "ref": "e9",
+        "kind": "button"
+      },
+      {
+        "index": 9,
+        "parentIndex": 8,
+        "type": "Image",
+        "role": "UIImageView",
+        "label": "favorite",
+        "identifier": "star.fill",
+        "rect": {
+          "x": 186,
+          "y": 800,
+          "width": 30.333333333333343,
+          "height": 28.33333333333337
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 95637,
+        "hittable": true,
+        "ref": "e10",
+        "kind": "image"
+      },
+      {
+        "index": 10,
+        "parentIndex": 5,
+        "type": "Button",
+        "role": "_UITabButton",
+        "label": "Settings",
+        "identifier": "gearshape",
+        "rect": {
+          "x": 240,
+          "y": 795,
+          "width": 94,
+          "height": 54
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 95637,
+        "hittable": true,
+        "ref": "e11",
+        "kind": "button"
+      },
+      {
+        "index": 11,
+        "parentIndex": 10,
+        "type": "Image",
+        "role": "UIImageView",
+        "label": "gearshape.fill",
+        "identifier": "gearshape.fill",
+        "rect": {
+          "x": 273,
+          "y": 801,
+          "width": 28,
+          "height": 28
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 95637,
+        "hittable": true,
+        "ref": "e12",
+        "kind": "image"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.tabs",
+    "appBundleId": "dev.simcore.tabs",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 12,
+      "totalNodeCount": 12,
+      "reasons": []
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "absent",
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 8,
+        "p50Ms": 68,
+        "p95Ms": 237,
+        "maxMs": 237,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 8
+        }
+      }
+    },
+    "refsGeneration": 790949
+  }
+}

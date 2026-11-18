@@ -119,6 +119,8 @@ final class _Runtime {
     var fields: [UInt64: (String) -> Void] = [:]
     var disabled = false
     var buttonStyle = "automatic"
+    var pickerStyle = "menu"
+    var tags: [String: AnyHashable] = [:]   // `.tag(_:)` values by node id, read by `Picker`
     var nav: _NavState?
     var envObjects: [ObjectIdentifier: AnyObject] = [:]
     // Presentation layer: set by .alert / .sheet while evaluating; hoisted above the tree by `_evaluate`.
@@ -130,6 +132,18 @@ final class _Runtime {
     var lifecycleNow: [String: (appear: () -> Void, disappear: () -> Void)] = [:]
     var lifecycleOrder: [String] = []
     var appeared: [String: () -> Void] = [:]
+    // onChange: last value seen per structural path (committed at the end of each pass) and the callbacks this pass queued.
+    var changeSeen: [String: Any] = [:], changeNow: [String: Any] = [:]
+    var changePending: [() -> Void] = []
+
+    /// Compare `value` with the previous pass's; queue `fire(old, new)` on a change (or on first sight when `initial`).
+    func noteChange<V: Equatable>(_ path: String, _ value: V, initial: Bool, _ fire: @escaping (V, V) -> Void) {
+        var k = path
+        while changeNow[k] != nil { k += "'" }   // several onChange on one view
+        changeNow[k] = value
+        if let old = changeSeen[k] as? V { if old != value { changePending.append { fire(old, value) } } }
+        else if initial { changePending.append { fire(value, value) } }
+    }
 
     func noteLifecycle(_ path: String, _ appear: (() -> Void)?, _ disappear: (() -> Void)?) {
         var k = path
@@ -164,13 +178,14 @@ final class _Runtime {
     private func _evaluate() -> Node {
         actions.removeAll(keepingCapacity: true)
         fields.removeAll(keepingCapacity: true)
-        disabled = false; buttonStyle = "automatic"; nav = nil; envObjects = [:]
+        disabled = false; buttonStyle = "automatic"; pickerStyle = "menu"; tags = [:]; nav = nil; envObjects = [:]
         layers = []; autoDismiss = nil; dismissHook = nil
-        lifecycleNow = [:]; lifecycleOrder = []
+        lifecycleNow = [:]; lifecycleOrder = []; changeNow = [:]; changePending = []
         touched.removeAll(keepingCapacity: true)
         var tree = render()
         if !layers.isEmpty { tree = ["kind": "presentation", "id": "presentation", "content": tree, "layers": layers] }
         slots = slots.filter { touched.contains($0.key) }
+        changeSeen = changeNow
         dirty = false
         return tree
     }
@@ -180,6 +195,8 @@ final class _Runtime {
         // Lifecycle callbacks run after the pass; if they dirtied state, re-evaluate (capped against onAppear loops).
         for _ in 0..<8 {
             _lifecycle()
+            let fire = changePending; changePending = []
+            fire.forEach { $0() }
             guard dirty else { break }
             tree = _evaluate()
         }

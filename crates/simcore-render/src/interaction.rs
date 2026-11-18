@@ -167,6 +167,9 @@ impl Interaction {
         self.forget_gone(scene);
         self.hit = None;
         self.acted = false;
+        if let Some(e) = self.slide(scene, &ev) {
+            return e;
+        }
         if ev.kind == PointerKind::Drag {
             // One whole gesture; the end time is long after the last move, so there is no fling.
             let (ex, ey) = (ev.x + ev.dx, ev.y + ev.dy);
@@ -234,6 +237,21 @@ impl Interaction {
         } else {
             Effect::None
         }
+    }
+
+    /// A tap (click / up) or a drag starting on a slider sets its value where the finger ends.
+    fn slide(&mut self, scene: &Scene, ev: &PointerEvent) -> Option<Effect> {
+        if !matches!(ev.kind, PointerKind::Click | PointerKind::Up | PointerKind::Drag) {
+            return None;
+        }
+        let n = scene.hit_test(ev.x, ev.y).map(|i| &scene.nodes[i]).filter(|n| n.role == Role::Slider)?;
+        let ((lo, hi, thumb), field) = (n.range?, n.field?);
+        let end = if ev.kind == PointerKind::Drag { ev.x + ev.dx } else { ev.x };
+        let frac = ((end - n.bounds.x - thumb / 2.0) / (n.bounds.w - thumb).max(1.0)).clamp(0.0, 1.0);
+        self.pressed = None;
+        self.hit = Some(n.id.clone());
+        self.acted = true;
+        Some(Effect::TextInput { field, version: self.version, text: format!("{}", lo + frac * (hi - lo)) })
     }
 
     /// Drop scroll state of scrollers that left the screen. Node ids are positional, so the next

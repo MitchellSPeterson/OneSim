@@ -43,6 +43,7 @@ pub enum Role {
     Toggle,
     TextField,
     Stepper,
+    Slider,
     /// Software keyboard key (chrome).
     Key,
 }
@@ -57,6 +58,7 @@ impl Role {
             Role::Toggle => "toggle",
             Role::TextField => "textfield",
             Role::Stepper => "stepper",
+            Role::Slider => "slider",
             Role::Key => "key",
         }
     }
@@ -103,6 +105,8 @@ pub enum Glyph {
     ArrowDown,
     ArrowUp,
     ArrowLeft,
+    /// Activity indicator (static frame).
+    Spinner,
 }
 
 /// An SF Symbol painted as an alpha mask in `color`, `size` points, centred in the node's bounds
@@ -198,6 +202,8 @@ pub struct Node {
     /// Text field id: tapping focuses the node.
     pub field: Option<u64>,
     pub value: Option<String>,
+    /// Slider: (min, max, thumb width); a tap or drag at x sets the value through `field`.
+    pub range: Option<(f64, f64, f64)>,
     pub focused: bool,
     pub disabled: bool,
     /// Caret x offset inside bounds (focused text field).
@@ -234,6 +240,7 @@ impl Node {
             tag: None,
             field: None,
             value: None,
+            range: None,
             focused: false,
             disabled: false,
             caret: None,

@@ -541,7 +541,7 @@ impl Host {
                 "pointer_events": ["down", "up", "click", "scroll"],
                 "keyboard": {"events": ["text", "key"], "keys": ["backspace", "enter"]},
                 "views": ["text", "vstack", "hstack", "zstack", "spacer", "button", "color", "rectangle", "shape", "divider",
-                          "scroll", "list", "navigation", "toggle", "stepper", "text_field", "image", "label", "empty"],
+                          "scroll", "list", "navigation", "toggle", "stepper", "text_field", "picker", "slider", "progress", "image", "label", "empty"],
                 "symbols": simcore_render::symbols_capability(),
                 "fonts": simcore_render::fonts_capability(),
             })),

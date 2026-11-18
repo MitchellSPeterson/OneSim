@@ -95,7 +95,7 @@ assert r["kind"] == "navigation" and r["title"] == "Showcase" and "back" not in 
 lst = r["content"]; assert lst["kind"] == "list"
 assert [s.get("header") for s in lst["sections"]] == ["Screens", "Summary"]
 links = lst["sections"][0]["rows"]
-assert len(links) == 7 and all(l["kind"] == "button" and l["style"] == "navigationLink" for l in links)
+assert len(links) == 8 and all(l["kind"] == "button" and l["style"] == "navigationLink" for l in links)
 assert "1" in alltexts(lst["sections"][1]["rows"][0])
 t = act(p, t, button(t, "Todos")["action"])
 assert title(t) == "Todos" and t["root"]["back"]["label"] == "Showcase", t["root"]
@@ -226,6 +226,41 @@ assert "tint" not in gl[1][0] and "interactive" not in gl[1][0]
 assert [b["style"] for b in walk(t["root"]) if b.get("kind") == "button" and b["style"].startswith("glass")] == ["glass", "glassProminent"]
 t = act(p, t, button(t, "Glass 0")["action"]); assert "Glass 1" in alltexts(t["root"])
 t = act(p, t, t["root"]["back"]["action"]); assert title(t) == "Showcase"
+# Form: Form = inset list, SecureField, LabeledContent, Picker (menu + segmented), Slider, ProgressView
+t = act(p, t, button(t, "Form")["action"]); assert title(t) == "Form"
+lst = t["root"]["content"]; assert lst["kind"] == "list" and lst["style"] == "insetGrouped"
+assert [s.get("header") for s in lst["sections"]] == ["Account", "Preferences"]
+sec = next(m for m in walk(t["root"]) if m.get("kind") == "text_field" and m.get("secure"))
+assert sec["text"] == "hunter2" and sec["placeholder"] == "Password", sec
+assert ["Version", "1.0"] == alltexts(lst["sections"][0]["rows"][2]), alltexts(lst["sections"][0]["rows"][2])
+ver = next(m for m in walk(lst["sections"][0]["rows"][2]) if m.get("text") == "1.0")
+assert {"foregroundColor": {"semantic": "secondary"}} in ver["modifiers"], ver
+pk = lambda t, style: next(m for m in walk(t["root"]) if m.get("kind") == "picker" and m["style"] == style)
+fl = pk(t, "menu")
+assert fl["label"]["text"] == "Flavor" and [o["text"] for o in fl["options"]] == ["Vanilla", "Chocolate", "Strawberry"] and fl["selected"] == 0, fl
+assert "layers" not in t["root"]
+t = act(p, t, fl["open"])
+mn = t["root"]["layers"][0]; assert mn["kind"] == "menu" and mn["anchor"] == fl["id"], mn
+assert [(i["text"], bool(i.get("checked"))) for i in mn["items"]] == [("Vanilla", True), ("Chocolate", False), ("Strawberry", False)], mn
+t = act(p, t, mn["dismiss"]); assert t["root"]["kind"] == "navigation" and pk(t, "menu")["selected"] == 0
+t = act(p, t, pk(t, "menu")["open"])
+t = act(p, t, t["root"]["layers"][0]["items"][1]["action"])
+assert t["root"]["kind"] == "navigation" and pk(t, "menu")["selected"] == 1, "menu item selects and closes"
+sg = pk(t, "segmented"); assert [o["text"] for o in sg["options"]] == ["Small", "Medium", "Large"] and sg["selected"] == 1, sg
+t = act(p, t, sg["options"][2]["action"]); assert pk(t, "segmented")["selected"] == 2
+sl = next(m for m in walk(t["root"]) if m.get("kind") == "slider")
+assert (sl["value"], sl["min"], sl["max"], sl["step"]) == (4.0, 0.0, 10.0, 1.0), sl
+send(p, type="text_input", field=sl["field"], version=t["version"], text="7.4"); t = recv(p)
+sl = next(m for m in walk(t["root"]) if m.get("kind") == "slider"); assert sl["value"] == 7.0, "slider snaps to step"
+send(p, type="text_input", field=sl["field"], version=t["version"], text="99"); t = recv(p)
+sl = next(m for m in walk(t["root"]) if m.get("kind") == "slider"); assert sl["value"] == 10.0, "slider clamps"
+assert "10" in alltexts(t["root"])
+pv = [m for m in walk(t["root"]) if m.get("kind") == "progress"]
+assert [m["value"] for m in pv] == [1.0, None], pv
+t = act(p, t, t["root"]["back"]["action"])
+t = act(p, t, button(t, "Form")["action"])
+assert pk(t, "menu")["selected"] == 0 and pk(t, "segmented")["selected"] == 1, "fresh state on re-entry"
+t = act(p, t, t["root"]["back"]["action"]); assert title(t) == "Showcase"
 # push/pop cycles: memory stays bounded
 for i in range(300):
     t = act(p, t, button(t, "Shapes")["action"]); assert title(t) == "Shapes"
@@ -291,6 +326,22 @@ assert typed(t)["title"] == "Typed 7" and "Typed 7 depth 1" in alltexts(typed(t)
 assert home(t)["title"] == "Dataflow"  # the other stack is untouched
 t = act(p, t, typed(t)["back"]["action"])
 assert typed(t)["title"] == "Typed" and "Typed depth: 0" in alltexts(typed(t))
+# onChange (all forms, initial, state-dirtying), onTapGesture, @AppStorage, Lazy stacks
+t = act(p, t, button(t, "Reset store")["action"])  # @AppStorage persists in UserDefaults across runs: start clean
+rx = lambda t: alltexts(t["root"])
+for s in ["Count: 0", "Log: c", "Tapped: 0", "Flag: off", "Name: none", "Launches: 0", "Mirror: 0"]: assert s in rx(t), (s, rx(t))
+t = act(p, t, button(t, "Bump")["action"])
+assert "Count: 1" in rx(t) and "Log: c,c,0>1" in rx(t), rx(t)  # initial fired once; then both forms fire on change
+t = act(p, t, button(t, "Bump")["action"])  # the perform form sets count = 20 -> re-eval fires the others again
+assert "Count: 20" in rx(t) and "Mirror: 200" in rx(t) and "Log: c,c,0>1,c,1>2,c,2>20" in rx(t), rx(t)
+t = act(p, t, button(t, "Bump")["action"]); assert "Count: 21" in rx(t) and "Log: c,c,0>1,c,1>2,c,2>20,c,20>21" in rx(t), rx(t)
+tap = button(t, "Tap me"); assert tap["style"] == "plain" and alltexts(tap) == ["Tap me"], tap  # plain button node: host hit testing, no accent tint
+t = act(p, t, tap["action"]); assert "Tapped: 1" in rx(t), rx(t)
+t = act(p, t, button(t, "Store")["action"]); assert all(s in rx(t) for s in ["Launches: 1", "Flag: on", "Name: set"]), rx(t)
+finish(p)
+p = spawn(sys.argv[4]); assert recv(p)["type"] == "hello"; t = recv(p)  # UserDefaults.standard survived the restart
+assert all(s in rx(t) for s in ["Launches: 1", "Flag: on", "Name: set"]), rx(t)
+t = act(p, t, button(t, "Reset store")["action"]); assert all(s in rx(t) for s in ["Launches: 0", "Flag: off", "Name: none"]), rx(t)
 finish(p)
 # dynamicTypeSize follows the launch environment
 p = spawn(sys.argv[4], {**os.environ, "SIMCORE_DYNAMIC_TYPE": "accessibility2"})
@@ -325,5 +376,29 @@ al = L(t)[-1]; assert alltexts(al["message"]) == ["Greeting Ada"] and [alltexts(
 t = act(p, t, al["actions"][0]["action"])
 t = tap(t, "Dialog"); dg = L(t)[-1]
 assert dg["kind"] == "dialog" and [alltexts(b)[0] for b in dg["actions"]] == ["Use 9", "Cancel"] and dg["titleVisible"] is False, dg
+finish(p)
+
+# --- tabs: only the selected tab is sent; each tab's state survives switching; NavigationStack inside a tab
+p = spawn(sys.argv[6]); assert recv(p)["type"] == "hello"; t = recv(p)
+tv = lambda t: t["root"]
+def tab(t, i): return act(p, t, tv(t)["tabs"][i]["action"])
+assert tv(t)["kind"] == "tabview" and tv(t)["selected"] == 0, tv(t)
+assert [(x["title"], x.get("systemImage"), x.get("badge")) for x in tv(t)["tabs"]] == [("Home", "house", None), ("Counter", "star", None), ("Settings", "gearshape", "3")], tv(t)["tabs"]
+assert tv(t)["content"]["kind"] == "navigation" and "Count: 0" not in alltexts(tv(t)), "only the selected tab is evaluated"
+t = act(p, t, button(t, "Apple")["action"]); assert "You picked Apple" in alltexts(tv(t)), alltexts(tv(t))
+t = tab(t, 1); assert tv(t)["selected"] == 1 and "Count: 0" in alltexts(tv(t))
+t = act(p, t, button(t, "Increment")["action"]); t = act(p, t, button(t, "Increment")["action"])
+assert "Count: 2" in alltexts(tv(t))
+t = tab(t, 2); assert tv(t)["selected"] == 2 and tv(t)["content"]["title"] == "Settings"
+t = tab(t, 1); assert "Count: 2" in alltexts(tv(t)), "tab @State survives a switch"
+t = tab(t, 0); assert "You picked Apple" in alltexts(tv(t)) and tv(t)["content"]["back"], "pushed screen survives a switch"
+finish(p)
+
+# --- Tab(_:systemImage:value:) with an enum selection, string badge
+p = spawn(sys.argv[7]); assert recv(p)["type"] == "hello"; t = recv(p)
+assert tv(t)["selected"] == 1 and [(x["title"], x.get("badge")) for x in tv(t)["tabs"]] == [("One", None), ("Two", "New")], tv(t)
+t = act(p, t, button(t, "two 0")["action"]); assert "two 1" in alltexts(tv(t))
+t = tab(t, 0); assert tv(t)["selected"] == 0 and "one 0" in alltexts(tv(t))
+t = tab(t, 1); assert "two 1" in alltexts(tv(t))
 finish(p)
 print("PASS")

@@ -8,7 +8,7 @@ $ simcore run examples/swiftui-counter --root-view CounterView --click Increment
 
 | Framework | iOS | Android |
 |---|---|---|
-| SwiftUI | ✅ v0.1: navigation, lists, form controls, shapes, text styles, SF Symbols, software keyboard, `@State`/`@Binding`/`ObservableObject` ([compatibility](docs/swiftui-compatibility.md)) | n/a |
+| SwiftUI | ✅ v0.1: navigation, tabs, lists, forms and controls (pickers, sliders, progress), presentations, shapes, text styles, SF Symbols, Liquid Glass, software keyboard, `@State`/`@Binding`/`ObservableObject`/`@AppStorage` ([compatibility](docs/swiftui-compatibility.md)) | n/a |
 | Expo / React Native | 🧪 v0.2 preview: core components, Fast Refresh, Expo Router native stack and tabs, Reanimated, simulated device modules ([API coverage](docs/expo-api-coverage.md)) | 🔜 coming ([API coverage](docs/expo-api-coverage.md)) |
 | Jetpack Compose | n/a | 🔜 planned |
 
