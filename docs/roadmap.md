@@ -17,7 +17,9 @@
 
 v0.2 definition of done (PRD §14): all items met except visual fidelity of the RN showcase `text` state (2.49% vs 2% limit; see M1). Known limits: no push/pop transition animations, no redbox UI, `navigation.changed` only for Expo Router, landscape unsupported, Node instead of Hermes.
 
-Next SwiftUI surface: `@Binding`, `@ObservedObject`/`@StateObject`, `ScrollView`, `List`, `TextField` (needs keyboard events), `Toggle`, `NavigationStack`, sheets/alerts, animations, environment values.
+SwiftUI since v0.1: presentations (alerts, sheets, dialogs, covers), value navigation, environment objects, lifecycle, `onChange`, `onTapGesture`, `@AppStorage`, lazy stacks, `Form`, `Picker`, `Slider`, `ProgressView`, `SecureField`, `LabeledContent`, `TabView`/`Tab`/`.badge` ([compatibility](swiftui-compatibility.md)).
+
+Next SwiftUI surface: `.task` (async wake path into the runtime), `@Observable`/`@Bindable` (macro plugin), `.toolbar`/`ToolbarItem`, `@FocusState`, `LazyVGrid`/`Grid`, `Image("asset")`, `.searchable`, `.swipeActions`, `.refreshable`, animations.
 
 Later: Jetpack Compose engine (own layout, Kotlin runtime out of process), React Native engine (Hermes + Fabric, Yoga layout), WASM execution backend (Wasmtime), binary wire encoding, native module registry (implemented / simulated / unsupported).
 

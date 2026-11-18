@@ -45,8 +45,23 @@ shot typography-scrolled-dark --dynamic-type accessibility5 --dark --click Typog
 shot long-list           --click "Long list"
 shot long-list-collapsed --click "Long list" --scroll 200,500,0,52
 shot long-list-scrolled  --click "Long list" --scroll 200,500,0,775.66
+shot form         --click Form
+shot form-dark    --dark --click Form
+shot form-menu    --click Form --click Flavor
+shot form-changed --click Form --click Flavor --click Chocolate --click Large --drag 170,552,300,0
 rc=0
 python3 scripts/compare_ios.py tests/fixtures/showcase-ios "$out/simcore" "$out" || rc=1
+# SwiftUI TabView: tests/fixtures/swiftui-tabs-ios (see its README). Tab items by point: Home 115,822, Counter 201,822, Settings 287,822.
+app=examples/swiftui-tabs; tout=$out/swiftui-tabs; mkdir -p "$tout/simcore"
+tshot() { local name=$1; shift; ./target/debug/simcore run "$app" "$@" --screenshot "$tout/simcore/$name.png" >/dev/null; }
+tshot tabs-home
+tshot tabs-home-dark     --dark
+tshot tabs-second        --click 201,822 --click Increment
+tshot tabs-pushed        --click Apple
+tshot tabs-settings-dark --dark --click 287,822
+echo "== SwiftUI TabView (swiftui-tabs)"
+python3 scripts/compare_ios.py tests/fixtures/swiftui-tabs-ios "$tout/simcore" "$tout" || rc=1
+app=examples/swiftui-showcase
 # React Native / Expo showcase: tests/fixtures/rn-showcase-ios (see its README). Needs node + `npm install` in the example.
 rn=examples/expo-showcase
 if [ -d "$rn/node_modules" ] && command -v npx >/dev/null; then

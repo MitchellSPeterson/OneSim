@@ -138,9 +138,9 @@ struct _CtxView<Content: View>: View, _Flattenable {
     let apply: (_Runtime) -> Void
     func _children(_ path: String) -> [Node] {
         let rt = _Runtime.shared
-        let saved = (rt.disabled, rt.buttonStyle)
+        let saved = (rt.disabled, rt.buttonStyle, rt.pickerStyle)
         apply(rt)
-        defer { (rt.disabled, rt.buttonStyle) = saved }
+        defer { (rt.disabled, rt.buttonStyle, rt.pickerStyle) = saved }
         return SwiftUI._children(content, path)
     }
 }

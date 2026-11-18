@@ -379,6 +379,33 @@ pub enum Layer {
         #[serde(default)]
         dismiss: Option<u64>,
     },
+    /// Menu of a menu-style `Picker`, anchored to it; `dismiss` closes it (tap outside).
+    Menu {
+        #[serde(default)]
+        anchor: Option<String>,
+        #[serde(default)]
+        items: Vec<PickerOption>,
+        #[serde(default)]
+        dismiss: Option<u64>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PickerStyle {
+    #[default]
+    Menu,
+    Segmented,
+}
+
+/// One `Picker` choice: its label text and the action that selects it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PickerOption {
+    pub text: String,
+    pub action: u64,
+    /// Menu layers only: the selected item (drawn with a checkmark).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub checked: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -445,6 +472,18 @@ pub struct BackButton {
     pub action: u64,
     #[serde(default)]
     pub label: String,
+}
+
+/// A `tabview` tab bar item; running `action` selects the tab.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TabItem {
+    #[serde(default)]
+    pub title: String,
+    #[serde(default, rename = "systemImage", skip_serializing_if = "Option::is_none")]
+    pub system_image: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub badge: Option<String>,
+    pub action: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -544,6 +583,14 @@ pub enum ViewKind {
         back: Option<BackButton>,
         content: Box<ViewNode>,
     },
+    /// `TabView`: `content` is the selected tab's (the others are not sent); `selected` indexes `tabs`.
+    TabView {
+        #[serde(default)]
+        selected: usize,
+        #[serde(default)]
+        tabs: Vec<TabItem>,
+        content: Box<ViewNode>,
+    },
     Toggle {
         #[serde(rename = "isOn")]
         is_on: bool,
@@ -566,6 +613,44 @@ pub enum ViewKind {
         #[serde(default)]
         text: String,
         field: u64,
+        /// `SecureField`: drawn as bullets.
+        #[serde(default, skip_serializing_if = "is_false")]
+        secure: bool,
+    },
+    /// `Picker`; `selected` indexes `options`. Menu style: `open` shows the options as a `menu` layer.
+    Picker {
+        label: Box<ViewNode>,
+        #[serde(default)]
+        style: PickerStyle,
+        #[serde(default)]
+        options: Vec<PickerOption>,
+        #[serde(default)]
+        selected: Option<usize>,
+        #[serde(default)]
+        open: Option<u64>,
+        #[serde(default)]
+        disabled: bool,
+    },
+    /// `Slider`: the host sets a new value with `text_input` on `field` (the number as text).
+    Slider {
+        value: f64,
+        #[serde(default)]
+        min: f64,
+        #[serde(default = "one")]
+        max: f64,
+        #[serde(default)]
+        step: Option<f64>,
+        #[serde(default)]
+        field: Option<u64>,
+        #[serde(default)]
+        disabled: bool,
+    },
+    /// `ProgressView`: `value` is the fraction done (0...1); `None` = indeterminate spinner.
+    Progress {
+        #[serde(default)]
+        value: Option<f64>,
+        #[serde(default)]
+        label: Option<Box<ViewNode>>,
     },
     /// SF Symbol (host capability).
     Image {

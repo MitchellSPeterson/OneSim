@@ -3,7 +3,7 @@
 //! Node ids in the scene are the reactTags; every RN box has `tag = Some(tag)` so the scene's
 //! hit test returns the deepest tag under a point (`action` stays for real native actions: nav back, tabs). Content starts at y=0 (RN handles safe areas).
 
-use super::swiftui::{add_chrome, rn_nav_bar, rn_nav_height, switch_style, NavBack, SceneParams, KNOB, SWITCH};
+use super::swiftui::{add_chrome, rn_nav_bar, rn_nav_height, rn_tab_bar, switch_style, NavBack, SceneParams, TabBar, TabBarItem, KNOB, SWITCH, TAB_BAR_INSET};
 use crate::scene::{Color, ImageRun, Node, Rect, Role, Scene, ScrollInfo, TextRun};
 use crate::text::{FontSpec, Fonts, Span, TextAlign};
 use serde_json::Value;
@@ -53,42 +53,34 @@ struct Header {
     back: Option<String>,
 }
 
-struct Tab {
-    key: String,
-    title: String,
-    /// Icon bitmaps (guest-downloaded) or an SF symbol name, normal and selected.
-    icon: Option<String>,
-    selected_icon: Option<String>,
-    symbol: Option<String>,
-}
-
+/// `RNSTabsHostIOS`: the shared tab bar, unless hidden.
 struct Tabs {
-    tabs: Vec<Tab>,
-    selected: usize,
-    tint: Option<Color>,
+    bar: TabBar,
     hidden: bool,
 }
 
 fn tabs_info(cx: &mut Cx, p: &Value, children: &[ViewNode]) -> Tabs {
     let screens = children.iter().filter(|c| rn_component(c) == "RNSTabsScreenIOS");
-    let tabs: Vec<Tab> = screens
+    let items: Vec<TabBarItem> = screens
         .filter_map(|c| match &c.kind {
             ViewKind::Rn { props, .. } => {
                 let img = |k: &str| props.get(k).and_then(|i| i.get("path")).and_then(Value::as_str).map(str::to_owned);
-                Some(Tab {
+                Some(TabBarItem {
                     key: prop_str(props, "screenKey").unwrap_or_default(),
                     title: prop_str(props, "title").unwrap_or_default(),
                     icon: img("__simcoreIconImage"),
                     selected_icon: img("__simcoreSelectedIconImage"),
                     symbol: prop_str(props, "iconResourceName").filter(|_| props.get("iconType").and_then(Value::as_str) == Some("sfSymbol")),
+                    badge: None,
+                    action: None,
                 })
             }
             _ => None,
         })
         .collect();
     let want = p.get("navStateRequest").and_then(|n| n.get("selectedScreenKey")).and_then(Value::as_str);
-    let selected = tabs.iter().position(|t| Some(t.key.as_str()) == want).unwrap_or(0);
-    Tabs { tabs, selected, tint: cx.color(p.get("tabBarTintColor")), hidden: p.get("tabBarHidden").and_then(Value::as_bool) == Some(true) }
+    let selected = items.iter().position(|t| Some(t.key.as_str()) == want).unwrap_or(0);
+    Tabs { bar: TabBar { items, selected, tint: cx.color(p.get("tabBarTintColor")) }, hidden: p.get("tabBarHidden").and_then(Value::as_bool) == Some(true) }
 }
 
 #[derive(Clone, Copy, PartialEq, Default)]
@@ -186,7 +178,7 @@ fn css_color(s: &str) -> Option<Color> {
 }
 
 /// Template rendering: `pm`'s alpha mask filled with `c`.
-fn tinted(pm: &tiny_skia::Pixmap, c: Color) -> Option<std::sync::Arc<tiny_skia::Pixmap>> {
+pub(crate) fn tinted(pm: &tiny_skia::Pixmap, c: Color) -> Option<std::sync::Arc<tiny_skia::Pixmap>> {
     let mut out = tiny_skia::Pixmap::new(pm.width(), pm.height())?;
     for (o, i) in out.pixels_mut().iter_mut().zip(pm.pixels()) {
         let a = i.alpha() as f32 / 255.0 * c.a;
@@ -550,7 +542,7 @@ impl<'a> Cx<'a, '_> {
             picked = screens.last().copied().into_iter().collect();
         } else if component == "RNSTabsHostIOS" {
             let t = tabs_info(self, props, children);
-            picked = children.iter().filter(|c| rn_component(c) == "RNSTabsScreenIOS").skip(t.selected).take(1).collect();
+            picked = children.iter().filter(|c| rn_component(c) == "RNSTabsScreenIOS").skip(t.bar.selected).take(1).collect();
             tabs = Some(t);
         }
         let mut header = None;
@@ -567,7 +559,7 @@ impl<'a> Cx<'a, '_> {
         // The tab bar (83 pt with its safe area) is the bottom safe-area inset of the tab's content.
         let saved_insets = self.insets;
         if tabs.as_ref().is_some_and(|t| !t.hidden) {
-            self.insets.1 = 83.0;
+            self.insets.1 = TAB_BAR_INSET;
         }
         let saved_row = std::mem::replace(&mut self.parent_row, row);
         let kids: Vec<Item> = picked.into_iter().filter_map(|c| self.build(c)).collect();
@@ -912,7 +904,7 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
         rn_nav_bar(params, cx.fonts, &hd.stack, cx.insets.0, hd.title.as_deref(), hd.large, back, me, out);
     }
     if let Some(t) = it.tabs.as_ref().filter(|t| !t.hidden) {
-        tab_bar(cx, t, &it.node.id, me, eff, params, out);
+        rn_tab_bar(params, cx.fonts, &t.bar, &it.node.id, me, eff, out);
     }
     // Touchables (Pressable/Touchable*/Button set these flags) are buttons for inspection and `--click LABEL`:
     // label = accessibilityLabel, else their text, like iOS VoiceOver.
@@ -924,66 +916,6 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
             let t: Vec<_> = out[me + 1..].iter().filter(|c| c.role == Role::Text).filter_map(|c| c.label.clone()).collect();
             (!t.is_empty()).then(|| t.join(" "))
         });
-    }
-}
-
-/// The iOS 26 floating Liquid Glass tab bar (measured: 188 x 61 pt capsule for two tabs, 22 pt above the bottom,
-/// items 94 x 54 pt at an 86 pt pitch, 4 pt inside the capsule).
-fn tab_bar(cx: &mut Cx, t: &Tabs, host: &str, parent: usize, opacity: f32, params: &SceneParams, out: &mut Vec<Node>) {
-    let (w, h) = params.viewport;
-    let n = t.tabs.len().max(1) as f64;
-    let bar_w = 8.0 + 94.0 + (n - 1.0) * 86.0;
-    let (bx, by) = ((w - bar_w) / 2.0, h - 20.0 - 61.0);
-    let mut bar = Node::new(format!("{host}#tabbar"), "tabbar");
-    bar.bounds = Rect { x: bx, y: by, w: bar_w, h: 61.0 };
-    bar.parent = Some(parent);
-    bar.opacity = opacity;
-    bar.radius = 1.0e6;
-    bar.glass = Some(crate::glass::GlassSpec { variant: simcore_protocol::GlassVariant::Regular, tint: None, interactive: false, blur: None, mix: None, shadow: None });
-    let bar_i = out.len();
-    out.push(bar);
-    let (label, accent) = if cx.dark { (Color::rgba(1.0, 1.0, 1.0, 1.0), Color::rgba(10.0 / 255.0, 132.0 / 255.0, 1.0, 1.0)) } else { (Color::rgba(0.0, 0.0, 0.0, 1.0), Color::rgba(0.0, 136.0 / 255.0, 1.0, 1.0)) };
-    for (i, tab) in t.tabs.iter().enumerate() {
-        let sel = i == t.selected;
-        let (ix, iy) = (bx + 4.0 + i as f64 * 86.0, by + 4.0);
-        let mut item = Node::new(format!("{host}#tab-{}", tab.key), "button");
-        item.bounds = Rect { x: ix, y: iy, w: 94.0, h: 54.0 };
-        item.parent = Some(bar_i);
-        item.opacity = opacity;
-        item.role = Role::Button;
-        item.label = Some(tab.title.clone());
-        item.action = host.parse().ok();
-        item.radius = 1.0e6;
-        if sel {
-            item.fill = Some(if cx.dark { Color::rgba(58.0 / 255.0, 58.0 / 255.0, 60.0 / 255.0, 1.0) } else { Color::rgba(233.0 / 255.0, 233.0 / 255.0, 235.0 / 255.0, 1.0) });
-        }
-        let item_i = out.len();
-        out.push(item);
-        let tint = if sel { t.tint.unwrap_or(accent) } else { label };
-        let path = if sel { tab.selected_icon.as_ref().or(tab.icon.as_ref()) } else { tab.icon.as_ref() };
-        let mut icon = Node::new(format!("{host}#tab-{}#icon", tab.key), "image");
-        icon.parent = Some(item_i);
-        icon.opacity = opacity;
-        icon.inspect = false;
-        if let Some(pm) = path.and_then(|p| crate::image::load(p)) {
-            let (iw, ih) = (pm.width() as f64 / params.scale, pm.height() as f64 / params.scale);
-            icon.bounds = Rect { x: ix + (94.0 - iw) / 2.0, y: iy + 6.0, w: iw, h: ih };
-            icon.image = tinted(&pm, tint).map(|pixmap| ImageRun { pixmap, dest: icon.bounds, rotation: 0.0 });
-        } else if let Some(name) = &tab.symbol {
-            let spec = crate::SymbolSpec { name: name.clone(), point_size: 22.0, weight: 400, scale: simcore_protocol::ImageScale::Medium };
-            let m = crate::symbols::metrics(&spec).map_or((22.0, 22.0), |m| (m.w, m.h));
-            icon.bounds = Rect { x: ix + (94.0 - m.0) / 2.0, y: iy + 6.0, w: m.0, h: m.1 };
-            icon.symbol = Some(crate::SymbolRun { spec, color: tint, size: m });
-        }
-        out.push(icon);
-        let spec = FontSpec::new(10.0, 12.0, if sel { 600 } else { 500 }, TextAlign::Center);
-        let mut lb = Node::new(format!("{host}#tab-{}#label", tab.key), "text");
-        lb.bounds = Rect { x: ix, y: iy + 31.0, w: 94.0, h: 14.0 };
-        lb.parent = Some(item_i);
-        lb.opacity = opacity;
-        lb.inspect = false;
-        lb.text = Some(TextRun { text: tab.title.clone(), font: spec, color: label, strike: false, offset_x: 0.0, spans: vec![] });
-        out.push(lb);
     }
 }
 
@@ -1205,5 +1137,6 @@ mod tests {
         let tabs: Vec<_> = scene.nodes.iter().filter(|n| n.id.starts_with("3#tab-") && n.role == Role::Button).collect();
         assert_eq!(tabs.iter().map(|n| n.label.as_deref().unwrap()).collect::<Vec<_>>(), ["Home", "Explore"]);
         assert!(tabs[1].fill.is_some() && tabs[0].fill.is_none(), "selected tab has the capsule");
+        assert!(tabs.iter().all(|n| n.action == Some(3)), "items are hit-testable (the host maps them to SelectTab)");
     }
 }
