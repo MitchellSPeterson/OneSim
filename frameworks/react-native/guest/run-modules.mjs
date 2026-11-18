@@ -1,5 +1,5 @@
 // Milestone 4 check (native-module compatibility): node frameworks/react-native/guest/run-modules.mjs [port=8220]
-// Boots examples/expo-modules (clipboard, haptics, location, camera) and asserts the `modules` line, the simulated clipboard /
+// Boots examples/expo-modules (clipboard, haptics, location, camera, file system, secure store) and asserts the `modules` line, the simulated clipboard /
 // haptics / location / permissions, host `simulate`, state surviving a reload, and the unsupported-module diagnostic.
 // A Metro already listening on the port is reused (and left running).
 import { join } from 'node:path';
@@ -14,7 +14,7 @@ run(async () => {
   const press = async (label, re, what) => { h.tap(label); await h.until(() => re.test(out() || ''), what || `${label} -> ${re}`); ok(`${label}: ${out()}`); };
   await h.until(() => /Output: ready/.test(h.text) && h.modules.length, 'first tree + modules line');
   const mods = Object.fromEntries(h.modules[0].map((m) => [m.name, m]));
-  const want = { ExpoClipboard: 'simulated', ExpoHaptics: 'simulated', ExpoLocation: 'simulated', ExpoCamera: 'unsupported', ExpoDevice: 'simulated', DeviceInfo: 'simulated', Appearance: 'simulated', RNCSafeAreaContext: 'simulated', Clipboard: 'simulated' };
+  const want = { ExpoClipboard: 'simulated', ExpoHaptics: 'simulated', ExpoLocation: 'simulated', ExpoCamera: 'unsupported', FileSystem: 'implemented', ExponentFileSystem: 'implemented', ExpoSecureStore: 'simulated', ExpoDevice: 'simulated', DeviceInfo: 'simulated', Appearance: 'simulated', RNCSafeAreaContext: 'simulated', Clipboard: 'simulated' };
   for (const [n, s] of Object.entries(want)) if (!mods[n] || mods[n].status !== s) throw new Error(`modules: ${n} should be ${s}, got ${mods[n] && mods[n].status}`);
   if (!mods.ExpoLocation.methods.includes('watchPositionImplAsync') || mods.ExpoLocation.package !== 'expo-location' || !mods.ExpoLocation.events.includes('Expo.locationChanged')) throw new Error('modules: ExpoLocation entry ' + JSON.stringify(mods.ExpoLocation));
   ok(`modules line: ${h.modules[0].length} modules; clipboard/haptics/location simulated, camera unsupported`);
@@ -30,6 +30,14 @@ run(async () => {
   if (!h.events.slice(n0).some((e) => e.name === 'module.called' && e.detail.module === 'ExpoHaptics' && e.detail.method === 'impactAsync')) throw new Error('no module.called for impactAsync');
   ok('haptics: module.called impactAsync ' + JSON.stringify(h.events.slice(n0).find((e) => e.name === 'module.called').detail));
 
+  await press('Write file', /file hi/, 'Write file: FileSystem File create + write + text');
+  await press('List docs', /docs note\.txt/);
+  await press('Read secret', /secret null/, 'Read secret: nothing stored yet');
+  await press('Save secret', /saved/);
+  await press('Read secret', /secret abc/);
+  h.send({ type: 'simulate', module: 'securestore', state: { token: 'seeded' } });
+  await press('Read secret', /secret seeded/, 'Read secret shows the simulated value');
+
   await press('Locate', /permission granted lat 37\.3349 lon -122\.009/, 'Locate: granted + Apple Park');
   await press('Watch', /watching/);
   await h.until(() => /Watch: lat 37\.3349 lon -122\.009/.test(h.text), 'first watch fix');
@@ -43,6 +51,13 @@ run(async () => {
   h.send({ type: 'reload' });
   await h.until(() => h.modules.length > nm && /Output: ready/.test(h.text), 'reload + modules line again');
   await press('Locate', /permission denied/, 'Locate after denied + reload');
+  // the keychain and the Documents folder outlive a reload; the replayed simulate state must not overwrite what the app saved since
+  await press('Save secret', /saved/);
+  const nm2 = h.modules.length;
+  h.send({ type: 'reload' });
+  await h.until(() => h.modules.length > nm2 && /Output: ready/.test(h.text), 'second reload');
+  await press('Read secret', /secret abc/, 'Read secret after reload (replay did not overwrite it)');
+  await press('List docs', /docs note\.txt/, 'Documents file survives the reload');
 
   const n1 = h.events.length, e1 = h.errors.length;
   h.tap('Camera');

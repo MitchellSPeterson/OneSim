@@ -331,7 +331,8 @@ It loads the app bundle from Metro and runs React Native's own Fabric renderer; 
 - `get_capabilities.frameworks` includes `"react-native"`.
 - `send_pointer_event` on an RN session: `down` → touch `start` on the deepest node at the
   point, `up` → touch `end` on the same target, `click` = both. After `end` the call waits for
-  the next tree (2 s); a tap that changes nothing is not an error.
+  the next tree (2 s); a tap that changes nothing is not an error. `drag` → touch `start` at
+  (x, y), 8 `move`s along (dx, dy) (timestamps 16 ms apart), `end`, all on the start's target.
 - CLI: `simcore expo [--url URL] [--device NAME] [--headless] [--appearance light|dark] [--screenshot out.png] [--click X,Y ...]`.
 
 ### Guest launch env
@@ -381,6 +382,14 @@ its existing focus + software-keyboard machinery.
 - Host → guest `text_input` with `field` = tag and the full new `text` → guest updates its text,
   dispatches `topChange` `{text, eventCount, target}` (and `topSelectionChange` at the end of
   the text), and emits a new tree.
+- Host → guest `{"type":"keyboard","height":<pt>}` when the software keyboard appears (height =
+  the device keyboard as drawn, `kb_base_h + safe_bottom`) or hides (`0`). Sent after `focus` / `blur`
+  only when visibility changes (moving focus between fields keeps it up), including `hide_keyboard`
+  and return. Guest emits `KeyboardObserver` events `keyboardWillChangeFrame`, `keyboardWill{Show,Hide}`,
+  `keyboardDidChangeFrame`, `keyboardDid{Show,Hide}` with `{startCoordinates, endCoordinates:
+  {screenX, screenY, width, height}, duration: 0, easing: "keyboard", isEventFromThisApp: true}`
+  (window coordinates; hidden frame = `screenY` at the window bottom). `duration: 0` because the
+  host renders settled states (`KeyboardAvoidingView` skips LayoutAnimation).
 - Host → guest `{"type":"submit","tag"}` on return → `topSubmitEditing` `{text}`; then blur
   unless `multiline`.
 - Guest → host `{"type":"focus_request","tag":<u64>|null}` when JS calls the `focus` / `blur`
@@ -470,6 +479,25 @@ JS-driven push/pop needs no message. The guest spaces appear events by 350 ms
   `navigation.changed` (`{route,params,stack}`, Expo Router pathnames), `module.unsupported`,
   `module.called`.
 - The v2 JSON-RPC/WebSocket API (`simcore serve --listen ADDR`) is specified in `docs/api.md`.
+
+### `Alert.alert` (AlertManager)
+
+- While alerts are up the guest emits the root as a section G `presentation`: `content` is the normal `rn` root and
+  `layers` holds one `alert` layer per open alert (oldest first): `title`, `message` (a `text` node, when given) and one
+  `button` per RN button (`role` `cancel` / `destructive` from the button `style`; no buttons = one "OK"). The host lays
+  out `content` as RN and draws the layers exactly as SwiftUI's `.alert` (scrim, card, button order).
+- A tap on an alert button is sent as `{"type":"action","id","version"}` (as for SwiftUI). The guest drops that alert,
+  re-emits the tree and calls the `alertWithArgs` callback with the button key (Alert.js runs that button's `onPress`).
+- `Alert.prompt` (`type` other than `default`) is unsupported (diagnostic).
+
+### react-native-gesture-handler (issue #10)
+
+- No wire change: the guest recognizes Tap / Pan / LongPress / native-button gestures itself from
+  `touch` start/move/end/cancel (one finger, RNGH thresholds: pan `minDist` 10 pt or its
+  `activeOffset*`/`failOffset*`, tap `maxDuration` 500 ms, long press `minDuration` 500 ms). When a
+  gesture activates, RN's responder gets `topTouchCancel` and the rest of that touch skips RN.
+- `RNGestureHandlerButton` is laid out as a View; `RNGestureHandlerDetector` (`display: contents`)
+  is not emitted: its children are emitted in its place (any `display: contents` view is).
 
 ## I. v1 additions: form controls (additive, protocol version stays 1)
 

@@ -33,6 +33,8 @@ use simcore_protocol::ViewNode;
 pub fn build_scene(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
     match root.kind {
         simcore_protocol::ViewKind::Rn { .. } => layout::rn::layout(root, params, fonts),
+        // A React Native alert (`Alert.alert`): RN content under SwiftUI alert layers.
+        simcore_protocol::ViewKind::Presentation { ref content, .. } if matches!(content.kind, simcore_protocol::ViewKind::Rn { .. }) => layout::rn::layout(root, params, fonts),
         _ => layout::swiftui::layout(root, params, fonts),
     }
 }

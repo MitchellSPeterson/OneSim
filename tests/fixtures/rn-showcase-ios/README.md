@@ -23,11 +23,14 @@
 | scroll-scrolled | Scroll, press **Jump** (365,84): `scrollToOffset({offset: 440, animated: false})` | `--click Scroll --click Jump` (or `--scroll 200,500,0,440`: same 440 pt offset) |
 | image | press Image row (60,353) | `--click Image` |
 | home-dark | dark appearance | `--dark` |
+| keyboard-avoiding / -dark | press the "Showcase" title (60,90) → Form screen, press the Message input (200,836), type `Hello` (keyboard up; `KeyboardAvoidingView` behavior padding lifts the form above it); -dark in dark appearance (form text stays black, as in Controls) | `--click Showcase --click Message --type Hello` (`--dark` first for -dark) |
+| alert / alert-dark | Controls, press "Count: 0" (80,140): `Alert.alert` with Cancel + Reset (destructive); alert-dark in dark appearance | `--click Controls --click Count` (`--dark` first for alert-dark) |
 
 ## App facts SimCore must match
 - Root `paddingTop: 62` (iPhone 17 Pro inset), no safe-area lib; Expo Go adds no chrome with the Tools button off. `StatusBar` style follows scheme.
 - Plain system font (SF Pro), explicit sizes; Home title 34 bold, rows 52 pt with 1 pt hairline, chevron is a ">" glyph, #C7C7CC.
-- Header row: 44 pt tall at y=62 ("Back" link blue 17pt left, title gray 17pt semibold, Scroll also "Jump" right). Labels (`accessibilityLabel`): rows Layout/Text/Controls/Scroll/Image, Back, Increment, Alpha, Beta (Switch), "Type here" (TextInput), Jump.
+- Header row: 44 pt tall at y=62 ("Back" link blue 17pt left, title gray 17pt semibold, Scroll also "Jump" right). Labels (`accessibilityLabel`): rows Layout/Text/Controls/Scroll/Image, Back, Increment, Count (the "Count: N" text; opens the reset alert), Alpha, Beta (Switch), "Type here" (TextInput), Jump.
 - FlatList: 50 rows "Row N", fixed height 44, `getItemLayout`; starts at y=106.
 - Native controls: iOS 26 UISwitch, UITextInput with caret and floating iOS 26 keyboard (lowercase keys when empty/typed text).
+- Form screen (no visible entry: the home title is a `Pressable`): `KeyboardAvoidingView` behavior `padding`, `keyboardVerticalOffset` 62, content bottom-aligned (label "Message" + TextInput).
 - Image screen uses a bundled PNG (`assets/gradient.png` 200x120) with resizeMode cover/contain and borderRadius 24.

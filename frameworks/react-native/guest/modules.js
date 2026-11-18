@@ -6,6 +6,8 @@
 // A method impl of 'unsupported' (UNSUP) diagnoses and throws (rejects for `...Async` names or `async: true`).
 // `strict` entries (and every unsupported one) diagnose any method they do not list. `make` is an escape hatch: the module as is.
 'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
 const UNSUP = 'unsupported';
 const HIDDEN = new Set(['getConstants', 'addListener', 'removeListeners']);
 // Optional modules RN feature-detects: absent => JS falls back (JS Animated driver, no perf API, ...).
@@ -14,6 +16,7 @@ const ABSENT = new Set(['NativeAnimatedModule', 'NativeAnimatedTurboModule', 'Na
 module.exports = function createRegistry(rt, h) {
   const { node, log, sendError, sendEvent, unsupported, cfg, ver, insetsFor, loadImage, imageDone, expo: { NativeModule, SharedObject } } = h;
   const noop = () => {};
+  let alertSeq = 0;
   const listener = { addListener: noop, removeListeners: noop };
   const reportException = (d) => sendError(`${d.message}\n${(d.stack || []).map((f) => `  at ${f.methodName || '?'} (${f.file}:${f.lineNumber}:${f.column})`).join('\n')}`);
   const all = (names, v = UNSUP) => Object.fromEntries(names.map((n) => [n, v]));
@@ -33,8 +36,18 @@ module.exports = function createRegistry(rt, h) {
   const pushFix = (id, em) => rt.guard(() => em.emit('Expo.locationChanged', { watchId: id, location: fix() }))();
   const called = (mod, fns) => Object.fromEntries(Object.entries(fns).map(([m, f]) => [m, function (...a) { sendEvent('module.called', { module: mod, method: m, args: a }); return f.apply(this, a); }]));
   const setClip = (t) => { sim.clip = String(t); };
+  // expo-secure-store: a JSON file in the session data dir, so values survive reloads (the keychain survives app restarts).
+  const storeFile = path.join(cfg.dataDir, 'securestore.json');
+  const store = { read: () => { try { return JSON.parse(fs.readFileSync(storeFile, 'utf8')); } catch (_) { return {}; } }, write: (o) => fs.writeFileSync(storeFile, JSON.stringify(o)) };
+  const storeKey = (key, o) => `${(o && o.keychainService) || 'app'}\u0000${key}`;
+  const storeGet = (key, o) => store.read()[storeKey(key, o)] ?? null;
+  const storeSet = (value, key, o) => { const s = store.read(); s[storeKey(key, o)] = String(value); store.write(s); return true; };
+
+  const files = require('./filesystem.js')(h);
 
   const simulators = {
+    // replay = state the supervisor re-sends to a new worker: the store already holds it (and the app may have changed it since).
+    securestore: (s, replay) => { if (!replay) for (const [k, v] of Object.entries(s)) { if (v == null) { const o = store.read(); delete o[storeKey(k)]; store.write(o); } else storeSet(v, k); } },
     clipboard: (s) => { setClip(s.text ?? ''); if (sim.clipEm) rt.guard(() => sim.clipEm.emit('onClipboardChanged', { contentTypes: ['plain-text'] }))(); },
     location: (s) => {
       for (const k of Object.keys(sim.pos)) if (s[k] !== undefined) sim.pos[k] = s[k];
@@ -102,11 +115,27 @@ module.exports = function createRegistry(rt, h) {
     { name: 'RNSModule', package: 'react-native-screens', status: 'implemented' }, // empty spec, presence only
     { name: 'ExpoModulesCore', package: 'expo-modules-core', status: 'implemented', methods: { installModules: noop } },
     ...Object.entries(rt.worklets.modules).map(([name, make]) => ({ name, package: name === 'WorkletsModule' ? 'react-native-worklets' : 'react-native-reanimated', status: 'implemented', make })),
+    { name: 'RNGestureHandlerModule', package: 'react-native-gesture-handler', status: 'implemented', make: () => rt.gestures.module },
     { name: 'NativeDOMCxx', status: 'implemented', make: () => rt.domModule() },
     { name: 'EventDispatcher', status: 'implemented' },
     // RN modules with platform behaviour we do not implement: every call is a diagnostic (and an error for the caller).
     { name: 'ActionSheetManager', status: 'unsupported', methods: all(['showActionSheetWithOptions', 'showShareActionSheetWithOptions', 'dismissActionSheet']) },
-    { name: 'AlertManager', status: 'unsupported', methods: all(['alertWithArgs']) },
+    // Alert.alert: an `alert` presentation layer the Rust host draws like SwiftUI's `.alert`; a button tap comes back as `action`.
+    { name: 'AlertManager', status: 'implemented', strict: true, methods: { alertWithArgs: (a, cb) => {
+      // ponytail: Alert.prompt (text fields) is not drawn; add a text-field layer when apps need it.
+      if (a.type && a.type !== 'default') throw unsupported('AlertManager', `alertWithArgs (type: ${a.type}, Alert.prompt)`);
+      const n = ++alertSeq, keys = new Map();
+      const destructive = a.destructiveButtonKeys || [a.destructiveButtonKey];
+      const actions = (a.buttons && a.buttons.length ? a.buttons : [{ 0: 'OK' }]).map((b, i) => {
+        const [k, text] = Object.entries(b)[0], action = n * 1000 + i, id = `alert${n}#${k}`;
+        keys.set(action, k);
+        const role = k === a.cancelButtonKey ? 'cancel' : destructive.includes(k) ? 'destructive' : undefined;
+        return { kind: 'button', id, action, ...(role && { role }), label: { kind: 'text', id: `${id}#label`, text } };
+      });
+      const layer = { kind: 'alert', title: a.title || '', actions, ...(a.message && { message: { kind: 'text', id: `alert${n}#message`, text: a.message } }) };
+      rt.alerts.push({ layer, keys, cb });
+      rt.scheduleEmit();
+    } } },
     { name: 'ShareModule', status: 'unsupported', async: true, methods: all(['share']) },
     { name: 'PushNotificationManager', status: 'unsupported', async: true },
     { name: 'ImageStoreManager', status: 'unsupported', async: true },
@@ -119,6 +148,10 @@ module.exports = function createRegistry(rt, h) {
 
     // ---- expo modules (globalThis.expo.modules) ----
     { name: 'ExpoFetchModule', package: 'expo', kind: 'expo', status: 'implemented', methods: () => rt.expoFetch(SharedObject) },
+    { name: 'FileSystem', package: 'expo-file-system', kind: 'expo', status: 'implemented', async: true, events: ['downloadProgress'], constants: files.constants,
+      methods: { ...files.methods, ...all(['downloadFileAsync', 'cancelDownloadAsync', 'pickDirectoryAsync', 'pickFileAsync', 'canPreview', 'preview']) } },
+    { name: 'ExponentFileSystem', package: 'expo-file-system', kind: 'expo', status: 'implemented', async: true, events: ['expo-file-system.downloadProgress', 'expo-file-system.uploadProgress'], constants: files.legacyConstants,
+      methods: { ...files.legacy, ...all(['downloadAsync', 'uploadAsync', 'uploadTaskStartAsync', 'downloadResumableStartAsync', 'downloadResumablePauseAsync', 'networkTaskCancelAsync']) } },
     { name: 'ExpoAsset', package: 'expo-asset', kind: 'expo', status: 'implemented', methods: { downloadAsync: async (uri) => { unsupported('ExpoAsset', 'downloadAsync', 'expo-asset'); return uri; } } },
     { name: 'ExpoFontLoader', package: 'expo-font', kind: 'expo', status: 'implemented', methods: { getLoadedFonts: () => [], isLoaded: () => false, loadAsync: async (name) => { unsupported('ExpoFontLoader', `loadAsync(${name})`, 'expo-font'); } } },
     // Screen-awake is a no-op in a simulator surface; accepted, not rendered.
@@ -171,6 +204,13 @@ module.exports = function createRegistry(rt, h) {
         removeWatchAsync: async (id) => { sim.watchers.delete(id); },
         ...all(['getBackgroundPermissionsAsync', 'requestBackgroundPermissionsAsync', 'geocodeAsync', 'reverseGeocodeAsync', 'startLocationUpdatesAsync', 'stopLocationUpdatesAsync', 'hasStartedLocationUpdatesAsync',
           'startGeofencingAsync', 'stopGeofencingAsync', 'hasStartedGeofencingAsync', 'watchDeviceHeading', 'getMotionActivityPermissionsAsync', 'requestMotionActivityPermissionsAsync', 'watchMotionActivityImplAsync']) } },
+    { name: 'ExpoSecureStore', package: 'expo-secure-store', kind: 'expo', status: 'simulated', strict: true,
+      constants: { AFTER_FIRST_UNLOCK: 0, AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: 1, ALWAYS: 2, WHEN_PASSCODE_SET_THIS_DEVICE_ONLY: 3, ALWAYS_THIS_DEVICE_ONLY: 4, WHEN_UNLOCKED: 5, WHEN_UNLOCKED_THIS_DEVICE_ONLY: 6 },
+      methods: {
+        getValueWithKeyAsync: async (k, o) => storeGet(k, o), getValueWithKeySync: storeGet,
+        setValueWithKeyAsync: async (v, k, o) => storeSet(v, k, o), setValueWithKeySync: storeSet,
+        deleteValueWithKeyAsync: async (k, o) => { const s = store.read(); delete s[storeKey(k, o)]; store.write(s); },
+        canUseBiometricAuthentication: () => false } },
     { name: 'ExpoCamera', package: 'expo-camera', kind: 'expo', status: 'unsupported', permissions: ['camera', 'microphone'],
       methods: all(['getCameraPermissionsAsync', 'requestCameraPermissionsAsync', 'getMicrophonePermissionsAsync', 'requestMicrophonePermissionsAsync', 'isAvailableAsync', 'getAvailableVideoCodecsAsync', 'scanFromURLAsync']) },
   ].map((e) => ({ kind: 'turbo', package: e.kind === 'expo' ? undefined : 'react-native', ...e }));
@@ -226,9 +266,9 @@ module.exports = function createRegistry(rt, h) {
       methods: Object.entries(e.make ? {} : implsOf(e)).filter(([k, v]) => typeof v === 'function' || v === UNSUP).map(([k]) => k).filter((k) => !HIDDEN.has(k)),
       events: e.events || [], permissions: e.permissions || [],
     })),
-    simulate(module, state) {
+    simulate(module, state, replay) {
       const f = simulators[String(module).toLowerCase()];
-      if (f) f(state || {}); else log(`SimCore: simulate: no simulated module "${module}" (have: ${Object.keys(simulators).join(', ')})`);
+      if (f) f(state || {}, replay); else log(`SimCore: simulate: no simulated module "${module}" (have: ${Object.keys(simulators).join(', ')})`);
     },
   };
 };

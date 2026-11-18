@@ -143,6 +143,8 @@ pub enum HostMessage {
     /// React Native: host focus moved to / away from the text input `tag`.
     Focus { tag: u64 },
     Blur { tag: u64 },
+    /// React Native: the software keyboard appeared (`height` points, from the screen bottom) or hid (`0`).
+    Keyboard { height: f64 },
     /// React Native: return pressed in the text input `tag`.
     Submit { tag: u64 },
     /// React Native scroll gesture on `tag`: `x`/`y` content offset, sizes in points.
@@ -235,6 +237,7 @@ mod tests {
         for (m, j) in [
             (HostMessage::Focus { tag: 9 }, r#"{"type":"focus","tag":9}"#),
             (HostMessage::Blur { tag: 9 }, r#"{"type":"blur","tag":9}"#),
+            (HostMessage::Keyboard { height: 335.0 }, r#"{"type":"keyboard","height":335.0}"#),
             (HostMessage::Submit { tag: 9 }, r#"{"type":"submit","tag":9}"#),
             (HostMessage::SelectTab { tag: 4, key: "explore".into() }, r#"{"type":"select_tab","tag":4,"key":"explore"}"#),
             (HostMessage::NativeBack { tag: 5 }, r#"{"type":"native_back","tag":5}"#),

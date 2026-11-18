@@ -322,6 +322,14 @@ impl Host {
                 return Ok(out);
             }
         }
+        // An `Alert.alert` button: a SwiftUI-style action the guest maps to the alert callback.
+        if hit.is_some_and(|n| n.action.is_some()) {
+            let effect = s.inter.pointer(scene, ev);
+            let out = (s.inter.hit.clone(), s.inter.acted);
+            s.send_effect(effect)?;
+            self.scene(id)?;
+            return Ok(out);
+        }
         if on_keyboard {
             let before = s.inter.focus.clone();
             let returned = ev.kind != PointerKind::Down
@@ -339,22 +347,37 @@ impl Host {
         self.rn_touch(id, scene, ev)
     }
 
-    /// React Native touches: down = `start` on the deepest tag, up = `end` on the same tag, click = both.
+    /// React Native touches: down = `start` on the deepest tag, up = `end` on the same tag, click = both,
+    /// drag = `start`, `move`s along (dx, dy) (one per 16 ms of timestamps), `end`, all on the start's target.
     /// After `end` wait for the next tree, but a tap that changes nothing is fine.
     fn rn_touch(&mut self, id: &str, scene: &Scene, ev: PointerEvent) -> Result<(Option<String>, bool), ApiError> {
         let s = self.get(id)?;
         let hit = scene.hit_test(ev.x, ev.y).map(|i| &scene.nodes[i]);
-        let touch = |phase, n: &simcore_render::Node| HostMessage::Touch {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64() * 1000.0);
+        let touch_at = |phase, n: &simcore_render::Node, x: f64, y: f64, timestamp: f64| HostMessage::Touch {
             phase,
             tag: n.tag.unwrap_or(0),
-            x: ev.x,
-            y: ev.y,
-            lx: ev.x - n.bounds.x,
-            ly: ev.y - n.bounds.y,
-            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64() * 1000.0),
+            x,
+            y,
+            lx: x - n.bounds.x,
+            ly: y - n.bounds.y,
+            timestamp,
         };
+        let touch = |phase, n: &simcore_render::Node| touch_at(phase, n, ev.x, ev.y, now);
         let mut target = hit;
         match ev.kind {
+            PointerKind::Drag => {
+                if let Some(n) = hit {
+                    const STEPS: u32 = 8;
+                    s.send(&touch(TouchPhase::Start, n))?;
+                    for i in 1..=STEPS {
+                        let f = f64::from(i) / f64::from(STEPS);
+                        s.send(&touch_at(TouchPhase::Move, n, ev.x + ev.dx * f, ev.y + ev.dy * f, now + 16.0 * f64::from(i)))?;
+                    }
+                    let end = now + 16.0 * f64::from(STEPS + 1);
+                    s.send_and_settle(&touch_at(TouchPhase::End, n, ev.x + ev.dx, ev.y + ev.dy, end))?;
+                }
+            }
             PointerKind::Down => {
                 s.touch = hit.and_then(|n| n.tag);
                 if let Some(n) = hit {

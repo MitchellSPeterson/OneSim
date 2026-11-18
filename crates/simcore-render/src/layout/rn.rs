@@ -477,7 +477,7 @@ impl<'a> Cx<'a, '_> {
             "RootView" | "RCTView" | "RCTScrollView" | "RCTScrollContentView" | "RCTImageView" | "RCTText" | "RCTSwitch"
             | "RCTModalHostView" | "RNSScreenStack" | "RNSScreen" | "RNSScreenContentWrapper" | "RNSTabsHostIOS"
             | "RNSTabsScreenIOS" | "RNCSafeAreaProvider" | "RNCSafeAreaView" | "RNSSafeAreaView"
-            | "ViewManagerAdapter_ExpoImage" | "ViewManagerAdapter_SymbolModule" => {}
+            | "ViewManagerAdapter_ExpoImage" | "ViewManagerAdapter_SymbolModule" | "RNGestureHandlerButton" | "RNGestureHandlerRootView" => {}
             // Drawn by the host from the screen's header props.
             "RNSScreenStackHeaderConfig" | "RNSScreenStackHeaderSubview" => return None,
             c if c.starts_with("ViewManagerAdapter_ExpoGlassEffect_") => {}
@@ -614,6 +614,10 @@ impl<'a> Cx<'a, '_> {
 }
 
 pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
+    let (layers, root): (&[simcore_protocol::Layer], &ViewNode) = match &root.kind {
+        ViewKind::Presentation { content, layers } => (layers, content),
+        _ => (&[], root),
+    };
     let (w, h) = params.viewport;
     let dark = params.appearance == Appearance::Dark;
     let mut cx = Cx { tree: TaffyTree::new(), notes: BTreeSet::new(), scale: params.scale.max(1.0), dark, fonts, modals: vec![], insets: insets(h), inset_top: 0.0, rot: 0.0, stack: None, parent_row: false, span_lh: 0.0 };
@@ -636,6 +640,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
             }
         }
     }
+    super::swiftui::rn_alerts(params, cx.fonts, layers, &mut nodes);
     // RN does not avoid the keyboard: it just covers the bottom of the screen.
     if params.chrome.keyboard && nodes.iter().any(|n| n.field.is_some() && Some(n.id.as_str()) == params.focus) {
         let kb_h = params.device.kb_base_h + params.device.safe_bottom;
