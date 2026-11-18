@@ -1,0 +1,30 @@
+{
+  "ios": {
+    "runtime": "26.5",
+    "build": "23F77",
+    "device": "iPhone 17 Pro",
+    "apiSdk": "27.1"
+  },
+  "expo": {
+    "sdk": "58.0.26",
+    "expoGo": "58.0.7",
+    "reactNative": "0.88.1"
+  },
+  "compose": {
+    "runtime": "1.13.0-beta01",
+    "ui": "1.13.0-beta01",
+    "ui-graphics": "1.13.0-beta01",
+    "ui-text": "1.13.0-beta01",
+    "ui-unit": "1.13.0-beta01",
+    "ui-geometry": "1.13.0-beta01",
+    "ui-tooling-preview": "1.13.0-beta01",
+    "foundation-layout": "1.13.0-beta01",
+    "foundation": "1.13.0-beta01",
+    "animation-core": "1.13.0-beta01",
+    "animation": "1.13.0-beta01",
+    "material3": "1.5.0-beta01",
+    "navigation-compose": "2.10.0-rc01",
+    "activity-compose": "1.13.0-rc01"
+  },
+  "android": {}
+}

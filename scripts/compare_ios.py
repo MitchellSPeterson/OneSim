@@ -4,12 +4,14 @@ Pass rule: every state must have < MAX_DIFF % of its pixels off by more than ~10
 (luminance of the per-pixel RGB difference > 24 of 255). MAX_DIFF is 2% with Apple's
 SF Pro + SF Symbols and 3.5% in fallback mode (SIMCORE_FALLBACK=1: bundled Inter +
 Phosphor). Exits 1 if any state fails. SIMCORE_MAX_DIFF overrides locally."""
+import json
 import os
 import sys
 from pathlib import Path
 from PIL import Image, ImageChops, ImageDraw
 
 FALLBACK = os.environ.get("SIMCORE_FALLBACK") == "1"
+IOS_RUNTIME = json.load(open(Path(__file__).parent.parent / "docs/compatibility/versions.json"))["ios"]["runtime"]
 MAX_DIFF = float(os.environ.get("SIMCORE_MAX_DIFF", "3.5" if FALLBACK else "2.0"))
 ios_dir, sc_dir, out = map(Path, sys.argv[1:4])
 # Maintainer-approved per-state limits, keyed "<fixture dir>/<state>". Keep this list short and justified.
@@ -36,7 +38,7 @@ for ios_png in sorted(ios_dir.glob("*.png")):
     heat = Image.merge("RGB", (diff.point(lambda v: min(255, v * 3)), diff.point(lambda v: 0), diff.point(lambda v: 0)))
     w, h = a.size
     sheet = Image.new("RGB", (w * 3, h + 60), "white")
-    for i, (img, label) in enumerate([(a, "iOS 26.5 Simulator"), (b, "SimCore"), (heat, f"diff {differing:.1f}%")]):
+    for i, (img, label) in enumerate([(a, f"iOS {IOS_RUNTIME} Simulator"), (b, "SimCore"), (heat, f"diff {differing:.1f}%")]):
         sheet.paste(img, (i * w, 60))
         ImageDraw.Draw(sheet).text((i * w + 20, 15), label, fill="black", font_size=36)
     sheet.resize((w * 3 // 3, (h + 60) // 3)).save(out / f"cmp-{ios_png.stem}.png")

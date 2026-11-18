@@ -8,9 +8,9 @@ $ simcore run examples/swiftui-counter --root-view CounterView --click Increment
 
 | Framework | iOS | Android |
 |---|---|---|
-| SwiftUI | ✅ v0.1: navigation, tabs, lists, forms and controls (pickers, sliders, progress), presentations, shapes, text styles, SF Symbols, Liquid Glass, software keyboard, `@State`/`@Binding`/`ObservableObject`/`@AppStorage` ([compatibility](docs/swiftui-compatibility.md)) | n/a |
-| Expo / React Native | 🧪 v0.2 preview: core components, Fast Refresh, Expo Router native stack and tabs, Reanimated, simulated device modules ([API coverage](docs/expo-api-coverage.md)) | 🔜 coming ([API coverage](docs/expo-api-coverage.md)) |
-| Jetpack Compose | n/a | 🔜 planned |
+| SwiftUI | ✅ v0.1: navigation, tabs, lists, forms and controls (pickers, sliders, progress), presentations, shapes, text styles, SF Symbols, Liquid Glass, software keyboard, `@State`/`@Binding`/`ObservableObject`/`@AppStorage` ([API coverage](docs/compatibility/swiftui/README.md)) | n/a |
+| Expo / React Native | 🧪 v0.2 preview: core components, Fast Refresh, Expo Router native stack and tabs, Reanimated, simulated device modules ([API coverage](docs/compatibility/expo/README.md)) | 🔜 coming ([API coverage](docs/compatibility/expo/README.md)) |
+| Jetpack Compose | n/a | 🔜 planned ([API coverage](docs/compatibility/compose/README.md)) |
 
 Beyond SwiftUI, we will reimplement the Apple frameworks apps reach for (Charts, SpriteKit, SceneKit, RealityKit, ARKit, MapKit, StoreKit, MusicKit, PencilKit, WidgetKit, UIKit, CoreGraphics, Metal, Vision); see the [roadmap](docs/roadmap.md#apple-frameworks-beyond-swiftui).
 
@@ -22,7 +22,7 @@ Rendered output stays within 0.4–1.9% of the iOS 26 Simulator pixel-for-pixel 
 
 ## How it works
 
-Your app compiles with `swiftc` against SimCore's own `SwiftUI` module, which shadows Apple's. The app runs as its own process and sends a normalized view tree to the host through a small Rust staticlib over a C ABI. The host lays the tree out with SwiftUI semantics, rasterizes it with tiny-skia and cosmic-text, hit-tests input, and routes button actions back to Swift closures. Details: [docs/architecture.md](docs/architecture.md), [docs/protocol.md](docs/protocol.md), [docs/swiftui-compatibility.md](docs/swiftui-compatibility.md).
+Your app compiles with `swiftc` against SimCore's own `SwiftUI` module, which shadows Apple's. The app runs as its own process and sends a normalized view tree to the host through a small Rust staticlib over a C ABI. The host lays the tree out with SwiftUI semantics, rasterizes it with tiny-skia and cosmic-text, hit-tests input, and routes button actions back to Swift closures. Details: [docs/architecture.md](docs/architecture.md), [docs/protocol.md](docs/protocol.md), [docs/compatibility/swiftui/guest.md](docs/compatibility/swiftui/guest.md).
 
 ## In the browser (WebAssembly)
 
@@ -44,7 +44,7 @@ cd examples/expo-counter && npm install && CI=1 npx expo start --port 8081 &
 cargo run -p simcore-cli -- expo --url http://localhost:8081 --screenshot out.png
 ```
 
-Which APIs work today, per platform, with an overall percentage: [docs/expo-api-coverage.md](docs/expo-api-coverage.md). Details: [frameworks/react-native/README.md](frameworks/react-native/README.md), [docs/protocol.md](docs/protocol.md) §H.
+Which APIs work today, per platform, with an overall percentage: [docs/compatibility/expo/README.md](docs/compatibility/expo/README.md). Details: [frameworks/react-native/README.md](frameworks/react-native/README.md), [docs/protocol.md](docs/protocol.md) §H.
 
 **Android is coming.** The same Expo apps will render as Android (Material) through an Android host; the coverage doc tracks every API for Android from zero so the work can be picked up row by row.
 
@@ -116,7 +116,7 @@ On macOS the host uses the system SF Pro and SF Symbols. Elsewhere, or with `SIM
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Good first work: any ⬜ / 🟠 / ⛔ row in [docs/expo-api-coverage.md](docs/expo-api-coverage.md); open an [API request](https://github.com/MitchellSPeterson/SimCore/issues/new?template=api-request.yml) for it and link it in the row.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Good first work: any ⬜ / 🟠 / ⛔ row in [docs/compatibility/expo/README.md](docs/compatibility/expo/README.md) or [docs/compatibility/swiftui/README.md](docs/compatibility/swiftui/README.md); open an [API request](https://github.com/MitchellSPeterson/SimCore/issues/new?template=api-request.yml) for it and link it in the row.
 
 ## License
 

@@ -1,4 +1,4 @@
-# SwiftUI compatibility (guest side)
+# SwiftUI guest: build, evaluation model and limits
 
 SimCore ships its own Swift module named `SwiftUI` (`frameworks/swiftui/Sources/SwiftUI`). User code is unmodified.
 
@@ -32,6 +32,8 @@ rebuilt every evaluation. After an action, if state changed, the whole root is r
 An `environment` message stores appearance/viewport and re-sends a tree.
 
 ## Supported API
+
+Per-API status, with what is still missing: [README.md](README.md).
 
 | Area | Supported |
 |---|---|
@@ -85,7 +87,7 @@ Limits: no animations (settled states only; the sheet snaps to its detent on rel
 
 ## Other Apple frameworks
 
-SwiftUI apps reach for more than `SwiftUI`. Each of these will be reimplemented in Swift the same way, so `import <Framework>` compiles unchanged ([roadmap](roadmap.md#apple-frameworks-beyond-swiftui)).
+SwiftUI apps reach for more than `SwiftUI`. Each of these will be reimplemented in Swift the same way, so `import <Framework>` compiles unchanged ([roadmap](../../roadmap.md#apple-frameworks-beyond-swiftui)).
 
 | Framework | Status |
 |---|---|
