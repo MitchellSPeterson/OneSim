@@ -146,17 +146,6 @@ fn prop_str(p: &Value, k: &str) -> Option<String> {
     p.get(k).and_then(Value::as_str).map(str::to_owned)
 }
 
-/// Safe-area insets (top, bottom) the guest also derives from the viewport height.
-fn insets(h: f64) -> (f64, f64) {
-    match h as u32 {
-        874 => (62.0, 34.0),
-        852 => (59.0, 34.0),
-        844 => (47.0, 34.0),
-        812 => (44.0, 34.0),
-        _ => (20.0, 0.0),
-    }
-}
-
 /// CSS color strings (`#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()`, a few names).
 fn css_color(s: &str) -> Option<Color> {
     let s = s.trim();
@@ -204,7 +193,7 @@ struct Cx<'a, 'f> {
     fonts: &'f mut Fonts,
     /// Visible `RCTModalHostView`s: laid out against the viewport and painted last.
     modals: Vec<Item<'a>>,
-    /// Safe-area insets (top, bottom) from the viewport height.
+    /// Safe-area insets (top, bottom) of the device profile.
     insets: (f64, f64),
     /// Top inset applied to auto-adjusting scroll views under a stack header.
     inset_top: f64,
@@ -624,7 +613,7 @@ impl<'a> Cx<'a, '_> {
 pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
     let (w, h) = params.viewport;
     let dark = params.appearance == Appearance::Dark;
-    let mut cx = Cx { tree: TaffyTree::new(), notes: BTreeSet::new(), scale: params.scale.max(1.0), dark, fonts, modals: vec![], insets: insets(h), inset_top: 0.0, rot: 0.0, stack: None, parent_row: false, span_lh: 0.0 };
+    let mut cx = Cx { tree: TaffyTree::new(), notes: BTreeSet::new(), scale: params.scale.max(1.0), dark, fonts, modals: vec![], insets: (params.device.safe_top, params.device.safe_bottom), inset_top: 0.0, rot: 0.0, stack: None, parent_row: false, span_lh: 0.0 };
     cx.tree.disable_rounding();
     let bg = if dark { 0.0 } else { 1.0 };
     let mut screen = Node::new("root", "screen");

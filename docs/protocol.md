@@ -337,7 +337,8 @@ It loads the app bundle from Metro and runs React Native's own Fabric renderer; 
 ### Guest launch env
 
 `SIMCORE_METRO_URL`, `SIMCORE_VIEWPORT=393x852`, `SIMCORE_APPEARANCE`, `SIMCORE_SESSION_ID`,
-`SIMCORE_SCALE` (default 3). Optional: `SIMCORE_HMR=1` (connect Metro `/hot`), `SIMCORE_DEBUG=1`.
+`SIMCORE_SCALE` (default 3), `SIMCORE_SAFE_AREA="top,bottom"` (device profile insets, points).
+Optional: `SIMCORE_HMR=0` (disable Fast Refresh), `SIMCORE_DEBUG=1`.
 Bundle: `GET <metro>/` with `expo-platform: ios` → manifest `launchAsset.url`
 (fallback `/index.bundle?platform=ios&dev=true&minify=false`).
 
@@ -364,7 +365,9 @@ Bundle: `GET <metro>/` with `expo-platform: ios` → manifest `launchAsset.url`
 - `{"type":"layout","frames":{"<tag>":[x,y,w,h]}}` — page frames after each layout. Answers
   `measure*` and fires `onLayout`. Optional: guest works without it (zeros).
 - `{"type":"reload"}` — full reload (fresh JS global).
-- `environment` → Appearance `appearanceChanged`, Dimensions `didUpdateDimensions`.
+- `environment` → Appearance `appearanceChanged`, Dimensions `didUpdateDimensions`. For React
+  Native sessions it also carries `"safeArea":{"top","bottom"}` (device profile). The guest keeps
+  the last `environment` across full reloads.
 
 Unsupported native modules: stderr `SimCore: <Module> is not supported (method: <m>)` plus one
 `{"type":"error"}` per module (surfaced by `get_errors`). Nothing reports fake success.
@@ -450,8 +453,9 @@ nodes; the host draws the platform chrome.
   CSS string, size from style), `ViewManagerAdapter_ExpoGlassEffect_GlassView`
   (`glassEffectStyle`, `tintColor`, `isInteractive`, radii), `…_GlassContainer` (`spacing`).
 - Root `props.backgroundColor`: `expo-system-ui` background.
-- Safe-area insets come from the viewport height (874 → 62/34, 852 → 59/34, 844 → 47/34,
-  812 → 44/34, else 20/0); the guest sends them to `RNCSafeAreaProvider` (`topInsetsChange`).
+- Safe-area insets are the host device profile's (`SIMCORE_SAFE_AREA`, `environment.safeArea`); the
+  guest sends them to `RNCSafeAreaProvider` (`topInsetsChange`) and the host uses the same values
+  for `RNCSafeAreaView` padding.
 
 Host → guest:
 - `{"type":"select_tab","tag":<RNSTabsHostIOS tag>,"key":"<screenKey>"}` (or `"index":n`) when a

@@ -94,9 +94,9 @@ module.exports = function createRegistry(rt, h) {
     { name: 'LinkingManager', status: 'implemented', async: true, methods: { getInitialURL: () => Promise.resolve(null), canOpenURL: () => Promise.resolve(false), openURL: UNSUP, openSettings: UNSUP, ...listener } },
     // JS defaults apply for every flag when the native getter returns undefined.
     { name: 'NativeReactNativeFeatureFlagsCxx', status: 'implemented', make: () => new Proxy({}, { get: (t, p) => (typeof p === 'string' ? () => undefined : undefined) }) },
-    // Portrait insets by viewport height (62/34 on the 402x874 iPhone 17 Pro); the Rust host owns the real chrome.
+    // Portrait insets from the host's device profile (62/34 on the iPhone 17 Pro).
     { name: 'RNCSafeAreaContext', package: 'react-native-safe-area-context', status: 'simulated', constants: () => {
-      const insets = insetsFor(rt.window.height);
+      const insets = insetsFor();
       return { initialWindowMetrics: { frame: { x: 0, y: 0, width: rt.window.width, height: rt.window.height }, insets, verticalCornerAdaptedInsets: insets, horizontalCornerAdaptedInsets: insets } };
     } },
     { name: 'RNSModule', package: 'react-native-screens', status: 'implemented' }, // empty spec, presence only

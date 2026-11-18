@@ -42,7 +42,8 @@ function expoViewConfig(key) {
 // Duration of a stack push/pop (UINavigationController default) between willAppear and appear; SIMCORE_NAV_MS overrides (0 = instant).
 const NAV_MS = process.env.SIMCORE_NAV_MS != null ? Number(process.env.SIMCORE_NAV_MS) : 350;
 // Safe-area insets of portrait iPhones by logical height (Dynamic Island 62, notch/DI 59 or 47, X-style notch 44, home-button 20).
-const insetsFor = (h) => ({ top: h >= 874 ? 62 : h >= 852 ? 59 : h >= 812 ? (h >= 844 ? 47 : 44) : 20, left: 0, right: 0, bottom: h >= 812 ? 34 : 0 });
+// Safe-area insets come from the host's device profile (SIMCORE_SAFE_AREA "top,bottom", then `environment.safeArea`).
+const insetsFor = () => ({ top: cfg.safe.top, left: 0, right: 0, bottom: cfg.safe.bottom });
 const NAV_KIND = { RNSScreenStack: 'stacks', RNSTabsHostIOS: 'tabs', RNCSafeAreaProvider: 'providers', RNSScreenStackHeaderConfig: 'headers' };
 const EXPO_IMAGE = 'ViewManagerAdapter_ExpoImage';
 const isNativeView = (n) => NATIVE_VIEWS.has(n) || /^ViewManagerAdapter_/.test(n);
@@ -101,6 +102,15 @@ const cfg = {
 {
   const m = /^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$/.exec(process.env.SIMCORE_VIEWPORT || '393x852');
   cfg.width = m ? +m[1] : 393; cfg.height = m ? +m[2] : 852;
+  const [top, bottom] = (process.env.SIMCORE_SAFE_AREA || '62,34').split(',').map(Number);
+  cfg.safe = { top: top || 0, bottom: bottom || 0 };
+  // After a reload the supervisor hands over the last `environment` the host sent (launch env is stale by then).
+  const e = workerData && workerData.env;
+  if (e) {
+    if (e.appearance) cfg.appearance = e.appearance;
+    if (e.viewport) { cfg.width = e.viewport.width; cfg.height = e.viewport.height; }
+    if (e.safeArea) cfg.safe = { top: e.safeArea.top, bottom: e.safeArea.bottom };
+  }
 }
 
 const sendEvent = (name, detail) => send({ type: 'event', name, detail: detail || {} });
@@ -421,7 +431,7 @@ class Runtime {
   // RNCSafeAreaProvider: topInsetsChange when insets or the provider's frame changed (first time after mount).
   providerEvent(tag) {
     const f = this.frames[tag] || [0, 0, this.window.width, this.window.height];
-    const insets = insetsFor(this.window.height), key = JSON.stringify([insets, f]);
+    const insets = insetsFor(), key = JSON.stringify([insets, f]);
     if (this.nav.providers.get(tag) === key) return;
     this.nav.providers.set(tag, key);
     this.ev(tag, 'topInsetsChange', { insets, verticalCornerAdaptedInsets: insets, horizontalCornerAdaptedInsets: insets, frame: { x: f[0], y: f[1], width: f[2], height: f[3] } });
@@ -579,6 +589,7 @@ class Runtime {
       case 'layout': Object.assign(this.frames, m.frames); this.nav.providers.forEach((_, t) => this.providerEvent(t)); this.fireLayouts(); break;
       case 'environment': {
         if (m.appearance && m.appearance !== this.appearance) { this.appearance = m.appearance; this.emit('appearanceChanged', { colorScheme: this.appearance }); }
+        if (m.safeArea) cfg.safe = { top: m.safeArea.top, bottom: m.safeArea.bottom };
         if (m.viewport) { this.window = { width: m.viewport.width, height: m.viewport.height }; this.emit('didUpdateDimensions', this.dimensions()); }
         break;
       }
@@ -1009,11 +1020,12 @@ async function mainFetch(w, m, fetching) {
 function mainThread() {
   let worker = null, base = 0, last = 0, generation = -1;
   const simulated = new Map(); // module -> merged `simulate` state, replayed into every new worker (state survives reloads)
+  let lastEnv = null; // last `environment` from the host, the starting point of every reloaded worker
   const out = (m) => process.stdout.write(JSON.stringify(m) + '\n');
   const start = () => {
     if (worker) worker.terminate();
     base = last; // tree versions stay monotonic across reloads
-    const w = (worker = new Worker(__filename, { argv: process.argv.slice(2), stdout: false, stderr: false, workerData: { generation: ++generation } }));
+    const w = (worker = new Worker(__filename, { argv: process.argv.slice(2), stdout: false, stderr: false, workerData: { generation: ++generation, env: lastEnv } }));
     for (const [module, state] of simulated) w.postMessage({ type: 'simulate', module, state });
     const sockets = new Map(), fetching = new Map();
     w.on('exit', () => { sockets.forEach((ws) => ws.close()); fetching.forEach((ac) => ac.abort()); fetching.clear(); });
@@ -1045,6 +1057,7 @@ function mainThread() {
     let m; try { m = JSON.parse(line); } catch (_) { return; }
     if (m.type === 'shutdown') process.exit(0);
     else if (m.type === 'reload') start();
+    else if (m.type === 'environment') { lastEnv = { ...lastEnv, ...m }; if (worker) worker.postMessage(m); }
     else if (m.type === 'simulate') { simulated.set(m.module, { ...simulated.get(m.module), ...m.state }); if (worker) worker.postMessage(m); }
     else if (worker) worker.postMessage(m);
   });
