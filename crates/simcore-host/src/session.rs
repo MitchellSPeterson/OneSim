@@ -159,6 +159,7 @@ fn is_multiline(n: &ViewNode, id: &str) -> bool {
         simcore_protocol::ViewKind::Rn { component, children, .. } => {
             (n.id == id && component == "RCTMultilineTextInputView") || children.iter().any(|c| is_multiline(c, id))
         }
+        simcore_protocol::ViewKind::Presentation { content, .. } => is_multiline(content, id),
         _ => false,
     }
 }
@@ -523,7 +524,17 @@ impl Session {
         if let Some(tag) = tag(&after) {
             self.send(&HostMessage::Focus { tag })?;
         }
+        // The keyboard stays up while focus moves between fields.
+        if before.is_some() != after.is_some() {
+            self.send_keyboard(after.is_some())?;
+        }
         Ok(())
+    }
+
+    /// React Native: the keyboard (drawn while a field is focused) appeared or hid.
+    fn send_keyboard(&mut self, shown: bool) -> Result<(), ApiError> {
+        let height = if shown { self.device.kb_base_h + self.device.safe_bottom } else { 0.0 };
+        self.send(&HostMessage::Keyboard { height })
     }
 
     /// React Native: return pressed while `before` was focused (the interaction state already
@@ -536,7 +547,8 @@ impl Session {
             self.inter.focus = Some(before.to_string());
             Ok(())
         } else {
-            self.send(&HostMessage::Blur { tag })
+            self.send(&HostMessage::Blur { tag })?;
+            self.send_keyboard(false)
         }
     }
 

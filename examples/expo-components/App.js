@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { FlatList, Image, Modal, NativeModules, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { FlatList, Image, Keyboard, Modal, NativeModules, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 
 const NET_IMG = 'http://127.0.0.1:8097/net.png';
 export default function App() {
@@ -18,6 +18,7 @@ export default function App() {
   const [l1, setL1] = useState('');
   const [l2, setL2] = useState('');
   const [shown, setShown] = useState('no');
+  const [kb, setKb] = useState('');
   const ref = useRef(null);
   const sref = useRef(null);
   useEffect(() => {
@@ -31,8 +32,13 @@ export default function App() {
     x.onerror = () => setXhr('ERR');
     x.send();
     Image.getSize(NET_IMG, (w, h) => setSizes(w + 'x' + h), (e) => setSizes('ERR'));
+    const subs = ['keyboardWillShow', 'keyboardDidShow', 'keyboardWillHide', 'keyboardDidHide'].map((n) => Keyboard.addListener(n, (e) => {
+      const ev = `${n.slice(8)}:${e.endCoordinates.height}@${e.endCoordinates.screenY}:${Keyboard.isVisible()},`;
+      setKb((s) => s + ev);
+    }));
     setTimeout(() => ref.current && ref.current.focus(), 800);
     setTimeout(() => sref.current && sref.current.scrollTo({ y: 50, animated: false }), 900);
+    return () => subs.forEach((x) => x.remove());
   }, []);
   return (
     <View style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -51,6 +57,8 @@ export default function App() {
       <Text>{'l1:' + l1}</Text>
       <Text>{'l2:' + l2}</Text>
       <Text>{'shown:' + shown}</Text>
+      <Text>{'kb:' + kb}</Text>
+      <Pressable onPress={() => Keyboard.dismiss()}><Text>dismiss</Text></Pressable>
       <Modal visible transparent onShow={() => setShown('yes')}><View /></Modal>
       <TextInput ref={ref} value={text} onChangeText={setText} onSubmitEditing={(e) => setSub(e.nativeEvent.text)}
         onFocus={() => setFoc('focus')} onBlur={() => setFoc('blur')} placeholder="type" style={{ height: 40 }} />

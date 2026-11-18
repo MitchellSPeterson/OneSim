@@ -107,7 +107,7 @@ All input params also carry `"sessionId"`.
 | method | params | result |
 |---|---|---|
 | `modules.list` | `{"sessionId"}` | `{"modules":[{"name","package"?,"status":"implemented"\|"simulated"\|"unsupported","methods":[...],"events":[...],"permissions"?:[...]}]}` |
-| `modules.simulate` | `{"sessionId","module","state":{...}}` | `{}`: set simulated platform state, e.g. `{"module":"location","state":{"latitude":37.33,"longitude":-122.03}}`, `{"module":"clipboard","state":{"text":"hi"}}`, `{"module":"permissions","state":{"location":"granted"\|"denied"\|"undetermined"}}` |
+| `modules.simulate` | `{"sessionId","module","state":{...}}` | `{}`: set simulated platform state, e.g. `{"module":"location","state":{"latitude":37.33,"longitude":-122.03}}`, `{"module":"clipboard","state":{"text":"hi"}}`, `{"module":"permissions","state":{"location":"granted"\|"denied"\|"undetermined"}}`, `{"module":"securestore","state":{"token":"abc"}}` (seeds expo-secure-store; `null` deletes a key; not re-applied on reload) |
 
 Unsupported calls print a diagnostic on the guest's stderr, e.g.
 

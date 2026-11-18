@@ -56,12 +56,18 @@ run(async () => {
   ok('ref.focus() -> focus_request');
   h.send({ type: 'focus', tag });
   await until(() => rows().foc === 'focus', 'onFocus'); ok('focus -> onFocus');
+  h.send({ type: 'keyboard', height: 335 }); // 852 - 335 = 517
+  await until(() => rows().kb === 'WillShow:335@517:false,DidShow:335@517:true,', 'keyboard show events'); ok('keyboard -> keyboardWillShow/DidShow (height, screenY, Keyboard.isVisible)');
+  h.tap('dismiss');
+  await until(() => h.other.some((m) => m.type === 'focus_request' && m.tag === null), 'Keyboard.dismiss'); ok('Keyboard.dismiss() -> focus_request null');
   h.send({ type: 'text_input', field: tag, version: 1, text: 'Hello' }); h.send({ type: 'text_input', field: +upper.id, version: 1, text: 'abc' });
   const cur = (t) => find('RCTSinglelineTextInputView').find((v) => v.id === t.id);
   await until(() => rows().text === 'Hello' && cur(input).props.__simcoreText === 'Hello', 'onChangeText'); ok('text_input -> onChangeText + __simcoreText');
   await until(() => rows().up === 'ABC' && cur(upper).props.__simcoreText === 'ABC', 'controlled rewrite'); ok('controlled value rewrite via setTextAndSelection');
   h.send({ type: 'submit', tag });
   await until(() => rows().sub === 'Hello' && rows().foc === 'blur', 'submit'); ok('submit -> onSubmitEditing + blur');
+  h.send({ type: 'keyboard', height: 0 });
+  await until(() => rows().kb.endsWith('DidShow:335@517:true,WillHide:335@852:true,DidHide:335@852:false,'), 'keyboard hide events'); ok('keyboard 0 -> keyboardWillHide/DidHide');
   h.send({ type: 'layout', frames: { [sv.id]: [0, 300, 393, 200], [fl.id]: [0, 500, 393, 200] } });
   await until(() => rows().fl === '393x200', 'FlatList onLayout'); ok('layout -> FlatList onLayout');
   for (const [phase, y] of [['begin', 0], ['scroll', 120], ['end', 120]]) h.send({ type: 'scroll', tag: +sv.id, phase, x: 0, y, contentWidth: 393, contentHeight: 1000, width: 393, height: 200 });
@@ -69,5 +75,33 @@ run(async () => {
   await until(() => rows().y === '120' && rows().fy === '340', 'onScroll'); ok('scroll -> onScroll (ScrollView + FlatList)');
   h.send({ type: 'touch', phase: 'start', tag: +sw.id, x: 10, y: 10 }); h.send({ type: 'touch', phase: 'end', tag: +sw.id, x: 10, y: 10 });
   await until(() => rows().sw === 'true', 'Switch'); ok('Switch tap -> onValueChange');
+
+  // Alert.alert (examples/expo-showcase, Controls): an `alert` presentation layer; its button's action runs the callback.
+  await startMetro(join(root, 'examples/expo-showcase'), port + 1);
+  const s = startHost({ SIMCORE_METRO_URL: `http://localhost:${port + 1}`, SIMCORE_VIEWPORT: '402x874', SIMCORE_APPEARANCE: 'light' });
+  await s.until(() => /Controls/.test(s.text), 'showcase home', 90000); s.tap('Controls>');
+  await s.until(() => /Count: 0/.test(s.text), 'Controls'); s.tap('Increment');
+  await s.until(() => /Count: 1/.test(s.text), 'Count: 1'); s.tap('Count: 1');
+  await s.until(() => s.layers.length === 1, 'alert layer');
+  const al = s.layers[0], roles = al.actions.map((b) => `${b.label.text}:${b.role}`).join();
+  if (al.kind !== 'alert' || al.title !== 'Reset count?' || al.message?.text !== 'The count goes back to zero.' || roles !== 'Cancel:cancel,Reset:destructive') throw new Error('alert layer ' + JSON.stringify(al));
+  ok('Alert.alert -> alert layer (title, message, cancel/destructive roles)');
+  s.send({ type: 'action', id: al.actions[1].action, version: 0 });
+  await s.until(() => !s.layers.length && /Count: 0/.test(s.text), 'Reset callback'); ok('alert button action -> onPress callback, layer dropped');
+
+  // KeyboardAvoidingView (showcase Form, opened by tapping the home title): keyboard -> bottom padding = keyboard overlap.
+  s.tap('Back');
+  await s.until(() => /Showcase/.test(s.text), 'home');
+  s.tap('Showcase');
+  await s.until(() => /Message/.test(s.text), 'Form');
+  const kav = () => { let r; walk(s.tree, (v) => { if (v.props.justifyContent === 'flex-end' && v.props.padding === 16) r = v; }); return r; };
+  const parentOf = (t) => { let p; walk(s.tree, (v) => { if (v.children?.some((c) => c.id === t)) p = v; }); return p; };
+  const k = kav(), msg = (() => { let r; walk(s.tree, (v) => { if (v.component === 'RCTSinglelineTextInputView') r = v; }); return r; })();
+  s.send({ type: 'layout', frames: { [parentOf(k.id).id]: [0, 62, 402, 812], [k.id]: [0, 106, 402, 768] } });
+  s.send({ type: 'focus', tag: +msg.id }); s.send({ type: 'keyboard', height: 335 });
+  await s.until(() => kav()?.props.paddingBottom === 335, 'KeyboardAvoidingView padding'); ok('keyboard -> KeyboardAvoidingView paddingBottom 335 (behavior padding)');
+  s.send({ type: 'blur', tag: +msg.id }); s.send({ type: 'keyboard', height: 0 });
+  await s.until(() => kav()?.props.paddingBottom === 0, 'KeyboardAvoidingView padding 0'); ok('keyboard hide -> paddingBottom 0');
+  if (s.errors.length) throw new Error(s.errors[0]);
   console.log('OK: milestone 1 checks passed');
 }, 90000);

@@ -329,6 +329,12 @@ fn react_native_touch_round_trip() {
     assert!(text(&mut host).starts_with("Count: 1"));
     host.pointer(&id, PointerEvent::new(PointerKind::Click, f.x + 1.0, f.y + 1.0)).unwrap();
     assert!(text(&mut host).starts_with("Count: 2"));
+    // A drag is start, 8 moves along (dx, dy), end, all on the start's target.
+    let drag = PointerEvent { dx: 30.0, ..PointerEvent::new(PointerKind::Drag, f.x + 1.0, f.y + 1.0) };
+    assert_eq!(host.pointer(&id, drag).unwrap(), (Some("5".into()), true));
+    let root = host.inspect(&id).unwrap().1;
+    let log = find(&root, &|n| n.text.as_deref().is_some_and(|t| t.starts_with("Log:"))).unwrap().text.clone().unwrap();
+    assert!(log.contains(" D8:") && text(&mut host).starts_with("Count: 3"), "{log}");
     host.shutdown();
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -343,14 +349,14 @@ fn rn_text_input_flow(host: &mut Host, id: &str) {
     let field = find(&root, &|n| n.role.as_deref() == Some("textfield") && n.label.as_deref() == Some("Name")).unwrap();
     let (x, y) = center(field);
     host.pointer(id, PointerEvent::new(PointerKind::Click, x, y)).unwrap();
-    assert_eq!(log(host), "Log: F");
+    assert_eq!(log(host), "Log: F K335.0");
     let root = host.inspect(id).unwrap().1;
     assert!(find(&root, &|n| n.kind == "keyboard").is_some(), "focus shows the keyboard");
     assert_eq!(host.status(id).unwrap()["focus"], "8");
     host.keyboard(id, KeyboardEvent::Text { text: "Ann".into() }).unwrap();
-    assert_eq!(log(host), "Log: F T:Ann");
+    assert_eq!(log(host), "Log: F K335.0 T:Ann");
     host.keyboard(id, KeyboardEvent::Key { key: "enter".into() }).unwrap();
-    assert_eq!(log(host), "Log: F T:Ann S B");
+    assert_eq!(log(host), "Log: F K335.0 T:Ann S B K0.0");
     let root = host.inspect(id).unwrap().1;
     assert!(find(&root, &|n| n.kind == "keyboard").is_none(), "return blurs a single-line input");
     assert_eq!(find(&root, &|n| n.id == "8").unwrap().value.as_deref(), Some("Ann"));

@@ -62,7 +62,7 @@ export function startHost(env, onTree) {
   p.on('exit', (c) => c && fail(`host exited ${c}`));
   createInterface({ input: p.stdout }).on('line', (line) => {
     const m = JSON.parse(line);
-    if (m.type === 'tree') { h.tree = m.root; h.text = textOf(m.root); h.versions.push(m.version); onTree?.(h, m); }
+    if (m.type === 'tree') { h.layers = m.root.layers || []; if (m.root.kind === 'presentation') m.root = m.root.content; h.tree = m.root; h.text = textOf(m.root); h.versions.push(m.version); onTree?.(h, m); }
     else if (m.type === 'error') h.errors.push(m.message);
     else if (m.type === 'event') h.events.push(m);
     else if (m.type === 'modules') h.modules.push(m.modules);
