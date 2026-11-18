@@ -335,6 +335,8 @@ impl Session {
                         sh.push_error("guest", format!("unexpected guest protocol version {protocol}"))
                     }
                     Ok(GuestMessage::Hello { .. }) => {}
+                    // ponytail: lifecycle events are only logged; the M4 event stream will deliver them to clients.
+                    Ok(GuestMessage::Event { name, detail }) => log::debug!("guest event {name}: {detail}"),
                     Err(e) => sh.push_error("host", format!("bad guest message ({e}): {line}")),
                 }
             }
@@ -497,6 +499,23 @@ impl Session {
             }
         }
         Ok(changed)
+    }
+
+    /// Full JS reload (React Native): returns once the reloaded app submits its first tree.
+    pub fn reload(&mut self) -> Result<(), ApiError> {
+        self.require_running()?;
+        let before = self.shared.lock().generation;
+        self.send(&HostMessage::Reload)?;
+        let g = self.shared.lock();
+        let (g, _) = self
+            .shared
+            .cv
+            .wait_timeout_while(g, LAUNCH_TIMEOUT, |i| i.generation == before && !i.exited)
+            .unwrap_or_else(|e| e.into_inner());
+        if g.generation == before {
+            return Err(err(ErrorCode::Timeout, "no tree after reload"));
+        }
+        Ok(())
     }
 
     pub fn stop(&mut self) {

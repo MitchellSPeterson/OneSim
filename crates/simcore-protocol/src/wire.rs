@@ -17,6 +17,8 @@ pub enum GuestMessage {
     /// React Native `scrollTo` / `scrollToEnd` commands.
     #[serde(rename = "scroll_to")]
     ScrollTo { tag: u64, x: ScrollTarget, y: ScrollTarget },
+    /// Lifecycle event (`bundle.loaded`, `bundle.reloaded`, `bundle.error`, `refresh.applied`).
+    Event { name: String, #[serde(default)] detail: serde_json::Value },
 }
 
 /// A `scroll_to` coordinate: an offset in points or the string `"end"` (max offset).
@@ -181,6 +183,10 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(g, GuestMessage::Tree { version: 3, .. }));
+        assert!(matches!(
+            serde_json::from_str::<GuestMessage>(r#"{"type":"event","name":"refresh.applied","detail":{"ms":120}}"#).unwrap(),
+            GuestMessage::Event { ref name, .. } if name == "refresh.applied"
+        ));
         assert!(matches!(
             serde_json::from_str::<GuestMessage>(r#"{"type":"hello","protocol":1}"#).unwrap(),
             GuestMessage::Hello { protocol: 1 }

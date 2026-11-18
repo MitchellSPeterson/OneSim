@@ -45,6 +45,7 @@ pub const COMMANDS: &[&str] = &[
     "create_session",
     "start_session",
     "stop_session",
+    "reload_session",
     "get_session_status",
     "set_viewport",
     "set_appearance",
@@ -445,6 +446,11 @@ impl Host {
                 let a: SessionIdParams = p(params)?;
                 self.stop_session(&a.session_id)?;
                 ok(json!({"state": "stopped"}))
+            }
+            "reload_session" => {
+                let a: SessionIdParams = p(params)?;
+                self.get(&a.session_id)?.reload()?;
+                ok(json!({"state": self.state(&a.session_id)?.as_str()}))
             }
             "get_session_status" => self.status(&p::<SessionIdParams>(params)?.session_id),
             "set_viewport" => {

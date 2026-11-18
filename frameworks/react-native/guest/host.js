@@ -13,12 +13,11 @@ const readline = require('node:readline');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { Worker, isMainThread, parentPort } = require('node:worker_threads');
+const { Worker, isMainThread, parentPort, workerData } = require('node:worker_threads');
 
 Error.stackTraceLimit = 60;
 const ROOT_TAG = 1;
 const TEXT_INPUTS = new Set(['RCTSinglelineTextInputView', 'RCTMultilineTextInputView']);
-const fetching = new Map(); // main thread: id -> AbortController of worker HTTP requests (cleared on worker exit)
 const env = process.env; // `process` is removed from the guest global before the bundle runs
 if (isMainThread) return mainThread();
 
@@ -68,13 +67,15 @@ const cfg = {
   appearance: process.env.SIMCORE_APPEARANCE === 'dark' ? 'dark' : 'light',
   scale: Number(process.env.SIMCORE_SCALE) || 3,
   session: process.env.SIMCORE_SESSION_ID || '',
-  hmr: process.env.SIMCORE_HMR === '1',
+  hmr: process.env.SIMCORE_HMR !== '0', // Fast Refresh via Metro's /hot; SIMCORE_HMR=0 turns it off
+  generation: (workerData && workerData.generation) || 0, // 0 = first load, >0 = after a reload
 };
 {
   const m = /^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$/.exec(process.env.SIMCORE_VIEWPORT || '393x852');
   cfg.width = m ? +m[1] : 393; cfg.height = m ? +m[2] : 852;
 }
 
+const sendEvent = (name, detail) => send({ type: 'event', name, detail: detail || {} });
 const sendError = (message) => { log('SimCore error:', message); send({ type: 'error', message: String(message) }); };
 const reportedModules = new Set();
 function unsupported(mod, method) {
@@ -355,7 +356,11 @@ class Runtime {
   // ---- host -> guest ----
   onMessage(m) {
     switch (m.type) {
-      case '__wsEvent': this.emit(m.event, m.payload); break;
+      case '__wsEvent':
+        if (m.event === 'websocketMessage' && m.payload.type === 'text' && m.payload.data.includes('"error"')) {
+          try { const d = JSON.parse(m.payload.data); if (d.type === 'error') this.hmrError(d.body || {}); } catch (_) { /* not JSON */ }
+        }
+        this.emit(m.event, m.payload); break;
       case '__fetchHead': case '__fetchChunk': case '__fetchEnd': case '__fetchError': this.guard(fetchEvent)(m); break;
       case 'touch': {
         const n = this.nodes.get(m.tag);
@@ -495,6 +500,23 @@ class Runtime {
     return this.callableCache.get(name);
   }
 
+  // Metro HMR `error` (syntax / resolution failure): RN's listener throws inside an event-target-shim dispatch where it is
+  // swallowed, so report it here. The last good tree stays (no commit happens); fixing the file recovers via the next update.
+  hmrError(b) {
+    const where = (b.errors || []).map((x) => [x.filename, x.lineNumber, x.column].filter((v) => v != null).join(':') + (x.description ? ` ${x.description}` : '')).filter(Boolean).join('\n');
+    sendEvent('bundle.error', { type: b.type, message: b.message, errors: b.errors });
+    sendError(`${b.type || 'Error'}: ${b.message || ''}${where ? '\n' + where : ''}`);
+    // Metro lost this client's revision (edits raced, Metro restarted): RN would say "Reload to reconnect"; do it.
+    if (b.type === 'RevisionNotFoundError' || b.type === 'GraphNotFoundError') this.reload(b.type);
+  }
+
+  // Full reload (DevSettings.reload, expo reloadAppAsync, React Refresh bail-out): main thread swaps the worker.
+  reload(reason) {
+    if (this.dead) return;
+    log('SimCore: reload:', reason || '');
+    send({ type: '__reload', reason: String(reason || '') });
+  }
+
   dispose() {
     this.dead = true;
   }
@@ -546,7 +568,7 @@ class Runtime {
       BlobModule: () => self.blobModule(),
       FileReaderModule: () => self.fileReaderModule(),
       LogBox: () => ({ show: noop, hide: noop }),
-      DevSettings: () => ({ reload: noop, ...listener, setHotLoadingEnabled: noop, setIsDebuggingRemotely: noop, toggleElementInspector: noop, addMenuItem: noop, openDebugger: noop, setProfilingEnabled: noop }),
+      DevSettings: () => ({ reload: () => self.reload('reload'), reloadWithReason: (r) => self.reload(r), onFastRefresh: () => sendEvent('refresh.applied', {}), ...listener, setHotLoadingEnabled: noop, setIsDebuggingRemotely: noop, toggleElementInspector: noop, addMenuItem: noop, openDebugger: noop, setProfilingEnabled: noop }),
       DevLoadingView: () => ({ showMessage: noop, hide: noop }),
       DevMenu: () => ({ show: noop, reload: noop, setProfilingEnabled: noop, setHotLoadingEnabled: noop }),
       RedBox: () => ({ setExtraData: noop, dismiss: noop }),
@@ -769,7 +791,7 @@ class Runtime {
     return {
       EventEmitter, SharedObject, SharedRef, NativeModule, modules,
       // ExpoModulesCore reads these; "bare" matches an app without native expo modules linked.
-      getViewConfig: () => null, reloadAppAsync: async () => self.reload && self.reload(),
+      getViewConfig: () => null, reloadAppAsync: async () => self.reload('expo reloadAppAsync'),
       uuidv4: () => node.randomUUID(), uuidv5: (n, ns) => ns,
       expoModulesCoreVersion: { version: '0.0.0', major: 0, minor: 0, patch: 0 },
       DeviceEventEmitter: undefined, // set below once RN's emitter exists
@@ -816,13 +838,18 @@ class Runtime {
       const r = await node.fetch(bundleUrl);
       if (!r.ok) throw new Error(`HTTP ${r.status}: ${(await r.text()).slice(0, 500)}`);
       src = await r.text();
-    } catch (e) { return sendError(`bundle fetch failed (${bundleUrl}): ${e.message}`); }
+    } catch (e) { sendEvent('bundle.error', { message: e.message, url: bundleUrl }); return sendError(`bundle fetch failed (${bundleUrl}): ${e.message}`); }
     if (this.dead) return;
 
     const modules = this.makeModules(src);
     const t = this.makeTimers();
     const sandbox = {
       ...t,
+      // RN iOS's HMRClient (metro-runtime) evals update modules through this.
+      // In __DEV__ RN reports uncaught/render errors to LogBox only, never to ExceptionsManager.reportException.
+      // ExceptionsManager.handleException (every error path ends there) asks this hook first; false = carry on as usual.
+      'RN$handleException': (e) => { sendError(e && e.stack ? (e.name && !String(e.stack).startsWith(e.name) ? `${e.name}: ` : '') + e.stack : e); return false; },
+      globalEvalWithSourceUrl: (code, url) => vm.runInThisContext(code, { filename: url }),
       nativeLoggingHook: (msg, level) => log(`[${level}] ${msg}`),
       nativePerformanceNow: () => node.performance.now(),
       RN$Bridgeless: true,
@@ -838,12 +865,12 @@ class Runtime {
     delete globalThis.process; delete globalThis.Buffer; // Node-isms Hermes doesn't have; Metro's prelude makes its own `process`
     try {
       vm.runInThisContext(src, { filename: bundleUrl });
-      if (!cfg.hmr) log('SimCore: HMR client not started (set SIMCORE_HMR=1 to call HMRClient.setup)');
       const keys = globalThis.RN$AppRegistry.getAppKeys().filter((k) => k !== 'LogBox');
       const key = keys.includes('main') ? 'main' : keys[0];
       if (!key) return sendError('no component registered with AppRegistry');
       const reg = this.getCallable('AppRegistry');
       this.guard(() => reg.runApplication(key, { rootTag: ROOT_TAG, initialProps: {}, fabric: true }))();
+      sendEvent(cfg.generation ? 'bundle.reloaded' : 'bundle.loaded', { url: bundleUrl });
       if (cfg.hmr) this.setupHmr();
     } catch (e) { this.onUncaught(e); } finally {
       if (env.SIMCORE_DEBUG_EVAL) log('DEBUG', String(vm.runInThisContext(env.SIMCORE_DEBUG_EVAL)));
@@ -853,7 +880,8 @@ class Runtime {
   setupHmr() {
     const u = new URL(this.scriptURL);
     const hmr = this.getCallable('HMRClient');
-    if (hmr) this.guard(() => hmr.setup('ios', 'index', u.hostname, Number(u.port) || 80, true, u.protocol.replace(':', '')))();
+    const entry = (u.pathname.match(/([^/]+)\.bundle/) || [0, 'index'])[1];
+    if (hmr) this.guard(() => hmr.setup('ios', entry, u.hostname, Number(u.port) || (u.protocol === 'https:' ? 443 : 80), true, u.protocol.replace(':', '')))();
   }
 }
 
@@ -887,7 +915,7 @@ parentPort.on('message', (m) => rt.onMessage(m));
 rt.boot();
 
 // Worker HTTP requests (nfetch) run here, in an untouched Node global; results stream back as messages.
-async function mainFetch(w, m) {
+async function mainFetch(w, m, fetching) {
   const ac = new AbortController(), post = (x) => { try { w.postMessage({ id: m.id, ...x }); } catch (_) { /* worker gone */ } };
   fetching.set(m.id, ac);
   try {
@@ -901,17 +929,19 @@ async function mainFetch(w, m) {
 
 // Main thread: protocol I/O + worker supervisor.
 function mainThread() {
-  let worker = null, base = 0, last = 0;
+  let worker = null, base = 0, last = 0, generation = -1;
   const out = (m) => process.stdout.write(JSON.stringify(m) + '\n');
   const start = () => {
     if (worker) worker.terminate();
     base = last; // tree versions stay monotonic across reloads
-    const w = (worker = new Worker(__filename, { argv: process.argv.slice(2), stdout: false, stderr: false }));
-    const sockets = new Map();
+    const w = (worker = new Worker(__filename, { argv: process.argv.slice(2), stdout: false, stderr: false, workerData: { generation: ++generation } }));
+    const sockets = new Map(), fetching = new Map();
     w.on('exit', () => { sockets.forEach((ws) => ws.close()); fetching.forEach((ac) => ac.abort()); fetching.clear(); });
     w.on('message', (m) => {
       if (m.type === 'tree') { m.version += base; last = m.version; }
-      if (m.type === '__fetch') return mainFetch(w, m);
+      if (w !== worker) return; // a worker that was already replaced
+      if (m.type === '__reload') return start();
+      if (m.type === '__fetch') return mainFetch(w, m, fetching);
       if (m.type === '__fetchAbort') return fetching.get(m.id)?.abort();
       if (m.type !== '__ws') return out(m);
       const emit = (event, payload) => w.postMessage({ type: '__wsEvent', event, payload });

@@ -62,7 +62,9 @@ push notifications, layout animations, cookies (`clearCookies` returns false).
 - **Keyboard avoidance**: no `keyboardWillShow` events, so KeyboardAvoidingView does not move.
   Tapping outside a TextInput does not blur it (same as RN without `Keyboard.dismiss`).
 - **Image**: PNG/JPEG draw; GIF/WebP load (size, events) but do not draw. `tintColor`, `repeat` ignored.
-- **Fast Refresh**: `SIMCORE_HMR=1` connects `/hot` without crashing; applying updates is
-  untested.
+- **Fast Refresh** works (Metro `/hot` + React Refresh, on by default, `SIMCORE_HMR=0` off;
+  check: `node frameworks/react-native/guest/run-refresh.mjs`). No redbox UI: errors go to
+  `get_errors`. A render error unmounts the root, so recovery remounts with fresh state.
+  A dropped `/hot` socket is not retried.
 - **Animations**: NativeAnimated absent → JS-driven, one tree per frame.
 - Trees are sent whole on every commit; incremental mutations are a later wire change.

@@ -11,7 +11,7 @@
 | 5 DemoKit integration | not started: PRD section truncated, needs spec |
 | v0.2 M0 Expo/RN spike: unmodified Expo app from Metro, React Native Fabric in a Node guest, Yoga-style layout (taffy), tap → state update (`simcore expo`) | done |
 | v0.2 M1 core components: TextInput, ScrollView/FlatList events, Image, Networking, Switch, Modal, nested Text; 10 iOS reference states (`tests/fixtures/rn-showcase-ios`) | in progress: 9/10 pass; `text` 2.63% (Apple) / 4.44% (fallback) — glyph rasterization on dense text |
-| v0.2 M2 Fast Refresh (`/hot` connects behind `SIMCORE_HMR=1`; updates untested) | not started |
+| v0.2 M2 Fast Refresh: Metro HMR + React Refresh in the guest, state preserved, syntax/render error report + recovery, full-reload fallback, `reload_session` API; median edit→tree 126 ms (`run-refresh.mjs`) | done (no redbox UI; render errors reset state) |
 | v0.2 M3 Expo Router · M4 native-module registry + JSON-RPC session API | not started |
 
 Next SwiftUI surface: `@Binding`, `@ObservedObject`/`@StateObject`, `ScrollView`, `List`, `TextField` (needs keyboard events), `Toggle`, `NavigationStack`, sheets/alerts, animations, environment values.

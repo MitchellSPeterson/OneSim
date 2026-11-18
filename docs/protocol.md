@@ -389,3 +389,14 @@ whose target is an `RCTSwitch` (not disabled) dispatches `topChange` `{value: !v
 everything else (transparent → no backdrop; otherwise background color of the app default).
 `visible: false` or absent node → nothing. Guest dispatches `topShow` after first emit with it
 visible; `topRequestClose` is not generated (no hardware back on iOS).
+
+### Milestone 2 additions (Fast Refresh, reload)
+
+- API `reload_session` `{"session_id"}` → `{"state"}`: full JS reload (fresh JS global, React
+  state lost); returns after the reloaded app's first tree (30 s timeout → `timeout`).
+- The guest connects Metro's `/hot` socket by default (`SIMCORE_HMR=0` disables). Edits are
+  applied by Metro HMR + React Refresh inside the guest; the host just receives new trees.
+  Updates that React Refresh cannot apply trigger a full reload in the guest.
+- Guest → host `{"type":"event","name":"bundle.loaded"|"bundle.reloaded"|"bundle.error"|"refresh.applied","detail":{...}}`.
+  The host currently only logs these (client event stream: Milestone 4). Bundle and runtime
+  errors are also sent as `error` (→ `get_errors`).
