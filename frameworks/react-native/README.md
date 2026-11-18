@@ -48,6 +48,7 @@ haptics (`expo-haptics`, emits `module.called`), location (`expo-location`, defa
 `modules.simulate permissions`), device info, dimensions, appearance, safe areas. Unsupported
 calls print the PRD diagnostic and reject/throw (never fake success). Check:
 `node frameworks/react-native/guest/run-modules.mjs`.
+Per-API status (iOS and Android) and coverage %: `docs/expo-api-coverage.md`; `node scripts/api-coverage.mjs --check` keeps it in sync with this table.
 
 ## Shimmed native surface
 

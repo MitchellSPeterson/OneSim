@@ -1,0 +1,48 @@
+name: API request (Expo / React Native)
+description: An Expo or React Native API is missing, partial, or unsupported in SimCore.
+title: "[API] <package>: <API>"
+labels: ["api"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [docs/expo-api-coverage.md](https://github.com/MitchellSPeterson/SimCore/blob/main/docs/expo-api-coverage.md) first. Once this issue exists, link it in that row's **Issue** column.
+  - type: input
+    id: package
+    attributes:
+      label: Package
+      placeholder: expo-file-system
+    validations:
+      required: true
+  - type: input
+    id: api
+    attributes:
+      label: API (module, component or method)
+      placeholder: File.text(), Paths.document
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      multiple: true
+      options: [iOS, Android]
+    validations:
+      required: true
+  - type: dropdown
+    id: status
+    attributes:
+      label: Current status in the coverage doc
+      options: ["⬜ planned (not started)", "⛔ unsupported (diagnostic)", "🟠 partial", "Not listed"]
+    validations:
+      required: true
+  - type: textarea
+    id: usage
+    attributes:
+      label: What the app does with it
+      description: A minimal snippet, the SimCore diagnostic you saw (`SimCore: X is not supported ...`), and what a preview should show.
+  - type: textarea
+    id: approach
+    attributes:
+      label: Implement or simulate?
+      description: Should SimCore run it for real (e.g. a file system in a sandbox dir) or simulate it with host-controlled state (`modules.simulate`)? Optional.
