@@ -6,6 +6,7 @@
 //! Visual constants (row height, card radius, nav bar heights, control sizes) are measured from
 //! an iOS 26 / iPhone 17 Pro simulator, see `tests/fixtures/showcase-ios/README.md`.
 
+use crate::device::Device;
 use crate::scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, Shadow, SymbolRun, TextRun};
 use crate::symbols::{self, SymbolSpec};
 use crate::text::{FontSpec, Fonts, TextAlign};
@@ -26,8 +27,6 @@ const ROW_MIN_H: f64 = 52.0;
 const ROW_VPAD: f64 = 10.0;
 /// Rows holding bordered buttons get extra vertical padding (measured: 34.3pt button -> 64.3pt row).
 const ROW_VPAD_BORDERED: f64 = 15.0;
-const ROW_HPAD: f64 = 16.0;
-const CARD_MARGIN: f64 = 16.0;
 const CARD_RADIUS: f64 = 26.0;
 const SECTION_GAP: f64 = 17.7;
 const HEADER_PAD: f64 = 20.0;
@@ -117,6 +116,8 @@ struct Ctx<'a> {
     dark: bool,
     dts: DynamicTypeSize,
     scale: f64,
+    /// Side margin of lists, cards and titles: 20pt on Plus/Max-width screens (>= 414pt), else 16.
+    margin: f64,
     scroll: &'a HashMap<String, (f64, f64)>,
     overscroll: bool,
     focus: Option<&'a str>,
@@ -130,8 +131,8 @@ struct Ctx<'a> {
 /// Inputs to one layout pass.
 pub struct SceneParams<'a> {
     pub viewport: (f64, f64),
-    pub safe_top: f64,
-    pub safe_bottom: f64,
+    /// Chrome source (safe areas, island, status bar, keyboard); `viewport`/`scale` may override its geometry.
+    pub device: &'a Device,
     pub scale: f64,
     pub appearance: Appearance,
     pub dynamic_type: DynamicTypeSize,
@@ -150,13 +151,15 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     let (w, h) = params.viewport;
     // Keyboard avoidance: the keyboard top replaces the bottom safe-area inset.
     let kb = params.chrome.keyboard && params.focus.is_some();
-    let kb_h = crate::chrome::KB_BASE_H + params.safe_bottom;
-    let safe_bottom = if kb { kb_h } else { params.safe_bottom };
+    let kb_h = params.device.kb_base_h + params.device.safe_bottom;
+    let (safe_top, dev_bottom) = (params.device.safe_top, params.device.safe_bottom);
+    let safe_bottom = if kb { kb_h } else { dev_bottom };
     let mut cx = Ctx {
         fonts,
         dark: params.appearance == Appearance::Dark,
         dts: params.dynamic_type,
         scale: params.scale.max(1.0),
+        margin: if w >= 414.0 { 20.0 } else { 16.0 },
         scroll: params.scroll,
         overscroll: params.overscroll,
         focus: params.focus,
@@ -171,25 +174,25 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     let mut nodes = vec![screen];
     let full_bleed = matches!(root.kind, ViewKind::Navigation { .. } | ViewKind::List { .. } | ViewKind::Scroll { .. });
     if full_bleed {
-        let env = Env { safe_top: params.safe_top, bottom_inset: safe_bottom, size: body, ..Env::new() };
+        let env = Env { safe_top, bottom_inset: safe_bottom, size: body, ..Env::new() };
         let lay = cx.view(root, Prop { w: Some(w), h: Some(h) }, env);
         flatten(lay, 0.0, 0.0, Some(0), 1.0, &mut nodes);
     } else {
         // Root view is centered in the safe area.
-        let sh = (h - params.safe_top - safe_bottom).max(0.0);
+        let sh = (h - safe_top - safe_bottom).max(0.0);
         let lay = cx.view(root, Prop { w: Some(w), h: Some(sh) }, Env { size: body, ..Env::new() });
-        let (x, y) = ((w - lay.size.w) / 2.0, params.safe_top + (sh - lay.size.h) / 2.0);
+        let (x, y) = ((w - lay.size.w) / 2.0, safe_top + (sh - lay.size.h) / 2.0);
         flatten(lay, x, y, Some(0), 1.0, &mut nodes);
     }
     if params.status_bar {
-        let lay = cx.status_bar(w);
+        let lay = cx.status_bar(w, params.device);
         flatten(lay, 0.0, 0.0, Some(0), 1.0, &mut nodes);
     }
     let dark = params.appearance == Appearance::Dark;
     if kb {
-        crate::chrome::keyboard(&mut nodes, w, h, kb_h, dark, params.chrome.shift);
+        crate::chrome::keyboard(&mut nodes, w, h, kb_h, dark, params.chrome.shift, params.device);
     }
-    if let Some(isl) = params.chrome.island {
+    if let Some(isl) = params.device.island {
         crate::chrome::island(&mut nodes, isl);
     }
     Scene { size: params.viewport, appearance: params.appearance, nodes, unsupported_symbols: cx.unsupported.into_iter().collect() }
@@ -877,9 +880,9 @@ impl Ctx<'_> {
         let inset = style == ListStyle::InsetGrouped;
         let (top, bottom) = (env.safe_top, env.bottom_inset);
         let w = p.w.filter(|w| w.is_finite()).unwrap_or(402.0);
-        let margin = if inset { CARD_MARGIN } else { 0.0 };
+        let margin = if inset { self.margin } else { 0.0 };
         let gw = w - 2.0 * margin;
-        let inner_w = gw - 2.0 * ROW_HPAD;
+        let inner_w = gw - 2.0 * self.margin;
         let row_env = Env { axis: None, safe_top: 0.0, bottom_inset: 0.0, fg: None, in_row: true, ..env };
         let sec_col = self.semantic(Semantic::SecondaryGroupedBackground);
         let sep_col = self.semantic(Semantic::Separator);
@@ -895,7 +898,7 @@ impl Ctx<'_> {
                     n.role = Role::Text;
                 }
                 let hh = t.size.h + HEADER_PAD;
-                kids.push((margin + ROW_HPAD, y + (hh - t.size.h) / 2.0, t));
+                kids.push((margin + self.margin, y + (hh - t.size.h) / 2.0, t));
                 y += hh;
             }
             let mut sec_kids: Vec<(f64, f64, Lay)> = vec![];
@@ -906,19 +909,19 @@ impl Ctx<'_> {
                 let vpad = if has_bordered(row) || c.size.h > 33.0 { ROW_VPAD_BORDERED } else { ROW_VPAD };
                 let rh = ROW_MIN_H.max(c.size.h + 2.0 * vpad);
                 let yo = (rh - c.size.h) / 2.0;
-                expand_button(&mut c, 0.0, yo, (-ROW_HPAD, 0.0, gw - ROW_HPAD, rh));
+                expand_button(&mut c, 0.0, yo, (-self.margin, 0.0, gw - self.margin, rh));
                 let tx = first_text_x(&c, 0.0).unwrap_or(0.0);
                 let mut rn = Node::new(format!("{sid}#r{ri}"), "row");
                 rn.inspect = false;
                 let last = ri + 1 == sec.rows.len();
-                let mut rkids = vec![(ROW_HPAD, yo, c)];
+                let mut rkids = vec![(self.margin, yo, c)];
                 if !last {
                     let mut sp = Node::new(format!("{sid}#r{ri}#sep"), "separator");
                     sp.fill = Some(sep_col);
                     sp.inspect = false;
-                    let x0 = ROW_HPAD + tx;
+                    let x0 = self.margin + tx;
                     // Measured: 1pt (3px @3x) solid line ending at the row boundary.
-                    rkids.push((x0, rh - 1.0, Lay::new(Size { w: (gw - ROW_HPAD - x0).max(0.0), h: 1.0 }, Some(sp), vec![])));
+                    rkids.push((x0, rh - 1.0, Lay::new(Size { w: (gw - self.margin - x0).max(0.0), h: 1.0 }, Some(sp), vec![])));
                 }
                 sec_kids.push((0.0, ry, Lay::new(Size { w: gw, h: rh }, Some(rn), rkids)));
                 ry += rh;
@@ -936,7 +939,7 @@ impl Ctx<'_> {
                 let t = self.text_lay(&format!("{sid}#footer"), f, spec, self.semantic(Semantic::Secondary), Some(inner_w as f32));
                 y += 8.0;
                 let th = t.size.h;
-                kids.push((margin + ROW_HPAD, y, t));
+                kids.push((margin + self.margin, y, t));
                 y += th;
             }
             // Between sections 17.7; after the last one the list ends 20pt above the bottom inset (measured).
@@ -1032,9 +1035,9 @@ impl Ctx<'_> {
                 clip.clip_radius = Some(0.0);
                 clip.inspect = false;
                 let clip_h = h - top - NAV_INLINE_H;
-                bar_kids.push((0.0, NAV_INLINE_H, Lay::new(Size { w, h: clip_h }, Some(clip), vec![(16.0, ty - NAV_INLINE_H, tl)])));
+                bar_kids.push((0.0, NAV_INLINE_H, Lay::new(Size { w, h: clip_h }, Some(clip), vec![(self.margin, ty - NAV_INLINE_H, tl)])));
             } else {
-                bar_kids.push((16.0, ty, tl));
+                bar_kids.push((self.margin, ty, tl));
             }
         }
         if let Some(t) = title {
@@ -1060,39 +1063,60 @@ impl Ctx<'_> {
             n.glass = Some(self.glass_spec(GlassVariant::Regular, None, true));
             n.radius = PILL;
             n.glyph = Some((Glyph::BackChevron, self.semantic(Semantic::Primary)));
-            bar_kids.push((16.0, 0.0, Lay::new(Size { w: 44.0, h: 44.0 }, Some(n), vec![])));
+            bar_kids.push((self.margin, 0.0, Lay::new(Size { w: 44.0, h: 44.0 }, Some(n), vec![])));
         }
         kids.push((0.0, top, Lay::new(Size { w, h: bar_h - collapse }, Some(bar), bar_kids)));
         Lay::new(Size { w, h }, Some(bg), kids)
     }
 
     /// iOS status bar: "9:41" at the left, signal / wifi / battery at the right.
-    fn status_bar(&mut self, w: f64) -> Lay {
+    fn status_bar(&mut self, w: f64, dev: &Device) -> Lay {
+        let sb = dev.status_bar;
         let primary = self.semantic(Semantic::Primary);
-        let spec = FontSpec::new(17.0, self.line_h(17.0), 600, TextAlign::Leading);
-        let mut t = self.text_lay("statusbar#time", "9:41", spec, primary, None);
-        if let Some(n) = t.node.as_mut() {
-            n.inspect = false;
-        }
-        let tw = t.size.w;
-        let th = t.size.h;
+        let k = sb.icon_scale;
+        let text = |cx: &mut Self, id: &str, s: &str, weight: u16, align: TextAlign| {
+            let fs = sb.font as f32;
+            let spec = FontSpec::new(fs, cx.line_h(fs), weight, align);
+            let mut t = cx.text_lay(id, s, spec, primary, None);
+            if let Some(n) = t.node.as_mut() {
+                n.inspect = false;
+            }
+            t
+        };
         let glyph = |id: &str, g: Glyph, c: Color, sz: Size| {
             let mut n = Node::new(id, "statusbar");
             n.glyph = Some((g, c));
             n.inspect = false;
             Lay::new(sz, Some(n), vec![])
         };
-        let dots = glyph("statusbar#signal", Glyph::SignalDots, self.semantic(Semantic::Tertiary), Size { w: 20.0, h: 4.0 });
-        let wifi = glyph("statusbar#wifi", Glyph::Wifi, primary, Size { w: 16.0, h: 12.0 });
-        let batt = glyph("statusbar#battery", Glyph::Battery, primary, Size { w: 27.0, h: 13.0 });
-        let right = w - 402.0 + 340.0; // anchored to the trailing edge of a 402pt screen
+        let wifi = glyph("statusbar#wifi", Glyph::Wifi, primary, Size { w: 16.0 * k, h: 12.0 * k });
+        let batt = glyph("statusbar#battery", Glyph::Battery, primary, Size { w: 27.0 * k, h: 13.0 * k });
+        let right = sb.icons.0 + (w - dev.viewport.width); // anchored to the trailing edge
+        let dy = sb.icons.1;
         let mut root = Node::new("statusbar", "statusbar");
         root.inspect = false;
-        Lay::new(
-            Size { w, h: 62.0 },
-            Some(root),
-            vec![(73.0 - tw / 2.0, 32.4 - th / 2.0, t), (right - 52.0, 34.7, dots), (right - 24.7, 26.2, wifi), (right - 0.6, 26.0, batt)],
-        )
+        let t = text(self, "statusbar#time", if dev.home_button { "9:41 AM" } else { "9:41" }, 600, TextAlign::Leading);
+        let kids = if dev.home_button {
+            // Classic layout (home-button phones): carrier + wifi left, centred time, battery right.
+            let carrier = text(self, "statusbar#carrier", "Carrier", 400, TextAlign::Leading);
+            let ch = carrier.size.h;
+            vec![
+                (6.5, sb.time.1 - ch / 2.0, carrier),
+                (49.7, 4.5 + dy, wifi),
+                (sb.time.0 + (w - dev.viewport.width) / 2.0 - t.size.w / 2.0, sb.time.1 - t.size.h / 2.0, t),
+                (right, 4.6 + dy, batt),
+            ]
+        } else {
+            let dots = glyph("statusbar#signal", Glyph::SignalDots, self.semantic(Semantic::Tertiary), Size { w: 20.0 * k, h: 4.0 * k });
+            let (wx, wy) = (right - 24.7 * k, 26.2 + dy);
+            vec![
+                (sb.time.0 - t.size.w / 2.0, sb.time.1 - t.size.h / 2.0, t),
+                (wx - 27.3 * k, wy + 8.5 * k, dots),
+                (wx, wy, wifi),
+                (wx + 24.1 * k, wy - 0.2 * k, batt),
+            ]
+        };
+        Lay::new(Size { w, h: dev.safe_top }, Some(root), kids)
     }
 
     /// SwiftUI stack algorithm: least flexible children are laid out first, each
@@ -1220,10 +1244,10 @@ mod tests {
 
     fn scene_with(json: &str, vp: (f64, f64), dark: bool, safe: (f64, f64), scroll: &HashMap<String, (f64, f64)>, focus: Option<&str>) -> Scene {
         let v: ViewNode = serde_json::from_str(json).unwrap();
+        let dev = Device { safe_top: safe.0, safe_bottom: safe.1, island: None, ..*crate::device::device(crate::device::DEFAULT_DEVICE).unwrap() };
         let params = SceneParams {
             viewport: vp,
-            safe_top: safe.0,
-            safe_bottom: safe.1,
+            device: &dev,
             scale: 3.0,
             appearance: if dark { Appearance::Dark } else { Appearance::Light },
             dynamic_type: DynamicTypeSize::Large,
@@ -1355,8 +1379,7 @@ mod tests {
             &v,
             &SceneParams {
                 viewport: (402.0, 874.0),
-                safe_top: 62.0,
-                safe_bottom: 34.0,
+                device: crate::device::device(crate::device::DEFAULT_DEVICE).unwrap(),
                 scale: 3.0,
                 appearance: Appearance::Dark,
                 dynamic_type: DynamicTypeSize::Large,

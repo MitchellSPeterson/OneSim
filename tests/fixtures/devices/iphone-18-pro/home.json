@@ -1,0 +1,869 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "type": "Other",
+        "role": "_TtC7SwiftUIP33_ACC2C5639A7D76F611E170E831FCA49118SwiftUIApplication",
+        "subrole": "UIApplication",
+        "label": "Showcase",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 0,
+        "pid": 34258,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "other"
+      },
+      {
+        "index": 1,
+        "parentIndex": 0,
+        "type": "CollectionView",
+        "role": "SwiftUI.UpdateCoalescingCollectionView",
+        "subrole": "UICollectionView",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "collection"
+      },
+      {
+        "index": 2,
+        "parentIndex": 1,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewHeaderFooter",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 168,
+          "width": 370,
+          "height": 40.33333333333334
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e3",
+        "kind": "cell"
+      },
+      {
+        "index": 3,
+        "parentIndex": 2,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Screens",
+        "rect": {
+          "x": 16,
+          "y": 168,
+          "width": 370,
+          "height": 40.33333333333334
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e4",
+        "kind": "text"
+      },
+      {
+        "index": 4,
+        "parentIndex": 1,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewCell",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 208.33333333333334,
+          "width": 370,
+          "height": 52.00000000000003
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e5",
+        "kind": "cell"
+      },
+      {
+        "index": 5,
+        "parentIndex": 4,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Typography",
+        "rect": {
+          "x": 16,
+          "y": 208.33333333333334,
+          "width": 370,
+          "height": 52.00000000000003
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e6",
+        "kind": "button"
+      },
+      {
+        "index": 6,
+        "parentIndex": 5,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Typography",
+        "rect": {
+          "x": 32,
+          "y": 224.16666666666669,
+          "width": 90.66666666666666,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e7",
+        "kind": "text"
+      },
+      {
+        "index": 7,
+        "parentIndex": 5,
+        "type": "Image",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "identifier": "chevron.forward",
+        "rect": {
+          "x": 360.6666666666667,
+          "y": 228.33333333333334,
+          "width": 7,
+          "height": 12
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e8",
+        "kind": "image"
+      },
+      {
+        "index": 8,
+        "parentIndex": 1,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewCell",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 260.3333333333333,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e9",
+        "kind": "cell"
+      },
+      {
+        "index": 9,
+        "parentIndex": 8,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Shapes",
+        "rect": {
+          "x": 16,
+          "y": 260.3333333333333,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e10",
+        "kind": "button"
+      },
+      {
+        "index": 10,
+        "parentIndex": 9,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Shapes",
+        "rect": {
+          "x": 32,
+          "y": 276.16666666666663,
+          "width": 56.66666666666666,
+          "height": 20.33333333333337
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e11",
+        "kind": "text"
+      },
+      {
+        "index": 11,
+        "parentIndex": 9,
+        "type": "Image",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "identifier": "chevron.forward",
+        "rect": {
+          "x": 360.6666666666667,
+          "y": 280.3333333333333,
+          "width": 7,
+          "height": 12
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e12",
+        "kind": "image"
+      },
+      {
+        "index": 12,
+        "parentIndex": 1,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewCell",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 312.33333333333337,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e13",
+        "kind": "cell"
+      },
+      {
+        "index": 13,
+        "parentIndex": 12,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Todos",
+        "rect": {
+          "x": 16,
+          "y": 312.33333333333337,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e14",
+        "kind": "button"
+      },
+      {
+        "index": 14,
+        "parentIndex": 13,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Todos",
+        "rect": {
+          "x": 32,
+          "y": 328.16666666666674,
+          "width": 46.66666666666666,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e15",
+        "kind": "text"
+      },
+      {
+        "index": 15,
+        "parentIndex": 13,
+        "type": "Image",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "identifier": "chevron.forward",
+        "rect": {
+          "x": 360.6666666666667,
+          "y": 332.33333333333337,
+          "width": 7,
+          "height": 12
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e16",
+        "kind": "image"
+      },
+      {
+        "index": 16,
+        "parentIndex": 1,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewCell",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 364.33333333333337,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e17",
+        "kind": "cell"
+      },
+      {
+        "index": 17,
+        "parentIndex": 16,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Controls",
+        "rect": {
+          "x": 16,
+          "y": 364.33333333333337,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e18",
+        "kind": "button"
+      },
+      {
+        "index": 18,
+        "parentIndex": 17,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Controls",
+        "rect": {
+          "x": 32,
+          "y": 380.16666666666674,
+          "width": 64.33333333333333,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e19",
+        "kind": "text"
+      },
+      {
+        "index": 19,
+        "parentIndex": 17,
+        "type": "Image",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "identifier": "chevron.forward",
+        "rect": {
+          "x": 360.6666666666667,
+          "y": 384.33333333333337,
+          "width": 7,
+          "height": 12
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e20",
+        "kind": "image"
+      },
+      {
+        "index": 20,
+        "parentIndex": 1,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewCell",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 416.33333333333337,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e21",
+        "kind": "cell"
+      },
+      {
+        "index": 21,
+        "parentIndex": 20,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Symbols",
+        "rect": {
+          "x": 16,
+          "y": 416.33333333333337,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e22",
+        "kind": "button"
+      },
+      {
+        "index": 22,
+        "parentIndex": 21,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Symbols",
+        "rect": {
+          "x": 32,
+          "y": 432.1666666666667,
+          "width": 65.66666666666666,
+          "height": 20.33333333333337
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e23",
+        "kind": "text"
+      },
+      {
+        "index": 23,
+        "parentIndex": 21,
+        "type": "Image",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "identifier": "chevron.forward",
+        "rect": {
+          "x": 360.6666666666667,
+          "y": 436.33333333333337,
+          "width": 7,
+          "height": 12
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e24",
+        "kind": "image"
+      },
+      {
+        "index": 24,
+        "parentIndex": 1,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewCell",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 468.3333333333333,
+          "width": 370,
+          "height": 51.99999999999994
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e25",
+        "kind": "cell"
+      },
+      {
+        "index": 25,
+        "parentIndex": 24,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Glass",
+        "rect": {
+          "x": 16,
+          "y": 468.3333333333333,
+          "width": 370,
+          "height": 51.99999999999994
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e26",
+        "kind": "button"
+      },
+      {
+        "index": 26,
+        "parentIndex": 25,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Glass",
+        "rect": {
+          "x": 32,
+          "y": 484.16666666666663,
+          "width": 42,
+          "height": 20.33333333333337
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e27",
+        "kind": "text"
+      },
+      {
+        "index": 27,
+        "parentIndex": 25,
+        "type": "Image",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "identifier": "chevron.forward",
+        "rect": {
+          "x": 360.6666666666667,
+          "y": 488.3333333333333,
+          "width": 7,
+          "height": 12
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e28",
+        "kind": "image"
+      },
+      {
+        "index": 28,
+        "parentIndex": 1,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewCell",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 520.3333333333333,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e29",
+        "kind": "cell"
+      },
+      {
+        "index": 29,
+        "parentIndex": 28,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Long list",
+        "rect": {
+          "x": 16,
+          "y": 520.3333333333333,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e30",
+        "kind": "button"
+      },
+      {
+        "index": 30,
+        "parentIndex": 29,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Long list",
+        "rect": {
+          "x": 32,
+          "y": 536.1666666666665,
+          "width": 64,
+          "height": 20.333333333333485
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e31",
+        "kind": "text"
+      },
+      {
+        "index": 31,
+        "parentIndex": 29,
+        "type": "Image",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "identifier": "chevron.forward",
+        "rect": {
+          "x": 360.6666666666667,
+          "y": 540.3333333333333,
+          "width": 7,
+          "height": 12
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e32",
+        "kind": "image"
+      },
+      {
+        "index": 32,
+        "parentIndex": 1,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewHeaderFooter",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 590,
+          "width": 370,
+          "height": 40.33333333333337
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e33",
+        "kind": "cell"
+      },
+      {
+        "index": 33,
+        "parentIndex": 32,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Summary",
+        "rect": {
+          "x": 16,
+          "y": 590,
+          "width": 370,
+          "height": 40.33333333333337
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e34",
+        "kind": "text"
+      },
+      {
+        "index": 34,
+        "parentIndex": 1,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewCell",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 630.3333333333333,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e35",
+        "kind": "cell"
+      },
+      {
+        "index": 35,
+        "parentIndex": 34,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Open todos",
+        "rect": {
+          "x": 32,
+          "y": 646.1666666666665,
+          "width": 89.33333333333333,
+          "height": 20.333333333333485
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e36",
+        "kind": "text"
+      },
+      {
+        "index": 36,
+        "parentIndex": 34,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "1",
+        "rect": {
+          "x": 362.3333333333333,
+          "y": 646.1666666666665,
+          "width": 7.666666666666686,
+          "height": 20.333333333333485
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e37",
+        "kind": "text"
+      },
+      {
+        "index": 37,
+        "parentIndex": 1,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "0 pages",
+        "value": "0%",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 34258,
+        "hittable": false,
+        "ref": "e38",
+        "kind": "other"
+      },
+      {
+        "index": 38,
+        "parentIndex": 1,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "0 pages",
+        "value": "0%",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 34258,
+        "hittable": false,
+        "ref": "e39",
+        "kind": "other"
+      },
+      {
+        "index": 39,
+        "parentIndex": 0,
+        "type": "Toolbar",
+        "role": "_UIFloatingBarContainerView",
+        "label": "Toolbar",
+        "identifier": "Toolbar",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e40",
+        "kind": "toolbar"
+      },
+      {
+        "index": 40,
+        "parentIndex": 0,
+        "type": "NavigationBar",
+        "role": "SwiftUI.UIKitNavigationBar",
+        "subrole": "UINavigationBar",
+        "identifier": "Showcase",
+        "rect": {
+          "x": 0,
+          "y": 62,
+          "width": 402,
+          "height": 106
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e41",
+        "kind": "navigation-bar"
+      },
+      {
+        "index": 41,
+        "parentIndex": 40,
+        "type": "StaticText",
+        "role": "UILabel",
+        "label": "Showcase",
+        "rect": {
+          "x": 16,
+          "y": 119.66666666666667,
+          "width": 164,
+          "height": 40.66666666666667
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 34258,
+        "hittable": true,
+        "ref": "e42",
+        "kind": "text"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.showcase",
+    "appBundleId": "dev.simcore.showcase",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 42,
+      "totalNodeCount": 42,
+      "reasons": []
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "absent",
+    "snapshotQualityNotes": [
+      {
+        "code": "regular-geometry-clipped",
+        "clippedNodeCount": 2,
+        "droppedNodeCount": 0
+      }
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 2,
+        "p50Ms": 365,
+        "p95Ms": 900,
+        "maxMs": 900,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 2
+        }
+      }
+    },
+    "refsGeneration": 717244
+  }
+}

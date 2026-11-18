@@ -7,12 +7,10 @@
 //! Known simplifications: the suggestion bar is static ("I", "The", "I'm", not tappable, no
 //! prediction engine) and the 123 / emoji / dictation keys are inert (no alternate layers).
 
+use crate::device::Device;
 use crate::scene::{Color, Glyph, Node, Rect, Role, TextRun};
 use crate::text::{FontSpec, TextAlign};
 use tiny_skia::{FillRule, LineCap, LineJoin, Mask, Paint, PathBuilder, Pixmap, Stroke, Transform};
-
-/// Keyboard height above the bottom safe inset (measured 335 total with a 34pt inset).
-pub const KB_BASE_H: f64 = 301.0;
 
 /// Chrome inputs for one layout pass.
 #[derive(Debug, Clone, Copy, Default)]
@@ -21,8 +19,6 @@ pub struct ChromeParams {
     pub keyboard: bool,
     /// Shift state (host-owned: auto-capitalization, shift key and typing update it).
     pub shift: bool,
-    /// Dynamic Island `(x, y, w, h)` in points.
-    pub island: Option<(f64, f64, f64, f64)>,
 }
 
 /// Auto-capitalization: start of text, or after sentence punctuation plus a space.
@@ -105,7 +101,7 @@ impl Builder<'_> {
 
 /// Append the keyboard (panel, suggestion bar, keys) for a `w` x `h` screen. Returns the top y.
 /// `shift` is the effective shift state; `kb_h` the total keyboard height.
-pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shift: bool) {
+pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shift: bool, dev: &Device) {
     let th = theme(dark);
     let top = h - kb_h;
     let mut kb = Node::new("keyboard", "keyboard");
@@ -118,7 +114,7 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
     let mut b = Builder { out, th };
 
     // Panel: 30pt top corners, ~55pt (device) bottom corners, from two overlapping rounded rects.
-    for (id, y, hh, r) in [("top", top, kb_h - 35.0, 28.0), ("bottom", h - 120.0, 120.0, 55.0)] {
+    for (id, y, hh, r) in [("top", top, kb_h - 35.0, if dev.home_button { 22.0 } else { 28.0 }), ("bottom", h - 120.0, 120.0, if dev.home_button { 0.0 } else { 55.0 })] {
         let mut n = Node::new(format!("keyboard#panel-{id}"), "panel");
         n.fill = Some(b.th.panel);
         n.radius = r;
@@ -129,12 +125,14 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
     // Static suggestions (no prediction engine), with hairline dividers.
     let third = w / 3.0;
     for (i, s) in ["I", "The", "I\u{2019}m"].iter().enumerate() {
-        let mut n = Node::new(format!("keyboard#suggestion-{i}"), "suggestion");
-        n.role = Role::Text;
-        n.label = Some(s.to_string());
-        let lh = 17.0 * 1.1934;
-        n.text = Some(text_run(s, 17.0, 400, b.th.suggest));
-        b.push(n, root, Rect { x: third * i as f64, y: top + 24.8 - lh / 2.0, w: third, h: lh });
+        if dev.suggestions {
+            let mut n = Node::new(format!("keyboard#suggestion-{i}"), "suggestion");
+            n.role = Role::Text;
+            n.label = Some(s.to_string());
+            let lh = 17.0 * 1.1934;
+            n.text = Some(text_run(s, 17.0, 400, b.th.suggest));
+            b.push(n, root, Rect { x: third * i as f64, y: top + 24.8 - lh / 2.0, w: third, h: lh });
+        }
         if i > 0 {
             let mut d = Node::new(format!("keyboard#divider-{i}"), "divider");
             d.fill = Some(b.th.divider);
@@ -144,10 +142,11 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
     }
 
     // Keys. Letters are shown upper-case like iOS 26; the typed case follows shift.
-    let (gap, margin, kh) = (6.0, 6.67, 42.8);
+    let (gap, margin) = (6.0, 6.67);
+    let (pitch_y, kh) = (dev.key_pitch, if dev.home_button { 41.5 } else { dev.key_pitch - 11.1 });
     let kw = (w - 2.0 * margin - 9.0 * gap) / 10.0;
     let pitch = kw + gap;
-    let ys = [top + 52.5, top + 106.4, top + 160.3, top + 214.2];
+    let ys = [0.0, 1.0, 2.0, 3.0].map(|i| top + 52.5 + i * pitch_y);
     let row = |chars: &str, y: f64, x0: f64, b: &mut Builder| {
         for (i, ch) in chars.chars().enumerate() {
             let l = ch.to_string();
@@ -155,13 +154,31 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
             b.key(root, &l, &l, Rect { x: x0 + pitch * i as f64, y, w: kw, h: kh }, None, Some((&shown, 22.0)));
         }
     };
+    // Function keys are a fixed multiple of the key pitch (measured across devices); 17 Pro: 44.7 / 92.7.
+    let (side, wide) = (1.297 * pitch - 6.5, 2.5 * pitch - 6.0);
     row("qwertyuiop", ys[0], margin, &mut b);
     row("asdfghjkl", ys[1], (w - (8.0 * pitch + kw)) / 2.0, &mut b);
-    row("zxcvbnm", ys[2], margin + 44.7 + 14.4, &mut b);
+    row("zxcvbnm", ys[2], (w - (6.0 * pitch + kw)) / 2.0, &mut b);
     let sg = if shift { Glyph::ShiftFilled } else { Glyph::Shift };
-    b.key(root, "shift", "shift", Rect { x: margin, y: ys[2], w: 44.7, h: kh }, Some(sg), None);
-    b.key(root, "delete", "delete", Rect { x: w - margin - 44.7, y: ys[2], w: 44.7, h: kh }, Some(Glyph::Backspace), None);
-    let wide = 92.7;
+    b.key(root, "shift", "shift", Rect { x: margin, y: ys[2], w: side, h: kh }, Some(sg), None);
+    b.key(root, "delete", "delete", Rect { x: w - margin - side, y: ys[2], w: side, h: kh }, Some(Glyph::Backspace), None);
+    if dev.home_button {
+        // Bottom row (47pt touch rows): 123, emoji, dictation, space, return; touch frames inset 3pt.
+        let (y, bh) = (ys[3], kh);
+        let mut x = margin - 0.17;
+        let mut put = |id: &str, tw: f64, g: Option<Glyph>, t: Option<(&str, f32)>, b: &mut Builder| {
+            b.key(root, id, id, Rect { x, y, w: tw, h: bh }, g, t);
+            x += tw + 6.0;
+        };
+        let (emoji, mic) = (Some(Glyph::Emoji), Some(Glyph::Mic));
+        let space = w - 2.0 * (margin - 0.17) - 4.0 * gap - 40.0 - 40.0 - 31.0 - 86.0;
+        put("123", 40.0, None, Some(("123", 17.0)), &mut b);
+        put("emoji", 40.0, emoji, None, &mut b);
+        put("dictation", 31.0, mic, None, &mut b);
+        put("space", space, None, None, &mut b);
+        put("return", 86.0, Some(Glyph::Return), None, &mut b);
+        return;
+    }
     b.key(root, "123", "123", Rect { x: margin, y: ys[3], w: wide, h: kh }, None, Some(("123", 17.0)));
     b.key(root, "space", "space", Rect { x: margin + wide + gap, y: ys[3], w: w - 2.0 * (margin + wide + gap), h: kh }, None, None);
     b.key(root, "return", "return", Rect { x: w - margin - wide, y: ys[3], w: wide, h: kh }, Some(Glyph::Return), None);
@@ -172,7 +189,7 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
         n.role = Role::Key;
         n.label = Some(id.to_string());
         n.glyph = Some((g, b.th.glyph));
-        b.push(n, root, Rect { x: cx - 22.0, y: h - 62.0, w: 44.0, h: 44.0 });
+        b.push(n, root, Rect { x: cx - 22.0, y: ys[3] + kh + 16.0, w: 44.0, h: 44.0 });
     }
 }
 

@@ -1,7 +1,7 @@
 //! Forces the open-licensed fallback (SIMCORE_FALLBACK=1) and checks Inter + Phosphor are used.
 //! One test per process so the env var is set before any host code reads it.
 use simcore_protocol::{Appearance, ViewNode};
-use simcore_render::{build_scene, fonts_capability, render, symbols_capability, FontSpec, Fonts, SceneParams, TextAlign};
+use simcore_render::{build_scene, device, Device, DEFAULT_DEVICE, fonts_capability, render, symbols_capability, FontSpec, Fonts, SceneParams, TextAlign};
 use std::collections::HashMap;
 
 #[test]
@@ -25,10 +25,10 @@ fn forced_fallback_uses_inter_and_phosphor() {
     )
     .unwrap();
     let scroll = HashMap::new();
+    let dev = Device { island: None, safe_top: 0.0, safe_bottom: 0.0, ..*device(DEFAULT_DEVICE).unwrap() };
     let p = SceneParams {
         viewport: (100.0, 200.0),
-        safe_top: 0.0,
-        safe_bottom: 0.0,
+        device: &dev,
         scale: 1.0,
         appearance: Appearance::Light,
         dynamic_type: Default::default(),

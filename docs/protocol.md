@@ -196,7 +196,7 @@ Text styles and weights follow Apple's iOS Dynamic Type "Large" defaults (body 1
 
 ### Device profile and platform chrome (host)
 
-`create_session` accepts `"device": "iphone-17-pro"` (default). Profile: viewport 402×874 pt, scale 3, safe area top 62 / bottom 34. Content is laid out inside the safe area. The screen background, a `navigation` bar background and a `list` background extend to the screen edges. The host draws an iOS status bar (time "9:41", battery) in the top inset. `viewport` and `scale` params still override.
+`create_session` accepts a `"device"` profile name (default `"iphone-17-pro"`: viewport 402×874 pt, scale 3, safe area top 62 / bottom 34). Every iPhone of the iOS 26.5 Simulator is a profile (`iphone-16`, `iphone-air`, `iphone-13-mini`, `iphone-se-3`, ...; the full list is `DEVICES` / `get_capabilities` `devices`); notch models have no `island`, the SE has a home button (classic status bar, no bottom inset, bottom-row keyboard icons). Lists, cards and titles use a 20 pt side margin on screens 414 pt or wider, else 16. Content is laid out inside the safe area. The screen background, a `navigation` bar background and a `list` background extend to the screen edges. The host draws an iOS status bar (time "9:41", battery) in the top inset. `viewport` and `scale` params still override. Profiles (geometry, safe area, island, status bar, keyboard height) live in `DEVICES` in `crates/simcore-render/src/device.rs`, shared with the Wasm build, and are listed by `get_capabilities` `devices`.
 
 The guest reads `SIMCORE_APPEARANCE` at launch for `@Environment(\.colorScheme)`.
 

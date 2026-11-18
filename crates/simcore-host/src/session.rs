@@ -3,6 +3,7 @@
 use simcore_protocol::{
     ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, GuestMessage, HostMessage, SessionError, Viewport, ViewNode,
 };
+pub use simcore_render::{device, Device, DEFAULT_DEVICE, DEVICES};
 use simcore_render::{Effect, Interaction};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -67,33 +68,6 @@ impl Shared {
             g.errors.push(SessionError { message, source: source.into() });
         }
     }
-}
-
-/// Screen geometry of a simulated device (points).
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Device {
-    pub name: &'static str,
-    pub viewport: Viewport,
-    pub scale: f64,
-    pub safe_top: f64,
-    pub safe_bottom: f64,
-    /// Dynamic Island `(x, y, w, h)`.
-    pub island: Option<(f64, f64, f64, f64)>,
-}
-
-pub const DEFAULT_DEVICE: &str = "iphone-17-pro";
-pub const DEVICES: &[Device] = &[Device {
-    name: DEFAULT_DEVICE,
-    viewport: Viewport { width: 402.0, height: 874.0 },
-    scale: 3.0,
-    safe_top: 62.0,
-    safe_bottom: 34.0,
-    // Measured from simulator screenshots: x 138.3..263.7, y 14..50.7.
-    island: Some((138.4, 13.92, 125.2, 36.83)),
-}];
-
-pub fn device(name: &str) -> Option<&'static Device> {
-    DEVICES.iter().find(|d| d.name == name)
 }
 
 pub struct Session {

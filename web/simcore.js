@@ -2,9 +2,6 @@
 // typed wrapper over the `simcore_web_*` exports of app.wasm. No DOM, no Node APIs.
 const DYNAMIC_TYPE = ["xSmall", "small", "medium", "large", "xLarge", "xxLarge", "xxxLarge", "accessibility1", "accessibility2", "accessibility3", "accessibility4", "accessibility5"];
 
-export const DEVICES = { "iphone-17-pro": { width: 402, height: 874, scale: 3 } };
-export const DEFAULT_DEVICE = "iphone-17-pro";
-
 const ENOSYS = 52, EBADF = 8;
 const dec = new TextDecoder(), enc = new TextEncoder();
 
@@ -61,8 +58,22 @@ export class SimCore {
 
   get mem() { return this.wasm.memory.buffer; }
 
-  /** Start the app: viewport in points, scale = device pixels per point. Renders the first frame. */
-  init({ width = 402, height = 874, scale = 3, dark = false, dynamicType = "large" } = {}) {
+  /** Device profiles from the Wasm build (crates/simcore-render/src/device.rs): `[{name, width, height, scale}]`; the first is the default. */
+  get devices() {
+    this.wasm.simcore_web_devices();
+    return JSON.parse(dec.decode(this.#take()));
+  }
+
+  /**
+   * Start the app on `device` (a name from `devices`, default the first). Viewport in points and
+   * scale (device pixels per point) default to the device's own; pass them to override.
+   * Renders the first frame.
+   */
+  init({ device, width, height, scale, dark = false, dynamicType = "large" } = {}) {
+    const devs = this.devices, dev = devs.find((d) => d.name === (device ?? devs[0].name));
+    if (!dev) throw new Error(`unknown device ${JSON.stringify(device)} (known: ${devs.map((d) => d.name).join(", ")})`);
+    if (device !== undefined && this.wasm.simcore_web_set_device(this.#put(device)) !== 0) throw new Error(`unknown device ${JSON.stringify(device)}`);
+    width ??= dev.width; height ??= dev.height; scale ??= dev.scale;
     Object.assign(this, { width, height, scale });
     this.setDynamicType(dynamicType);
     if (this.wasm.simcore_web_init(width, height, scale, dark ? 1 : 0) !== 0) throw new Error("simcore_web_init failed");

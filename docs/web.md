@@ -10,7 +10,7 @@ scripts/build-web.sh examples/swiftui-counter CounterView    # or a root view
                                                              # -> target/web/{index.html,main.js,simcore.js,app.wasm}
 python3 -m http.server 8000 -d target/web                    # open http://localhost:8000/
 ```
-Query params: `?device=iphone-17-pro` (default; the only profile), `?width=&height=&scale=` (points / device
+Query params: `?device=<name>` (a profile from `DEVICES` in `crates/simcore-render/src/device.rs`, listed by `sim.devices`; default the first, iphone-17-pro), `?width=&height=&scale=` (points / device
 pixels per point; default scale fits the window x `devicePixelRatio`), `?dark=1` (default: the browser's
 colour scheme). The canvas fits the window keeping the aspect ratio and re-renders crisply on resize.
 Page API: `window.simcore.setViewport(w, h)`, `setAppearance('dark'|'light')` (both re-layout and push the
@@ -77,5 +77,5 @@ builds both examples and runs all of the above.
 
 ## Gaps
 
-One device profile (iphone-17-pro chrome; other sizes via `?width=&height=`). The software keyboard has no
+Device profiles come from `DEVICES` (`crates/simcore-render/src/device.rs`, shared with the native host); other sizes via `?width=&height=`. The software keyboard has no
 number/emoji layers (as native). No IME/composition input and no multi-touch. `wasm-opt` flags assume binaryen 133+.

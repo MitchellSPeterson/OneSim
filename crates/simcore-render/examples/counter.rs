@@ -4,7 +4,7 @@
 //!   cargo run -p simcore-render --example counter --features window -- --window
 
 use simcore_protocol::{Appearance, ViewNode};
-use simcore_render::{build_scene, render_png, Fonts, Scene, SceneParams};
+use simcore_render::{build_scene, device, Device, DEFAULT_DEVICE, render_png, Fonts, Scene, SceneParams};
 
 const VIEWPORT: (f64, f64) = (402.0, 874.0);
 const INCREMENT: u64 = 1;
@@ -29,10 +29,10 @@ fn tree(count: u32) -> ViewNode {
 
 fn build(count: u32, vp: (f64, f64), a: Appearance, scale: f64, fonts: &mut Fonts) -> Scene {
     let scroll = std::collections::HashMap::new();
+    let dev = Device { island: None, safe_top: 62.0, safe_bottom: 34.0, ..*device(DEFAULT_DEVICE).unwrap() };
     let p = SceneParams {
         viewport: vp,
-        safe_top: 62.0,
-        safe_bottom: 34.0,
+        device: &dev,
         scale,
         appearance: a,
         dynamic_type: Default::default(),
