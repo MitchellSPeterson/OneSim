@@ -49,7 +49,6 @@ An `environment` message stores appearance/viewport and re-sends a tree.
 | Controls | `TextField(_:text:)`, `Toggle(_:isOn:)`, `Stepper(_:value:in:step:)` (Strideable), `.buttonStyle(.automatic/.plain/.bordered/.borderedProminent)`, `.disabled(_:)` |
 | Shapes/styles | `Shape`, `Rectangle`, `Circle`, `Capsule`, `RoundedRectangle(cornerRadius:)`, `.fill(_:)`, `.stroke(_:lineWidth:)`, `ShapeStyle` (`Color`, `.primary/.secondary/.tertiary`), `foregroundStyle`, `Color.opacity(_:)` |
 | More modifiers | `font` (`Font` text styles, `.system(size:weight:)`), `fontWeight`, `bold`, `strikethrough`, `multilineTextAlignment`, `overlay` (both forms), `shadow` |
-
 | Lifecycle | `.onAppear { }`, `.onDisappear { }` |
 | Liquid Glass (iOS 26) | `Glass` (`.regular .clear .identity`, `.tint(_:)`, `.interactive(_:)`), `.glassEffect()`, `.glassEffect(_:in:)` with `Shape` static members `.circle .capsule .ellipse .rect .rect(cornerRadius:)`, `Ellipse`, `GlassEffectContainer(spacing:content:)` (pass-through), `.buttonStyle(.glass)`, `.buttonStyle(.glassProminent)`. Emitted per docs/protocol.md F. |
 | SF Symbols | `Image(systemName:)`, `.resizable()`, `.scaledToFit()`, `.scaledToFill()`, `.aspectRatio(contentMode:)`, `.imageScale(_:)`, `Label(_:systemImage:)`, `Label(title:icon:)`, `Font.weight(_:)` / `Font.bold()` on any `Font` |
@@ -77,6 +76,27 @@ so `@State` persists while a screen is on the stack (hidden screens' slots are k
 Presented content is evaluated in place (a sheet's `@State` lives at `<view path>/sheet` only while shown) and hoisted by the runtime above the whole tree as a `presentation` node (protocol section G). Any `Button` inside alert/dialog actions dismisses it after its own action. `Button(_:role:action:)` takes `ButtonRole` `.cancel` / `.destructive`.
 
 Limits: no animations (settled states only; the sheet snaps to its detent on release), no `presentationBackground`, `presentationCornerRadius`, `presentationBackgroundInteraction`, `presentationCompactAdaptation`, `dialogSeverity`, `alert` with text fields or `Text` titles, `popover`, or `inspector`. Presented content is hoisted above the whole screen, not just its presenting view. The popover points at the first text of the view the dialog is attached to. `Text` runs: no underline color/pattern, `baselineOffset` or `kerning`; a concatenation's line height follows its largest run.
+
+## Other Apple frameworks
+
+SwiftUI apps reach for more than `SwiftUI`. Each of these will be reimplemented in Swift the same way, so `import <Framework>` compiles unchanged ([roadmap](roadmap.md#apple-frameworks-beyond-swiftui)).
+
+| Framework | Status |
+|---|---|
+| Charts | planned |
+| SpriteKit | planned |
+| SceneKit | planned |
+| RealityKit | planned |
+| ARKit | planned |
+| MapKit | planned |
+| StoreKit | planned |
+| MusicKit | planned |
+| PencilKit | planned |
+| WidgetKit | planned |
+| UIKit | planned |
+| CoreGraphics | planned (`CGFloat` only, via Foundation) |
+| Metal | planned |
+| Vision | planned |
 
 ## Known limitations
 
