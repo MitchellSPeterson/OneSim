@@ -12,7 +12,7 @@ fn forced_fallback_uses_inter_and_phosphor() {
     // Inter is used and the wght axis applies: regular < semibold < bold widths.
     let mut f = Fonts::new();
     assert!(f.has_inter() && !f.has_sf());
-    let w = |f: &mut Fonts, wt| f.measure("Hamburgefonstiv", &FontSpec::new(17.0, 20.33, wt, TextAlign::Leading), None).0;
+    let w = |f: &mut Fonts, wt| f.measure("Hamburgefonstiv", &FontSpec::new(17.0, 20.33, wt, TextAlign::Leading), None, &[]).0;
     let (r, sb, b) = (w(&mut f, 400), w(&mut f, 600), w(&mut f, 700));
     assert!(r < sb && sb < b, "{r} {sb} {b}");
 
@@ -33,6 +33,7 @@ fn forced_fallback_uses_inter_and_phosphor() {
         appearance: Appearance::Light,
         dynamic_type: Default::default(),
         scroll: &scroll,
+        sheets: &Default::default(),
         focus: None,
         overscroll: false,
         status_bar: false,

@@ -10,10 +10,22 @@ Reproduce: `scripts/compare-ios.sh` (needs Python + Pillow). Re-capture iOS refe
 
 | state | system fonts | fallback (`SIMCORE_FALLBACK=1`) | notes |
 |---|---:|---:|---|
-| controls | 0.55% | 0.83% | text antialiasing, status bar icons |
-| controls-changed | 0.69% | 0.84% | text antialiasing, status bar icons |
+| controls | 0.89% | 1.43% | text antialiasing, status bar icons |
+| controls-changed | 1.03% | 1.44% | text antialiasing, status bar icons |
 | glass | 0.81% | 0.97% | rim lens crescents on the star/bell, text antialiasing |
 | glass-dark | 0.76% | 0.90% | rim lens crescents, text antialiasing |
+| alert | 1.07% | 1.73% | glass card blur and capsule text antialiasing |
+| alert-dark | 0.94% | 1.59% | same |
+| sheet | 0.20% | 0.34% | text antialiasing |
+| sheet-dark | 0.18% | 0.32% | text antialiasing |
+| sheet-medium | 0.98% | 1.47% | floating glass card; blur and rim of the glass |
+| sheet-medium-dark | 0.96% | 1.44% | same |
+| sheet-nested | 0.19% | 0.33% | text antialiasing |
+| sheet-nested-dark | 0.18% | 0.31% | text antialiasing |
+| dialog | 1.20% | 1.82% | popover glass and shadow |
+| dialog-dark | 1.27% | 1.87% | same |
+| cover | 0.28% | 0.30% | text antialiasing |
+| cover-dark | 0.27% | 0.30% | text antialiasing |
 | glass-pressed | 0.82% | 0.95% | same as glass; only the label differs |
 | home | 0.76% | 1.07% | text antialiasing, status bar icons |
 | home-dark | 0.77% | 1.07% | text antialiasing, status bar icons |
@@ -32,7 +44,7 @@ Reproduce: `scripts/compare-ios.sh` (needs Python + Pillow). Re-capture iOS refe
 | typography-scrolled | 1.91% | 4.95% **FAIL (< 3.5%)** | AX5 Dynamic Type + scroll-edge veil; glyph subpixel edges |
 | typography-scrolled-dark | 1.93% | 4.90% **FAIL (< 3.5%)** | AX5 Dynamic Type + scroll-edge veil; glyph subpixel edges |
 
-System mode: every state < 2% (21/21). Fallback mode: < 3.5% except the two `typography-scrolled` states (see Known gaps). Web vs native (`scripts/compare-web.sh`, fallback fonts on both sides): 0.00% in all 21 states.
+System mode: every state < 2% (25/25). Fallback mode: < 3.5% except the two `typography-scrolled` states (see Known gaps). Web vs native (`scripts/compare-web.sh`, fallback fonts on both sides): 0.00% in all 25 states.
 
 ![long list scrolled under the bar](ios-comparison/cmp-long-list-scrolled.png)
 ![long list collapsed](ios-comparison/cmp-long-list-collapsed.png)

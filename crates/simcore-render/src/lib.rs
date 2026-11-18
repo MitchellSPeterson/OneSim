@@ -22,8 +22,8 @@ pub use chrome::{autocap, ChromeParams};
 pub use device::{device, Device, StatusBar, DEFAULT_DEVICE, DEVICES};
 pub use interaction::{resolve_label, DragPhase, Effect, Interaction};
 pub use layout::swiftui::SceneParams;
-pub use scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, Shadow, SymbolRun, TextRun};
-pub use text::{fonts_capability, inter_tracking_em, tracking_em, FontSpec, Fonts, TextAlign};
+pub use scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, SheetInfo, SheetPos, Shadow, SymbolRun, TextRun};
+pub use text::{fonts_capability, inter_tracking_em, tracking_em, FontSpec, Fonts, Span, TextAlign};
 
 use simcore_protocol::ViewNode;
 

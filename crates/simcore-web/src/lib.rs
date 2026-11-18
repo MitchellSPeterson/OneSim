@@ -64,6 +64,7 @@ fn draw(s: &mut State) {
         appearance: if s.dark { Appearance::Dark } else { Appearance::Light },
         dynamic_type: s.dynamic_type,
         scroll: &s.inter.scroll,
+        sheets: &s.inter.sheets,
         focus: s.inter.focus.as_deref(),
         overscroll: s.inter.live(),
         status_bar: true,
