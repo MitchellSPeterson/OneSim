@@ -3,8 +3,9 @@
 - `cargo build --workspace && cargo test --workspace && cargo clippy --workspace` must pass.
 - Swift side: `frameworks/swiftui/Tests/wire_test.sh` must pass (macOS).
 - Protocol changes: update `docs/protocol.md` and `simcore-protocol` together; breaking changes bump `PROTOCOL_VERSION`.
-- New SwiftUI API: add it to `docs/swiftui-compatibility.md`.
-- New or changed Expo / React Native API: update its row in `docs/expo-api-coverage.md` (iOS and Android columns, link the issue) and run `node scripts/api-coverage.mjs`. CI runs it with `--check`, which fails when the summary is stale or a module in `frameworks/react-native/guest/modules.js` is missing from the doc or disagrees with its status. Native modules go in that registry with status `implemented` / `simulated` / `unsupported`; never report fake success.
+- New or changed Expo / React Native API: update its row in `docs/compatibility/expo/` (the area file) (iOS and Android columns, link the issue) and run `node scripts/api-coverage.mjs`. CI runs it with `--check`, which fails when the summary is stale or a module in `frameworks/react-native/guest/modules.js` is missing from the docs or disagrees with its status. Native modules go in that registry with status `implemented` / `simulated` / `unsupported`; never report fake success.
+- New or changed SwiftUI API: update its row in `docs/compatibility/swiftui/` (the area file; signatures and limits go in `guest.md`) and run `node scripts/api-coverage.mjs`.
+- New or changed Jetpack Compose API: update its row in `docs/compatibility/compose/` (the area file) and run `node scripts/api-coverage.mjs`.
 - Missing API: open an [API request](https://github.com/MitchellSPeterson/SimCore/issues/new?template=api-request.yml) issue and link it from the coverage row. Expo guest checks: `node frameworks/react-native/guest/run-*.mjs` (see `frameworks/react-native/README.md`).
 - No crate or abstraction without a real user of it.
 

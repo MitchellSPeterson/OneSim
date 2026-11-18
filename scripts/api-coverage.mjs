@@ -1,43 +1,137 @@
 #!/usr/bin/env node
-// Recomputes the coverage summary in docs/expo-api-coverage.md and cross-checks the tables
-// against the guest's native-module registry (frameworks/react-native/guest/modules.js).
-//   node scripts/api-coverage.mjs           rewrite the summary block
-//   node scripts/api-coverage.mjs --check   exit 1 if the summary is stale or a row disagrees with the registry (CI)
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+// Recomputes the coverage summaries under docs/compatibility/ and cross-checks the Expo tables against the
+// guest's native-module registry (frameworks/react-native/guest/modules.js).
+//   node scripts/api-coverage.mjs           rewrite the summary blocks
+//   node scripts/api-coverage.mjs --check   exit 1 if a summary is stale, a row disagrees with the registry, or
+//                                           something pinned in the repo drifted from docs/compatibility/versions.json (CI)
+// Each framework is a folder: README.md holds the summary, every other area file listed in FRAMEWORKS holds one
+// table (header with API and an iOS and/or Android column). docs/compatibility/README.md holds the per-framework totals.
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 
 const root = new URL('..', import.meta.url).pathname;
-const docPath = root + 'docs/expo-api-coverage.md';
+const dir = 'docs/compatibility/';
+// Folder -> display name and area files in summary order. Non-table files (guest notes) go in `other`.
+const FRAMEWORKS = {
+  swiftui: {
+    name: 'SwiftUI',
+    areas: ['views', 'view-modifiers', 'text-and-image', 'shapes', 'styles', 'gestures', 'scenes', 'property-wrappers', 'environment-values', 'protocols', 'other-types', 'outside-swiftui'],
+    other: ['guest'],
+  },
+  expo: { name: 'Expo / React Native', areas: ['core-components', 'react-native-modules', 'expo-sdk', 'libraries'], other: [] },
+  compose: { name: 'Jetpack Compose', areas: ['composables', 'modifiers', 'runtime', 'functions', 'types'], other: [] },
+};
+const PLATFORMS = ['iOS', 'Android'];
 const STATUS = { '✅': 'implemented', '🟡': 'simulated', '🟠': 'partial', '⛔': 'unsupported', '⬜': 'planned', '—': 'n/a' };
 const SCORE = { implemented: 1, simulated: 1, partial: 0.5, unsupported: 0, planned: 0 };
 // Registry status -> statuses a doc row may claim for it.
 const ALLOWED = { implemented: ['implemented', 'partial'], simulated: ['simulated'], unsupported: ['unsupported'] };
-
-const doc = readFileSync(docPath, 'utf8');
+const check = process.argv.includes('--check');
 const errors = [];
-const sections = []; // { title, rows: [{ api, native: [names], ios, android }] }
-let section, cols;
-doc.split('\n').forEach((line, i) => {
-  if (line.startsWith('## ')) { section = { title: line.slice(3).trim(), rows: [] }; cols = null; return; }
-  if (!line.startsWith('|')) { cols = null; return; }
-  if (!section) return;
-  const cells = line.slice(1, line.endsWith('|') ? -1 : undefined).split('|').map((c) => c.trim());
-  if (!cols) {
-    if (!cells.includes('Native')) return; // not a coverage table (the summary)
-    cols = Object.fromEntries(cells.map((c, j) => [c, j]));
-    sections.push(section);
-    return;
+
+// Parses one area file: title from its `# ` heading, rows from the table whose header has API + a platform.
+function area(path) {
+  const area = { path, title: '', rows: [] };
+  let cols;
+  readFileSync(root + path, 'utf8').split('\n').forEach((line, i) => {
+    if (line.startsWith('# ')) area.title ||= line.slice(2).trim();
+    if (!line.startsWith('|')) { cols = null; return; }
+    const cells = line.slice(1, line.endsWith('|') ? -1 : undefined).split('|').map((c) => c.trim());
+    if (!cols) {
+      if (cells.includes('API') && PLATFORMS.some((p) => cells.includes(p))) cols = Object.fromEntries(cells.map((c, j) => [c, j]));
+      else cols = {}; // some other table: skip its rows
+      return;
+    }
+    if (!('API' in cols) || /^:?-+:?$/.test(cells[0])) return;
+    const row = { api: cells[cols.API], path, line: i + 1, native: [...(cells[cols.Native] || '').matchAll(/`([^`]+)`/g)].map((m) => m[1]) };
+    for (const p of PLATFORMS.filter((p) => p in cols)) {
+      row[p] = STATUS[cells[cols[p]]];
+      if (!row[p]) errors.push(`${path}:${i + 1}: ${p} status "${cells[cols[p]]}" is not one of ${Object.keys(STATUS).join(' ')}`);
+    }
+    area.rows.push(row);
+  });
+  if (!area.title) errors.push(`${path}: missing a "# Title" heading`);
+  return area;
+}
+
+// Summary: implemented/simulated count 1, partial 0.5, unsupported/planned 0; n/a and missing columns are left out.
+const score = (rs, p) => {
+  const counted = rs.filter((r) => r[p] in SCORE);
+  const pts = counted.reduce((a, r) => a + SCORE[r[p]], 0);
+  return counted.length ? `${Math.round((100 * pts) / counted.length)}% (${pts}/${counted.length})` : '—';
+};
+const table = (head, lines, platforms) => [`| ${head} | ${platforms.join(' | ')} |`, `|---|${platforms.map(() => '---|').join('')}`, ...lines].join('\n');
+
+// Replaces the generated block in a README (or reports it stale under --check).
+function writeSummary(path, summary, tag = 'coverage') {
+  const START = `<!-- ${tag}:start (generated by scripts/api-coverage.mjs) -->`, END = `<!-- ${tag}:end -->`;
+  const doc = readFileSync(root + path, 'utf8');
+  const a = doc.indexOf(START), b = doc.indexOf(END);
+  if (a < 0 || b < 0) return errors.push(`${path}: summary markers missing`);
+  const next = doc.slice(0, a + START.length) + '\n' + summary + '\n' + doc.slice(b);
+  if (next === doc) return;
+  if (check) errors.push(`${path}: summary is stale, run \`node scripts/api-coverage.mjs\``);
+  else writeFileSync(root + path, next);
+}
+
+const totals = [];
+const rowsOf = {};
+for (const [fw, { name, areas, other }] of Object.entries(FRAMEWORKS)) {
+  const known = ['README', ...areas, ...other];
+  for (const f of readdirSync(root + dir + fw)) {
+    if (f.endsWith('.md') && !known.includes(f.slice(0, -3))) errors.push(`${dir}${fw}/${f}: not listed in FRAMEWORKS (scripts/api-coverage.mjs)`);
   }
-  if (/^:?-+:?$/.test(cells[0])) return;
-  const status = (p) => {
-    const s = STATUS[cells[cols[p]]];
-    if (!s) errors.push(`docs/expo-api-coverage.md:${i + 1}: ${p} status "${cells[cols[p]]}" is not one of ${Object.keys(STATUS).join(' ')}`);
-    return s;
-  };
-  section.rows.push({ api: cells[cols.API], line: i + 1, native: [...(cells[cols.Native] || '').matchAll(/`([^`]+)`/g)].map((m) => m[1]), ios: status('iOS'), android: status('Android') });
-});
+  const parsed = areas.map((a) => area(`${dir}${fw}/${a}.md`));
+  const rows = (rowsOf[fw] = parsed.flatMap((a) => a.rows));
+  const platforms = PLATFORMS.filter((p) => rows.some((r) => p in r));
+  const summary = table('Area', [
+    ...parsed.map((a) => `| [${a.title}](${a.path.split('/').pop()}) | ${platforms.map((p) => score(a.rows, p)).join(' | ')} |`),
+    `| **Total** | ${platforms.map((p) => `**${score(rows, p)}**`).join(' | ')} |`,
+  ], platforms);
+  writeSummary(`${dir}${fw}/README.md`, summary);
+  totals.push(`| [${name}](${fw}/README.md) | ${PLATFORMS.map((p) => (platforms.includes(p) ? score(rows, p) : '—')).join(' | ')} |`);
+  console.log(`${name}\n${summary}\n`);
+}
+writeSummary(`${dir}README.md`, table('Framework', totals, PLATFORMS));
+
+// Support matrix: render it, then check that everything pinned in the repo agrees with it.
+const V = JSON.parse(readFileSync(root + dir + 'versions.json', 'utf8'));
+const ios = V.ios, expo = V.expo;
+writeSummary(`${dir}README.md`, [
+  '| Target | Version | Used for |',
+  '|---|---|---|',
+  `| iOS Simulator runtime | ${ios.runtime} (${ios.build}), ${ios.device} | Reference screenshots, look of the renderer, OS version the Expo guest reports |`,
+  `| iOS SDK (Xcode) | ${ios.apiSdk} | SwiftUI API inventory (\`scripts/swiftui-inventory.mjs\`) |`,
+  `| Expo SDK | ${expo.sdk} (React Native ${expo.reactNative}) | Examples, native module contracts |`,
+  `| Expo Go | ${expo.expoGo} | Expo reference screenshots |`,
+  `| Jetpack Compose | ${Object.entries(V.compose).map(([l, v]) => `${l} ${v}`).join(', ')} | Compose API inventory (\`scripts/compose-inventory.mjs\`) |`,
+  `| Android | ${Object.keys(V.android).length ? Object.entries(V.android).map(([k, v]) => `${k} ${v}`).join(', ') : 'none yet (no Android host)'} | |`,
+].join('\n'), 'versions');
+const drift = (path, msg) => errors.push(`${path}: ${msg} (docs/compatibility/versions.json)`);
+const bare = (spec) => String(spec).replace(/^[~^=]/, '');
+for (const ex of readdirSync(root + 'examples')) {
+  let pkg;
+  try { pkg = JSON.parse(readFileSync(`${root}examples/${ex}/package.json`, 'utf8')); } catch { continue; }
+  const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+  if (deps.expo && bare(deps.expo) !== expo.sdk) drift(`examples/${ex}/package.json`, `expo ${deps.expo}, expected ~${expo.sdk}`);
+  if (deps['react-native'] && bare(deps['react-native']) !== expo.reactNative) drift(`examples/${ex}/package.json`, `react-native ${deps['react-native']}, expected ${expo.reactNative}`);
+}
+// The OS version the Expo guest reports to apps.
+const guest = 'frameworks/react-native/guest/modules.js', guestSrc = readFileSync(root + guest, 'utf8');
+for (const want of [`osVersion: '${ios.runtime}'`, `osBuildId: '${ios.build}'`, `systemVersion: '${ios.runtime}'`, `iPhone OS ${ios.runtime.replace(/\./g, '_')} `]) {
+  if (!guestSrc.includes(want)) drift(guest, `expected \`${want}\``);
+}
+// Reference screenshots say which runtime (and Expo Go) they were captured on.
+for (const fx of readdirSync(root + 'tests/fixtures')) {
+  let readme;
+  try { readme = readFileSync(`${root}tests/fixtures/${fx}/README.md`, 'utf8'); } catch { continue; }
+  if (!readme.includes(`iOS ${ios.runtime}`)) drift(`tests/fixtures/${fx}/README.md`, `does not say it was captured on iOS ${ios.runtime}; recapture or update the matrix`);
+  for (const m of readme.matchAll(/Expo Go (\d+(?:\.\d+)*)/g)) {
+    if (!expo.expoGo.startsWith(m[1])) drift(`tests/fixtures/${fx}/README.md`, `Expo Go ${m[1]}, expected ${expo.expoGo}`);
+  }
+}
 
 // Cross-check: every registry module has a row, and the row's iOS status agrees with the registry.
 const stub = new Proxy(() => ({}), { get: (t, p) => (p === 'modules' ? { WorkletsModule() {}, ReanimatedModule() {} } : stub) });
@@ -45,32 +139,10 @@ const createRegistry = createRequire(import.meta.url)(root + 'frameworks/react-n
 const dataDir = mkdtempSync(join(tmpdir(), 'simcore-coverage-')); // the file-system / secure-store modules need a sandbox dir
 const registry = createRegistry(stub, new Proxy({}, { get: (t, p) => (p === 'expo' ? { NativeModule: class {}, SharedObject: class {} } : p === 'cfg' ? { dataDir } : stub) })).list();
 rmSync(dataDir, { recursive: true, force: true });
-const rows = sections.flatMap((s) => s.rows);
 for (const m of registry) {
-  const row = rows.find((r) => r.native.includes(m.name));
-  if (!row) errors.push(`registry module ${m.name} (${m.package || 'react-native'}, ${m.status}) has no row in docs/expo-api-coverage.md: add its name in backticks to a row's Native column`);
-  else if (!ALLOWED[m.status].includes(row.ios)) errors.push(`docs/expo-api-coverage.md:${row.line}: ${row.api} says iOS ${row.ios}, but registry module ${m.name} is ${m.status}`);
+  const row = rowsOf.expo.find((r) => r.native.includes(m.name));
+  if (!row) errors.push(`registry module ${m.name} (${m.package || 'react-native'}, ${m.status}) has no row in ${dir}expo/: add its name in backticks to a row's Native column`);
+  else if (!ALLOWED[m.status].includes(row.iOS)) errors.push(`${row.path}:${row.line}: ${row.api} says iOS ${row.iOS}, but registry module ${m.name} is ${m.status}`);
 }
 
-// Summary: implemented/simulated count 1, partial 0.5, unsupported/planned 0; n/a rows are left out.
-const score = (rs, p) => {
-  const counted = rs.filter((r) => r[p] in SCORE);
-  const pts = counted.reduce((a, r) => a + SCORE[r[p]], 0);
-  return counted.length ? `${Math.round((100 * pts) / counted.length)}% (${pts}/${counted.length})` : '—';
-};
-const summary = [
-  '| Area | iOS | Android |',
-  '|---|---|---|',
-  ...sections.map((s) => `| ${s.title} | ${score(s.rows, 'ios')} | ${score(s.rows, 'android')} |`),
-  `| **Total** | **${score(rows, 'ios')}** | **${score(rows, 'android')}** |`,
-].join('\n');
-const START = '<!-- coverage:start (generated by scripts/api-coverage.mjs) -->', END = '<!-- coverage:end -->';
-const a = doc.indexOf(START), b = doc.indexOf(END);
-if (a < 0 || b < 0) errors.push('docs/expo-api-coverage.md: summary markers missing');
-const next = a < 0 || b < 0 ? doc : doc.slice(0, a + START.length) + '\n' + summary + '\n' + doc.slice(b);
-
-if (process.argv.includes('--check')) {
-  if (next !== doc) errors.push('docs/expo-api-coverage.md: summary is stale, run `node scripts/api-coverage.mjs`');
-} else if (next !== doc) writeFileSync(docPath, next);
-console.log(summary);
 if (errors.length) { console.error('\n' + errors.join('\n')); process.exit(1); }
