@@ -6,17 +6,13 @@
 //! `simcore_render::Interaction` (the same state machine as the native host) and its effects
 //! call the Swift callbacks directly.
 use simcore_protocol::{Appearance, DynamicTypeSize, KeyboardEvent, PointerEvent, PointerKind, ViewNode};
-use simcore_render::{build_scene, render, resolve_label, DragPhase, Effect, Fonts, Interaction, Scene, SceneParams};
+use simcore_render::{build_scene, device, render, resolve_label, Device, DEFAULT_DEVICE, DEVICES, DragPhase, Effect, Fonts, Interaction, Scene, SceneParams};
 use std::cell::RefCell;
 use std::ffi::{c_char, c_void, CStr, CString};
 
 pub type ActionCb = Option<unsafe extern "C" fn(*mut c_void, u64)>;
 pub type TextCb = Option<unsafe extern "C" fn(*mut c_void, u64, *const c_char)>;
 pub type EnvCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char, f64, f64)>;
-
-// iphone-17-pro chrome (crates/simcore-host/src/session.rs DEVICES); the viewport is a parameter.
-const SAFE: (f64, f64) = (62.0, 34.0);
-const ISLAND: (f64, f64, f64, f64) = (138.4, 13.92, 125.2, 36.83);
 
 struct State {
     ctx: usize,
@@ -27,6 +23,8 @@ struct State {
     tree: Option<ViewNode>,
     scene: Option<Scene>,
     fonts: Option<Fonts>,
+    /// Chrome source (crates/simcore-render/src/device.rs); the viewport is a parameter.
+    device: &'static Device,
     viewport: (f64, f64),
     scale: f64,
     dark: bool,
@@ -45,7 +43,7 @@ thread_local! {
     // ponytail: thread-local state; protocol says single-threaded.
     static STATE: RefCell<State> = RefCell::new(State {
         ctx: 0, on_action: None, on_env: None, on_text: None, version: None, tree: None, scene: None,
-        fonts: None, viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, inter: Interaction::default(),
+        fonts: None, device: device(DEFAULT_DEVICE).unwrap(), viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, inter: Interaction::default(),
         stale: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), buf: Vec::new(),
     });
     static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
@@ -61,8 +59,7 @@ fn draw(s: &mut State) {
     let fonts = s.fonts.get_or_insert_with(|| Fonts::with_fallback(true)); // browsers: bundled Inter only
     let params = SceneParams {
         viewport: s.viewport,
-        safe_top: SAFE.0,
-        safe_bottom: SAFE.1,
+        device: s.device,
         scale: s.scale,
         appearance: if s.dark { Appearance::Dark } else { Appearance::Light },
         dynamic_type: s.dynamic_type,
@@ -70,7 +67,7 @@ fn draw(s: &mut State) {
         focus: s.inter.focus.as_deref(),
         overscroll: s.inter.live(),
         status_bar: true,
-        chrome: s.inter.chrome(Some(ISLAND)),
+        chrome: s.inter.chrome(),
     };
     let scene = build_scene(root, &params, fonts);
     let pm = render(&scene, fonts, s.scale);
@@ -164,6 +161,30 @@ extern "C" {
 
 fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
     STATE.with(|s| f(&mut s.borrow_mut()))
+}
+
+/// Device list as JSON `[{name,width,height,scale}]` in the scratch buffer (usable before init).
+#[no_mangle]
+pub extern "C" fn simcore_web_devices() -> i32 {
+    let list: Vec<_> = DEVICES
+        .iter()
+        .map(|d| serde_json::json!({"name": d.name, "width": d.viewport.width, "height": d.viewport.height, "scale": d.scale}))
+        .collect();
+    with(|s| s.buf = serde_json::to_vec(&list).unwrap_or_default());
+    0
+}
+
+/// Select the device whose name is the `len` UTF-8 bytes in the scratch buffer (chrome only; the
+/// viewport and scale come from `simcore_web_init`). Call before init. 0 ok, 1 unknown name.
+#[no_mangle]
+pub extern "C" fn simcore_web_set_device(len: usize) -> i32 {
+    with(|s| match device(&String::from_utf8_lossy(&s.buf[..len.min(s.buf.len())])) {
+        Some(d) => {
+            s.device = d;
+            0
+        }
+        None => 1,
+    })
 }
 
 /// Evaluate the app and render the first frame. Call once, after `_initialize`.

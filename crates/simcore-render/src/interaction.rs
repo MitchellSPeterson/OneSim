@@ -134,8 +134,8 @@ impl Interaction {
     }
 
     /// Chrome parameters for the next layout (pair with `focus.as_deref()`).
-    pub fn chrome(&self, island: Option<(f64, f64, f64, f64)>) -> ChromeParams {
-        ChromeParams { keyboard: self.focus.is_some(), shift: self.shift, island }
+    pub fn chrome(&self) -> ChromeParams {
+        ChromeParams { keyboard: self.focus.is_some(), shift: self.shift }
     }
 
     /// `click` = down + up. A hit on a text field focuses it; any other click unfocuses. `scroll`

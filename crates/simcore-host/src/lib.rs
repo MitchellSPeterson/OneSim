@@ -144,8 +144,7 @@ impl Host {
         let fonts = self.fonts.get_or_insert_with(Fonts::new);
         let params = SceneParams {
             viewport: (s.viewport.width, s.viewport.height),
-            safe_top: s.device.safe_top,
-            safe_bottom: s.device.safe_bottom,
+            device: &s.device,
             scale: s.scale,
             appearance: s.appearance,
             dynamic_type: s.dynamic_type,
@@ -153,7 +152,7 @@ impl Host {
             focus: s.inter.focus.as_deref(),
             overscroll: s.inter.live(),
             status_bar: true,
-            chrome: s.inter.chrome(s.device.island),
+            chrome: s.inter.chrome(),
         };
         let scene = build_scene(&root, &params, fonts);
         for name in &scene.unsupported_symbols {

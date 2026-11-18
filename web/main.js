@@ -1,23 +1,23 @@
 // SimCore in the browser: draws the framebuffer of web/simcore.js's driver to a <canvas> and turns
 // DOM events (pointer, wheel, drag, keyboard, resize) into points-space input.
-import { DEFAULT_DEVICE, DEVICES, load } from "./simcore.js";
+import { load } from "./simcore.js";
 
 const canvas = document.getElementById("screen");
 const ctx = canvas.getContext("2d");
 const q = new URLSearchParams(location.search);
 const num = (k) => (q.has(k) && Number.isFinite(Number(q.get(k))) && Number(q.get(k)) > 0 ? Number(q.get(k)) : null);
 
-function viewportFromUrl() {
-  const name = q.get("device") ?? DEFAULT_DEVICE;
-  const dev = DEVICES[name];
-  if (!dev) throw new Error(`unknown device ${JSON.stringify(name)} (known: ${Object.keys(DEVICES).join(", ")})`);
-  return { width: num("width") ?? dev.width, height: num("height") ?? dev.height, scale: num("scale") };
+function viewportFromUrl(devices) {
+  const name = q.get("device") ?? devices[0].name;
+  const dev = devices.find((d) => d.name === name);
+  if (!dev) throw new Error(`unknown device ${JSON.stringify(name)} (known: ${devices.map((d) => d.name).join(", ")})`);
+  return { device: name, width: num("width") ?? dev.width, height: num("height") ?? dev.height, scale: num("scale") };
 }
 
 async function main() {
-  const vp = viewportFromUrl();
-  const dark = q.has("dark") ? q.get("dark") !== "0" : matchMedia("(prefers-color-scheme: dark)").matches;
   const sim = await load(await fetch("app.wasm"));
+  const vp = viewportFromUrl(sim.devices);
+  const dark = q.has("dark") ? q.get("dark") !== "0" : matchMedia("(prefers-color-scheme: dark)").matches;
   const dpr = () => window.devicePixelRatio || 1;
 
   // Fit the canvas into the window keeping the aspect ratio; render at the physical resolution
@@ -52,7 +52,7 @@ async function main() {
   };
   const act = (f) => { const r = f(); present(); animate(); return r; };
 
-  sim.init({ width: vp.width, height: vp.height, scale: fit(), dark, dynamicType: q.get("dynamicType") ?? "large" });
+  sim.init({ device: vp.device, width: vp.width, height: vp.height, scale: fit(), dark, dynamicType: q.get("dynamicType") ?? "large" });
   present();
   let resizing = 0;
   addEventListener("resize", () => {

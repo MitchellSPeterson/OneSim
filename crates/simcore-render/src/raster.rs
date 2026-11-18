@@ -44,6 +44,18 @@ fn stroke_pts(pm: &mut Pixmap, pts: &[(f32, f32)], c: Color, w: f32, xf: Transfo
 /// Icons drawn inside `(x, y, w, h)` (points).
 fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: f32, xf: Transform, mask: Option<&Mask>) {
     let (x, y, w, h) = b;
+    // Status bar glyphs are drawn at their 17 Pro size (20x4, 16x12, 27x13) and scaled to the box.
+    let k = match g {
+        Glyph::SignalDots => w / 20.0,
+        Glyph::Wifi => h / 12.0,
+        Glyph::Battery => h / 13.0,
+        // Emoji / dictation inside the SE's short bottom-row keys (the 17 Pro's sit in a 44pt box).
+        Glyph::Emoji | Glyph::Mic if h < 44.0 => h / 60.0,
+        _ => 1.0,
+    };
+    if (k - 1.0).abs() > 1e-4 {
+        return draw_glyph(pm, g, c, (0.0, 0.0, w / k, h / k), op, xf.pre_translate(x, y).pre_scale(k, k), mask);
+    }
     let (cx, cy) = (x + w / 2.0, y + h / 2.0);
     let c = Color { a: c.a * op, ..c };
     match g {

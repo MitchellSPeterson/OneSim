@@ -33,4 +33,13 @@ shot typography-scrolled-dark --dynamic-type accessibility5 --dark --click Typog
 shot long-list           --click "Long list"
 shot long-list-collapsed --click "Long list" --scroll 200,500,0,52
 shot long-list-scrolled  --click "Long list" --scroll 200,500,0,775.66
-python3 scripts/compare_ios.py tests/fixtures/showcase-ios "$out/simcore" "$out"
+rc=0
+python3 scripts/compare_ios.py tests/fixtures/showcase-ios "$out/simcore" "$out" || rc=1
+# Per-device chrome: tests/fixtures/devices/<slug>/{home,keyboard-shift}.png (see its README).
+for d in tests/fixtures/devices/*/; do
+  slug=$(basename "$d"); dd="$out/devices/$slug"; mkdir -p "$dd/simcore"
+  ./target/debug/simcore run "$app" --device "$slug" --screenshot "$dd/simcore/home.png" >/dev/null
+  ./target/debug/simcore run "$app" --device "$slug" --click Todos --click "New todo" --screenshot "$dd/simcore/keyboard-shift.png" >/dev/null
+  echo "== $slug"; python3 scripts/compare_ios.py "$d" "$dd/simcore" "$dd" || rc=1
+done
+exit $rc

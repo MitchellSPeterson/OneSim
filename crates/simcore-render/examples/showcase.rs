@@ -4,7 +4,7 @@
 //! Writes `<name>.png` and `<name>-dark.png` at 402x874 @3x (same as tests/fixtures/showcase-ios).
 
 use simcore_protocol::{Appearance, ViewNode};
-use simcore_render::{build_scene, render_png, Fonts, SceneParams};
+use simcore_render::{build_scene, device, Device, DEFAULT_DEVICE, render_png, Fonts, SceneParams};
 use std::collections::HashMap;
 
 const TREES: &[(&str, &str)] = &[
@@ -33,10 +33,10 @@ fn main() {
         let root: ViewNode = serde_json::from_str(json).expect("tree");
         for dark in [false, true] {
             let a = if dark { Appearance::Dark } else { Appearance::Light };
+            let dev = Device { island: None, safe_top: 62.0, safe_bottom: 34.0, ..*device(DEFAULT_DEVICE).unwrap() };
             let p = SceneParams {
                 viewport: (402.0, 874.0),
-                safe_top: 62.0,
-                safe_bottom: 34.0,
+                device: &dev,
                 scale: 3.0,
                 appearance: a,
                 dynamic_type: Default::default(),
