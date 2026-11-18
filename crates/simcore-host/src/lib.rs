@@ -10,9 +10,10 @@ use base64::Engine;
 use serde::Serialize;
 use serde_json::{json, Value};
 use simcore_protocol::*;
-use simcore_render::{build_scene, render_png, Fonts, Scene, SceneParams};
+use simcore_render::{build_scene, render_png, Fonts, Role, Scene, SceneParams};
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
+use std::time::{Duration, Instant};
 
 pub use session::{device, simcore_home, Device, State, DEVICES};
 use session::Session;
@@ -20,6 +21,10 @@ use session::Session;
 fn err(code: ErrorCode, msg: impl Into<String>) -> ApiError {
     ApiError::new(code, msg)
 }
+
+/// React Native: how long the guest must be quiet before a snapshot, and the most a snapshot waits.
+const QUIET: Duration = Duration::from_millis(150);
+const SETTLE_MAX: Duration = Duration::from_millis(2500);
 
 pub struct Host {
     sessions: HashMap<String, Session>,
@@ -92,7 +97,12 @@ impl Host {
     pub fn start_session(&mut self, id: &str) -> Result<(), ApiError> {
         let s = self.get(id)?;
         log::info!("starting session {id}");
-        s.start()
+        s.start()?;
+        if self.get(id)?.is_rn() {
+            // First layout pass: FlatList and friends render the rest once they know their frames.
+            let _ = self.scene(id);
+        }
+        Ok(())
     }
 
     pub fn stop_session(&mut self, id: &str) -> Result<(), ApiError> {
@@ -142,7 +152,62 @@ impl Host {
         Ok(())
     }
 
+    /// Scene of the current tree. React Native sessions first settle: the guest's trees, layout
+    /// frames, focus requests and `scroll_to` replies are exchanged until nothing changes.
     fn scene(&mut self, id: &str) -> Result<(Scene, u64, f64), ApiError> {
+        if !self.get(id)?.is_rn() {
+            return self.build(id);
+        }
+        let deadline = Instant::now() + SETTLE_MAX;
+        loop {
+            self.get(id)?.wait_quiet(QUIET, SETTLE_MAX);
+            let generation = self.get(id)?.generation();
+            let out = self.build(id)?;
+            let acted = self.rn_apply_requests(id, &out.0);
+            let s = self.get(id)?;
+            let sent = s.sync_layout(&out.0);
+            if (!acted && !sent && s.generation() == generation) || Instant::now() > deadline {
+                return Ok(out);
+            }
+        }
+    }
+
+    /// Apply the guest's `focus_request` / `scroll_to` messages and drop focus on a vanished field.
+    /// Returns whether the interaction state changed (the scene must be rebuilt).
+    fn rn_apply_requests(&mut self, id: &str, scene: &Scene) -> bool {
+        let Some(s) = self.sessions.get_mut(id) else { return false };
+        let before = s.inter.focus.clone();
+        let field = |tag: &str| scene.nodes.iter().find(|n| n.id == tag && n.field.is_some());
+        if before.as_deref().is_some_and(|f| field(f).is_none()) {
+            s.inter.focus = None;
+        }
+        let mut changed = s.inter.focus != before;
+        for r in s.take_requests() {
+            match r {
+                GuestMessage::FocusRequest { tag } => {
+                    let new = tag.map(|t| t.to_string()).and_then(|t| field(&t).map(|n| (t, n.value.clone().unwrap_or_default())));
+                    let old = s.inter.focus.clone();
+                    if old.as_ref() != new.as_ref().map(|n| &n.0) {
+                        s.inter.shift = new.as_ref().is_some_and(|n| simcore_render::autocap(&n.1));
+                        s.inter.focus = new.map(|n| n.0);
+                        let _ = s.sync_focus(old);
+                    }
+                }
+                GuestMessage::ScrollTo { tag, x, y } => {
+                    let Some(n) = scene.nodes.iter().find(|n| n.id == tag.to_string() && n.scroll.is_some()) else { continue };
+                    let max = n.scroll.map_or((0.0, 0.0), |i| i.max);
+                    let off = (x.resolve(max.0).clamp(0.0, max.0), y.resolve(max.1).clamp(0.0, max.1));
+                    s.inter.scroll.insert(n.id.clone(), off);
+                    let _ = s.send_scroll(n, ScrollPhase::End, off);
+                }
+                _ => {}
+            }
+            changed = true;
+        }
+        changed
+    }
+
+    fn build(&mut self, id: &str) -> Result<(Scene, u64, f64), ApiError> {
         let s = self.sessions.get(id).ok_or_else(|| err(ErrorCode::NotFound, format!("unknown session {id}")))?;
         let (version, root) = s
             .tree()
@@ -167,11 +232,7 @@ impl Host {
         for note in &scene.notes {
             s.report_once("host", note.clone());
         }
-        let scale = s.scale;
-        if s.is_rn() {
-            self.get(id)?.sync_layout(&scene);
-        }
-        Ok((scene, version, scale))
+        Ok((scene, version, s.scale))
     }
 
     /// Returns `(hit node id, action dispatched)`. `click` = down + up. A hit on a text field
@@ -180,19 +241,55 @@ impl Host {
     pub fn pointer(&mut self, id: &str, ev: PointerEvent) -> Result<(Option<String>, bool), ApiError> {
         self.get(id)?.require_running()?;
         let (scene, version, _) = self.scene(id)?;
-        let s = self.get(id)?;
-        if s.is_rn() && ev.kind != PointerKind::Scroll {
-            return self.rn_touch(id, &scene, ev);
+        if self.get(id)?.is_rn() {
+            return self.rn_pointer(id, &scene, version, ev);
         }
+        let s = self.get(id)?;
         s.inter.version = version;
         let effect = s.inter.pointer(&scene, ev);
         let out = (s.inter.hit.clone(), s.inter.acted);
-        let redraw = effect == simcore_render::Effect::Redraw;
         s.send_effect(effect)?;
-        if s.is_rn() && redraw {
-            self.scene(id)?; // scrolled: tell the guest the moved frames
-        }
         Ok(out)
+    }
+
+    /// React Native pointer input: scrolls become `scroll` events, the software keyboard is the
+    /// interaction state machine's, everything else is a touch (and a tap on a text input focuses it).
+    fn rn_pointer(&mut self, id: &str, scene: &Scene, version: u64, ev: PointerEvent) -> Result<(Option<String>, bool), ApiError> {
+        let s = self.get(id)?;
+        s.inter.version = version;
+        if ev.kind == PointerKind::Scroll {
+            let effect = s.inter.pointer(scene, ev);
+            let out = (s.inter.hit.clone(), false);
+            if effect == simcore_render::Effect::Redraw {
+                let n = scene.nodes.iter().find(|n| Some(&n.id) == out.0.as_ref());
+                let new = out.0.as_ref().and_then(|h| s.inter.scroll.get(h)).copied();
+                if let (Some(n), Some(new)) = (n, new) {
+                    let old = n.scroll.map_or(new, |i| i.offset);
+                    s.send_scroll(n, ScrollPhase::Begin, old)?;
+                    s.send_scroll(n, ScrollPhase::Scroll, new)?;
+                    s.send_scroll(n, ScrollPhase::End, new)?;
+                }
+            }
+            self.scene(id)?; // settle: FlatList renders the rows the scroll revealed
+            return Ok(out);
+        }
+        let on_keyboard = scene.nodes.iter().any(|n| n.kind == "keyboard" && n.bounds.contains(ev.x, ev.y));
+        let hit = scene.hit_test(ev.x, ev.y).map(|i| &scene.nodes[i]);
+        if on_keyboard {
+            let before = s.inter.focus.clone();
+            let returned = ev.kind != PointerKind::Down
+                && hit.is_some_and(|n| n.role == Role::Key && n.label.as_deref() == Some("return"));
+            let effect = s.inter.pointer(scene, ev);
+            let out = (s.inter.hit.clone(), s.inter.acted);
+            s.send_effect(effect)?;
+            match before {
+                Some(b) if returned => s.submit(&b)?,
+                b => s.sync_focus(b)?,
+            }
+            self.scene(id)?;
+            return Ok(out);
+        }
+        self.rn_touch(id, scene, ev)
     }
 
     /// React Native touches: down = `start` on the deepest tag, up = `end` on the same tag, click = both.
@@ -230,8 +327,18 @@ impl Host {
                 }
             }
         }
+        // A tap on a text input focuses it (RN never blurs on a tap elsewhere; `Keyboard.dismiss` does).
+        let s = self.get(id)?;
+        if let Some(field) = hit.filter(|n| ev.kind != PointerKind::Down && n.field.is_some()) {
+            let before = s.inter.focus.clone();
+            if before.as_deref() != Some(field.id.as_str()) {
+                s.inter.shift = field.value.as_deref().is_some_and(simcore_render::autocap);
+                s.inter.focus = Some(field.id.clone());
+                s.sync_focus(before)?;
+            }
+        }
         let out = (target.map(|n| n.id.clone()), ev.kind != PointerKind::Down && target.is_some());
-        let _ = self.scene(id); // push the new layout
+        let _ = self.scene(id); // settle and push the new layout
         Ok(out)
     }
 
@@ -247,8 +354,21 @@ impl Host {
         let (scene, version, _) = self.scene(id)?;
         let s = self.get(id)?;
         s.inter.version = version;
+        let before = s.inter.focus.clone();
         let effect = s.inter.keyboard(&scene, ev).map_err(|m| err(ErrorCode::InvalidState, m))?;
-        s.send_effect(effect)
+        if let (true, simcore_render::Effect::TextInput { text, .. }) = (s.is_rn(), &effect) {
+            s.inter.shift = simcore_render::autocap(text); // typed text drops (or raises) shift like the real keyboard
+        }
+        s.send_effect(effect)?;
+        if s.is_rn() {
+            // `enter` dropped the focus: that is a return press (submit, blur unless multiline).
+            match before {
+                Some(b) if s.inter.focus.is_none() => s.submit(&b)?,
+                b => s.sync_focus(b)?,
+            }
+            self.scene(id)?;
+        }
+        Ok(())
     }
 
     /// PNG bytes plus pixel size.

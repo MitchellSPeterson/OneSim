@@ -3,7 +3,8 @@
 //! If its executable name contains "crash" it aborts on the first action.
 //! If it contains "nav" it serves a small navigation + list app (home, todos, controls, long
 //! scroll page) that handles `action` and `text_input`.
-//! If it contains "rn" it serves a React Native tree (tag 5 is a pressable counting touch ends).
+//! If it contains "rn" it serves a React Native tree (tag 5 is a pressable counting touch ends,
+//! tag 8 a text input; tag 10 logs its focus/blur/text/submit events).
 
 use serde_json::json;
 use std::io::{BufRead, Write};
@@ -133,30 +134,40 @@ fn run_nav() {
     }
 }
 
-fn rn_tree(count: u32, frames: usize) -> serde_json::Value {
+fn rn_tree(count: u32, frames: usize, text: &str, log: &str) -> serde_json::Value {
     let raw = |id: &str, t: &str| json!({"kind": "rn", "id": id, "component": "RCTRawText", "props": {"text": t}, "children": []});
     json!({"kind": "rn", "id": "1", "component": "RootView", "props": {}, "children": [
         {"kind": "rn", "id": "2", "component": "RCTView", "props": {"flex": 1, "alignItems": "center", "justifyContent": "center"}, "children": [
             {"kind": "rn", "id": "3", "component": "RCTText", "props": {}, "children": [raw("4", &format!("Count: {count} frames:{frames}"))]},
             {"kind": "rn", "id": "5", "component": "RCTView", "props": {"padding": 12, "borderRadius": 8, "backgroundColor": 0xFF0080FFu32}, "children": [
-                {"kind": "rn", "id": "6", "component": "RCTText", "props": {"color": 0xFFFFFFFFu32}, "children": [raw("7", "Press")]}]}]}]})
+                {"kind": "rn", "id": "6", "component": "RCTText", "props": {"color": 0xFFFFFFFFu32}, "children": [raw("7", "Press")]}]},
+            {"kind": "rn", "id": "8", "component": "RCTSinglelineTextInputView", "props": {"placeholder": "Name", "__simcoreText": text, "fontSize": 17}, "children": []},
+            {"kind": "rn", "id": "10", "component": "RCTText", "props": {}, "children": [raw("11", &format!("Log:{log}"))]}]}]})
 }
 
 fn run_rn() {
     let (mut count, mut frames, mut version) = (0u32, 0usize, 1u64);
+    let (mut text, mut log) = (String::new(), String::new());
     send(json!({"type": "hello", "protocol": 1}));
-    send(json!({"type": "tree", "version": version, "root": rn_tree(count, frames)}));
+    send(json!({"type": "tree", "version": version, "root": rn_tree(count, frames, &text, &log)}));
     for line in std::io::stdin().lock().lines() {
         let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line.unwrap_or_default()) else { continue };
         match msg["type"].as_str() {
             Some("layout") => frames = msg["frames"].as_object().map_or(0, |f| f.len()),
+            Some("focus") => log.push_str(" F"),
+            Some("blur") => log.push_str(" B"),
+            Some("submit") => log.push_str(" S"),
+            Some("text_input") if msg["field"] == 8 => {
+                text = msg["text"].as_str().unwrap_or("").to_string();
+                log.push_str(&format!(" T:{text}"));
+            }
             Some("touch") if msg["phase"] == "end" && msg["tag"] == 5 => count += 1,
             Some("touch") if msg["phase"] == "end" => continue, // a tap that changes nothing
             Some("shutdown") => return,
             _ => continue,
         }
         version += 1;
-        send(json!({"type": "tree", "version": version, "root": rn_tree(count, frames)}));
+        send(json!({"type": "tree", "version": version, "root": rn_tree(count, frames, &text, &log)}));
     }
 }
 

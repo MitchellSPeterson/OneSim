@@ -49,16 +49,19 @@ viewport), Appearance, SourceCode, I18nManager, AppState, SettingsManager, Excep
 Stubs: StatusBarManager, KeyboardObserver, DevSettings, DevMenu, LogBox, RedBox, Timing,
 RNCSafeAreaContext (iPhone 17 Pro insets 62/34), ExpoKeepAwake.
 
-Unsupported (diagnostic): Networking/fetch, ImageLoader, Linking.openURL, Alert, ActionSheet,
-Clipboard, Share, Vibration, push notifications, `dispatchCommand`, layout animations.
+Also real (Milestone 1): Networking (`fetch`, XMLHttpRequest, `expo/fetch`; HTTP runs on the
+guest main thread because RN's polyfills break Node `fetch` inside the worker), minimal
+BlobModule / FileReaderModule, ImageLoader (shared download cache), TextInput, ScrollView and
+Switch events, Modal `onShow`.
+
+Unsupported (diagnostic): Linking.openURL, Alert, ActionSheet, Clipboard, Share, Vibration,
+push notifications, layout animations, cookies (`clearCookies` returns false).
 
 ## Known gaps (next milestones)
 
-- **TextInput**: needs `dispatchCommand` focus/blur/setTextAndSelection and topChangeText/
-  topFocus/topBlur/topSubmitEditing events driven by the host keyboard.
-- **ScrollView events**: host scrolls; topScroll/BeginDrag/EndDrag and `scrollTo` not wired.
-- **Image**: host draws a placeholder; loading Metro asset URIs + onLoad/onError pending.
-- **Networking**: back `Networking.sendRequest` with Node `fetch`.
+- **Keyboard avoidance**: no `keyboardWillShow` events, so KeyboardAvoidingView does not move.
+  Tapping outside a TextInput does not blur it (same as RN without `Keyboard.dismiss`).
+- **Image**: PNG/JPEG draw; GIF/WebP load (size, events) but do not draw. `tintColor`, `repeat` ignored.
 - **Fast Refresh**: `SIMCORE_HMR=1` connects `/hot` without crashing; applying updates is
   untested.
 - **Animations**: NativeAnimated absent → JS-driven, one tree per frame.

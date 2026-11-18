@@ -10,18 +10,55 @@
 const vm = require('node:vm');
 const fs = require('node:fs');
 const readline = require('node:readline');
+const os = require('node:os');
+const path = require('node:path');
+const crypto = require('node:crypto');
 const { Worker, isMainThread, parentPort } = require('node:worker_threads');
 
 Error.stackTraceLimit = 60;
 const ROOT_TAG = 1;
+const TEXT_INPUTS = new Set(['RCTSinglelineTextInputView', 'RCTMultilineTextInputView']);
+const fetching = new Map(); // main thread: id -> AbortController of worker HTTP requests (cleared on worker exit)
 const env = process.env; // `process` is removed from the guest global before the bundle runs
 if (isMainThread) return mainThread();
 
 // Node intrinsics captured before RN's polyfills replace the globals of the same name.
 const node = {
   Buffer, setTimeout, clearTimeout, setInterval, clearInterval, setImmediate, queueMicrotask, performance, fetch,
+  AbortController, TextDecoder, Uint8Array,
   inspect: require('node:util').inspect, randomUUID: require('node:crypto').randomUUID,
 };
+// HTTP runs on the main thread (see __fetch): once RN's polyfills replace timers/Promise/Buffer in this global,
+// Node's own fetch (undici) breaks here. The worker only keeps the plain `node.fetch` for the bundle download.
+const fetches = new Map(); // id -> in-flight request state
+let fetchSeq = 0;
+// nfetch(url, {method, headers, body, redirect, onChunk}) -> Promise<{status,statusText,url,redirected,headers:[[k,v]],get(name),done,abort()}>;
+// `done` resolves with all body bytes (Buffer; empty when onChunk consumed them) or rejects on a network error.
+function nfetch(url, init = {}) {
+  const id = ++fetchSeq;
+  const p = new Promise((resolve, reject) => {
+    const st = { chunks: [], onChunk: init.onChunk, head: { resolve, reject } };
+    st.done = new Promise((res, rej) => { st.finish = res; st.fail = rej; });
+    st.done.catch(() => {}); // callers that only want the head must not trip unhandledRejection
+    fetches.set(id, st);
+    send({ type: '__fetch', id, url, method: init.method, headers: init.headers, redirect: init.redirect, body: init.body });
+  });
+  p.abort = () => send({ type: '__fetchAbort', id }); // works before the head arrives too (then `p` rejects)
+  return p;
+}
+function fetchEvent(m) {
+  const st = fetches.get(m.id);
+  if (!st) return;
+  if (m.type === '__fetchHead') {
+    const res = { status: m.status, statusText: m.statusText, url: m.url, redirected: m.redirected, headers: m.headers, done: st.done, abort: () => send({ type: '__fetchAbort', id: m.id }),
+      get: (k) => { const h = m.headers.find(([n]) => n === String(k).toLowerCase()); return h ? h[1] : null; } };
+    st.head.resolve(res);
+  } else if (m.type === '__fetchChunk') {
+    const b = node.Buffer.from(m.data);
+    if (st.onChunk) st.onChunk(b); else st.chunks.push(b);
+  } else if (m.type === '__fetchEnd') { fetches.delete(m.id); st.finish(node.Buffer.concat(st.chunks)); }
+  else if (m.type === '__fetchError') { fetches.delete(m.id); st.head.reject(new Error(m.message)); st.fail(new Error(m.message)); }
+}
 const send = (m) => parentPort.postMessage(m);
 const log = (...a) => fs.writeSync(2, a.join(' ') + '\n');
 const arg = (n) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : undefined; };
@@ -48,6 +85,60 @@ function unsupported(mod, method) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Image cache: $TMPDIR/simcore-images/<sha1(uri)>.<ext>. Shared by RCTImageView and ImageLoader.
+// ---------------------------------------------------------------------------------------------
+const imageCache = new Map(); // uri -> Promise<{path,width,height}> (pixels)
+const imageDone = new Map(); // uri -> info, once loaded (queryCache)
+// Pixel size + extension from the file header (PNG, JPEG, GIF, WebP); null if unrecognised.
+function imageInfo(b) {
+  if (b.length > 24 && b.readUInt32BE(0) === 0x89504e47) return { ext: 'png', width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
+  if (b.length > 10 && b.toString('latin1', 0, 4) === 'GIF8') return { ext: 'gif', width: b.readUInt16LE(6), height: b.readUInt16LE(8) };
+  if (b.length > 30 && b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP') {
+    const k = b.toString('latin1', 12, 16);
+    if (k === 'VP8 ') return { ext: 'webp', width: b.readUInt16LE(26) & 0x3fff, height: b.readUInt16LE(28) & 0x3fff };
+    if (k === 'VP8L') { const v = b.readUInt32LE(21); return { ext: 'webp', width: (v & 0x3fff) + 1, height: ((v >> 14) & 0x3fff) + 1 }; }
+    if (k === 'VP8X') return { ext: 'webp', width: 1 + b.readUIntLE(24, 3), height: 1 + b.readUIntLE(27, 3) };
+  }
+  if (b.length > 4 && b[0] === 0xff && b[1] === 0xd8) {
+    for (let i = 2; i + 9 < b.length;) {
+      if (b[i] !== 0xff) { i++; continue; }
+      const m = b[i + 1];
+      if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return { ext: 'jpg', height: b.readUInt16BE(i + 5), width: b.readUInt16BE(i + 7) };
+      i += m === 0xd8 || m === 0x01 || (m >= 0xd0 && m <= 0xd7) || m === 0xff ? (m === 0xff ? 1 : 2) : 2 + b.readUInt16BE(i + 2);
+    }
+  }
+  return null;
+}
+async function readUri(uri, headers) {
+  const d = /^data:[^,]*?(;base64)?,([\s\S]*)$/.exec(uri);
+  if (d) return d[1] ? node.Buffer.from(d[2], 'base64') : node.Buffer.from(decodeURIComponent(d[2]), 'latin1');
+  if (/^file:/.test(uri)) return fs.readFileSync(require('node:url').fileURLToPath(uri));
+  if (uri[0] === '/') return fs.readFileSync(uri);
+  const r = await nfetch(uri, { headers });
+  if (r.status < 200 || r.status >= 300) throw new Error(`HTTP ${r.status} for ${uri}`);
+  return r.done;
+}
+function loadImage(uri, headers) {
+  let p = imageCache.get(uri);
+  if (!p) {
+    p = readUri(uri, headers).then((buf) => {
+      const i = imageInfo(buf);
+      if (!i) throw new Error(`not a PNG/JPEG/GIF/WebP image: ${uri.slice(0, 120)}`);
+      const dir = path.join(os.tmpdir(), 'simcore-images');
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, `${crypto.createHash('sha1').update(uri).digest('hex')}.${i.ext}`);
+      fs.writeFileSync(file, buf);
+      const info = { path: file, width: i.width, height: i.height };
+      imageDone.set(uri, info);
+      return info;
+    });
+    imageCache.set(uri, p);
+    p.catch(() => imageCache.delete(uri)); // failures are not cached
+  }
+  return p;
+}
+
+// ---------------------------------------------------------------------------------------------
 // One Runtime per worker; reload = terminate worker + new worker (fresh global state).
 // ---------------------------------------------------------------------------------------------
 let version = 0;
@@ -65,6 +156,12 @@ class Runtime {
     this.rootChildren = [];
     this.rootNode = { reactTag: ROOT_TAG, viewName: 'RootView', props: {}, children: [], instanceHandle: null };
     this.pending = false;
+    this.inputs = new Map(); // tag -> {text, eventCount} (TextInput state; the guest owns the text)
+    this.focused = null; // tag of the focused TextInput
+    this.images = new Map(); // tag -> {uri, info?, err?}
+    this.scrolled = new Map(); // tag -> last reported [x,y]
+    this.shown = new Set(); // Modal tags that got topShow
+    this.blobs = new Map(); // BlobModule store: blobId -> Buffer
     this.eventHandler = null;
     this.eventPriority = 32;
     this.window = { width: cfg.width, height: cfg.height };
@@ -115,6 +212,7 @@ class Runtime {
       for (const k of Object.keys(diff || {})) { if (diff[k] === null) delete p[k]; else p[k] = diff[k]; }
       return p;
     };
+    const isInput = (n) => TEXT_INPUTS.has(n.viewName);
     const reg = (n) => { self.nodes.set(n.reactTag, n); return n; };
     const diag = (m, ret) => (...a) => { unsupported('FabricUIManager', m); return ret; };
     const frameOf = (n) => self.frames[n.reactTag];
@@ -154,8 +252,12 @@ class Runtime {
       configureNextLayoutAnimation: diag('configureNextLayoutAnimation'),
       sendAccessibilityEvent: diag('sendAccessibilityEvent'),
       findShadowNodeByTag_DEPRECATED: (tag) => self.nodes.get(tag) || null,
-      setNativeProps: (n, p) => { n.props = merge(n.props, p); self.scheduleEmit(); },
-      dispatchCommand: (n, name) => unsupported('FabricUIManager', `dispatchCommand:${name} on ${n.viewName}`),
+      setNativeProps: (n, p) => {
+        n.props = merge(n.props, p);
+        if (isInput(n) && typeof p.text === 'string') self.input(n).text = p.text;
+        self.scheduleEmit();
+      },
+      dispatchCommand: (n, name, args) => self.command(n, name, args || []),
       findNodeAtPoint: (n, x, y, cb) => { unsupported('FabricUIManager', 'findNodeAtPoint'); cb(null); },
       compareDocumentPosition: diag('compareDocumentPosition', 0),
       getBoundingClientRect: diag('getBoundingClientRect', [0, 0, 0, 0]),
@@ -206,6 +308,7 @@ class Runtime {
       this.pending = false;
       if (this.dead) return;
       this.parents.clear();
+      const after = []; // events to dispatch once the tree is out (first emit of an image / visible modal)
       const ser = (n, parent) => {
         this.parents.set(n.reactTag, parent);
         const props = {};
@@ -213,11 +316,19 @@ class Runtime {
           if (typeof v === 'function' || v === undefined) continue;
           props[k] = v;
         }
-        return { kind: 'rn', id: String(n.reactTag), component: n.viewName, props, children: n.children.map((c) => ser(c, n.reactTag)) };
+        if (TEXT_INPUTS.has(n.viewName)) props.__simcoreText = this.input(n).text;
+        else if (n.viewName === 'RCTImageView') this.imageProps(n, props, after);
+        else if (n.viewName === 'ModalHostView') {
+          if (props.visible && !this.shown.has(n.reactTag)) { this.shown.add(n.reactTag); after.push(() => this.dispatch(n, 'topShow', { target: n.reactTag })); }
+          else if (!props.visible) this.shown.delete(n.reactTag);
+        }
+        // RN's Fabric name is ModalHostView; the wire contract says RCTModalHostView
+        return { kind: 'rn', id: String(n.reactTag), component: n.viewName === 'ModalHostView' ? 'RCTModalHostView' : n.viewName, props, children: n.children.map((c) => ser(c, n.reactTag)) };
       };
       const root = { kind: 'rn', id: String(ROOT_TAG), component: 'RootView', props: {}, children: this.rootChildren.map((c) => ser(c, ROOT_TAG)) };
       if (env.SIMCORE_DEBUG) log('emit tree', version + 1);
       send({ type: 'tree', version: ++version, root });
+      after.forEach((f) => f());
       this.fireLayouts();
     });
   }
@@ -245,6 +356,7 @@ class Runtime {
   onMessage(m) {
     switch (m.type) {
       case '__wsEvent': this.emit(m.event, m.payload); break;
+      case '__fetchHead': case '__fetchChunk': case '__fetchEnd': case '__fetchError': this.guard(fetchEvent)(m); break;
       case 'touch': {
         const n = this.nodes.get(m.tag);
         if (!n) return log(`SimCore: touch for unknown tag ${m.tag}`);
@@ -257,6 +369,45 @@ class Runtime {
           touches: ended ? [] : [touch], changedTouches: [touch], target: m.tag, identifier: 0,
           pageX: m.x, pageY: m.y, locationX: touch.locationX, locationY: touch.locationY, timestamp: ts,
         }, m.phase === 'move' ? 8 : 2);
+        if (m.phase === 'end') {
+          const t = this.nodes.get(m.tag); // latest committed props
+          if (t && t.viewName === 'RCTSwitch' && !t.props.disabled) this.dispatch(t, 'topChange', { value: !t.props.value, target: m.tag }, 2);
+        }
+        break;
+      }
+      case 'focus': this.focus(m.tag); break;
+      case 'blur': this.blur(m.tag); break;
+      case 'text_input': { // `version` is ignored: the guest owns the text
+        const n = this.nodes.get(m.field);
+        if (!n || !TEXT_INPUTS.has(n.viewName)) return log(`SimCore: text_input for unknown field ${m.field}`);
+        const st = this.input(n), text = String(m.text ?? '');
+        st.text = text; st.eventCount++;
+        this.dispatch(n, 'topChange', { text, eventCount: st.eventCount, target: m.field }, 2);
+        this.dispatch(n, 'topSelectionChange', { selection: { start: text.length, end: text.length }, target: m.field }, 2);
+        this.scheduleEmit();
+        break;
+      }
+      case 'submit': {
+        const n = this.nodes.get(m.tag);
+        if (!n || !TEXT_INPUTS.has(n.viewName)) return;
+        const st = this.input(n);
+        this.dispatch(n, 'topSubmitEditing', { text: st.text, eventCount: st.eventCount, target: m.tag }, 2);
+        if (n.viewName === 'RCTSinglelineTextInputView' && n.props.submitBehavior !== 'submit') { this.blur(m.tag); send({ type: 'focus_request', tag: null }); }
+        break;
+      }
+      case 'scroll': {
+        const n = this.nodes.get(m.tag);
+        if (!n) return;
+        const last = this.scrolled.get(m.tag), cur = [m.x, m.y];
+        this.scrolled.set(m.tag, cur);
+        const ev = { contentOffset: { x: m.x, y: m.y }, contentSize: { width: m.contentWidth, height: m.contentHeight }, layoutMeasurement: { width: m.width, height: m.height }, contentInset: { top: 0, left: 0, bottom: 0, right: 0 }, zoomScale: 1, target: m.tag };
+        if (m.phase === 'begin') this.dispatch(n, 'topScrollBeginDrag', ev, 8);
+        else if (m.phase === 'scroll') this.dispatch(n, 'topScroll', ev, 8);
+        else if (m.phase === 'end') {
+          if (!last || last[0] !== m.x || last[1] !== m.y) this.dispatch(n, 'topScroll', ev, 8); // programmatic scrollTo reply
+          this.dispatch(n, 'topScrollEndDrag', ev, 8);
+          this.dispatch(n, 'topMomentumScrollEnd', ev, 8);
+        }
         break;
       }
       case 'layout': Object.assign(this.frames, m.frames); this.fireLayouts(); break;
@@ -267,6 +418,67 @@ class Runtime {
       }
     }
   }
+  input(n) {
+    let st = this.inputs.get(n.reactTag);
+    if (!st) this.inputs.set(n.reactTag, (st = { text: String(n.props.text ?? n.props.value ?? n.props.defaultValue ?? ''), eventCount: 0 }));
+    return st;
+  }
+  focus(tag) {
+    const n = this.nodes.get(tag);
+    if (!n || this.focused === tag) return;
+    if (this.focused != null) this.blur(this.focused);
+    this.focused = tag;
+    this.dispatch(n, 'topFocus', { target: tag }, 2);
+  }
+  blur(tag) {
+    const n = this.nodes.get(tag);
+    if (!n || this.focused !== tag) return;
+    this.focused = null;
+    this.dispatch(n, 'topEndEditing', { text: this.input(n).text, target: tag }, 2);
+    this.dispatch(n, 'topBlur', { target: tag }, 2);
+  }
+  // Fabric view commands (names/args from the *NativeComponent / *Commands specs).
+  command(n, name, args) {
+    const tag = n.reactTag;
+    if (TEXT_INPUTS.has(n.viewName)) {
+      if (name === 'focus') return send({ type: 'focus_request', tag });
+      if (name === 'blur') return send({ type: 'focus_request', tag: null });
+      if (name === 'setTextAndSelection') { // (eventCount, text|null, start, end); stale counts lose, like on iOS
+        const [count, text] = args, st = this.input(n);
+        if (typeof text === 'string' && count >= st.eventCount) { st.text = text; this.scheduleEmit(); }
+        return;
+      }
+    } else if (n.viewName === 'RCTScrollView') {
+      if (name === 'scrollTo') return send({ type: 'scroll_to', tag, x: args[0] || 0, y: args[1] || 0 });
+      if (name === 'scrollToEnd') return send({ type: 'scroll_to', tag, x: 'end', y: 'end' });
+      if (name === 'flashScrollIndicators' || name === 'zoomToRect') return;
+    }
+    unsupported('FabricUIManager', `dispatchCommand:${name} on ${n.viewName}`);
+  }
+
+  // Image: download once per uri (shared with ImageLoader), expose the cached file to the host.
+  imageProps(n, props, after) {
+    const tag = n.reactTag, src = [].concat(props.source || [])[0], uri = src && src.uri;
+    if (!uri) return;
+    let st = this.images.get(tag);
+    if (!st || st.uri !== uri) {
+      const mine = (st = { uri });
+      this.images.set(tag, st);
+      const done = (type, ev) => { if (this.images.get(tag) !== mine) return; this.dispatch(this.nodes.get(tag) || n, type, { target: tag, ...ev }); };
+      after.push(() => {
+        done('topLoadStart', {});
+        loadImage(uri, src.headers).then((info) => {
+          mine.info = info;
+          const s = src.scale || 1;
+          done('topLoad', { source: { uri, width: info.width / s, height: info.height / s } });
+          done('topLoadEnd', {});
+          if (this.images.get(tag) === mine) this.scheduleEmit();
+        }, (e) => { mine.err = e; done('topError', { error: String(e && e.message || e) }); done('topLoadEnd', {}); });
+      });
+    }
+    if (st.info) props.__simcoreImage = st.info;
+  }
+
   dimensions() {
     const w = { width: this.window.width, height: this.window.height, scale: cfg.scale, fontScale: 1 };
     return { window: w, screen: w };
@@ -330,7 +542,9 @@ class Runtime {
         setAccessibilityFocus: noop, announceForAccessibility: noop, ...listener,
       }),
       KeyboardObserver: () => listener,
-      Networking: () => ({ ...listener, sendRequest: () => unsupported('Networking', 'sendRequest'), abortRequest: noop }),
+      Networking: () => self.networking(),
+      BlobModule: () => self.blobModule(),
+      FileReaderModule: () => self.fileReaderModule(),
       LogBox: () => ({ show: noop, hide: noop }),
       DevSettings: () => ({ reload: noop, ...listener, setHotLoadingEnabled: noop, setIsDebuggingRemotely: noop, toggleElementInspector: noop, addMenuItem: noop, openDebugger: noop, setProfilingEnabled: noop }),
       DevLoadingView: () => ({ showMessage: noop, hide: noop }),
@@ -345,7 +559,16 @@ class Runtime {
         getSupportedPerformanceEntryTypes: () => [], clearEventCountsForTesting: noop,
       }),
       NativeMicrotasksCxx: () => ({ queueMicrotask: (f) => node.queueMicrotask(self.guard(f)) }),
-      ImageLoader: () => ({ getSize: () => unsupported('ImageLoader', 'getSize'), getSizeWithHeaders: () => unsupported('ImageLoader', 'getSizeWithHeaders'), prefetchImage: () => { unsupported('ImageLoader', 'prefetchImage'); return Promise.resolve(false); }, queryCache: () => Promise.resolve({}), abortRequest: noop }),
+      // Sizes are pixels (scale 1), like iOS for an unscaled image.
+      ImageLoader: () => ({
+        getConstants: () => ({}),
+        getSize: (uri) => loadImage(uri).then((i) => [i.width, i.height]),
+        getSizeWithHeaders: (uri, headers) => loadImage(uri, headers).then((i) => ({ width: i.width, height: i.height })),
+        prefetchImage: (uri) => loadImage(uri).then(() => true, () => false),
+        prefetchImageWithMetadata: (uri) => loadImage(uri).then(() => true, () => false),
+        queryCache: (uris) => Promise.resolve(Object.fromEntries(uris.filter((u) => imageDone.has(u)).map((u) => [u, 'disk']))),
+        abortRequest: noop,
+      }),
       LinkingManager: () => ({ getInitialURL: () => Promise.resolve(null), canOpenURL: () => Promise.resolve(false), openURL: () => { unsupported('LinkingManager', 'openURL'); return Promise.reject(new Error('openURL unsupported')); }, openSettings: () => Promise.reject(new Error('unsupported')), ...listener }),
       WebSocketModule: () => self.webSocketModule(),
       // JS defaults apply for every flag when the native getter returns undefined.
@@ -356,10 +579,10 @@ class Runtime {
       EventDispatcher: () => ({}),
     };
     // Optional modules RN feature-detects: absent => JS falls back (JS Animated driver, no perf API, ...).
-    const absent = new Set(['NativeAnimatedModule', 'NativeAnimatedTurboModule', 'BlobModule', 'NativeCPUTime', 'ReactDevToolsRuntimeSettingsModule', 'NativeReactDevToolsSettingsManager', 'NativeAnimatedModule', 'NativeIdleCallbacksCxx', 'NativeIdleCallbacks', 'JSCExecutor', 'IntentAndroid', 'SoundManager', 'Performance', 'HeadlessJsTaskSupport', 'PerformanceObserver', 'IntersectionObserver', 'MutationObserver', 'ResizeObserver', 'FrameRateLogger', 'UIManager', 'I18nManagerAndroid']);
+    const absent = new Set(['NativeAnimatedModule', 'NativeAnimatedTurboModule', 'NativeCPUTime', 'ReactDevToolsRuntimeSettingsModule', 'NativeReactDevToolsSettingsManager', 'NativeAnimatedModule', 'NativeIdleCallbacksCxx', 'NativeIdleCallbacks', 'JSCExecutor', 'IntentAndroid', 'SoundManager', 'Performance', 'HeadlessJsTaskSupport', 'PerformanceObserver', 'IntersectionObserver', 'MutationObserver', 'ResizeObserver', 'FrameRateLogger', 'UIManager', 'I18nManagerAndroid']);
     // Real iOS RN modules with platform behaviour we do not implement: every call is a loud diagnostic.
     // Anything not listed anywhere is simply absent (null), so getEnforcing throws and the error is reported.
-    const known = new Set(['ActionSheetManager', 'AlertManager', 'Clipboard', 'ShareModule', 'PushNotificationManager', 'ImageStoreManager', 'FileReaderModule', 'AccessibilityManager', 'DevToolsSettingsManager', 'Vibration', 'ImageEditor']);
+    const known = new Set(['ActionSheetManager', 'AlertManager', 'Clipboard', 'ShareModule', 'PushNotificationManager', 'ImageStoreManager', 'AccessibilityManager', 'DevToolsSettingsManager', 'Vibration', 'ImageEditor']);
     const cache = new Map();
     return {
       absent,
@@ -380,6 +603,99 @@ class Runtime {
         cache.set(name, m);
         return m;
       },
+    };
+  }
+
+  // ---- Networking (Node fetch). Events are RCTDeviceEventEmitter events whose payload is the args array. ----
+  networking() {
+    const live = new Map();
+    let next = 0;
+    const ev = (name, ...args) => this.emit(name, args);
+    const bodyOf = async (q) => {
+      const d = q.data || {};
+      if (d.string != null) return { body: d.string };
+      if (d.base64 != null) return { body: node.Buffer.from(d.base64, 'base64') };
+      if (d.blob) return { body: this.blobBuffer(d.blob) };
+      if (d.uri) return { body: await readUri(d.uri) };
+      if (d.formData) {
+        const boundary = `----SimCoreFormBoundary${node.randomUUID().replace(/-/g, '')}`, chunks = [];
+        for (const part of d.formData) {
+          const hs = Object.entries(part.headers || {}).map(([k, v]) => `${k}: ${v}\r\n`).join('');
+          chunks.push(node.Buffer.from(`--${boundary}\r\n${hs}\r\n`), part.uri ? await readUri(part.uri) : node.Buffer.from(String(part.string ?? '')), node.Buffer.from('\r\n'));
+        }
+        chunks.push(node.Buffer.from(`--${boundary}--\r\n`));
+        return { body: node.Buffer.concat(chunks), contentType: `multipart/form-data; boundary=${boundary}` };
+      }
+      return {};
+    };
+    const run = async (id, q, flags) => {
+      try {
+        const { body, contentType } = await bodyOf(q);
+        const headers = { ...q.headers };
+        if (contentType) { for (const k of Object.keys(headers)) if (k.toLowerCase() === 'content-type') delete headers[k]; headers['content-type'] = contentType; }
+        const method = String(q.method || 'GET').toUpperCase();
+        const dec = new node.TextDecoder();
+        let loaded = 0, total = -1;
+        const inc = q.responseType === 'text' && q.incrementalUpdates;
+        const req = nfetch(q.url, {
+          method, headers, redirect: 'follow', body: method === 'GET' || method === 'HEAD' ? undefined : body,
+          onChunk: inc ? (c) => { loaded += c.length; ev('didReceiveNetworkIncrementalData', id, dec.decode(c, { stream: true }), loaded, total); } : undefined,
+        });
+        flags.abort = req.abort;
+        if (flags.aborted) req.abort();
+        const res = await req;
+        total = Number(res.get('content-length')) || -1;
+        ev('didReceiveNetworkResponse', id, res.status, Object.fromEntries(res.headers), res.url);
+        const bytes = await res.done;
+        if (q.responseType === 'text') { if (!inc) ev('didReceiveNetworkData', id, bytes.toString('utf8')); }
+        else {
+          const buf = bytes;
+          if (q.responseType === 'base64') ev('didReceiveNetworkData', id, buf.toString('base64'));
+          else {
+            const blobId = node.randomUUID();
+            this.blobs.set(blobId, buf);
+            ev('didReceiveNetworkData', id, { blobId, offset: 0, size: buf.length, type: res.get('content-type') || '' });
+          }
+        }
+        ev('didCompleteNetworkResponse', id, '', false);
+      } catch (e) {
+        if (flags.aborted) return;
+        ev('didCompleteNetworkResponse', id, flags.timedOut ? 'Request timed out' : String(e && (e.cause && e.cause.message || e.message) || e), !!flags.timedOut);
+      } finally { live.delete(id); node.clearTimeout(flags.timer); }
+    };
+    return {
+      addListener: () => {}, removeListeners: () => {},
+      sendRequest: (q, cb) => {
+        const id = ++next, flags = {};
+        live.set(id, flags);
+        if (q.timeout > 0) flags.timer = node.setTimeout(() => { flags.timedOut = true; flags.abort && flags.abort(); }, q.timeout);
+        cb(id);
+        node.setImmediate(this.guard(() => run(id, q, flags)));
+      },
+      abortRequest: (id) => { const f = live.get(id); if (f) { f.aborted = true; f.abort && f.abort(); } },
+      clearCookies: (cb) => cb(false), // no cookie jar: nothing to clear
+    };
+  }
+  blobBuffer(b) {
+    const buf = this.blobs.get(b.blobId);
+    if (!buf) throw new Error(`unknown blob ${b.blobId}`);
+    return buf.subarray(b.offset || 0, (b.offset || 0) + (b.size ?? buf.length));
+  }
+  // Minimal BlobModule: an in-memory id -> Buffer store (no socket handlers).
+  blobModule() {
+    return {
+      getConstants: () => ({ BLOB_URI_SCHEME: 'blob', BLOB_URI_HOST: null }),
+      addNetworkingHandler: () => {}, addWebSocketHandler: () => {}, removeWebSocketHandler: () => {},
+      sendOverSocket: () => unsupported('BlobModule', 'sendOverSocket'),
+      createFromParts: (parts, id) => this.blobs.set(id, node.Buffer.concat(parts.map((p) => (p.type === 'blob' ? this.blobBuffer(p.data) : node.Buffer.from(String(p.data), 'utf8'))))),
+      release: (id) => { this.blobs.delete(id); },
+      addListener: () => {}, removeListeners: () => {},
+    };
+  }
+  fileReaderModule() {
+    return {
+      readAsText: async (b, enc) => new node.TextDecoder(enc || 'utf-8').decode(this.blobBuffer(b)),
+      readAsDataURL: async (b) => `data:${b.type || 'application/octet-stream'};base64,${this.blobBuffer(b).toString('base64')}`,
     };
   }
 
@@ -421,7 +737,7 @@ class Runtime {
       return C;
     };
     const defs = {
-      ExpoFetchModule: () => ({ NativeResponse: diagClass('ExpoFetchModule', 'NativeResponse'), NativeRequest: diagClass('ExpoFetchModule', 'NativeRequest') }),
+      ExpoFetchModule: () => self.expoFetch(SharedObject),
       ExpoAsset: () => ({ downloadAsync: async (uri) => { unsupported('expo.ExpoAsset', 'downloadAsync'); return uri; } }),
       ExpoFontLoader: () => ({
         getLoadedFonts: () => [], isLoaded: () => false,
@@ -458,6 +774,36 @@ class Runtime {
       expoModulesCoreVersion: { version: '0.0.0', major: 0, minor: 0, patch: 0 },
       DeviceEventEmitter: undefined, // set below once RN's emitter exists
     };
+  }
+
+  // expo/fetch (global `fetch` in an Expo app): NativeRequest.start -> NativeResponse. The body is buffered
+  // whole (startStreaming resolves with all bytes; no incremental didReceiveResponseData).
+  expoFetch(SharedObject) {
+    const toU8 = (buf) => new node.Uint8Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+    class NativeResponse extends SharedObject {
+      get bodyUsed() { return !!this.__used; }
+      get _rawHeaders() { return this.__r ? this.__r.headers : []; }
+      get status() { return this.__r ? this.__r.status : 0; }
+      get statusText() { return this.__r ? this.__r.statusText : ''; }
+      get url() { return this.__r ? this.__r.url : ''; }
+      get redirected() { return this.__r ? this.__r.redirected : false; }
+      async __bytes() { this.__used = true; return this.__r.done; }
+      async startStreaming() { return toU8(await this.__bytes()); }
+      cancelStreaming() { this.__used = true; if (this.__r) this.__r.abort(); }
+      async arrayBuffer() { return toU8(await this.__bytes()).buffer; }
+      async text() { return (await this.__bytes()).toString('utf8'); }
+    }
+    class NativeRequest extends SharedObject {
+      constructor(response) { super(); this.response = response; }
+      async start(url, init, body) {
+        const method = (init.method || 'GET').toUpperCase();
+        this.req = nfetch(url, { method, headers: init.headers || [], redirect: init.redirect || 'follow', body: body && method !== 'GET' && method !== 'HEAD' ? node.Buffer.from(body) : undefined });
+        try { this.response.__r = await this.req; } catch (e) { throw new Error(String(e && e.message || e)); }
+        return this.response;
+      }
+      cancel() { if (this.req) this.req.abort(); }
+    }
+    return { NativeResponse, NativeRequest };
   }
 
   // ---- boot ----
@@ -540,6 +886,19 @@ const rt = new Runtime();
 parentPort.on('message', (m) => rt.onMessage(m));
 rt.boot();
 
+// Worker HTTP requests (nfetch) run here, in an untouched Node global; results stream back as messages.
+async function mainFetch(w, m) {
+  const ac = new AbortController(), post = (x) => { try { w.postMessage({ id: m.id, ...x }); } catch (_) { /* worker gone */ } };
+  fetching.set(m.id, ac);
+  try {
+    const res = await fetch(m.url, { method: m.method, headers: m.headers, redirect: m.redirect || 'follow', body: m.body || undefined, signal: ac.signal });
+    post({ type: '__fetchHead', status: res.status, statusText: res.statusText, url: res.url, redirected: res.redirected, headers: [...res.headers] });
+    if (res.body) for await (const c of res.body) post({ type: '__fetchChunk', data: c });
+    post({ type: '__fetchEnd' });
+  } catch (e) { post({ type: '__fetchError', message: String((e && e.cause && e.cause.message) || (e && e.message) || e) }); }
+  finally { fetching.delete(m.id); }
+}
+
 // Main thread: protocol I/O + worker supervisor.
 function mainThread() {
   let worker = null, base = 0, last = 0;
@@ -549,9 +908,11 @@ function mainThread() {
     base = last; // tree versions stay monotonic across reloads
     const w = (worker = new Worker(__filename, { argv: process.argv.slice(2), stdout: false, stderr: false }));
     const sockets = new Map();
-    w.on('exit', () => sockets.forEach((ws) => ws.close()));
+    w.on('exit', () => { sockets.forEach((ws) => ws.close()); fetching.forEach((ac) => ac.abort()); fetching.clear(); });
     w.on('message', (m) => {
       if (m.type === 'tree') { m.version += base; last = m.version; }
+      if (m.type === '__fetch') return mainFetch(w, m);
+      if (m.type === '__fetchAbort') return fetching.get(m.id)?.abort();
       if (m.type !== '__ws') return out(m);
       const emit = (event, payload) => w.postMessage({ type: '__wsEvent', event, payload });
       if (m.op === 'connect') {

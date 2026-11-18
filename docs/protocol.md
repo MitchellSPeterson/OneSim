@@ -342,3 +342,50 @@ Bundle: `GET <metro>/` with `expo-platform: ios` → manifest `launchAsset.url`
 
 Unsupported native modules: stderr `SimCore: <Module> is not supported (method: <m>)` plus one
 `{"type":"error"}` per module (surfaced by `get_errors`). Nothing reports fake success.
+
+### Milestone 1 additions (TextInput, ScrollView, Image, Switch, Modal)
+
+**TextInput** (`RCTSinglelineTextInputView`, `RCTMultilineTextInputView`). The guest owns the
+current text per tag and emits it as `props.__simcoreText` (string; empty when none), next to
+`placeholder`, `placeholderTextColor`, `editable`, `secureTextEntry`, `multiline`. The host
+treats these nodes as text fields (`field` = tag, value = `__simcoreText`) and drives them with
+its existing focus + software-keyboard machinery.
+- Host → guest `{"type":"focus","tag"}` / `{"type":"blur","tag"}` when host focus changes
+  → `topFocus` / `topBlur` (+ `topEndEditing` on blur).
+- Host → guest `text_input` with `field` = tag and the full new `text` → guest updates its text,
+  dispatches `topChange` `{text, eventCount, target}` (and `topSelectionChange` at the end of
+  the text), and emits a new tree.
+- Host → guest `{"type":"submit","tag"}` on return → `topSubmitEditing` `{text}`; then blur
+  unless `multiline`.
+- Guest → host `{"type":"focus_request","tag":<u64>|null}` when JS calls the `focus` / `blur`
+  commands (null = blur); host focuses/unfocuses that field and shows/hides the keyboard.
+  `setTextAndSelection` / `setNativeProps({text})` update the guest's text and re-emit.
+
+**ScrollView** (`RCTScrollView`). Host keeps the offset.
+- Host → guest `{"type":"scroll","tag","phase":"begin"|"scroll"|"end","x","y","contentWidth","contentHeight","width","height"}`
+  (x/y = content offset) → `topScrollBeginDrag` / `topScroll` / `topScrollEndDrag` +
+  `topMomentumScrollEnd`, nativeEvent `{contentOffset,contentSize,layoutMeasurement,contentInset:{0,0,0,0},zoomScale:1}`.
+  One `--scroll` gesture = begin, scroll, end.
+- Guest → host `{"type":"scroll_to","tag","x","y"}` for the `scrollTo` / `scrollToEnd` commands
+  (`scrollToEnd`: `x`/`y` = `"end"`); host sets the offset (clamped), re-renders and replies
+  with a `scroll` message (phase `end`).
+- `contentOffset` prop sets the initial offset.
+
+**Image** (`RCTImageView`). The guest downloads `source[0].uri` (http(s), `data:`, Metro
+assets) with Node `fetch` into `$TMPDIR/simcore-images/<sha1(uri)>.<ext>` and adds
+`props.__simcoreImage = {"path","width","height"}` (pixels) to the node, dispatching
+`topLoadStart`, `topLoad` `{source:{uri,width,height}}`, `topLoadEnd` (or `topError`
+`{error}`). Host decodes PNG/JPEG from `path` and draws with `resizeMode`
+`cover` (default) / `contain` / `stretch` / `center`, clipped to `borderRadius`; until
+`__simcoreImage` exists it draws only the background. `ImageLoader.getSize`/`prefetch` use the
+same cache.
+
+**Switch** (`RCTSwitch`, props `value`, `onTintColor`, `thumbTintColor`, `disabled`). Host draws
+the iOS 26 switch (same look and size as SwiftUI `Toggle`: 63×28, knob 37×24). The guest handles the tap: a touch `end`
+whose target is an `RCTSwitch` (not disabled) dispatches `topChange` `{value: !value, target}`.
+
+**Modal** (`RCTModalHostView`; RN's Fabric name `ModalHostView` is renamed by the guest; props `visible`, `animationType`, `transparent`,
+`presentationStyle`). Its children are laid out against the full viewport and painted above
+everything else (transparent → no backdrop; otherwise background color of the app default).
+`visible: false` or absent node → nothing. Guest dispatches `topShow` after first emit with it
+visible; `topRequestClose` is not generated (no hardware back on iOS).

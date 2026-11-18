@@ -460,7 +460,7 @@ mod tests {
         let screen = |with_scroller: bool| {
             let mut n = Node::new("0/s1", "scroll");
             n.bounds = Rect { x: 0.0, y: 0.0, w: 400.0, h: 800.0 };
-            n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, 0.0), max: (0.0, 500.0), snap: None });
+            n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, 0.0), max: (0.0, 500.0), snap: None, content: None });
             let nodes = if with_scroller { vec![n] } else { vec![] };
             Scene { size: (400.0, 800.0), appearance: simcore_protocol::Appearance::Light, nodes, unsupported_symbols: vec![], notes: vec![] }
         };
@@ -479,7 +479,7 @@ mod tests {
         let scene = |off: f64| {
             let mut n = Node::new("l", "list");
             n.bounds = Rect { x: 0.0, y: 0.0, w: 400.0, h: 800.0 };
-            n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max: (0.0, 500.0), snap: Some(52.0) });
+            n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max: (0.0, 500.0), snap: Some(52.0), content: None });
             Scene { size: (400.0, 800.0), appearance: simcore_protocol::Appearance::Light, nodes: vec![n], unsupported_symbols: vec![], notes: vec![] }
         };
         for (start, want) in [(20.0, 0.0), (40.0, 52.0)] {

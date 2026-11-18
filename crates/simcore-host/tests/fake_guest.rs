@@ -310,6 +310,7 @@ fn react_native_touch_round_trip() {
     let p = serde_json::json!({"framework": "expo", "app_path": rn, "prebuilt": true, "metroUrl": "http://localhost:1"});
     let id = host.create_session(serde_json::from_value(p).unwrap()).unwrap();
     host.start_session(&id).unwrap();
+    rn_text_input_flow(&mut host, &id);
     let text = |host: &mut Host| {
         let root = host.inspect(&id).unwrap().1;
         find(&root, &|n| n.text.as_deref().is_some_and(|t| t.starts_with("Count"))).unwrap().text.clone().unwrap()
@@ -330,4 +331,27 @@ fn react_native_touch_round_trip() {
     assert!(text(&mut host).starts_with("Count: 2"));
     host.shutdown();
     let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Tap the field by its placeholder (focus + keyboard), type, press return: guest sees focus, text_input, submit, blur.
+fn rn_text_input_flow(host: &mut Host, id: &str) {
+    let log = |host: &mut Host| {
+        let root = host.inspect(id).unwrap().1;
+        find(&root, &|n| n.text.as_deref().is_some_and(|t| t.starts_with("Log:"))).unwrap().text.clone().unwrap()
+    };
+    let root = host.inspect(id).unwrap().1;
+    let field = find(&root, &|n| n.role.as_deref() == Some("textfield") && n.label.as_deref() == Some("Name")).unwrap();
+    let (x, y) = center(field);
+    host.pointer(id, PointerEvent::new(PointerKind::Click, x, y)).unwrap();
+    assert_eq!(log(host), "Log: F");
+    let root = host.inspect(id).unwrap().1;
+    assert!(find(&root, &|n| n.kind == "keyboard").is_some(), "focus shows the keyboard");
+    assert_eq!(host.status(id).unwrap()["focus"], "8");
+    host.keyboard(id, KeyboardEvent::Text { text: "Ann".into() }).unwrap();
+    assert_eq!(log(host), "Log: F T:Ann");
+    host.keyboard(id, KeyboardEvent::Key { key: "enter".into() }).unwrap();
+    assert_eq!(log(host), "Log: F T:Ann S B");
+    let root = host.inspect(id).unwrap().1;
+    assert!(find(&root, &|n| n.kind == "keyboard").is_none(), "return blurs a single-line input");
+    assert_eq!(find(&root, &|n| n.id == "8").unwrap().value.as_deref(), Some("Ann"));
 }

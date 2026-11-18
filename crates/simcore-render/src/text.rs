@@ -17,6 +17,22 @@ pub enum TextAlign {
     Trailing,
 }
 
+/// A byte range of the text with its own color and/or weight (React Native nested `Text` spans).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Span {
+    pub start: usize,
+    pub end: usize,
+    pub color: Option<[u8; 3]>,
+    pub weight: Option<u16>,
+}
+
+/// Rich-text extras of a run: per-range styles and a line cap with ellipsis. Plain text has none.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Rich {
+    pub spans: Vec<Span>,
+    pub lines: Option<usize>,
+}
+
 /// Font parameters shared by measuring and drawing.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FontSpec {
@@ -182,7 +198,49 @@ impl Fonts {
         self.inter
     }
 
-    fn buffer(&mut self, text: &str, f: &FontSpec, width: Option<f32>) -> Buffer {
+    /// Shaped text; with a line cap (`rich.lines`) that the text exceeds, the last allowed line is cut
+    /// to whole glyphs followed by `…` (tail truncation, like iOS).
+    fn buffer(&mut self, text: &str, f: &FontSpec, width: Option<f32>, rich: Option<&Rich>) -> Buffer {
+        let b = self.build(text, f, width, rich);
+        let (Some(n), Some(_)) = (rich.and_then(|r| r.lines), width) else { return b };
+        if b.layout_runs().count() <= n {
+            return b;
+        }
+        let Some(run) = b.layout_runs().nth(n - 1) else { return b };
+        let Some(first) = run.glyphs.first() else { return b };
+        // The last allowed line starts here.
+        let start: usize = text.split('\n').take(run.line_i).map(|p| p.len() + 1).sum::<usize>() + first.start;
+        let rest = text[start..].split('\n').next().unwrap_or("");
+        // Like TextKit: a single line fills to the last character that fits, but with several lines the last
+        // one keeps its word-wrapped fragment (`is cut…`), cut only further when the ellipsis does not fit.
+        let frag_end = run.glyphs.last().map_or(0, |g| g.end).saturating_sub(first.start);
+        let rest = if n > 1 && rest.is_char_boundary(frag_end) { &rest[..frag_end] } else { rest };
+        let limit = width.unwrap_or(f32::MAX);
+        let one = FontSpec { align: TextAlign::Leading, ..*f };
+        let bounds: Vec<usize> = rest.char_indices().map(|(i, _)| i).chain([rest.len()]).collect();
+        let (mut lo, mut hi) = (0, bounds.len() - 1);
+        while lo < hi {
+            let mid = (lo + hi).div_ceil(2);
+            let probe = self.build(&format!("{}\u{2026}", rest[..bounds[mid]].trim_end()), &one, None, None);
+            if probe.layout_runs().map(|r| r.line_w).fold(0.0, f32::max) <= limit {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        let mut head = text[..start + bounds[lo]].trim_end();
+        if n > 1 && bounds[lo] < rest.len() {
+            // Multi-line: cut back to a word boundary.
+            head = head.rsplit_once(' ').map_or(head, |(h, _)| h.trim_end());
+        }
+        let cut = Rich {
+            spans: rich.map_or(vec![], |r| r.spans.iter().filter(|s| s.start < head.len()).map(|s| Span { end: s.end.min(head.len()), ..s.clone() }).collect()),
+            lines: None,
+        };
+        self.build(&format!("{head}\u{2026}"), f, width, Some(&cut))
+    }
+
+    fn build(&mut self, text: &str, f: &FontSpec, width: Option<f32>, rich: Option<&Rich>) -> Buffer {
         // Inter's glyphs are ~8% larger than SF's at the same size; at accessibility sizes that is a lot
         // of ink, so the fallback draws them slightly smaller (tracking is fitted for it).
         let big = !self.sf && f.pt > 40.0;
@@ -196,7 +254,32 @@ impl Fonts {
         };
         let wght = if big { (f.weight as i32 + INTER_BIG_WEIGHT).clamp(100, 900) as u16 } else { f.weight };
         let attrs = Attrs::new().family(family).weight(Weight(wght)).letter_spacing(tracking);
-        b.set_text(text, &attrs, Shaping::Advanced, None);
+        match rich.filter(|r| !r.spans.is_empty()) {
+            None => b.set_text(text, &attrs, Shaping::Advanced, None),
+            Some(r) => {
+                // Cut the text at every span edge; each piece takes the style of the span covering it.
+                let mut cuts: Vec<usize> = vec![0, text.len()];
+                cuts.extend(r.spans.iter().flat_map(|sp| [sp.start, sp.end]).filter(|c| *c <= text.len() && text.is_char_boundary(*c)));
+                cuts.sort_unstable();
+                cuts.dedup();
+                let pieces: Vec<(&str, Attrs)> = cuts
+                    .windows(2)
+                    .map(|w| {
+                        let sp = r.spans.iter().rfind(|sp| sp.start <= w[0] && w[1] <= sp.end);
+                        let mut a = attrs.clone();
+                        if let Some(c) = sp.and_then(|sp| sp.color) {
+                            a = a.color(Color::rgb(c[0], c[1], c[2]));
+                        }
+                        if let Some(wt) = sp.and_then(|sp| sp.weight) {
+                            let t = if self.sf { tracking_em(f.pt, wt) } else { inter_tracking_em(f.size, wt) };
+                            a = a.weight(Weight(wt)).letter_spacing(t);
+                        }
+                        (&text[w[0]..w[1]], a)
+                    })
+                    .collect();
+                b.set_rich_text(pieces, &attrs, Shaping::Advanced, None);
+            }
+        }
         let align = match f.align {
             TextAlign::Leading => None,
             TextAlign::Center => Some(Align::Center),
@@ -211,18 +294,24 @@ impl Fonts {
 
     /// Size of `text`, wrapping at `width` when given.
     pub fn measure(&mut self, text: &str, f: &FontSpec, width: Option<f32>) -> (f64, f64) {
+        self.measure_rich(text, f, width, None)
+    }
+
+    pub fn measure_rich(&mut self, text: &str, f: &FontSpec, width: Option<f32>, rich: Option<&Rich>) -> (f64, f64) {
         let key = (text.to_string(), f.size.to_bits(), f.weight, width.map_or(u32::MAX, f32::to_bits));
-        if let Some(r) = self.measured.get(&key) {
+        if let Some(r) = self.measured.get(&key).filter(|_| rich.is_none()) {
             return *r;
         }
-        let b = self.buffer(text, &FontSpec { align: TextAlign::Leading, ..*f }, width);
+        let b = self.buffer(text, &FontSpec { align: TextAlign::Leading, ..*f }, width, rich);
         let (mut w, mut lines) = (0f32, 0usize);
         for run in b.layout_runs() {
             w = w.max(run.line_w);
             lines += 1;
         }
         let r = (w as f64, (f.line_height + (lines.max(1) - 1) as f32 * f.pitch) as f64);
-        self.measured.insert(key, r);
+        if rich.is_none() {
+            self.measured.insert(key, r);
+        }
         r
     }
 
@@ -238,9 +327,23 @@ impl Fonts {
         width: f32,
         rgba: [u8; 4],
         origin: (f32, f32),
+        f: impl FnMut(i32, i32, u32, u32, [u8; 4]),
+    ) -> Vec<LineSpan> {
+        self.draw_rich(text, spec, width, rgba, origin, None, f)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_rich(
+        &mut self,
+        text: &str,
+        spec: &FontSpec,
+        width: f32,
+        rgba: [u8; 4],
+        origin: (f32, f32),
+        rich: Option<&Rich>,
         mut f: impl FnMut(i32, i32, u32, u32, [u8; 4]),
     ) -> Vec<LineSpan> {
-        let mut b = self.buffer(text, spec, Some(width));
+        let mut b = self.buffer(text, spec, Some(width), rich);
         b.shape_until_scroll(&mut self.sys, false);
         let spans = b
             .layout_runs()
@@ -274,5 +377,26 @@ impl Fonts {
             }
         }
         spans
+    }
+}
+
+#[cfg(test)]
+mod rich_tests {
+    use super::*;
+
+    /// The rich path shapes with the same per-size tracking as the plain one.
+    #[test]
+    fn rich_path_matches_plain_widths() {
+        let mut f = Fonts::new();
+        let t = "Plain red blue bold green text.";
+        for size in [15.0f32, 17.0] {
+            let spec = FontSpec::new(size, size * 1.2, 400, TextAlign::Leading);
+            let plain = f.measure(t, &spec, None).0;
+            let empty = f.measure_rich(t, &spec, None, Some(&Rich::default())).0;
+            let full = Rich { spans: vec![Span { start: 0, end: t.len(), color: Some([255, 0, 0]), weight: Some(400) }], lines: Some(3) };
+            let spanned = f.measure_rich(t, &spec, Some(10000.0), Some(&full)).0;
+            assert_eq!((plain, empty), (plain, plain), "{size}");
+            assert!((spanned - plain).abs() < 0.01, "{size}: spans {spanned} vs plain {plain}");
+        }
     }
 }

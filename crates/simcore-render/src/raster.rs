@@ -26,6 +26,36 @@ fn rrect(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
     b.finish()
 }
 
+/// `mask` (or the whole canvas) intersected with `path`, which is in points.
+fn clip_mask(mask: Option<&Mask>, path: &Path, xf: Transform, pw: u32, ph: u32) -> Mask {
+    let mut m = match mask {
+        Some(m) => m.clone(),
+        None => {
+            let mut m = Mask::new(pw, ph).expect("mask");
+            m.fill_path(&PathBuilder::from_rect(Rect::from_xywh(0.0, 0.0, pw as f32, ph as f32).unwrap()), FillRule::Winding, false, Transform::identity());
+            m
+        }
+    };
+    m.intersect_path(path, FillRule::Winding, true, xf);
+    m
+}
+
+/// Draw `im.dest` of the bitmap, clipped to the node's rounded bounds.
+fn draw_image(pm: &mut Pixmap, n: &crate::scene::Node, im: &crate::scene::ImageRun, s: f32, mask: Option<&Mask>) {
+    let (b, d) = (n.bounds, im.dest);
+    let (iw, ih) = (im.pixmap.width() as f32, im.pixmap.height() as f32);
+    let Some(clip) = rrect(b.x as f32, b.y as f32, b.w as f32, b.h as f32, n.radius as f32) else { return };
+    let xf = Transform::from_scale(s, s);
+    let m = clip_mask(mask, &clip, xf, pm.width(), pm.height());
+    let (x0, y0) = (d.x.max(b.x) as f32, d.y.max(b.y) as f32);
+    let (x1, y1) = ((d.x + d.w).min(b.x + b.w) as f32, (d.y + d.h).min(b.y + b.h) as f32);
+    let Some(r) = Rect::from_ltrb(x0, y0, x1, y1) else { return };
+    let mut p = Paint::default();
+    let to_pt = Transform::from_row(d.w as f32 / iw, 0.0, 0.0, d.h as f32 / ih, d.x as f32, d.y as f32);
+    p.shader = tiny_skia::Pattern::new(im.pixmap.as_ref().as_ref(), tiny_skia::SpreadMode::Pad, tiny_skia::FilterQuality::Bicubic, n.opacity, to_pt);
+    pm.fill_rect(r, &p, xf, Some(&m));
+}
+
 fn stroke_pts(pm: &mut Pixmap, pts: &[(f32, f32)], c: Color, w: f32, xf: Transform, mask: Option<&Mask>) {
     let mut b = PathBuilder::new();
     for (i, (x, y)) in pts.iter().enumerate() {
@@ -375,6 +405,9 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
         if let Some(sy) = &n.symbol {
             draw_symbol(&mut pm, sy, sh, n.opacity, s, mask.as_deref());
         }
+        if let Some(im) = &n.image {
+            draw_image(&mut pm, n, im, s, mask.as_deref());
+        }
         if let Some(t) = &n.text {
             let rgba = [
                 (t.color.r * 255.0).round() as u8,
@@ -394,7 +427,7 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
             let spec = FontSpec { size: t.font.size * s, line_height: t.font.line_height * s, pitch: t.font.pitch * s, ..t.font };
             // +2px slack so rounding differences vs layout never re-wrap.
             let base_a = rgba[3] as u32;
-            let spans = fonts.draw(&t.text, &spec, bw * s + 2.0, rgba, (ox, oy), |x, y, w, h, c| {
+            let spans = fonts.draw_rich(&t.text, &spec, bw * s + 2.0, rgba, (ox, oy), t.rich.as_ref(), |x, y, w, h, c| {
                 // cosmic-text replaces the colour alpha with glyph coverage; reapply ours.
                 blend_rect(&mut pm, (x, y, w, h), [c[0], c[1], c[2], (c[3] as u32 * base_a / 255) as u8], mask.as_deref());
             });
@@ -415,18 +448,7 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
         // slower masked blending under it). Full scrollers are exactly that.
         let covers = n.clip_radius == Some(0.0) && bx * s <= 0.0 && by * s <= 0.0 && (bx + bw) * s >= pw as f32 && (by + bh) * s >= ph as f32;
         let child_mask = match n.clip_radius.filter(|_| !covers).and_then(|r| rrect(bx, by, bw, bh, r as f32)) {
-            Some(path) => {
-                let mut m = match &mask {
-                    Some(m) => (**m).clone(),
-                    None => {
-                        let mut m = Mask::new(pw, ph).expect("mask");
-                        m.fill_path(&tiny_skia::PathBuilder::from_rect(Rect::from_xywh(0.0, 0.0, pw as f32, ph as f32).unwrap()), FillRule::Winding, false, Transform::identity());
-                        m
-                    }
-                };
-                m.intersect_path(&path, FillRule::Winding, true, xf);
-                Some(Rc::new(m))
-            }
+            Some(path) => Some(Rc::new(clip_mask(mask.as_deref(), &path, xf, pw, ph))),
             None => mask,
         };
         masks.push(child_mask);

@@ -33,7 +33,9 @@ const HEADER_PAD: f64 = 20.0;
 const NAV_INLINE_H: f64 = 54.0;
 /// Scroll distance over which the inline title fades in as the large title finishes collapsing.
 const INLINE_FADE: f64 = 12.0;
-const SWITCH: (f64, f64) = (63.0, 28.0);
+pub(crate) const SWITCH: (f64, f64) = (63.0, 28.0);
+/// Switch knob size (inset 2pt from the track edge).
+pub(crate) const KNOB: (f64, f64) = (37.0, 24.0);
 const STEPPER: (f64, f64) = (94.0, 32.0);
 /// `Label` in a list row: icon centred in a leading column of this width, title starts after it.
 /// Measured: icon centred 12pt in, title at +40 (column 24 + gap 16), icons at imageScale large.
@@ -126,6 +128,29 @@ struct Ctx<'a> {
     memo: HashMap<(usize, u64, u64), Lay>,
     /// Symbols that fell back to a placeholder.
     unsupported: BTreeSet<String>,
+}
+
+/// Fill `sw` as an iOS switch track (role, value, fill, disabled dimming; `fill` overrides the state's default color) and return its knob node
+/// (no bounds yet). Shared by SwiftUI `Toggle` and React Native `Switch`.
+pub(crate) fn switch_style(sw: &mut Node, id: &str, dark: bool, on: bool, disabled: bool, fill: Option<Color>, thumb: Option<Color>) -> Node {
+    sw.role = Role::Toggle;
+    sw.value = Some(if on { "on" } else { "off" }.into());
+    sw.disabled = disabled;
+    sw.radius = PILL;
+    sw.fill = fill.or(Some(if on { rgba(52, 199, 89, 1.0) } else { control_fill_for(dark, 0.16) }));
+    if disabled {
+        sw.opacity = 0.5;
+    }
+    let mut knob = Node::new(format!("{id}#knob"), "knob");
+    knob.fill = Some(thumb.unwrap_or(rgba(255, 255, 255, 1.0)));
+    knob.radius = PILL;
+    knob.shadow = Some(Shadow { color: Color::rgba(0.0, 0.0, 0.0, 0.18), radius: 1.0, dx: 0.0, dy: 1.0 });
+    knob.inspect = false;
+    knob
+}
+
+fn control_fill_for(dark: bool, light_a: f32) -> Color {
+    Color::rgba(120.0 / 255.0, 120.0 / 255.0, 128.0 / 255.0, if dark { light_a * 2.0 } else { light_a })
 }
 
 /// Inputs to one layout pass.
@@ -354,11 +379,7 @@ impl Ctx<'_> {
 
     /// Neutral control fill (systemFill-like) of the given strength.
     fn control_fill(&self, light_a: f32) -> Color {
-        if self.dark {
-            Color::rgba(120.0 / 255.0, 120.0 / 255.0, 128.0 / 255.0, light_a * 2.0)
-        } else {
-            Color::rgba(120.0 / 255.0, 120.0 / 255.0, 128.0 / 255.0, light_a)
-        }
+        control_fill_for(self.dark, light_a)
     }
 
     fn color(&self, c: &simcore_protocol::Color) -> Color {
@@ -391,7 +412,7 @@ impl Ctx<'_> {
         // SwiftUI rounds text sizes up to the device pixel.
         let w = (w * self.scale).ceil() / self.scale;
         let mut n = Node::new(id, "text");
-        n.text = Some(TextRun { text: text.to_string(), font: spec, color, strike: false, offset_x: 0.0 });
+        n.text = Some(TextRun { text: text.to_string(), font: spec, color, strike: false, offset_x: 0.0, rich: None });
         n.role = Role::Text;
         n.label = Some(text.to_string());
         Lay::new(Size { w, h }, Some(n), vec![])
@@ -775,22 +796,10 @@ impl Ctx<'_> {
         let w = fin.unwrap_or(l.size.w + 8.0 + SWITCH.0);
         let h = l.size.h.max(SWITCH.1);
         let mut sw = Node::new(format!("{}#switch", v.id), "switch");
-        sw.role = Role::Toggle;
+        let knob = switch_style(&mut sw, &v.id, self.dark, on, disabled, None, None);
         sw.label = first_text(label);
-        sw.value = Some(if on { "on" } else { "off" }.into());
         sw.action = (!disabled).then_some(action);
-        sw.disabled = disabled;
-        sw.radius = PILL;
-        sw.fill = Some(if on { rgba(52, 199, 89, 1.0) } else { self.control_fill(0.16) });
-        if disabled {
-            sw.opacity = 0.5;
-        }
-        let (kw, kh) = (37.0, 24.0);
-        let mut knob = Node::new(format!("{}#knob", v.id), "knob");
-        knob.fill = Some(rgba(255, 255, 255, 1.0));
-        knob.radius = PILL;
-        knob.shadow = Some(Shadow { color: Color::rgba(0.0, 0.0, 0.0, 0.18), radius: 1.0, dx: 0.0, dy: 1.0 });
-        knob.inspect = false;
+        let (kw, kh) = KNOB;
         let kx = if on { SWITCH.0 - 2.0 - kw } else { 2.0 };
         let kl = Lay::new(Size { w: kw, h: kh }, Some(knob), vec![]);
         let sl = Lay::new(Size { w: SWITCH.0, h: SWITCH.1 }, Some(sw), vec![(kx, (SWITCH.1 - kh) / 2.0, kl)]);
@@ -885,7 +894,7 @@ impl Ctx<'_> {
         let off = if vertical { (0.0, self.clamp_offset(off.1, max.1, h)) } else { (self.clamp_offset(off.0, max.0, w), 0.0) };
         let mut n = Node::new(&v.id, "scroll");
         n.clip_radius = Some(0.0);
-        n.scroll = Some(ScrollInfo { vertical, offset: off, max, snap: None });
+        n.scroll = Some(ScrollInfo { vertical, offset: off, max, snap: None, content: None });
         n.inspect = true;
         let cx = if vertical { (w - c.size.w) / 2.0 } else { 0.0 };
         Lay::new(Size { w, h }, Some(n), vec![(cx - off.0, top - off.1, c)])
@@ -968,7 +977,7 @@ impl Ctx<'_> {
         let mut n = Node::new(&v.id, "list");
         n.fill = Some(self.semantic(if inset { Semantic::GroupedBackground } else { Semantic::Background }));
         n.clip_radius = Some(0.0);
-        n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max, snap: None });
+        n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max, snap: None, content: None });
         let kids = kids.into_iter().map(|(x, ky, k)| (x, ky - off, k)).collect();
         Lay::new(Size { w, h }, Some(n), kids)
     }

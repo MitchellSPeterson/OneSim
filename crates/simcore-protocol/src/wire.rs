@@ -11,6 +11,39 @@ pub enum GuestMessage {
     Hello { protocol: u32 },
     Tree { version: u64, root: ViewNode },
     Error { message: String },
+    /// React Native `focus`/`blur` commands: focus the field with this tag (`null` = blur).
+    #[serde(rename = "focus_request")]
+    FocusRequest { tag: Option<u64> },
+    /// React Native `scrollTo` / `scrollToEnd` commands.
+    #[serde(rename = "scroll_to")]
+    ScrollTo { tag: u64, x: ScrollTarget, y: ScrollTarget },
+}
+
+/// A `scroll_to` coordinate: an offset in points or the string `"end"` (max offset).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ScrollTarget {
+    Pos(f64),
+    Named(String),
+}
+
+impl ScrollTarget {
+    /// Offset in points; `"end"` is `max`, any other string 0.
+    pub fn resolve(&self, max: f64) -> f64 {
+        match self {
+            ScrollTarget::Pos(v) => *v,
+            ScrollTarget::Named(n) if n == "end" => max,
+            ScrollTarget::Named(_) => 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScrollPhase {
+    Begin,
+    Scroll,
+    End,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -103,6 +136,24 @@ pub enum HostMessage {
     Touch { phase: TouchPhase, tag: u64, x: f64, y: f64, lx: f64, ly: f64, timestamp: f64 },
     /// React Native layout frames `tag -> [x, y, w, h]` in page points.
     Layout { frames: std::collections::BTreeMap<String, [f64; 4]> },
+    /// React Native: host focus moved to / away from the text input `tag`.
+    Focus { tag: u64 },
+    Blur { tag: u64 },
+    /// React Native: return pressed in the text input `tag`.
+    Submit { tag: u64 },
+    /// React Native scroll gesture on `tag`: `x`/`y` content offset, sizes in points.
+    Scroll {
+        tag: u64,
+        phase: ScrollPhase,
+        x: f64,
+        y: f64,
+        #[serde(rename = "contentWidth")]
+        content_width: f64,
+        #[serde(rename = "contentHeight")]
+        content_height: f64,
+        width: f64,
+        height: f64,
+    },
     Reload,
     Shutdown,
 }
@@ -165,6 +216,24 @@ mod tests {
         assert_eq!((component.as_str(), props["flex"].as_i64(), children.len()), ("RootView", Some(1), 1));
         assert_eq!(serde_json::from_str::<ViewNode>(&serde_json::to_string(&root).unwrap()).unwrap(), root);
         assert_eq!(serde_json::to_string(&HostMessage::Shutdown).unwrap(), r#"{"type":"shutdown"}"#);
+        for (m, j) in [
+            (HostMessage::Focus { tag: 9 }, r#"{"type":"focus","tag":9}"#),
+            (HostMessage::Blur { tag: 9 }, r#"{"type":"blur","tag":9}"#),
+            (HostMessage::Submit { tag: 9 }, r#"{"type":"submit","tag":9}"#),
+            (
+                HostMessage::Scroll { tag: 3, phase: ScrollPhase::Begin, x: 0.0, y: 5.0, content_width: 393.0, content_height: 2000.0, width: 393.0, height: 800.0 },
+                r#"{"type":"scroll","tag":3,"phase":"begin","x":0.0,"y":5.0,"contentWidth":393.0,"contentHeight":2000.0,"width":393.0,"height":800.0}"#,
+            ),
+        ] {
+            assert_eq!(serde_json::to_string(&m).unwrap(), j);
+            assert_eq!(serde_json::from_str::<HostMessage>(j).unwrap(), m);
+        }
+        let g: GuestMessage = serde_json::from_str(r#"{"type":"focus_request","tag":null}"#).unwrap();
+        assert_eq!(g, GuestMessage::FocusRequest { tag: None });
+        assert_eq!(serde_json::from_str::<GuestMessage>(r#"{"type":"focus_request","tag":4}"#).unwrap(), GuestMessage::FocusRequest { tag: Some(4) });
+        let g: GuestMessage = serde_json::from_str(r#"{"type":"scroll_to","tag":3,"x":0,"y":"end"}"#).unwrap();
+        let GuestMessage::ScrollTo { tag: 3, x, y } = g else { panic!() };
+        assert_eq!((x.resolve(10.0), y.resolve(10.0)), (0.0, 10.0));
         assert_eq!(
             serde_json::to_string(&HostMessage::TextInput { field: 4, version: 2, text: "hi".into() }).unwrap(),
             r#"{"type":"text_input","field":4,"version":2,"text":"hi"}"#

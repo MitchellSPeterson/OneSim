@@ -70,6 +70,8 @@ pub struct TextRun {
     pub strike: bool,
     /// Horizontal shift of the text inside its bounds (scrolled text fields).
     pub offset_x: f32,
+    /// Per-range styles and a line cap (React Native `Text`).
+    pub rich: Option<crate::text::Rich>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -108,6 +110,13 @@ pub struct SymbolRun {
     pub size: (f64, f64),
 }
 
+/// A decoded bitmap drawn into `dest` (points, absolute), clipped to the node's bounds and corner radius.
+#[derive(Debug, Clone)]
+pub struct ImageRun {
+    pub pixmap: std::sync::Arc<tiny_skia::Pixmap>,
+    pub dest: Rect,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ScrollInfo {
     pub vertical: bool,
@@ -116,6 +125,8 @@ pub struct ScrollInfo {
     /// Vertical offset where a large navigation title has fully collapsed into the inline bar.
     /// Scrolling never comes to rest between 0 and this (iOS snaps to expanded or collapsed).
     pub snap: Option<f64>,
+    /// Real content size when the layout knows it (React Native); else viewport + `max`.
+    pub content: Option<(f64, f64)>,
 }
 
 /// One positioned element. `bounds` are absolute, in points.
@@ -138,6 +149,7 @@ pub struct Node {
     pub glyph: Option<(Glyph, Color)>,
     pub text: Option<TextRun>,
     pub symbol: Option<SymbolRun>,
+    pub image: Option<ImageRun>,
     /// Clips all descendants to `bounds` with this corner radius.
     pub clip_radius: Option<f64>,
     /// Effective opacity (already multiplied by ancestors).
@@ -173,6 +185,7 @@ impl Node {
             glyph: None,
             text: None,
             symbol: None,
+            image: None,
             clip_radius: None,
             opacity: 1.0,
             role: Role::None,

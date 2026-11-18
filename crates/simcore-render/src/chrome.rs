@@ -63,7 +63,7 @@ fn theme(dark: bool) -> Theme {
 
 fn text_run(text: &str, size: f32, weight: u16, color: Color) -> TextRun {
     let font = FontSpec::new(size, size * 1.1934, weight, TextAlign::Center);
-    TextRun { text: text.to_string(), font, color, strike: false, offset_x: 0.0 }
+    TextRun { text: text.to_string(), font, color, strike: false, offset_x: 0.0, rich: None }
 }
 
 struct Builder<'a> {

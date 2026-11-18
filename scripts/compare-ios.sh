@@ -35,6 +35,31 @@ shot long-list-collapsed --click "Long list" --scroll 200,500,0,52
 shot long-list-scrolled  --click "Long list" --scroll 200,500,0,775.66
 rc=0
 python3 scripts/compare_ios.py tests/fixtures/showcase-ios "$out/simcore" "$out" || rc=1
+# React Native / Expo showcase: tests/fixtures/rn-showcase-ios (see its README). Needs node + `npm install` in the example.
+rn=examples/expo-showcase
+if [ -d "$rn/node_modules" ] && command -v npx >/dev/null; then
+  rnout=target/compare/rn; mkdir -p "$rnout/simcore"
+  port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
+  (cd "$rn" && CI=1 exec npx expo start --port "$port" >"../../$rnout/metro.log" 2>&1) &
+  metro=$!
+  trap 'pkill -P $metro 2>/dev/null; kill $metro 2>/dev/null; true' EXIT
+  for _ in $(seq 60); do curl -sf "http://localhost:$port/status" >/dev/null 2>&1 && break; sleep 1; done
+  rnshot() { local name=$1; shift; ./target/debug/simcore expo --url "http://localhost:$port" "$@" --screenshot "$rnout/simcore/$name.png" >/dev/null || echo "simcore expo failed: $name"; }
+  rnshot home
+  rnshot layout           --click Layout
+  rnshot text             --click Text
+  rnshot controls         --click Controls
+  rnshot controls-changed --click Controls --click Increment --click Increment --click Alpha
+  rnshot controls-typed   --click Controls --click "Type here" --type Hello
+  rnshot scroll           --click Scroll
+  rnshot scroll-scrolled  --click Scroll --click Jump
+  rnshot image            --click Image
+  rnshot home-dark        --dark
+  echo "== React Native (expo-showcase)"
+  python3 scripts/compare_ios.py tests/fixtures/rn-showcase-ios "$rnout/simcore" "$rnout" || rc=1
+else
+  echo "== skipping React Native comparison (run npm install in $rn, needs node)"
+fi
 # Per-device chrome: tests/fixtures/devices/<slug>/{home,keyboard-shift}.png (see its README).
 for d in tests/fixtures/devices/*/; do
   slug=$(basename "$d"); dd="$out/devices/$slug"; mkdir -p "$dd/simcore"

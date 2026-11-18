@@ -1,7 +1,8 @@
 //! One guest OS process and everything we know about it.
 
 use simcore_protocol::{
-    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, GuestMessage, HostMessage, SessionError, Viewport, ViewNode,
+    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, GuestMessage, HostMessage, ScrollPhase, SessionError, Viewport,
+    ViewNode,
 };
 pub use simcore_render::{device, Device, DEFAULT_DEVICE, DEVICES};
 use simcore_render::{Effect, Interaction};
@@ -50,6 +51,10 @@ struct Inner {
     generation: u64,
     errors: Vec<SessionError>,
     exited: bool,
+    /// When the last tree or guest request arrived (settling).
+    last_event: Option<Instant>,
+    /// React Native `focus_request` / `scroll_to` messages not yet applied by the host.
+    requests: Vec<GuestMessage>,
 }
 
 #[derive(Default)]
@@ -85,6 +90,8 @@ pub struct Session {
     pub sent_frames: BTreeMap<String, [f64; 4]>,
     /// React Native: tag the current touch started on.
     pub touch: Option<u64>,
+    /// When the host last wrote to the guest: its reaction (new trees) is due within the quiet window.
+    last_sent: Instant,
     state: State,
     child: Option<Child>,
     stdin: Option<ChildStdin>,
@@ -97,6 +104,15 @@ impl Drop for Session {
             let _ = c.kill();
             let _ = c.wait();
         }
+    }
+}
+
+fn is_multiline(n: &ViewNode, id: &str) -> bool {
+    match &n.kind {
+        simcore_protocol::ViewKind::Rn { component, children, .. } => {
+            (n.id == id && component == "RCTMultilineTextInputView") || children.iter().any(|c| is_multiline(c, id))
+        }
+        _ => false,
     }
 }
 
@@ -132,6 +148,7 @@ impl Session {
             inter: Interaction::default(),
             sent_frames: BTreeMap::new(),
             touch: None,
+            last_sent: Instant::now(),
             params: p,
             state: State::Created,
             child: None,
@@ -304,6 +321,13 @@ impl Session {
                         let mut g = sh.lock();
                         g.tree = Some((version, root));
                         g.generation += 1;
+                        g.last_event = Some(Instant::now());
+                        sh.cv.notify_all();
+                    }
+                    Ok(m @ (GuestMessage::FocusRequest { .. } | GuestMessage::ScrollTo { .. })) => {
+                        let mut g = sh.lock();
+                        g.requests.push(m);
+                        g.last_event = Some(Instant::now());
                         sh.cv.notify_all();
                     }
                     Ok(GuestMessage::Error { message }) => sh.push_error("guest", message),
@@ -329,6 +353,7 @@ impl Session {
     }
 
     pub fn send(&mut self, msg: &HostMessage) -> Result<(), ApiError> {
+        self.last_sent = Instant::now();
         let mut line = serde_json::to_string(msg).expect("serialize");
         line.push('\n');
         let w = self.stdin.as_mut().ok_or_else(|| err(ErrorCode::InvalidState, "guest not running"))?;
@@ -338,7 +363,8 @@ impl Session {
     }
 
     /// React Native: send the frames that changed since the last `layout` message.
-    pub fn sync_layout(&mut self, scene: &simcore_render::Scene) {
+    /// Returns whether a `layout` message went out.
+    pub fn sync_layout(&mut self, scene: &simcore_render::Scene) -> bool {
         let frames: BTreeMap<String, [f64; 4]> = scene
             .nodes
             .iter()
@@ -348,7 +374,82 @@ impl Session {
         let changed: BTreeMap<_, _> = frames.iter().filter(|(k, v)| self.sent_frames.get(*k) != Some(*v)).map(|(k, v)| (k.clone(), *v)).collect();
         if !changed.is_empty() && self.state() == State::Running && self.send(&HostMessage::Layout { frames: changed }).is_ok() {
             self.sent_frames = frames;
+            return true;
         }
+        false
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.shared.lock().generation
+    }
+
+    /// Guest `focus_request` / `scroll_to` messages since the last call.
+    pub fn take_requests(&self) -> Vec<GuestMessage> {
+        std::mem::take(&mut self.shared.lock().requests)
+    }
+
+    /// Block until nothing has arrived from (or been sent to) the guest for `quiet`, at most `max`.
+    /// React Native commits UI in several trees (state updates, FlatList batches, onLayout reactions),
+    /// so a snapshot is only meaningful once they stop.
+    pub fn wait_quiet(&self, quiet: Duration, max: Duration) {
+        let limit = Instant::now() + max;
+        let mut g = self.shared.lock();
+        loop {
+            let last = g.last_event.map_or(self.last_sent, |t| t.max(self.last_sent));
+            let now = Instant::now();
+            let left = (last + quiet).saturating_duration_since(now).min(limit.saturating_duration_since(now));
+            if left.is_zero() || g.exited {
+                return;
+            }
+            g = self.shared.cv.wait_timeout(g, left).unwrap_or_else(|e| e.into_inner()).0;
+        }
+    }
+
+    /// React Native: tell the guest the focused text input changed from `before` to the current focus.
+    pub fn sync_focus(&mut self, before: Option<String>) -> Result<(), ApiError> {
+        let tag = |f: &Option<String>| f.as_ref().and_then(|f| f.parse::<u64>().ok());
+        let after = self.inter.focus.clone();
+        if before == after {
+            return Ok(());
+        }
+        if let Some(tag) = tag(&before) {
+            self.send(&HostMessage::Blur { tag })?;
+        }
+        if let Some(tag) = tag(&after) {
+            self.send(&HostMessage::Focus { tag })?;
+        }
+        Ok(())
+    }
+
+    /// React Native: return pressed while `before` was focused (the interaction state already
+    /// dropped the focus). Sends `submit`, then blur unless the input is multiline.
+    pub fn submit(&mut self, before: &str) -> Result<(), ApiError> {
+        let Ok(tag) = before.parse::<u64>() else { return Ok(()) };
+        self.send(&HostMessage::Submit { tag })?;
+        let multiline = self.tree().is_some_and(|(_, t)| is_multiline(&t, before));
+        if multiline {
+            self.inter.focus = Some(before.to_string());
+            Ok(())
+        } else {
+            self.send(&HostMessage::Blur { tag })
+        }
+    }
+
+    /// React Native: send a `scroll` event for the scroller `n` at `offset`.
+    pub fn send_scroll(&mut self, n: &simcore_render::Node, phase: ScrollPhase, offset: (f64, f64)) -> Result<(), ApiError> {
+        let Some(info) = n.scroll else { return Ok(()) };
+        let Ok(tag) = n.id.parse::<u64>() else { return Ok(()) };
+        let (content_width, content_height) = info.content.unwrap_or(if info.vertical { (n.bounds.w, n.bounds.h + info.max.1) } else { (n.bounds.w + info.max.0, n.bounds.h) });
+        self.send(&HostMessage::Scroll {
+            tag,
+            phase,
+            x: offset.0,
+            y: offset.1,
+            content_width,
+            content_height,
+            width: n.bounds.w,
+            height: n.bounds.h,
+        })
     }
 
     /// Deliver an interaction effect to the guest (no-op for `None`/`Redraw`).
@@ -356,7 +457,8 @@ impl Session {
         match e {
             Effect::Action { id, version } => self.send_and_wait_tree(&HostMessage::Action { id, version }).map(drop),
             Effect::TextInput { field, version, text } => {
-                self.send_and_wait_tree(&HostMessage::TextInput { field, version, text }).map(drop)
+                let m = HostMessage::TextInput { field, version, text };
+                if self.is_rn() { self.send_and_settle(&m).map(drop) } else { self.send_and_wait_tree(&m).map(drop) }
             }
             Effect::None | Effect::Redraw => Ok(()),
         }
