@@ -25,6 +25,10 @@ fn err(code: ErrorCode, msg: impl Into<String>) -> ApiError {
 /// React Native: how long the guest must be quiet before a snapshot, and the most a snapshot waits.
 const QUIET: Duration = Duration::from_millis(150);
 const SETTLE_MAX: Duration = Duration::from_millis(2500);
+/// React Native: when trees keep arriving but the layout no longer changes (an endless animation, e.g. a
+/// rotating logo), a snapshot stops waiting after this long; startup waits `STARTUP_MAX` (splash, first layout).
+const ANIM_MAX: Duration = Duration::from_millis(500);
+const STARTUP_MAX: Duration = Duration::from_millis(2500);
 
 pub struct Host {
     sessions: HashMap<String, Session>,
@@ -101,7 +105,7 @@ impl Host {
         s.start()?;
         if self.get(id)?.is_rn() {
             // First layout pass: FlatList and friends render the rest once they know their frames.
-            let _ = self.scene(id);
+            let _ = self.scene_within(id, STARTUP_MAX);
         }
         Ok(())
     }
@@ -156,18 +160,24 @@ impl Host {
     /// Scene of the current tree. React Native sessions first settle: the guest's trees, layout
     /// frames, focus requests and `scroll_to` replies are exchanged until nothing changes.
     fn scene(&mut self, id: &str) -> Result<(Scene, u64, f64), ApiError> {
+        self.scene_within(id, ANIM_MAX)
+    }
+
+    /// `scene`, where an animation that keeps trees coming (layout unchanged) is waited on for `anim` at most.
+    fn scene_within(&mut self, id: &str, anim: Duration) -> Result<(Scene, u64, f64), ApiError> {
         if !self.get(id)?.is_rn() {
             return self.build(id);
         }
-        let deadline = Instant::now() + SETTLE_MAX;
+        let (start, deadline) = (Instant::now(), Instant::now() + SETTLE_MAX.max(anim));
         loop {
-            self.get(id)?.wait_quiet(QUIET, SETTLE_MAX);
+            self.get(id)?.wait_quiet(QUIET, anim);
             let generation = self.get(id)?.generation();
             let out = self.build(id)?;
             let acted = self.rn_apply_requests(id, &out.0);
             let s = self.get(id)?;
             let sent = s.sync_layout(&out.0);
-            if (!acted && !sent && s.generation() == generation) || Instant::now() > deadline {
+            let animating = !acted && !sent && start.elapsed() >= anim;
+            if (!acted && !sent && s.generation() == generation) || animating || Instant::now() > deadline {
                 return Ok(out);
             }
         }
@@ -276,6 +286,23 @@ impl Host {
         }
         let on_keyboard = scene.nodes.iter().any(|n| n.kind == "keyboard" && n.bounds.contains(ev.x, ev.y));
         let hit = scene.hit_test(ev.x, ev.y).map(|i| &scene.nodes[i]);
+        // Native chrome: a stack header's back pill (`<stack>#back`) and tab bar items (`<tabs>#tab-<key>`).
+        if let Some(n) = hit {
+            let (tag, key) = n.id.split_once('#').map_or((n.id.as_str(), ""), |(t, k)| (t, k));
+            let msg = match (tag.parse::<u64>(), key) {
+                (Ok(tag), "back") => Some(HostMessage::NativeBack { tag }),
+                (Ok(tag), k) if k.starts_with("tab-") && !k.contains('#') => Some(HostMessage::SelectTab { tag, key: k[4..].to_string() }),
+                _ => None,
+            };
+            if let Some(msg) = msg {
+                let out = (Some(n.id.clone()), ev.kind != PointerKind::Down);
+                if ev.kind != PointerKind::Down {
+                    s.send_and_settle(&msg)?;
+                    let _ = self.scene(id);
+                }
+                return Ok(out);
+            }
+        }
         if on_keyboard {
             let before = s.inter.focus.clone();
             let returned = ev.kind != PointerKind::Down

@@ -60,6 +60,36 @@ if [ -d "$rn/node_modules" ] && command -v npx >/dev/null; then
 else
   echo "== skipping React Native comparison (run npm install in $rn, needs node)"
 fi
+# Expo Router: tests/fixtures/rn-router-ios (see its README). One Metro per app; each group compares only the states it rendered.
+rr_group() { # app-dir label; states are produced by the rr_states_* function named by $3
+  local app=$1 label=$2 o=target/compare/$2
+  if ! { [ -d "$app/node_modules" ] && command -v npx >/dev/null; }; then echo "== skipping $label comparison (run npm install in $app, needs node)"; return; fi
+  rm -rf "$o"; mkdir -p "$o/simcore"
+  local pt; pt=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
+  (cd "$app" && CI=1 exec npx expo start --port "$pt" >"../../$o/metro.log" 2>&1) &
+  local m=$!
+  for _ in $(seq 60); do curl -sf "http://localhost:$pt/status" >/dev/null 2>&1 && break; sleep 1; done
+  rrshot() { local n=$1; shift; ./target/debug/simcore expo --url "http://localhost:$pt" "$@" --screenshot "$o/simcore/$n.png" >/dev/null || echo "simcore expo failed: $n"; }
+  "$3"
+  pkill -P $m 2>/dev/null; kill $m 2>/dev/null
+  echo "== Expo Router ($label)"
+  python3 scripts/compare_ios.py tests/fixtures/rn-router-ios "$o/simcore" "$o" || rc=1
+}
+rr_states_tabs() {
+  rrshot tabs-home
+  rrshot tabs-explore          --click 244,822
+  rrshot tabs-explore-expanded --click 244,822 --click 100,389
+  rrshot tabs-home-dark        --dark
+  rrshot tabs-explore-dark     --dark --click 244,822
+}
+rr_states_stack() {
+  rrshot stack-list
+  rrshot stack-detail      --click 200,192
+  rrshot stack-back        --click 200,192 --click 64,84
+  rrshot stack-detail-dark --dark --click 200,192
+}
+rr_group examples/expo-default tabs rr_states_tabs
+rr_group examples/expo-router-stack stack rr_states_stack
 # Per-device chrome: tests/fixtures/devices/<slug>/{home,keyboard-shift}.png (see its README).
 for d in tests/fixtures/devices/*/; do
   slug=$(basename "$d"); dd="$out/devices/$slug"; mkdir -p "$dd/simcore"

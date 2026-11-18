@@ -390,6 +390,8 @@ pub fn resolve_label(tree: &simcore_protocol::UiNode, spec: &str) -> Result<(f64
         None => find(tree, &|n| {
             matches!(n.role.as_deref(), Some("button" | "toggle" | "textfield")) && n.label.as_deref() == Some(spec)
         })
+        // A native stack header's back pill is labelled with the previous title; `Back` always finds it.
+        .or_else(|| find(tree, &|n| spec.eq_ignore_ascii_case("back") && n.id.ends_with("#back")))
         .ok_or_else(|| format!("no button, toggle, text field or key labelled {spec:?}"))?,
     };
     Ok(center(n))

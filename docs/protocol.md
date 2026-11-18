@@ -400,3 +400,39 @@ visible; `topRequestClose` is not generated (no hardware back on iOS).
 - Guest → host `{"type":"event","name":"bundle.loaded"|"bundle.reloaded"|"bundle.error"|"refresh.applied","detail":{...}}`.
   The host currently only logs these (client event stream: Milestone 4). Bundle and runtime
   errors are also sent as `error` (→ `get_errors`).
+
+### Milestone 3 additions (Expo Router: native stack, native tabs, safe area)
+
+Native components (react-native-screens, safe-area-context, expo views) arrive as ordinary `rn`
+nodes; the host draws the platform chrome.
+
+- `RNSScreenStack` > `RNSScreen`* (last child = top) > `RNSScreenContentWrapper` (content) +
+  `RNSScreenStackHeaderConfig` (header props: `title`, `hidden`, `largeTitle`, `hideBackButton`,
+  `backTitle` (absent → previous screen's title), `backTitleVisible`, `color`, `backgroundColor`,
+  `titleColor`, `titleFontSize`, `titleFontWeight`, `translucent`; children
+  `RNSScreenStackHeaderSubview` `type` left/right/center/title/back/searchBar). Host draws the
+  top screen and an iOS 26 navigation bar (same look as SwiftUI `NavigationStack`).
+- `RNSTabsHostIOS` (`navStateRequest.selectedScreenKey`, `tabBarHidden`, `tabBarTintColor`) >
+  `RNSTabsScreenIOS` (`screenKey`, `title`, `badgeValue`, `iconType` image/sfSymbol/xcasset,
+  `iconResourceName`, guest-added `__simcoreIconImage` / `__simcoreSelectedIconImage`
+  `{path,width,height}`). Host draws the selected tab's content and the iOS 26 floating Liquid
+  Glass tab bar.
+- `RNCSafeAreaProvider`, `RNCSafeAreaView` (`edges` `{top,left,bottom,right}`: `additive`|`off`
+  → add the safe-area inset as padding), `RNSSafeAreaView`.
+- `ViewManagerAdapter_ExpoImage` (`source`, `contentFit`, `tintColor`, guest-added
+  `__simcoreImage`), `ViewManagerAdapter_SymbolModule` (`name`, `weight`, `scale`, `tintColor` as
+  CSS string, size from style), `ViewManagerAdapter_ExpoGlassEffect_GlassView`
+  (`glassEffectStyle`, `tintColor`, `isInteractive`, radii), `…_GlassContainer` (`spacing`).
+- Root `props.backgroundColor`: `expo-system-ui` background.
+- Safe-area insets come from the viewport height (874 → 62/34, 852 → 59/34, 844 → 47/34,
+  812 → 44/34, else 20/0); the guest sends them to `RNCSafeAreaProvider` (`topInsetsChange`).
+
+Host → guest:
+- `{"type":"select_tab","tag":<RNSTabsHostIOS tag>,"key":"<screenKey>"}` (or `"index":n`) when a
+  tab bar item is tapped. The guest fires `topTabSelected`; JS then updates
+  `navStateRequest.selectedScreenKey`, which the host follows.
+- `{"type":"native_back","tag":<RNSScreenStack tag>}` when the header back button is tapped. The
+  guest fires the iOS pop events (`topDismissed` …); JS removes the screen on its next commit.
+
+JS-driven push/pop needs no message. The guest spaces appear events by 350 ms
+(`SIMCORE_NAV_MS`, 0 = instant); the host does not animate transitions yet.

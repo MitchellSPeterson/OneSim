@@ -113,6 +113,28 @@ impl Env {
     }
 }
 
+/// A back button for [`Ctx::nav_bar`]: a 44pt circle (SwiftUI) or a pill carrying the previous title (React Native).
+pub(crate) struct NavBack {
+    pub action: Option<u64>,
+    pub label: String,
+    pub pill: bool,
+}
+
+struct NavBar<'a> {
+    id: &'a str,
+    w: f64,
+    h: f64,
+    top: f64,
+    bar_h: f64,
+    title: Option<&'a str>,
+    large: bool,
+    large_title: Option<Lay>,
+    title_h: f64,
+    band: f64,
+    offset: f64,
+    back: Option<NavBack>,
+}
+
 struct Ctx<'a> {
     fonts: &'a mut Fonts,
     dark: bool,
@@ -196,6 +218,24 @@ pub(crate) fn add_chrome(nodes: &mut Vec<Node>, params: &SceneParams, fonts: &mu
     if let Some(isl) = params.device.island {
         crate::chrome::island(nodes, isl);
     }
+}
+
+/// Height of the navigation bar below the status bar for a React Native stack header.
+pub(crate) fn rn_nav_height(params: &SceneParams, fonts: &mut Fonts, w: f64, title: Option<&str>, large: bool) -> f64 {
+    let (_, _, band) = ctx(params, fonts).nav_large("nav", w, title, large);
+    NAV_INLINE_H + band
+}
+
+/// Append a React Native native-stack header (`top` = safe-area top) to `out`: the same bar the SwiftUI
+/// `NavigationStack` draws. `id` is the stack tag; the back pill's node is `{id}#back`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn rn_nav_bar(params: &SceneParams, fonts: &mut Fonts, id: &str, top: f64, title: Option<&str>, large: bool, back: Option<NavBack>, parent: usize, out: &mut Vec<Node>) {
+    let mut cx = ctx(params, fonts);
+    let w = params.viewport.0;
+    let (large_title, title_h, band) = cx.nav_large(id, w, title, large);
+    let bar_h = NAV_INLINE_H + band;
+    let bar = NavBar { id, w, h: params.viewport.1, top, bar_h, title, large: large && title.is_some(), large_title, title_h, band, offset: 0.0, back };
+    flatten(cx.nav_bar(bar), 0.0, top, Some(parent), 1.0, out);
 }
 
 pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
@@ -999,16 +1039,7 @@ impl Ctx<'_> {
         let h = p.h.filter(|h| h.is_finite()).unwrap_or(874.0);
         let (top, bottom) = (env.safe_top, env.bottom_inset);
         let large = mode == DisplayMode::Large && title.is_some();
-        let primary = self.semantic(Semantic::Primary);
-        // Large title: LargeTitle bold, growing with Dynamic Type. Its band below the inline bar is
-        // 52pt, or the title's height + 1.33 when taller (measured: 106pt bar at large, 127 at AX5).
-        let large_title = title.filter(|_| large).map(|t| {
-            let sz = simcore_protocol::TextStyle::LargeTitle.size_at(self.dts) as f32;
-            let spec = FontSpec::new(sz, self.line_h(sz), 700, TextAlign::Leading);
-            self.text_lay(&format!("{}#title", v.id), t, spec, primary, Some((w - 32.0) as f32))
-        });
-        let title_h = large_title.as_ref().map_or(0.0, |l| l.size.h);
-        let band = if large { (title_h + 1.33).max(52.0) } else { 0.0 };
+        let (large_title, title_h, band) = self.nav_large(&v.id, w, title, large);
         let bar_h = if title.is_none() && back.is_none() { 0.0 } else { NAV_INLINE_H + band };
         let ctop = top + bar_h;
         let scroller = is_scroller(content);
@@ -1043,11 +1074,36 @@ impl Ctx<'_> {
             let c = self.view(content, Prop { w: Some(w), h: Some(avail) }, Env { bottom_inset: 0.0, ..cenv });
             kids.push(((w - c.size.w) / 2.0, ctop + (avail - c.size.h) / 2.0, c));
         }
-        // Bar (no background at rest on iOS 26): title + glass back button above content.
-        // The large title scrolls with the content and disappears under the inline bar; the bar
+        let back = back.map(|b| NavBack { action: Some(b.action), label: b.label.clone(), pill: false });
+        let bar = NavBar { id: &v.id, w, h, top, bar_h, title, large, large_title, title_h, band, offset, back };
+        kids.push((0.0, top, self.nav_bar(bar)));
+        Lay::new(Size { w, h }, Some(bg), kids)
+    }
+
+    /// Large title lay (when `large`), its height and the band it occupies below the inline bar.
+    /// Large title: LargeTitle bold, growing with Dynamic Type. Its band below the inline bar is
+    /// 52pt, or the title's height + 1.33 when taller (measured: 106pt bar at large, 127 at AX5).
+    fn nav_large(&mut self, id: &str, w: f64, title: Option<&str>, large: bool) -> (Option<Lay>, f64, f64) {
+        let primary = self.semantic(Semantic::Primary);
+        let large_title = title.filter(|_| large).map(|t| {
+            let sz = simcore_protocol::TextStyle::LargeTitle.size_at(self.dts) as f32;
+            let spec = FontSpec::new(sz, self.line_h(sz), 700, TextAlign::Leading);
+            self.text_lay(&format!("{id}#title"), t, spec, primary, Some((w - 32.0) as f32))
+        });
+        let title_h = large_title.as_ref().map_or(0.0, |l| l.size.h);
+        let band = if large { (title_h + 1.33).max(52.0) } else { 0.0 };
+        (large_title, title_h, band)
+    }
+
+    /// The navigation bar (no background at rest on iOS 26): large + inline title and the glass back
+    /// button. Shared by SwiftUI `NavigationStack` and React Native's native stack header.
+    fn nav_bar(&mut self, nb: NavBar) -> Lay {
+        let NavBar { id, w, h, top, bar_h, title, large, large_title, title_h, band, offset, back } = nb;
+        let primary = self.semantic(Semantic::Primary);
+                // The large title scrolls with the content and disappears under the inline bar; the bar
         // shrinks with it and the inline title fades in over the last INLINE_FADE points.
         let collapse = offset.clamp(0.0, band);
-        let mut bar = Node::new(format!("{}#bar", v.id), "navbar");
+        let mut bar = Node::new(format!("{}#bar", id), "navbar");
         bar.label = title.map(str::to_string);
         let mut bar_kids = vec![];
         if let Some(tl) = large_title.filter(|_| offset < band) {
@@ -1055,7 +1111,7 @@ impl Ctx<'_> {
             let ty = NAV_INLINE_H + (band - title_h - 7.6).max(0.0) - offset;
             if offset > 0.0 {
                 // Mid-collapse: cut off where it slides under the inline bar.
-                let mut clip = Node::new(format!("{}#largetitle", v.id), "clip");
+                let mut clip = Node::new(format!("{}#largetitle", id), "clip");
                 clip.clip_radius = Some(0.0);
                 clip.inspect = false;
                 let clip_h = h - top - NAV_INLINE_H;
@@ -1070,7 +1126,7 @@ impl Ctx<'_> {
                 // Inline titles grow with Dynamic Type but cap at x1.225 (measured at accessibility5).
                 let nsz = 17.0 * (simcore_protocol::TextStyle::Body.size_at(self.dts) as f32 / 17.0).min(1.225);
                 let spec = FontSpec::new(nsz, self.line_h(nsz), 600, TextAlign::Leading);
-                let id = if large { format!("{}#inline", v.id) } else { format!("{}#title", v.id) };
+                let id = if large { format!("{}#inline", id) } else { format!("{}#title", id) };
                 let mut tl = self.text_lay(&id, t, spec, primary, Some((w - 120.0) as f32));
                 if let Some(n) = tl.node.as_mut() {
                     n.opacity = alpha;
@@ -1080,17 +1136,31 @@ impl Ctx<'_> {
             }
         }
         if let Some(b) = back {
-            let mut n = Node::new(format!("{}#back", v.id), "button");
+            let mut n = Node::new(format!("{id}#back"), "button");
             n.role = Role::Button;
-            n.action = Some(b.action);
+            n.action = b.action;
             n.label = Some(if b.label.is_empty() { "Back".into() } else { b.label.clone() });
             n.glass = Some(self.glass_spec(GlassVariant::Regular, None, true));
             n.radius = PILL;
-            n.glyph = Some((Glyph::BackChevron, self.semantic(Semantic::Primary)));
-            bar_kids.push((self.margin, 0.0, Lay::new(Size { w: 44.0, h: 44.0 }, Some(n), vec![])));
+            if b.pill {
+                // Pill with chevron and the previous title (measured iOS 26.5: chevron centre 19pt in, text at 35, 17.7 trailing).
+                let spec = FontSpec::new(17.0, self.line_h(17.0), 400, TextAlign::Leading);
+                let mut tl = self.text_lay(&format!("{id}#backtitle"), &b.label, spec, primary, None);
+                if let Some(t) = tl.node.as_mut() {
+                    t.inspect = false;
+                }
+                let mut chev = Node::new(format!("{id}#chevron"), "chevron");
+                chev.glyph = Some((Glyph::BackChevron, primary));
+                chev.inspect = false;
+                let (tw, th) = (tl.size.w, tl.size.h);
+                let kids = vec![(0.0, 0.0, Lay::new(Size { w: 38.0, h: 44.0 }, Some(chev), vec![])), (35.0, (44.0 - th) / 2.0, tl)];
+                bar_kids.push((self.margin, 0.0, Lay::new(Size { w: 35.0 + tw + 17.7, h: 44.0 }, Some(n), kids)));
+            } else {
+                n.glyph = Some((Glyph::BackChevron, primary));
+                bar_kids.push((self.margin, 0.0, Lay::new(Size { w: 44.0, h: 44.0 }, Some(n), vec![])));
+            }
         }
-        kids.push((0.0, top, Lay::new(Size { w, h: bar_h - collapse }, Some(bar), bar_kids)));
-        Lay::new(Size { w, h }, Some(bg), kids)
+        Lay::new(Size { w, h: bar_h - collapse }, Some(bar), bar_kids)
     }
 
     /// iOS status bar: "9:41" at the left, signal / wifi / battery at the right.

@@ -4,6 +4,7 @@ use std::collections::HashMap;
 /// macOS system UI font (variable SF Pro: wght axis). Family name as registered in fontdb.
 const SF_FILE: &str = "/System/Library/Fonts/SFNS.ttf";
 const SF_FAMILY: &str = ".SF NS";
+const MONO_FAMILY: &str = ".SF NS Mono";
 /// Open-licensed fallback (Inter, SIL OFL 1.1; variable `wght` axis), embedded for determinism.
 const INTER: &[u8] = include_bytes!("../../../assets/fonts/InterVariable.ttf");
 const INTER_FAMILY: &str = "Inter Variable";
@@ -24,6 +25,9 @@ pub struct Span {
     pub end: usize,
     pub color: Option<[u8; 3]>,
     pub weight: Option<u16>,
+    /// Own point size (nested `Text` with `fontSize`).
+    pub size: Option<f32>,
+    pub mono: bool,
 }
 
 /// Rich-text extras of a run: per-range styles and a line cap with ellipsis. Plain text has none.
@@ -47,13 +51,15 @@ pub struct FontSpec {
     pub align: TextAlign,
     /// Letter spacing in em (see [`tracking_em`]); independent of the raster scale.
     pub tracking: f32,
+    /// System monospaced face (`ui-monospace`).
+    pub mono: bool,
 }
 
 impl FontSpec {
     pub fn new(size: f32, line_height: f32, weight: u16, align: TextAlign) -> Self {
         // Leading: 22/17 of the size up to large-title sizes, ~1.12 x size + 2.64 above (accessibility sizes, measured: 53pt -> 62pt).
         let pitch = if size > 34.0 { size * 1.12 + 2.64 } else { line_height.max(size * 22.0 / 17.0) };
-        Self { size, pt: size, line_height, pitch, weight, align, tracking: tracking_em(size, weight) }
+        Self { size, pt: size, line_height, pitch, weight, align, tracking: tracking_em(size, weight), mono: false }
     }
 }
 
@@ -108,7 +114,9 @@ fn inter_weight_tracking(size: f32, weight: u16) -> f32 {
     let w = a.1 + (b.1 - a.1) * ((weight as f32 - a.0) / (b.0 - a.0)).clamp(0.0, 1.0);
     // SF stops tightening heavy text at 20pt+ (see `tracking_em`), so the gap widens there.
     let big = if size >= 20.0 { 0.007 * ((weight as f32 - 400.0) / 200.0).clamp(0.0, 1.0) } else { 0.0 };
-    w + big
+    // Medium (500) is heavier in SF than the 400..600 interpolation says: measured on the Expo template's 14pt text.
+    let medium = if (450..=550).contains(&weight) { 0.02 } else { 0.0 };
+    w + big + medium
 }
 
 /// Inter tracking at accessibility sizes (> 40pt), where it is drawn at `INTER_BIG_SCALE`.
@@ -145,6 +153,7 @@ pub struct Fonts {
     cache: SwashCache,
     sf: bool,
     inter: bool,
+    has_mono: bool,
     measured: HashMap<(String, u32, u16, u32), (f64, f64)>,
 }
 
@@ -180,7 +189,8 @@ impl Fonts {
             db.load_font_data(INTER.to_vec());
         }
         let sys = FontSystem::new_with_locale_and_db("en-US".into(), db);
-        Self { sys, cache: SwashCache::new(), sf, inter, measured: HashMap::new() }
+        let has_mono = sys.db().faces().any(|f| f.families.iter().any(|(n, _)| n == MONO_FAMILY));
+        Self { sys, cache: SwashCache::new(), sf, inter, has_mono, measured: HashMap::new() }
     }
 
     /// True when Apple's SF Pro is in use.
@@ -247,7 +257,10 @@ impl Fonts {
         let size = if big { f.size * INTER_BIG_SCALE } else { f.size };
         let mut b = Buffer::new(&mut self.sys, Metrics::new(size, f.pitch));
         b.set_size(width, None);
-        let (family, tracking) = if self.sf {
+        let mono_family = if self.has_mono { Family::Name(MONO_FAMILY) } else { Family::Monospace };
+        let (family, tracking) = if f.mono {
+            (mono_family, 0.0)
+        } else if self.sf {
             (Family::Name(SF_FAMILY), f.tracking)
         } else {
             (Family::Name(INTER_FAMILY), if big { inter_ax_tracking(f.pt, f.weight) } else { inter_tracking_em(f.size, f.weight) })
@@ -273,6 +286,13 @@ impl Fonts {
                         if let Some(wt) = sp.and_then(|sp| sp.weight) {
                             let t = if self.sf { tracking_em(f.pt, wt) } else { inter_tracking_em(f.size, wt) };
                             a = a.weight(Weight(wt)).letter_spacing(t);
+                        }
+                        if sp.is_some_and(|sp| sp.mono) {
+                            a = a.family(mono_family).letter_spacing(0.0);
+                        }
+                        if let Some(pt) = sp.and_then(|sp| sp.size) {
+                            let k = f.size / f.pt;
+                            a = a.metrics(Metrics::new(pt * k, f.pitch));
                         }
                         (&text[w[0]..w[1]], a)
                     })
@@ -393,7 +413,7 @@ mod rich_tests {
             let spec = FontSpec::new(size, size * 1.2, 400, TextAlign::Leading);
             let plain = f.measure(t, &spec, None).0;
             let empty = f.measure_rich(t, &spec, None, Some(&Rich::default())).0;
-            let full = Rich { spans: vec![Span { start: 0, end: t.len(), color: Some([255, 0, 0]), weight: Some(400) }], lines: Some(3) };
+            let full = Rich { spans: vec![Span { start: 0, end: t.len(), color: Some([255, 0, 0]), weight: Some(400), size: None, mono: false }], lines: Some(3) };
             let spanned = f.measure_rich(t, &spec, Some(10000.0), Some(&full)).0;
             assert_eq!((plain, empty), (plain, plain), "{size}");
             assert!((spanned - plain).abs() < 0.01, "{size}: spans {spanned} vs plain {plain}");

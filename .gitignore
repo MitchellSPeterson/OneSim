@@ -6,4 +6,4 @@
 .DS_Store
 !tests/fixtures/**/*.png
 .claude/
-!examples/expo-showcase/assets/*.png
+!examples/expo-*/assets/**/*.png

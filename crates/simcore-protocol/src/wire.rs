@@ -156,6 +156,12 @@ pub enum HostMessage {
         width: f64,
         height: f64,
     },
+    /// React Native: tab bar item tapped (`RNSTabsHostIOS` tag, `screenKey`).
+    #[serde(rename = "select_tab")]
+    SelectTab { tag: u64, key: String },
+    /// React Native: native header back button tapped (`RNSScreenStack` tag).
+    #[serde(rename = "native_back")]
+    NativeBack { tag: u64 },
     Reload,
     Shutdown,
 }
@@ -226,6 +232,8 @@ mod tests {
             (HostMessage::Focus { tag: 9 }, r#"{"type":"focus","tag":9}"#),
             (HostMessage::Blur { tag: 9 }, r#"{"type":"blur","tag":9}"#),
             (HostMessage::Submit { tag: 9 }, r#"{"type":"submit","tag":9}"#),
+            (HostMessage::SelectTab { tag: 4, key: "explore".into() }, r#"{"type":"select_tab","tag":4,"key":"explore"}"#),
+            (HostMessage::NativeBack { tag: 5 }, r#"{"type":"native_back","tag":5}"#),
             (
                 HostMessage::Scroll { tag: 3, phase: ScrollPhase::Begin, x: 0.0, y: 5.0, content_width: 393.0, content_height: 2000.0, width: 393.0, height: 800.0 },
                 r#"{"type":"scroll","tag":3,"phase":"begin","x":0.0,"y":5.0,"contentWidth":393.0,"contentHeight":2000.0,"width":393.0,"height":800.0}"#,

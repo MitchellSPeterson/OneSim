@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 pub const LAUNCH_TIMEOUT: Duration = Duration::from_secs(30);
 pub const BUILD_TIMEOUT: Duration = Duration::from_secs(300);
 pub const ACTION_TIMEOUT: Duration = Duration::from_secs(2);
+const SETTLE_TAIL: Duration = Duration::from_millis(800);
 const MAX_ERRORS: usize = 1000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -484,8 +485,10 @@ impl Session {
     /// at `ACTION_TIMEOUT`). React Native commits a press in several trees: the state update, then
     /// Pressability's delayed `pressOut` (130 ms minimum press duration), so the first tree is not final.
     pub fn send_and_settle(&mut self, msg: &HostMessage) -> Result<bool, ApiError> {
-        let deadline = Instant::now() + ACTION_TIMEOUT;
         let changed = self.send_and_wait_tree(msg)?;
+        // Trees may keep coming (an endless animation): the tail after the first tree is bounded, long
+        // enough for a 350 ms navigation transition and Pressability's delayed `pressOut`.
+        let deadline = Instant::now() + SETTLE_TAIL;
         let mut g = self.shared.lock();
         loop {
             let seen = g.generation;

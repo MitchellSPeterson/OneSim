@@ -115,6 +115,15 @@ pub struct SymbolRun {
 pub struct ImageRun {
     pub pixmap: std::sync::Arc<tiny_skia::Pixmap>,
     pub dest: Rect,
+    /// Clockwise rotation in degrees about the centre of `dest`.
+    pub rotation: f32,
+}
+
+/// Linear gradient fill over a node's bounds: CSS `angle` (0 = up, 90 = right), evenly spaced stops.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Gradient {
+    pub angle: f32,
+    pub stops: Vec<Color>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -150,6 +159,8 @@ pub struct Node {
     pub text: Option<TextRun>,
     pub symbol: Option<SymbolRun>,
     pub image: Option<ImageRun>,
+    /// Painted over `fill`, inside the corner radius.
+    pub gradient: Option<Gradient>,
     /// Clips all descendants to `bounds` with this corner radius.
     pub clip_radius: Option<f64>,
     /// Effective opacity (already multiplied by ancestors).
@@ -186,6 +197,7 @@ impl Node {
             text: None,
             symbol: None,
             image: None,
+            gradient: None,
             clip_radius: None,
             opacity: 1.0,
             role: Role::None,

@@ -57,6 +57,15 @@ Switch events, Modal `onShow`.
 Unsupported (diagnostic): Linking.openURL, Alert, ActionSheet, Clipboard, Share, Vibration,
 push notifications, layout animations, cookies (`clearCookies` returns false).
 
+Milestone 3 (Expo Router): react-native-screens (`RNSScreenStack`/`RNSScreen`/header config, `RNSTabsHostIOS`/`RNSTabsScreenIOS`)
+and safe-area-context views are known native views; the guest fires their lifecycle events after each committed tree
+(push/pop, tab selection, insets; `SIMCORE_NAV_MS` sets the 350 ms transition time) and takes `native_back` / `select_tab`
+from the host. Expo module views register their props/events through `expo.getViewConfig` (expo-image, expo-symbols,
+expo-glass-effect). `worklets.js` is react-native-worklets + react-native-reanimated's native side: the UI runtime is a second
+`vm` realm on the same thread (own globals, frame loop on timers), animated props are an overlay merged into the emitted
+tree, `entering` animations start when their view is first committed. Unsupported (diagnosed): worker runtimes, sensors,
+CSS animations/transitions, exiting/layout/shared-element animations. Check: `node frameworks/react-native/guest/run-router.mjs`.
+
 ## Known gaps (next milestones)
 
 - **Keyboard avoidance**: no `keyboardWillShow` events, so KeyboardAvoidingView does not move.
@@ -66,5 +75,5 @@ push notifications, layout animations, cookies (`clearCookies` returns false).
   check: `node frameworks/react-native/guest/run-refresh.mjs`). No redbox UI: errors go to
   `get_errors`. A render error unmounts the root, so recovery remounts with fresh state.
   A dropped `/hot` socket is not retried.
-- **Animations**: NativeAnimated absent → JS-driven, one tree per frame.
+- **Animations**: NativeAnimated absent → JS-driven, one tree per frame (the guest patches RN's `flushQueue`/warning so an absent module is silent). Reanimated animations also emit one tree per frame.
 - Trees are sent whole on every commit; incremental mutations are a later wire change.

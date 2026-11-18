@@ -18,6 +18,34 @@ const { Worker, isMainThread, parentPort, workerData } = require('node:worker_th
 Error.stackTraceLimit = 60;
 const ROOT_TAG = 1;
 const TEXT_INPUTS = new Set(['RCTSinglelineTextInputView', 'RCTMultilineTextInputView']);
+// Native views of third-party libraries the host draws/understands (viewName on the wire). Expo module views are
+// `ViewManagerAdapter_<Module>[_<View>]`.
+const NATIVE_VIEWS = new Set(['RNSScreen', 'RNSModalScreen', 'RNSScreenStack', 'RNSScreenStackHeaderConfig', 'RNSScreenStackHeaderSubview', 'RNSScreenContainer',
+  'RNSScreenNavigationContainer', 'RNSScreenContentWrapper', 'RNSScreenFooter', 'RNSSearchBar', 'RNSSafeAreaView', 'RNSFullWindowOverlay',
+  'RNSTabsHostIOS', 'RNSTabsScreenIOS', 'RNSTabsBottomAccessory', 'RNSTabsBottomAccessoryContent', 'RNCSafeAreaProvider', 'RNCSafeAreaView']);
+// Props / events of expo module views (from the modules' Swift View definitions): `getViewConfig` hands them to RN as the
+// native view config, so only listed props reach the host. Event `onFoo` is the direct event `topFoo`.
+const EXPO_VIEWS = {
+  ExpoImage: { events: ['onLoadStart', 'onProgress', 'onError', 'onLoad', 'onDisplay'], props: ['source', 'placeholder', 'contentFit', 'placeholderContentFit', 'contentPosition', 'transition', 'blurRadius', 'tintColor', 'svgVariables', 'priority', 'cachePolicy', 'enableLiveTextInteraction', 'accessible', 'accessibilityLabel', 'accessibilityElementsHidden', 'recyclingKey', 'allowDownscaling', 'autoplay', 'sfEffect', 'symbolWeight', 'symbolSize', 'useAppleWebpCodec', 'enforceEarlyResizing', 'preferHighDynamicRange'] },
+  SymbolModule: { events: [], props: ['name', 'type', 'scale', 'tintColor', 'animated', 'weight', 'colors', 'resizeMode', 'animationSpec'] },
+  ExpoGlassEffect_GlassView: { events: [], props: ['glassEffectStyle', 'tintColor', 'isInteractive', 'colorScheme', 'borderRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius', 'borderTopLeftRadius', 'borderTopRightRadius', 'borderTopStartRadius', 'borderTopEndRadius', 'borderBottomStartRadius', 'borderBottomEndRadius', 'borderCurve'] },
+  ExpoGlassEffect_GlassContainer: { events: [], props: ['spacing'] },
+};
+function expoViewConfig(key) {
+  const v = EXPO_VIEWS[key];
+  if (!v) return null;
+  return {
+    validAttributes: Object.fromEntries([...v.props, ...v.events].map((k) => [k, true])),
+    directEventTypes: Object.fromEntries(v.events.map((e) => ['top' + e.slice(2), { registrationName: e }])),
+  };
+}
+// Duration of a stack push/pop (UINavigationController default) between willAppear and appear; SIMCORE_NAV_MS overrides (0 = instant).
+const NAV_MS = process.env.SIMCORE_NAV_MS != null ? Number(process.env.SIMCORE_NAV_MS) : 350;
+// Safe-area insets of portrait iPhones by logical height (Dynamic Island 62, notch/DI 59 or 47, X-style notch 44, home-button 20).
+const insetsFor = (h) => ({ top: h >= 874 ? 62 : h >= 852 ? 59 : h >= 812 ? (h >= 844 ? 47 : 44) : 20, left: 0, right: 0, bottom: h >= 812 ? 34 : 0 });
+const NAV_KIND = { RNSScreenStack: 'stacks', RNSTabsHostIOS: 'tabs', RNCSafeAreaProvider: 'providers', RNSScreenStackHeaderConfig: 'headers' };
+const EXPO_IMAGE = 'ViewManagerAdapter_ExpoImage';
+const isNativeView = (n) => NATIVE_VIEWS.has(n) || /^ViewManagerAdapter_/.test(n);
 const env = process.env; // `process` is removed from the guest global before the bundle runs
 if (isMainThread) return mainThread();
 
@@ -165,6 +193,9 @@ class Runtime {
     this.blobs = new Map(); // BlobModule store: blobId -> Buffer
     this.eventHandler = null;
     this.eventPriority = 32;
+    this.worklets = require('./worklets.js')(this, { node, log, sendError, unsupported }); // react-native-worklets / -reanimated natives
+    this.nav = { stacks: new Map(), tabs: new Map(), providers: new Map(), headers: new Set() }; // native navigation state, see navCommit
+    this.rootProps = {}; // props of the root surface (ExpoSystemUI background)
     this.window = { width: cfg.width, height: cfg.height };
     this.appearance = cfg.appearance;
   }
@@ -207,7 +238,9 @@ class Runtime {
   // ---- Fabric UIManager ----
   makeFabric() {
     const self = this;
-    const mk = (n, props, children) => ({ reactTag: n.reactTag, viewName: n.viewName, rootTag: n.rootTag, props, children, instanceHandle: n.instanceHandle });
+    // Shadow nodes are JSI host objects on a device; react-native-worklets recognises those by `MAGIC in value`.
+    const hostObject = (n) => Object.defineProperty(n, 'REANIMATED_MAGIC_KEY', { value: true });
+    const mk = (n, props, children) => hostObject({ reactTag: n.reactTag, viewName: n.viewName, rootTag: n.rootTag, props, children, instanceHandle: n.instanceHandle });
     const merge = (base, diff) => {
       const p = Object.assign({}, base);
       for (const k of Object.keys(diff || {})) { if (diff[k] === null) delete p[k]; else p[k] = diff[k]; }
@@ -225,7 +258,7 @@ class Runtime {
     return {
       createNode: (reactTag, viewName, rootTag, props, instanceHandle) => {
         if (env.SIMCORE_DEBUG) log('createNode', reactTag, viewName);
-        return reg({ reactTag, viewName, rootTag, props: merge({}, props), children: [], instanceHandle });
+        return reg(hostObject({ reactTag, viewName, rootTag, props: merge({}, props), children: [], instanceHandle }));
       },
       cloneNode: (n) => reg(mk(n, n.props, n.children.slice())),
       cloneNodeWithNewChildren: (n) => reg(mk(n, n.props, [])),
@@ -309,16 +342,22 @@ class Runtime {
       this.pending = false;
       if (this.dead) return;
       this.parents.clear();
+      this.worklets.beforeEmit(this.rootChildren);
       const after = []; // events to dispatch once the tree is out (first emit of an image / visible modal)
+      const found = { stacks: [], tabs: [], providers: [], headers: [] };
       const ser = (n, parent) => {
         this.parents.set(n.reactTag, parent);
+        const kind = NAV_KIND[n.viewName];
+        if (kind) found[kind].push(n);
         const props = {};
-        for (const [k, v] of Object.entries(n.props)) {
+        const animated = this.worklets.overlay(n.reactTag);
+        for (const [k, v] of Object.entries(animated ? Object.assign({}, n.props, animated) : n.props)) {
           if (typeof v === 'function' || v === undefined) continue;
           props[k] = v;
         }
         if (TEXT_INPUTS.has(n.viewName)) props.__simcoreText = this.input(n).text;
-        else if (n.viewName === 'RCTImageView') this.imageProps(n, props, after);
+        else if (n.viewName === 'RCTImageView' || n.viewName === EXPO_IMAGE) this.imageProps(n, props, after);
+        else if (n.viewName === 'RNSTabsScreenIOS') this.tabIcons(n, props);
         else if (n.viewName === 'ModalHostView') {
           if (props.visible && !this.shown.has(n.reactTag)) { this.shown.add(n.reactTag); after.push(() => this.dispatch(n, 'topShow', { target: n.reactTag })); }
           else if (!props.visible) this.shown.delete(n.reactTag);
@@ -326,9 +365,10 @@ class Runtime {
         // RN's Fabric name is ModalHostView; the wire contract says RCTModalHostView
         return { kind: 'rn', id: String(n.reactTag), component: n.viewName === 'ModalHostView' ? 'RCTModalHostView' : n.viewName, props, children: n.children.map((c) => ser(c, n.reactTag)) };
       };
-      const root = { kind: 'rn', id: String(ROOT_TAG), component: 'RootView', props: {}, children: this.rootChildren.map((c) => ser(c, ROOT_TAG)) };
+      const root = { kind: 'rn', id: String(ROOT_TAG), component: 'RootView', props: this.rootProps, children: this.rootChildren.map((c) => ser(c, ROOT_TAG)) };
       if (env.SIMCORE_DEBUG) log('emit tree', version + 1);
       send({ type: 'tree', version: ++version, root });
+      this.navCommit(found, after);
       after.forEach((f) => f());
       this.fireLayouts();
     });
@@ -346,9 +386,118 @@ class Runtime {
     }
   }
 
+  // ---- native navigation (react-native-screens, safe-area-context) ----
+  // The guest owns the shadow tree, so it plays the part of UIKit here: after every committed tree it diffs the screen
+  // stacks / tab hosts / safe-area providers against what it reported before and fires the native->JS events iOS would.
+  // Descendants of `n` named `names`, not looking inside nested ones of the same kind (wrapper views are transparent).
+  collect(n, names, out = []) {
+    for (const c of n.children) { if (names.includes(c.viewName)) out.push(c); else if (!NAV_KIND[c.viewName]) this.collect(c, names, out); }
+    return out;
+  }
+  // Run `fn` after the transition time (immediately when 0 or the surface is gone).
+  later(ms, fn) { if (ms > 0) node.setTimeout(this.guard(fn), ms); else fn(); }
+  ev(tag, type, payload, priority) { const n = this.nodes.get(tag); if (n) this.dispatch(n, type, { target: tag, ...payload }, priority); }
+
+  navCommit(found, after) {
+    const nav = this.nav;
+    for (const n of found.providers) nav.providers.set(n.reactTag, nav.providers.get(n.reactTag) || '');
+    for (const t of [...nav.providers.keys()]) if (!this.parents.has(t)) nav.providers.delete(t);
+    after.push(() => found.providers.forEach((n) => this.providerEvent(n.reactTag)));
+    for (const n of found.stacks) this.stackCommit(n);
+    for (const n of found.tabs) this.tabsCommit(n);
+    // iOS attaches the header config to its screen's navigation item once, when the screen is added to the stack.
+    for (const n of found.headers) if (!nav.headers.has(n.reactTag)) { nav.headers.add(n.reactTag); after.push(() => this.ev(n.reactTag, 'topAttached', {})); }
+  }
+
+  // RNCSafeAreaProvider: topInsetsChange when insets or the provider's frame changed (first time after mount).
+  providerEvent(tag) {
+    const f = this.frames[tag] || [0, 0, this.window.width, this.window.height];
+    const insets = insetsFor(this.window.height), key = JSON.stringify([insets, f]);
+    if (this.nav.providers.get(tag) === key) return;
+    this.nav.providers.set(tag, key);
+    this.ev(tag, 'topInsetsChange', { insets, verticalCornerAdaptedInsets: insets, horizontalCornerAdaptedInsets: insets, frame: { x: f[0], y: f[1], width: f[2], height: f[3] } });
+  }
+
+  // RNSScreenStack: the top screen (last RNSScreen child) changing is a push (new top) or pop (old top gone/below).
+  stackCommit(stack) {
+    const tag = stack.reactTag, all = this.collect(stack, ['RNSScreen', 'RNSModalScreen']).map((s) => s.reactTag);
+    let st = this.nav.stacks.get(tag);
+    const first = !st;
+    if (first) this.nav.stacks.set(tag, (st = { list: [], top: undefined, dismissed: new Set() }));
+    // Screens popped natively stay in the tree until JS handles topDismissed; they no longer count.
+    for (const t of st.dismissed) if (!all.includes(t)) st.dismissed.delete(t);
+    const screens = all.filter((t) => !st.dismissed.has(t));
+    const prevList = st.list, from = st.top, to = screens[screens.length - 1];
+    st.list = screens;
+    if (to === from || to === undefined) { st.top = to; return; }
+    st.top = to;
+    const forward = !prevList.includes(to), anim = !first && this.nodes.get(to).props.stackAnimation !== 'none';
+    this.transition(tag, from, to, forward, anim ? NAV_MS : 0);
+  }
+  // willDisappear(from) / willAppear(to), then appear / disappear / finishTransitioning when the animation ends.
+  transition(stack, from, to, forward, ms, then) {
+    const fw = forward ? 1 : 0, prog = (tag, progress, closing) => this.ev(tag, 'topTransitionProgress', { progress, closing, goingForward: fw });
+    if (from !== undefined) this.ev(from, 'topWillDisappear', {});
+    this.ev(to, 'topWillAppear', {});
+    if (ms > 0) { if (from !== undefined) prog(from, 0, 1); prog(to, 0, 0); }
+    this.later(ms, () => {
+      if (ms > 0) { if (from !== undefined) prog(from, 1, 1); prog(to, 1, 0); }
+      if (from !== undefined) this.ev(from, 'topDisappear', {});
+      this.ev(to, 'topAppear', {});
+      this.ev(stack, 'topFinishTransitioning', {});
+      if (then) then();
+    });
+  }
+  // Host -> guest `native_back`: the user popped the top screen with the back button or the swipe-back gesture.
+  nativeBack(tag) {
+    const st = this.nav.stacks.get(tag);
+    if (!st || st.list.length < 2) return log(`SimCore: native_back for ${st ? 'a root screen' : 'unknown stack'} ${tag}`);
+    const top = st.list[st.list.length - 1], revealed = st.list[st.list.length - 2], t = this.nodes.get(top);
+    if (t && t.props.preventNativeDismiss) return this.ev(top, 'topNativeDismissCancelled', { dismissCount: 1 });
+    st.dismissed.add(top); st.list = st.list.slice(0, -1); st.top = revealed;
+    this.transition(tag, top, revealed, false, NAV_MS, () => this.ev(top, 'topDismissed', { dismissCount: 1 }));
+  }
+
+  // RNSTabsHostIOS: follows JS' navStateRequest {selectedScreenKey, baseProvenance} (echoing it as 'programmatic-js'),
+  // and the user's own selection comes in through selectTab.
+  tabsCommit(host) {
+    const tag = host.reactTag, req = host.props.navStateRequest, keys = this.collect(host, ['RNSTabsScreenIOS']).map((s) => s.props.screenKey);
+    let st = this.nav.tabs.get(tag);
+    if (!st) this.nav.tabs.set(tag, (st = { key: undefined, provenance: (req && req.baseProvenance) || 0 }));
+    if (!req || req.selectedScreenKey === st.key || !keys.includes(req.selectedScreenKey)) return;
+    const prev = st.key;
+    st.key = req.selectedScreenKey;
+    if (prev === undefined) return this.tabLifecycle(host, undefined, st.key);
+    st.provenance++;
+    this.tabLifecycle(host, prev, st.key);
+    this.ev(tag, 'topTabSelected', { selectedScreenKey: st.key, provenance: st.provenance, isRepeated: false, hasTriggeredSpecialEffect: false, actionOrigin: 'programmatic-js' });
+  }
+  tabLifecycle(host, from, to) {
+    const screen = (k) => this.collect(host, ['RNSTabsScreenIOS']).find((s) => s.props.screenKey === k);
+    const [a, b] = [screen(from), screen(to)];
+    if (a) this.ev(a.reactTag, 'topWillDisappear', {});
+    if (b) this.ev(b.reactTag, 'topWillAppear', {});
+    if (a) this.ev(a.reactTag, 'topDidDisappear', {});
+    if (b) this.ev(b.reactTag, 'topDidAppear', {});
+  }
+  // Host -> guest `select_tab`: the user tapped a tab bar item. `key` is the screenKey, `index` the position among the tabs.
+  selectTab(m) {
+    const host = this.nodes.get(m.tag), st = this.nav.tabs.get(m.tag);
+    if (!host || !st) return log(`SimCore: select_tab for unknown tab host ${m.tag}`);
+    const screens = this.collect(host, ['RNSTabsScreenIOS']), target = m.key != null ? screens.find((s) => s.props.screenKey === m.key) : screens[m.index];
+    if (!target) return log(`SimCore: select_tab: no tab ${m.key ?? m.index}`);
+    const key = target.props.screenKey, ev = (type, p) => this.ev(m.tag, type, { selectedScreenKey: st.key, provenance: st.provenance, ...p });
+    if (target.props.preventNativeSelection && key !== st.key) return ev('topTabSelectionPrevented', { preventedScreenKey: key });
+    const prev = st.key;
+    if (key !== prev) { st.key = key; this.tabLifecycle(host, prev, key); }
+    st.provenance++;
+    ev('topTabSelected', { selectedScreenKey: key, provenance: st.provenance, isRepeated: key === prev, hasTriggeredSpecialEffect: false, actionOrigin: 'user' });
+  }
+
   dispatch(node, type, nativeEvent, priority = 32) {
     if (!this.eventHandler || this.dead) return;
     this.eventPriority = priority;
+    this.worklets.onEvent(node.reactTag, type, nativeEvent);
     try { this.eventHandler(node.instanceHandle, type, nativeEvent); } catch (e) { this.onUncaught(e); }
     this.eventPriority = 32;
   }
@@ -380,6 +529,8 @@ class Runtime {
         }
         break;
       }
+      case 'native_back': this.nativeBack(m.tag); break;
+      case 'select_tab': this.selectTab(m); break;
       case 'focus': this.focus(m.tag); break;
       case 'blur': this.blur(m.tag); break;
       case 'text_input': { // `version` is ignored: the guest owns the text
@@ -415,7 +566,7 @@ class Runtime {
         }
         break;
       }
-      case 'layout': Object.assign(this.frames, m.frames); this.fireLayouts(); break;
+      case 'layout': Object.assign(this.frames, m.frames); this.nav.providers.forEach((_, t) => this.providerEvent(t)); this.fireLayouts(); break;
       case 'environment': {
         if (m.appearance && m.appearance !== this.appearance) { this.appearance = m.appearance; this.emit('appearanceChanged', { colorScheme: this.appearance }); }
         if (m.viewport) { this.window = { width: m.viewport.width, height: m.viewport.height }; this.emit('didUpdateDimensions', this.dimensions()); }
@@ -475,13 +626,26 @@ class Runtime {
         loadImage(uri, src.headers).then((info) => {
           mine.info = info;
           const s = src.scale || 1;
-          done('topLoad', { source: { uri, width: info.width / s, height: info.height / s } });
-          done('topLoadEnd', {});
+          if (n.viewName === EXPO_IMAGE) { // expo-image's events: pixel size, cacheType, then onDisplay once drawn
+            done('topLoad', { cacheType: 'none', source: { url: uri, width: info.width, height: info.height, mediaType: `image/${info.path.split('.').pop()}`, isAnimated: false } });
+            done('topDisplay', {});
+          } else { done('topLoad', { source: { uri, width: info.width / s, height: info.height / s } }); done('topLoadEnd', {}); }
           if (this.images.get(tag) === mine) this.scheduleEmit();
-        }, (e) => { mine.err = e; done('topError', { error: String(e && e.message || e) }); done('topLoadEnd', {}); });
+        }, (e) => { mine.err = e; done('topError', { error: String(e && e.message || e) }); if (n.viewName !== EXPO_IMAGE) done('topLoadEnd', {}); });
       });
     }
     if (st.info) props.__simcoreImage = st.info;
+  }
+
+  // Tab bar icons are image sources (Metro asset URLs): download them like images and hand the host the cached file.
+  tabIcons(n, props) {
+    for (const [src, out] of [['iconImageSource', '__simcoreIconImage'], ['selectedIconImageSource', '__simcoreSelectedIconImage']]) {
+      const uri = props[src] && props[src].uri;
+      if (!uri) continue;
+      const done = imageDone.get(uri);
+      if (done) props[out] = done;
+      else loadImage(uri).then(() => this.scheduleEmit(), (e) => sendError(`tab icon ${uri}: ${e && e.message || e}`));
+    }
   }
 
   dimensions() {
@@ -595,8 +759,16 @@ class Runtime {
       WebSocketModule: () => self.webSocketModule(),
       // JS defaults apply for every flag when the native getter returns undefined.
       NativeReactNativeFeatureFlagsCxx: () => new Proxy({}, { get: (t, p) => (typeof p === 'string' ? () => undefined : undefined) }),
-      // iPhone 17 Pro portrait insets; the Rust host owns the real chrome.
-      RNCSafeAreaContext: () => ({ getConstants: () => ({ initialWindowMetrics: { frame: { x: 0, y: 0, width: self.window.width, height: self.window.height }, insets: { top: 62, left: 0, right: 0, bottom: 34 } } }) }),
+      // Portrait insets by viewport height (62/34 on the 402x874 iPhone 17 Pro); the Rust host owns the real chrome.
+      RNCSafeAreaContext: () => ({
+        getConstants: () => {
+          const insets = insetsFor(self.window.height);
+          return { initialWindowMetrics: { frame: { x: 0, y: 0, width: self.window.width, height: self.window.height }, insets, verticalCornerAdaptedInsets: insets, horizontalCornerAdaptedInsets: insets } };
+        },
+      }),
+      RNSModule: () => ({}), // react-native-screens: empty spec, presence only
+      ExpoModulesCore: () => ({ installModules: noop }),
+      ...self.worklets.modules,
       NativeDOMCxx: () => self.domModule(),
       EventDispatcher: () => ({}),
     };
@@ -735,6 +907,11 @@ class Runtime {
     };
   }
 
+  // A native module whose `methods` all report "unsupported" and reject (async API) when called.
+  diagModule(name, methods) {
+    return Object.fromEntries(methods.map((m) => [m, async () => { unsupported(name, m); throw new Error(`SimCore: ${name}.${m} is not supported`); }]));
+  }
+
   // ---- expo-modules-core JSI surface (globalThis.expo) ----
   makeExpo() {
     const self = this;
@@ -767,11 +944,34 @@ class Runtime {
       }),
       // Screen-awake is a no-op in a simulator surface; accepted, not rendered.
       ExpoKeepAwake: () => ({ activate: async () => {}, deactivate: async () => {}, isActivated: async () => false }),
+      // expo-splash-screen: the native launch screen is not part of the SimCore surface, so hiding it has nothing to do.
+      ExpoSplashScreen: () => ({ setOptions: () => {}, hide: () => {}, hideAsync: async () => {}, preventAutoHideAsync: async () => true, internalPreventAutoHideAsync: async () => {}, internalMaybeHideAsync: async () => {} }),
+      // expo-system-ui: the root view's background colour is a prop of the tree's root node (processed colour int, like any view).
+      ExpoSystemUI: () => ({
+        setBackgroundColorAsync: async (c) => { if (c == null) delete self.rootProps.backgroundColor; else self.rootProps.backgroundColor = c; self.scheduleEmit(); },
+        getBackgroundColorAsync: async () => (self.rootProps.backgroundColor == null ? null : '#' + (self.rootProps.backgroundColor >>> 0).toString(16).padStart(8, '0').replace(/^(..)(......)$/, '$2$1')),
+      }),
+      ExpoDevice: () => ({
+        isDevice: false, brand: 'Apple', manufacturer: 'Apple', modelId: 'iPhone18,1', modelName: 'iPhone 17 Pro', deviceYearClass: 2025, totalMemory: 12 * 1024 ** 3,
+        osName: 'iOS', osVersion: '26.5', osBuildId: '23F77', osInternalBuildId: '23F77', deviceName: 'iPhone', deviceType: 1, supportedCpuArchitectures: ['arm64e', 'arm64'],
+        getDeviceTypeAsync: async () => 1, getUptimeAsync: async () => node.performance.now(), isRootedExperimentalAsync: async () => false,
+      }),
+      // expo-linking: no launch URL, so Expo Router falls back to the scheme root and lands on `index`. Opening URLs is unsupported.
+      ExpoLinking: () => ({ getLinkingURL: () => null, clearInitialURL: () => {} }),
+      ExpoWebBrowser: () => self.diagModule('ExpoWebBrowser', ['openBrowserAsync', 'dismissBrowser', 'openAuthSessionAsync', 'dismissAuthSession', 'warmUpAsync', 'coolDownAsync', 'mayInitWithUrlAsync', 'getCustomTabsSupportingBrowsers']),
+      // expo-image: ImageLoader shares the guest's image cache; the rest of the cache API is not backed by anything.
+      ExpoImage: () => ({
+        ViewPrototypes: {}, configureCache: () => {}, clearMemoryCache: async () => false, clearDiskCache: async () => false,
+        prefetch: async (urls) => (await Promise.all(urls.map((u) => loadImage(u).then(() => true, () => false)))).every(Boolean),
+        ...self.diagModule('ExpoImage', ['generateBlurhashAsync', 'generateThumbhashAsync', 'getCachePathAsync', 'writeToCacheAsync', 'readFromCacheAsync', 'loadAsync']),
+      }),
+      SymbolModule: () => ({ ViewPrototypes: {} }),
+      ExpoGlassEffect: () => ({ isLiquidGlassAvailable: true, isGlassEffectAPIAvailable: true, ViewPrototypes: {} }),
       // expo-constants: the manifest is the same one Metro hands a real Expo client; expo-asset uses it to
       // build dev-server asset URLs.
       ExponentConstants: () => ({
         manifest: self.manifest, experienceUrl: self.manifest ? `exp://${new URL(self.scriptURL).host}` : null,
-        appOwnership: null, sessionId: cfg.session || 'simcore', installationId: 'simcore', statusBarHeight: 54,
+        appOwnership: null, executionEnvironment: 'bare', sessionId: cfg.session || 'simcore', installationId: 'simcore', statusBarHeight: 54,
         systemFonts: [], isDevice: false, deviceName: 'iPhone', expoVersion: null, platform: { ios: { model: 'iPhone', systemVersion: '26.5' } },
         getWebViewUserAgentAsync: async () => 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) SimCore',
       }),
@@ -791,7 +991,7 @@ class Runtime {
     return {
       EventEmitter, SharedObject, SharedRef, NativeModule, modules,
       // ExpoModulesCore reads these; "bare" matches an app without native expo modules linked.
-      getViewConfig: () => null, reloadAppAsync: async () => self.reload('expo reloadAppAsync'),
+      getViewConfig: (mod, view) => expoViewConfig(view ? `${mod}_${view}` : mod), reloadAppAsync: async () => self.reload('expo reloadAppAsync'),
       uuidv4: () => node.randomUUID(), uuidv5: (n, ns) => ns,
       expoModulesCoreVersion: { version: '0.0.0', major: 0, minor: 0, patch: 0 },
       DeviceEventEmitter: undefined, // set below once RN's emitter exists
@@ -838,6 +1038,11 @@ class Runtime {
       const r = await node.fetch(bundleUrl);
       if (!r.ok) throw new Error(`HTTP ${r.status}: ${(await r.text()).slice(0, 500)}`);
       src = await r.text();
+      // RN's Animated flushQueue (run by every Animated component's effect) throws without NativeAnimatedModule, although
+      // useNativeDriver otherwise falls back to JS when it is absent (we ship no native driver): make an absent module a no-op.
+      src = src.replace(/\(0, invariant\.default\)\(NativeAnimatedModule, 'Native animated module is not available'\);(\s*flushQueueImmediate = null;)/g, 'if (!NativeAnimatedModule) return;$1')
+        // and the one-time "useNativeDriver is not supported" warning would land in LogBox's on-screen toast: that fallback is intended.
+        .replace('var _warnedMissingNativeAnimated = false;', 'var _warnedMissingNativeAnimated = true;');
     } catch (e) { sendEvent('bundle.error', { message: e.message, url: bundleUrl }); return sendError(`bundle fetch failed (${bundleUrl}): ${e.message}`); }
     if (this.dead) return;
 
@@ -855,8 +1060,10 @@ class Runtime {
       RN$Bridgeless: true,
       RN$registerCallableModule: (name, f) => this.callable.set(name, f),
       nativeFabricUIManager: (this.fabric = this.makeFabric()),
-      // No custom native views (DebuggingOverlay, TraceUpdateOverlay, ...) exist in the SimCore host.
-      __nativeComponentRegistry__hasComponent: () => false,
+      // Native views the SimCore host knows (react-native-screens, safe-area-context, expo views); RN's own optional views
+      // (DebuggingOverlay, VirtualView, ...) stay absent so RN falls back. Legacy view managers show up in UIManager constants.
+      __nativeComponentRegistry__hasComponent: (n) => isNativeView(n),
+      RN$LegacyInterop_UIManager_getConstants: () => Object.fromEntries([...NATIVE_VIEWS].map((n) => [n, {}])),
       __turboModuleProxy: (n) => modules.get(n),
       nativeModuleProxy: new Proxy({}, { get: (_, n) => (typeof n === 'string' ? modules.explicit(n) : undefined) }),
       expo: this.makeExpo(),
