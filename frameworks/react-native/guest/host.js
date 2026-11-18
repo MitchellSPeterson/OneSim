@@ -22,7 +22,8 @@ const TEXT_INPUTS = new Set(['RCTSinglelineTextInputView', 'RCTMultilineTextInpu
 // `ViewManagerAdapter_<Module>[_<View>]`.
 const NATIVE_VIEWS = new Set(['RNSScreen', 'RNSModalScreen', 'RNSScreenStack', 'RNSScreenStackHeaderConfig', 'RNSScreenStackHeaderSubview', 'RNSScreenContainer',
   'RNSScreenNavigationContainer', 'RNSScreenContentWrapper', 'RNSScreenFooter', 'RNSSearchBar', 'RNSSafeAreaView', 'RNSFullWindowOverlay',
-  'RNSTabsHostIOS', 'RNSTabsScreenIOS', 'RNSTabsBottomAccessory', 'RNSTabsBottomAccessoryContent', 'RNCSafeAreaProvider', 'RNCSafeAreaView']);
+  'RNSTabsHostIOS', 'RNSTabsScreenIOS', 'RNSTabsBottomAccessory', 'RNSTabsBottomAccessoryContent', 'RNCSafeAreaProvider', 'RNCSafeAreaView',
+  'RNGestureHandlerRootView', 'RNGestureHandlerButton', 'RNGestureHandlerDetector']);
 // Props / events of expo module views (from the modules' Swift View definitions): `getViewConfig` hands them to RN as the
 // native view config, so only listed props reach the host. Event `onFoo` is the direct event `topFoo`.
 const EXPO_VIEWS = {
@@ -97,6 +98,7 @@ const cfg = {
   session: process.env.SIMCORE_SESSION_ID || '',
   hmr: process.env.SIMCORE_HMR !== '0', // Fast Refresh via Metro's /hot; SIMCORE_HMR=0 turns it off
   generation: (workerData && workerData.generation) || 0, // 0 = first load, >0 = after a reload
+  dataDir: workerData && workerData.dataDir, // per-session sandbox (documents, caches, secure store): survives reloads, removed on exit
 };
 {
   const m = /^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$/.exec(process.env.SIMCORE_VIEWPORT || '393x852');
@@ -194,14 +196,17 @@ class Runtime {
     this.pending = false;
     this.inputs = new Map(); // tag -> {text, eventCount} (TextInput state; the guest owns the text)
     this.focused = null; // tag of the focused TextInput
+    this.kbFrame = null; // software keyboard frame while the host shows it (KeyboardObserver)
     this.images = new Map(); // tag -> {uri, info?, err?}
     this.scrolled = new Map(); // tag -> last reported [x,y]
     this.shown = new Set(); // Modal tags that got topShow
+    this.alerts = []; // Alert.alert: [{layer, keys: action id -> button key, cb}], bottom to top
     this.blobs = new Map(); // BlobModule store: blobId -> Buffer
     this.eventHandler = null;
     this.simQueue = [];
     this.eventPriority = 32;
     this.worklets = require('./worklets.js')(this, { node, log, sendError, unsupported }); // react-native-worklets / -reanimated natives
+    this.gestures = require('./gestures.js')(this, { node, log, unsupported }); // react-native-gesture-handler natives
     this.nav = { stacks: new Map(), tabs: new Map(), providers: new Map(), headers: new Set() }; // native navigation state, see navCommit
     this.rootProps = {}; // props of the root surface (ExpoSystemUI background)
     this.window = { width: cfg.width, height: cfg.height };
@@ -371,11 +376,14 @@ class Runtime {
           else if (!props.visible) this.shown.delete(n.reactTag);
         }
         // RN's Fabric name is ModalHostView; the wire contract says RCTModalHostView
-        return { kind: 'rn', id: String(n.reactTag), component: n.viewName === 'ModalHostView' ? 'RCTModalHostView' : n.viewName, props, children: n.children.map((c) => ser(c, n.reactTag)) };
+        const children = n.children.flatMap((c) => ser(c, n.reactTag));
+        if (props.display === 'contents') return children; // no box of its own (RNGH detectors): children join the parent's layout
+        return { kind: 'rn', id: String(n.reactTag), component: n.viewName === 'ModalHostView' ? 'RCTModalHostView' : n.viewName, props, children };
       };
-      const root = { kind: 'rn', id: String(ROOT_TAG), component: 'RootView', props: this.rootProps, children: this.rootChildren.map((c) => ser(c, ROOT_TAG)) };
+      const root = { kind: 'rn', id: String(ROOT_TAG), component: 'RootView', props: this.rootProps, children: this.rootChildren.flatMap((c) => ser(c, ROOT_TAG)) };
       if (env.SIMCORE_DEBUG) log('emit tree', version + 1);
-      send({ type: 'tree', version: ++version, root });
+      // An alert up: the RN root becomes a `presentation`'s content (protocol G/H).
+      send({ type: 'tree', version: ++version, root: this.alerts.length ? { kind: 'presentation', id: 'presentation', content: root, layers: this.alerts.map((a) => a.layer) } : root });
       if (this.navCheck && !this.navSeen) this.navCheck();
       this.navCommit(found, after);
       after.forEach((f) => f());
@@ -524,6 +532,7 @@ class Runtime {
         const n = this.nodes.get(m.tag);
         if (!n) return log(`SimCore: touch for unknown tag ${m.tag}`);
         const ts = m.timestamp ?? Date.now();
+        if (this.gestures.onTouch(m)) break; // a gesture handler owns the touch (RN's responder got topTouchCancel)
         const touch = { identifier: 0, target: m.tag, pageX: m.x, pageY: m.y, locationX: m.lx ?? 0, locationY: m.ly ?? 0, timestamp: ts, force: 0 };
         const ended = m.phase === 'end' || m.phase === 'cancel';
         const type = { start: 'topTouchStart', move: 'topTouchMove', end: 'topTouchEnd', cancel: 'topTouchCancel' }[m.phase];
@@ -538,11 +547,20 @@ class Runtime {
         }
         break;
       }
-      case 'simulate': if (this.registry) this.registry.simulate(m.module, m.state); else this.simQueue.push(m); break; // before boot: applied once the registry exists
+      case 'simulate': if (this.registry) this.registry.simulate(m.module, m.state, m.replay); else this.simQueue.push(m); break; // before boot: applied once the registry exists
+      case 'action': { // an alert button: drop the alert, then run Alert.alert's callback with the button key
+        const i = this.alerts.findIndex((a) => a.keys.has(m.id));
+        if (i < 0) return log(`SimCore: action ${m.id} matches no alert`);
+        const [a] = this.alerts.splice(i, 1);
+        this.scheduleEmit();
+        this.guard(a.cb)(+a.keys.get(m.id));
+        break;
+      }
       case 'native_back': this.nativeBack(m.tag); break;
       case 'select_tab': this.selectTab(m); break;
       case 'focus': this.focus(m.tag); break;
       case 'blur': this.blur(m.tag); break;
+      case 'keyboard': this.keyboard(m.height); break;
       case 'text_input': { // `version` is ignored: the guest owns the text
         const n = this.nodes.get(m.field);
         if (!n || !TEXT_INPUTS.has(n.viewName)) return log(`SimCore: text_input for unknown field ${m.field}`);
@@ -602,6 +620,18 @@ class Runtime {
     this.focused = null;
     this.dispatch(n, 'topEndEditing', { text: this.input(n).text, target: tag }, 2);
     this.dispatch(n, 'topBlur', { target: tag }, 2);
+  }
+  // KeyboardObserver: the iOS keyboard notifications for the keyboard the host shows (height > 0) or hides (0).
+  // duration 0: SimCore renders settled states, so KeyboardAvoidingView jumps to its final layout (no LayoutAnimation).
+  keyboard(height) {
+    const { width, height: H } = this.window, from = this.kbFrame;
+    const to = height > 0 ? { screenX: 0, screenY: H - height, width, height } : null;
+    const off = { screenX: 0, screenY: H, width, height: (to || from || {}).height || 0 };
+    if (!to === !from) return;
+    this.kbFrame = to;
+    const ev = { startCoordinates: from || off, endCoordinates: to || off, duration: 0, easing: 'keyboard', isEventFromThisApp: true };
+    const what = to ? 'Show' : 'Hide';
+    for (const n of [`keyboardWillChangeFrame`, `keyboardWill${what}`, `keyboardDidChangeFrame`, `keyboardDid${what}`]) this.emit(n, ev);
   }
   // Fabric view commands (names/args from the *NativeComponent / *Commands specs).
   command(n, name, args) {
@@ -699,7 +729,7 @@ class Runtime {
   makeRegistry(bundleSource) {
     const ver = /ReactNativeVersion\.major = (\d+);\s*ReactNativeVersion\.minor = (\d+);\s*ReactNativeVersion\.patch = (\d+)/.exec(bundleSource) || [0, 0, 0, 0];
     this.registry = require('./modules.js')(this, { node, log, sendError, sendEvent, unsupported, cfg, ver, insetsFor, loadImage, imageDone, expo: this.expoClasses() });
-    for (const m of this.simQueue.splice(0)) this.registry.simulate(m.module, m.state);
+    for (const m of this.simQueue.splice(0)) this.registry.simulate(m.module, m.state, m.replay);
     return this.registry;
   }
 
@@ -1008,13 +1038,15 @@ async function mainFetch(w, m, fetching) {
 // Main thread: protocol I/O + worker supervisor.
 function mainThread() {
   let worker = null, base = 0, last = 0, generation = -1;
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'simcore-session-'));
+  process.on('exit', () => fs.rmSync(dataDir, { recursive: true, force: true }));
   const simulated = new Map(); // module -> merged `simulate` state, replayed into every new worker (state survives reloads)
   const out = (m) => process.stdout.write(JSON.stringify(m) + '\n');
   const start = () => {
     if (worker) worker.terminate();
     base = last; // tree versions stay monotonic across reloads
-    const w = (worker = new Worker(__filename, { argv: process.argv.slice(2), stdout: false, stderr: false, workerData: { generation: ++generation } }));
-    for (const [module, state] of simulated) w.postMessage({ type: 'simulate', module, state });
+    const w = (worker = new Worker(__filename, { argv: process.argv.slice(2), stdout: false, stderr: false, workerData: { generation: ++generation, dataDir } }));
+    for (const [module, state] of simulated) w.postMessage({ type: 'simulate', module, state, replay: true });
     const sockets = new Map(), fetching = new Map();
     w.on('exit', () => { sockets.forEach((ws) => ws.close()); fetching.forEach((ac) => ac.abort()); fetching.clear(); });
     w.on('message', (m) => {

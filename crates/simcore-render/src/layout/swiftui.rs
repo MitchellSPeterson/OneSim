@@ -336,6 +336,19 @@ pub(crate) fn rn_nav_bar(params: &SceneParams, fonts: &mut Fonts, id: &str, top:
     flatten(cx.nav_bar(bar), 0.0, top, Some(parent), 1.0, out);
 }
 
+/// `alert` layers over a React Native screen (`Alert.alert`): the same scrim and card as `.alert`.
+pub(crate) fn rn_alerts(params: &SceneParams, fonts: &mut Fonts, layers: &[Layer], out: &mut Vec<Node>) {
+    let mut cx = ctx(params, fonts);
+    let (w, h) = params.viewport;
+    let geo = Geo { w, h, safe_top: params.device.safe_top, safe_bottom: params.device.safe_bottom, dev_bottom: params.device.safe_bottom, body: 17.0 };
+    for layer in layers {
+        if let Layer::Alert { title, message, actions } = layer {
+            let lay = cx.alert(title, message.as_deref(), actions, &geo);
+            flatten(lay, 0.0, 0.0, Some(0), 1.0, out);
+        }
+    }
+}
+
 pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
     let (w, h) = params.viewport;
     // Keyboard avoidance: the keyboard top replaces the bottom safe-area inset.

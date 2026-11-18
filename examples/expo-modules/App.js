@@ -4,6 +4,8 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as Location from 'expo-location';
 import { Camera } from 'expo-camera';
+import { Directory, File, Paths } from 'expo-file-system';
+import * as SecureStore from 'expo-secure-store';
 
 const fmt = (l) => `lat ${l.coords.latitude} lon ${l.coords.longitude}`;
 
@@ -32,6 +34,15 @@ export default function App() {
         await Location.watchPositionAsync({}, (l) => setWatch(fmt(l)));
         return 'watching';
       })} />
+      <Button label="Write file" onPress={run(async () => {
+        const f = new File(Paths.document, 'note.txt');
+        f.create({ overwrite: true });
+        f.write('hi');
+        return `file ${await f.text()}`;
+      })} />
+      <Button label="List docs" onPress={run(async () => `docs ${new Directory(Paths.document).list().map((e) => e.name).join(',')}`)} />
+      <Button label="Save secret" onPress={run(async () => { await SecureStore.setItemAsync('token', 'abc'); return 'saved'; })} />
+      <Button label="Read secret" onPress={run(async () => `secret ${await SecureStore.getItemAsync('token')}`)} />
       <Button label="Camera" onPress={run(async () => `camera ${JSON.stringify(await Camera.requestCameraPermissionsAsync())}`)} />
     </View>
   );

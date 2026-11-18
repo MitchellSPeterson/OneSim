@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import {
-  FlatList, Image, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useColorScheme,
+  Alert, FlatList, Image, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useColorScheme,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
@@ -93,7 +93,13 @@ function Controls() {
   const [text, setText] = useState('');
   return (
     <View style={styles.body}>
-      <Text style={styles.big}>Count: {count}</Text>
+      {/* Tapping the count asks to reset it (Alert.alert; adds no visible element) */}
+      <Pressable accessibilityLabel="Count" onPress={() => Alert.alert('Reset count?', 'The count goes back to zero.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reset', style: 'destructive', onPress: () => setCount(0) },
+      ])}>
+        <Text style={styles.big}>Count: {count}</Text>
+      </Pressable>
       <Pressable accessibilityLabel="Increment" onPress={() => setCount((c) => c + 1)}
         style={({ pressed }) => [styles.button, pressed && { opacity: 0.6 }]}>
         <Text style={styles.buttonText}>Increment</Text>
@@ -109,6 +115,19 @@ function Controls() {
       <TextInput accessibilityLabel="Type here" placeholder="Type here" placeholderTextColor="#8E8E93"
         value={text} onChangeText={setText} style={styles.input} />
     </View>
+  );
+}
+
+// Reached by tapping the home title (no visible entry, so the other screens' references stay valid).
+// keyboardVerticalOffset 62 = root paddingTop: KeyboardAvoidingView compares its parent-relative frame with screen coordinates.
+function Form() {
+  const [text, setText] = useState('');
+  return (
+    <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={62} style={styles.form}>
+      <Text style={styles.label}>Message</Text>
+      <TextInput accessibilityLabel="Message" placeholder="Message" placeholderTextColor="#8E8E93"
+        value={text} onChangeText={setText} style={styles.input} />
+    </KeyboardAvoidingView>
   );
 }
 
@@ -151,13 +170,13 @@ export default function App() {
   const bg = dark ? '#000' : '#fff';
   const fg = dark ? '#fff' : '#000';
   const back = () => setScreen(null);
-  const Body = { Layout, Text: TextScreen, Controls, Image: ImageScreen }[screen];
+  const Body = { Layout, Text: TextScreen, Controls, Image: ImageScreen, Form }[screen];
   return (
     <View style={[styles.root, { backgroundColor: bg }]}>
       <StatusBar style={dark ? 'light' : 'dark'} />
       {screen === null && (
         <View style={{ flex: 1 }}>
-          <Text style={[styles.title, { color: fg }]}>Showcase</Text>
+          <Pressable onPress={() => setScreen('Form')}><Text style={[styles.title, { color: fg }]}>Showcase</Text></Pressable>
           {SCREENS.map((s) => (
             <Pressable key={s} accessibilityLabel={s} onPress={() => setScreen(s)}
               style={[styles.homeRow, { borderBottomColor: dark ? '#38383A' : '#E5E5EA' }]}>
@@ -201,5 +220,6 @@ const styles = StyleSheet.create({
   buttonText: { color: '#fff', fontSize: 17, fontWeight: '600' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 },
   input: { marginTop: 24, height: 44, borderWidth: 1, borderColor: '#C7C7CC', borderRadius: 8, paddingHorizontal: 12, fontSize: 17, color: '#000' },
+  form: { flex: 1, justifyContent: 'flex-end', padding: 16 },
   listRow: { height: 44, justifyContent: 'center', paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#E5E5EA' },
 });

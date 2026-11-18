@@ -3,7 +3,9 @@
 // against the guest's native-module registry (frameworks/react-native/guest/modules.js).
 //   node scripts/api-coverage.mjs           rewrite the summary block
 //   node scripts/api-coverage.mjs --check   exit 1 if the summary is stale or a row disagrees with the registry (CI)
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createRequire } from 'node:module';
 
 const root = new URL('..', import.meta.url).pathname;
@@ -40,7 +42,9 @@ doc.split('\n').forEach((line, i) => {
 // Cross-check: every registry module has a row, and the row's iOS status agrees with the registry.
 const stub = new Proxy(() => ({}), { get: (t, p) => (p === 'modules' ? { WorkletsModule() {}, ReanimatedModule() {} } : stub) });
 const createRegistry = createRequire(import.meta.url)(root + 'frameworks/react-native/guest/modules.js');
-const registry = createRegistry(stub, new Proxy({}, { get: (t, p) => (p === 'expo' ? { NativeModule: class {}, SharedObject: class {} } : stub) })).list();
+const dataDir = mkdtempSync(join(tmpdir(), 'simcore-coverage-')); // the file-system / secure-store modules need a sandbox dir
+const registry = createRegistry(stub, new Proxy({}, { get: (t, p) => (p === 'expo' ? { NativeModule: class {}, SharedObject: class {} } : p === 'cfg' ? { dataDir } : stub) })).list();
+rmSync(dataDir, { recursive: true, force: true });
 const rows = sections.flatMap((s) => s.rows);
 for (const m of registry) {
   const row = rows.find((r) => r.native.includes(m.name));

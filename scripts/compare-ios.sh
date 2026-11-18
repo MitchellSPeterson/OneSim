@@ -67,6 +67,10 @@ if [ -d "$rn/node_modules" ] && command -v npx >/dev/null; then
   rnshot scroll-scrolled  --click Scroll --click Jump
   rnshot image            --click Image
   rnshot home-dark        --dark
+  rnshot alert            --click Controls --click Count
+  rnshot alert-dark       --dark --click Controls --click Count
+  rnshot keyboard-avoiding      --click Showcase --click Message --type Hello
+  rnshot keyboard-avoiding-dark --dark --click Showcase --click Message --type Hello
   echo "== React Native (expo-showcase)"
   python3 scripts/compare_ios.py tests/fixtures/rn-showcase-ios "$rnout/simcore" "$rnout" || rc=1
 else

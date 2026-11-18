@@ -146,7 +146,7 @@ fn rn_tree(count: u32, frames: usize, text: &str, log: &str) -> serde_json::Valu
 }
 
 fn run_rn() {
-    let (mut count, mut frames, mut version) = (0u32, 0usize, 1u64);
+    let (mut count, mut frames, mut version, mut moves) = (0u32, 0usize, 1u64, 0u32);
     let (mut text, mut log) = (String::new(), String::new());
     send(json!({"type": "hello", "protocol": 1}));
     send(json!({"type": "tree", "version": version, "root": rn_tree(count, frames, &text, &log)}));
@@ -158,11 +158,22 @@ fn run_rn() {
             Some("focus") => log.push_str(" F"),
             Some("blur") => log.push_str(" B"),
             Some("submit") => log.push_str(" S"),
+            Some("keyboard") => log.push_str(&format!(" K{}", msg["height"])),
             Some("text_input") if msg["field"] == 8 => {
                 text = msg["text"].as_str().unwrap_or("").to_string();
                 log.push_str(&format!(" T:{text}"));
             }
-            Some("touch") if msg["phase"] == "end" && msg["tag"] == 5 => count += 1,
+            Some("touch") if msg["phase"] == "move" && msg["tag"] == 5 => {
+                moves += 1;
+                continue;
+            }
+            Some("touch") if msg["phase"] == "end" && msg["tag"] == 5 => {
+                count += 1;
+                if moves > 0 {
+                    log.push_str(&format!(" D{moves}:"));
+                    moves = 0;
+                }
+            }
             Some("touch") if msg["phase"] == "end" => continue, // a tap that changes nothing
             Some("shutdown") => return,
             _ => continue,

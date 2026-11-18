@@ -55,8 +55,8 @@ module.exports = function createWorklets(rt, { node, log, sendError, unsupported
     if (typeof v !== 'object' && typeof v !== 'function') return scalar(typeof v === 'symbol' ? String(v) : v);
     if (v.__serializableRef === true && v.t) return v;
     if (v.__workletHash !== undefined) return worklet(v);
-    if (typeof v === 'function') return new Ref('f', v, v.name);
-    if (Array.isArray(v)) return new Ref('a', v.map(from));
+    if (typeof v === 'function') return new Ref(v.__hostFunction ? 'h' : 'f', v, v.name);
+    if (Array.isArray(v)) return new Ref('a', Array.from(v, (e) => from(e))); // holes (sparse arrays) become undefined
     return obj(v);
   }
   const obj = (o, persist) => { const m = {}; for (const k of Object.keys(o)) m[k] = from(o[k]); const r = new Ref('o', m); r.persist = persist; return r; };
@@ -131,14 +131,15 @@ module.exports = function createWorklets(rt, { node, log, sendError, unsupported
       createSerializableTurboModuleLike: (props) => obj(props),
       createSerializableObject: (o, retain) => obj(o, retain),
       createSerializableHostObject: (o) => new Ref('h', o),
-      createSerializableArray: (a) => new Ref('a', a.map(from)),
+      createSerializableArray: (a) => new Ref('a', Array.from(a, (e) => from(e))),
       createSerializableArrayBuffer: (b) => new Ref('ab', b.slice(0)),
       createSerializableMap: (ks, vs) => new Ref('m', ks.map((k, i) => [from(k), from(vs[i])])),
       createSerializableSet: (vs) => new Ref('st', vs.map(from)),
       createSerializableError: (name, message, stack) => new Ref('e', { name, message, stack }),
       createSerializableRegExp: (pattern, flags) => new Ref('rx', { pattern, flags }),
       createSerializableArrayBufferView: (typeName, buffer, byteOffset, length) => new Ref('abv', { typeName, buffer: new Ref('ab', buffer.slice(0)), byteOffset, length }),
-      createSerializableNonWorkletFunction: (fn, name) => { const r = new Ref('f', fn, name); r.home = cur.id; return r; },
+      // JSI host functions (TurboModule methods; ours carry `__hostFunction`) are callable from any runtime, like SerializableHostFunction.
+      createSerializableNonWorkletFunction: (fn, name) => { if (fn.__hostFunction) return new Ref('h', fn); const r = new Ref('f', fn, name); r.home = cur.id; return r; },
       createSerializableWorklet: (w) => worklet(w),
       createSerializableLEGACY: (v) => from(v),
       createCustomSerializable: (data, typeId) => new Ref('c', from(data), typeId),
@@ -192,7 +193,7 @@ module.exports = function createWorklets(rt, { node, log, sendError, unsupported
     g._beginSection = () => {}; g._endSection = () => {};
     const make = { _createSerializableHostObject: (o) => new Ref('h', o), _createSerializableString: scalar, _createSerializableNumber: scalar,
       _createSerializableBoolean: (b) => (b ? T : F), _createSerializableBigInt: scalar, _createSerializableUndefined: () => U, _createSerializableNull: () => N,
-      _createSerializableArray: (a) => new Ref('a', a.map(from)), _createSerializableObject: (o, retain) => obj(o, retain), _createSerializableWorklet: (w) => worklet(w),
+      _createSerializableArray: (a) => new Ref('a', Array.from(a, (e) => from(e))), _createSerializableObject: (o, retain) => obj(o, retain), _createSerializableWorklet: (w) => worklet(w),
       _createSerializableSynchronizable: (s) => s, _scheduleOnRuntime: (r, w) => proxyFor(ui).scheduleOnRuntime(r, w) };
     Object.assign(g, make);
     // The display link: every frame callback runs on the UI realm, on the JS thread's timer.
@@ -309,7 +310,7 @@ module.exports = function createWorklets(rt, { node, log, sendError, unsupported
     onEvent(tag, type, payload) {
       for (const h of handlers.values()) {
         if (h.tag !== tag || h.name !== type) continue;
-        pushUI(() => des(h.ref, ui)(Object.assign(des(from(payload), ui), { eventName: type })));
+        pushUI(() => des(h.ref, ui)(node.performance.now(), Object.assign(des(from(payload), ui), { eventName: type }))); // Reanimated's handleEvent(eventTimestamp, event)
       }
     },
   };
