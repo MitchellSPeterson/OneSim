@@ -171,6 +171,11 @@ struct TodoRow: View {
 struct ControlsScreen: View {
     @State private var notifications = true
     @State private var volume = 3
+    @State private var showAlert = false
+    @State private var showSheet = false
+    @State private var showHalfSheet = false
+    @State private var showDialog = false
+    @State private var showCover = false
 
     var body: some View {
         List {
@@ -181,8 +186,79 @@ struct ControlsScreen: View {
                 Text("You will be notified")
                     .foregroundStyle(.secondary)
             }
+            Section {
+                Button("Show alert") { showAlert = true }
+                Button("Show sheet") { showSheet = true }
+                Button("Show half sheet") { showHalfSheet = true }
+                Button("Show dialog") { showDialog = true }
+                    .confirmationDialog("Volume preset", isPresented: $showDialog, titleVisibility: .visible) {
+                        Button("Mute", role: .destructive) { volume = 0 }
+                        Button("Max") { volume = 10 }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("Pick a preset level.")
+                    }
+                Button("Show cover") { showCover = true }
+            }
         }
         .navigationTitle("Controls")
+        .alert("Reset volume?", isPresented: $showAlert) {
+            Button("Cancel", role: .cancel) {}
+            Button("Reset", role: .destructive) { volume = 0 }
+        } message: {
+            Text("Volume goes back to 0.")
+        }
+        .sheet(isPresented: $showSheet) {
+            SheetScreen(volume: volume)
+        }
+        .sheet(isPresented: $showHalfSheet) {
+            HalfSheetScreen()
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+        .fullScreenCover(isPresented: $showCover) {
+            CoverScreen()
+        }
+    }
+}
+
+struct HalfSheetScreen: View {
+    @State private var showNested = false
+
+    var body: some View {
+        List {
+            Text("Drag ") + Text("down").italic() + Text(" to ") + Text("dismiss").underline()
+            Button("Open another") { showNested = true }
+        }
+        .sheet(isPresented: $showNested) {
+            SheetScreen(volume: 7)
+        }
+    }
+}
+
+struct CoverScreen: View {
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Full screen")
+                .font(.largeTitle)
+                .bold()
+            Button("Close") { dismiss() }
+                .buttonStyle(.borderedProminent)
+        }
+    }
+}
+
+struct SheetScreen: View {
+    let volume: Int
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        List {
+            Text("Volume is ") + Text("\(volume)").bold() + Text(" of 10").foregroundColor(.secondary)
+            Button("Done") { dismiss() }
+        }
     }
 }
 

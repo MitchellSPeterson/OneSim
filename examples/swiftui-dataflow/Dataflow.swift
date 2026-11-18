@@ -1,7 +1,7 @@
 import SwiftUI
 
 // Exercises Group, List(data), @EnvironmentObject, onAppear/onDisappear, value-based navigation
-// (NavigationPath and [T] paths), dismiss and dynamicTypeSize. Must compile unchanged against Apple's SwiftUI.
+// (NavigationPath and [T] paths), destination links in a path-bound stack, unmatched values, modifiers on a Group, dismiss and dynamicTypeSize. Must compile unchanged against Apple's SwiftUI.
 
 final class Session: ObservableObject {
     @Published var user = "ada"
@@ -49,10 +49,13 @@ struct HomeView: View {
                     NavigationLink("Alpha", value: Item(id: 1, name: "Alpha"))
                     NavigationLink(value: 2) { Text("Number 2") }
                     NavigationLink("Lists", value: Route.lists)
+                    NavigationLink("Plain") { Text("Plain pushed").navigationTitle("Plain") }
+                    NavigationLink("Orphan", value: 3.5)   // no destination for Double: pushes nothing
                     Group {
                         Text("Group A")
                         Text("Group B")
                     }
+                    .opacity(0.5)   // applies to each child
                 }
             }
             .navigationTitle("Dataflow")
@@ -93,6 +96,7 @@ struct NumberScreen: View {
             Text("Number: \(n)")
             Text("Depth: \(depth)")
             NavigationLink("Nested", value: Item(id: 3, name: "Nested"))
+            NavigationLink("Detail") { Text("Detail depth \(depth)").navigationTitle("Detail") }   // on top of the path
         }
         .navigationTitle("Number \(n)")
     }

@@ -1,4 +1,4 @@
-use cosmic_text::{fontdb, Align, Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, SwashCache, Weight};
+use cosmic_text::{fontdb, Align, Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, Style, SwashCache, Weight};
 use std::collections::HashMap;
 
 /// macOS system UI font (variable SF Pro: wght axis). Family name as registered in fontdb.
@@ -15,6 +15,19 @@ pub enum TextAlign {
     Leading,
     Center,
     Trailing,
+}
+
+/// One styled run of a concatenated `Text`: its own size (points), weight and color.
+/// The `FontSpec` passed alongside is the largest run's (line metrics); every run scales from it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Span {
+    pub text: String,
+    pub pt: f32,
+    pub weight: u16,
+    pub color: crate::scene::Color,
+    pub italic: bool,
+    pub underline: bool,
+    pub strike: bool,
 }
 
 /// Font parameters shared by measuring and drawing.
@@ -137,6 +150,8 @@ pub struct LineSpan {
     pub x0: f32,
     pub x1: f32,
     pub baseline: f32,
+    /// Index of the styled run this extent belongs to (`None` for plain text).
+    pub run: Option<usize>,
 }
 
 impl Default for Fonts {
@@ -182,7 +197,7 @@ impl Fonts {
         self.inter
     }
 
-    fn buffer(&mut self, text: &str, f: &FontSpec, width: Option<f32>) -> Buffer {
+    fn buffer(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span]) -> Buffer {
         // Inter's glyphs are ~8% larger than SF's at the same size; at accessibility sizes that is a lot
         // of ink, so the fallback draws them slightly smaller (tracking is fitted for it).
         let big = !self.sf && f.pt > 40.0;
@@ -196,7 +211,29 @@ impl Fonts {
         };
         let wght = if big { (f.weight as i32 + INTER_BIG_WEIGHT).clamp(100, 900) as u16 } else { f.weight };
         let attrs = Attrs::new().family(family).weight(Weight(wght)).letter_spacing(tracking);
-        b.set_text(text, &attrs, Shaping::Advanced, None);
+        if spans.is_empty() {
+            b.set_text(text, &attrs, Shaping::Advanced, None);
+        } else {
+            let (sf, fam) = (self.sf, family);
+            let runs = spans.iter().enumerate().map(|(i, s)| {
+                let k = s.pt / f.pt;
+                let size_px = f.size * k;
+                let big = !sf && s.pt > 40.0;
+                let tracking = if sf {
+                    tracking_em(s.pt, s.weight)
+                } else if big {
+                    inter_ax_tracking(s.pt, s.weight)
+                } else {
+                    inter_tracking_em(size_px, s.weight)
+                };
+                let wght = if big { (s.weight as i32 + INTER_BIG_WEIGHT).clamp(100, 900) as u16 } else { s.weight };
+                let m = Metrics::new(if big { size_px * INTER_BIG_SCALE } else { size_px }, f.pitch * k);
+                let c = Color::rgba((s.color.r * 255.0).round() as u8, (s.color.g * 255.0).round() as u8, (s.color.b * 255.0).round() as u8, (s.color.a * 255.0).round() as u8);
+                let a = Attrs::new().family(fam).weight(Weight(wght)).letter_spacing(tracking).metrics(m).color(c).metadata(i);
+                (s.text.as_str(), if s.italic { a.style(Style::Italic) } else { a })
+            });
+            b.set_rich_text(runs, &attrs, Shaping::Advanced, None);
+        }
         let align = match f.align {
             TextAlign::Leading => None,
             TextAlign::Center => Some(Align::Center),
@@ -210,19 +247,23 @@ impl Fonts {
     }
 
     /// Size of `text`, wrapping at `width` when given.
-    pub fn measure(&mut self, text: &str, f: &FontSpec, width: Option<f32>) -> (f64, f64) {
+    pub fn measure(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span]) -> (f64, f64) {
         let key = (text.to_string(), f.size.to_bits(), f.weight, width.map_or(u32::MAX, f32::to_bits));
-        if let Some(r) = self.measured.get(&key) {
-            return *r;
+        if spans.is_empty() {
+            if let Some(r) = self.measured.get(&key) {
+                return *r;
+            }
         }
-        let b = self.buffer(text, &FontSpec { align: TextAlign::Leading, ..*f }, width);
+        let b = self.buffer(text, &FontSpec { align: TextAlign::Leading, ..*f }, width, spans);
         let (mut w, mut lines) = (0f32, 0usize);
         for run in b.layout_runs() {
             w = w.max(run.line_w);
             lines += 1;
         }
         let r = (w as f64, (f.line_height + (lines.max(1) - 1) as f32 * f.pitch) as f64);
-        self.measured.insert(key, r);
+        if spans.is_empty() {
+            self.measured.insert(key, r);
+        }
         r
     }
 
@@ -231,6 +272,7 @@ impl Fonts {
     /// Rasterize `text` with its origin at `origin` (device px, fractional): `f(x, y, w, h, rgba)` gets
     /// absolute pixels. Glyphs keep their sub-pixel phase in both axes (cosmic-text's own `draw`
     /// truncates the baseline to whole pixels, which CoreText does not).
+    #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
         text: &str,
@@ -238,16 +280,23 @@ impl Fonts {
         width: f32,
         rgba: [u8; 4],
         origin: (f32, f32),
+        spans: &[Span],
         mut f: impl FnMut(i32, i32, u32, u32, [u8; 4]),
     ) -> Vec<LineSpan> {
-        let mut b = self.buffer(text, spec, Some(width));
+        let mut b = self.buffer(text, spec, Some(width), spans);
         b.shape_until_scroll(&mut self.sys, false);
-        let spans = b
+        let lines = b
             .layout_runs()
-            .filter_map(|r| {
-                let first = r.glyphs.first()?;
-                let last = r.glyphs.last()?;
-                Some(LineSpan { x0: first.x, x1: last.x + last.w, baseline: r.line_y })
+            .flat_map(|r| {
+                let mut out: Vec<LineSpan> = vec![];
+                for g in r.glyphs {
+                    let run = (!spans.is_empty()).then_some(g.metadata);
+                    match out.last_mut() {
+                        Some(l) if l.run == run => l.x1 = g.x + g.w,
+                        _ => out.push(LineSpan { x0: g.x, x1: g.x + g.w, baseline: r.line_y, run }),
+                    }
+                }
+                out
             })
             .collect();
         let c = Color::rgba(rgba[0], rgba[1], rgba[2], rgba[3]);
@@ -268,11 +317,13 @@ impl Fonts {
                     g.cache_key_flags,
                 );
                 let (bx, by) = (gx + ix as i32, gy + iy as i32);
+                // cosmic-text replaces the color alpha with glyph coverage: reapply the run's own alpha.
+                let sa = spans.get(g.metadata).map_or(1.0, |s| s.color.a);
                 self.cache.with_pixels(&mut self.sys, key, g.color_opt.unwrap_or(c), |px, py, col| {
-                    f(bx + px, by + py, 1, 1, [col.r(), col.g(), col.b(), col.a()])
+                    f(bx + px, by + py, 1, 1, [col.r(), col.g(), col.b(), (col.a() as f32 * sa).round() as u8])
                 });
             }
         }
-        spans
+        lines
     }
 }

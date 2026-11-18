@@ -3,7 +3,7 @@
 // same driver as the browser (web/simcore.js) and drives it like `simcore run`.
 //
 //   node web/test/run.mjs [--wasm target/web/app.wasm] [--width W] [--height H] [--scale S] [--dark] [--dynamic-type SIZE]
-//        [--click LABEL|X,Y] [--type TEXT] [--key backspace|enter] [--scroll X,Y,DX,DY] ...   (in order)
+//        [--click LABEL|X,Y] [--type TEXT] [--key backspace|enter] [--scroll X,Y,DX,DY] [--drag X,Y,DX,DY] ...   (in order)
 //        [--screenshot out.png] [--inspect] [--expect TEXT]...
 //   node web/test/run.mjs --suite counter|showcase     assertions against the built app
 import { readFileSync, writeFileSync } from "node:fs";
@@ -41,6 +41,17 @@ function step(sim, flag, v) {
       if (!sim.inspect()) throw new Error("no tree");
       return;
     }
+    case "--drag": {
+      // One finger gesture, ending long after the last move (no fling), like the native CLI.
+      const a = nums(v, 4);
+      if (!a) throw new Error(`--drag wants X,Y,DX,DY, got ${JSON.stringify(v)}`);
+      const [x, y, dx, dy] = a;
+      sim.drag("begin", x, y, 0);
+      sim.drag("move", x + dx, y + dy, 16);
+      sim.drag("end", x + dx, y + dy, 1000);
+      if (!sim.inspect()) throw new Error("no tree");
+      return;
+    }
     default: throw new Error(`unknown step ${flag}`);
   }
 }
@@ -64,7 +75,7 @@ async function cli(argv) {
     else if (f === "--screenshot") shot = val();
     else if (f === "--inspect") inspect = true;
     else if (f === "--expect") expects.push(val());
-    else if (["--click", "--type", "--key", "--scroll"].includes(f)) steps.push([f, val()]);
+    else if (["--click", "--type", "--key", "--scroll", "--drag"].includes(f)) steps.push([f, val()]);
     else throw new Error(`unknown argument ${f}`);
   }
   const sim = await boot(o.wasm, o);

@@ -135,6 +135,64 @@ assert "Volume: 4" in alltexts(t["root"])
 t = act(p, t, t["root"]["back"]["action"])
 t = controls(t)
 assert "You will be notified" in alltexts(t["root"]) and "Volume: 3" in alltexts(t["root"]), "popped screen state must be discarded"
+# Presentation layers: alert, sheet (+detents, drag indicator, swipe dismiss, nesting), dialog, cover; Text runs; ButtonRole
+layers = lambda t: t["root"]["layers"]
+under = lambda t: t["root"]["content"]
+btn_in = lambda n, label: next(m for m in walk(n) if m.get("kind") == "button" and label in alltexts(m))
+assert t["root"]["kind"] == "navigation"  # nothing presented: no presentation wrapper
+t = act(p, t, button(t, "Show alert")["action"])
+assert t["root"]["kind"] == "presentation" and [l["kind"] for l in layers(t)] == ["alert"], t["root"]["kind"]
+al = layers(t)[0]
+assert al["title"] == "Reset volume?" and alltexts(al["message"]) == ["Volume goes back to 0."], al
+assert [(alltexts(b)[0], b.get("role")) for b in al["actions"]] == [("Cancel", "cancel"), ("Reset", "destructive")], al["actions"]
+t = act(p, t, al["actions"][0]["action"])  # Cancel dismisses, volume unchanged
+assert t["root"]["kind"] == "navigation" and "Volume: 3" in alltexts(t["root"])
+t = act(p, t, button(t, "Show alert")["action"])
+t = act(p, t, layers(t)[0]["actions"][1]["action"])  # Reset runs its action, then dismisses
+assert t["root"]["kind"] == "navigation" and "Volume: 0" in alltexts(t["root"]), alltexts(t["root"])
+# plain sheet: large detent, no indicator, Text runs, Done = @Environment(\.dismiss)
+t = act(p, t, button(t, "Show sheet")["action"])
+sl = layers(t)[0]
+assert [l["kind"] for l in layers(t)] == ["sheet"] and sl["detents"] == [] and sl["dragIndicator"] is False and sl.get("dismiss"), sl
+txt = next(m for m in walk(sl["content"]) if m.get("kind") == "text" and m.get("runs"))
+assert txt["text"] == "Volume is 0 of 10", txt
+assert [(r["text"], r.get("fontWeight"), r.get("foregroundColor")) for r in txt["runs"]] == [
+    ("Volume is ", None, None), ("0", "bold", None), (" of 10", None, {"semantic": "secondary"})], txt["runs"]
+assert find(under(t), lambda n: n.get("kind") == "navigation")  # presenting screen stays underneath
+t = act(p, t, btn_in(sl["content"], "Done")["action"])
+assert t["root"]["kind"] == "navigation" and title(t) == "Controls", t["root"]["kind"]
+# swipe-to-dismiss action clears the binding
+t = act(p, t, button(t, "Show sheet")["action"])
+t = act(p, t, layers(t)[0]["dismiss"]); assert t["root"]["kind"] == "navigation"
+# half sheet: detents + drag indicator + italic/underline runs, nested sheet, state inside the sheet
+t = act(p, t, button(t, "Show half sheet")["action"])
+hs = layers(t)[0]
+assert sorted(d["kind"] for d in hs["detents"]) == ["large", "medium"] and hs["dragIndicator"] is True and hs.get("dismiss"), hs
+assert not any("presentationDetents" in m or "presentationDragIndicator" in m for n in walk(hs["content"]) for m in (n.get("modifiers") or []))
+runs = next(m for m in walk(hs["content"]) if m.get("runs"))["runs"]
+assert [(r["text"], bool(r.get("italic")), bool(r.get("underline"))) for r in runs] == [
+    ("Drag ", False, False), ("down", True, False), (" to ", False, False), ("dismiss", False, True)], runs
+t = act(p, t, btn_in(hs["content"], "Open another")["action"])
+assert [l["kind"] for l in layers(t)] == ["sheet", "sheet"], layers(t)
+assert "Volume is 7 of 10" in alltexts(layers(t)[1]["content"])
+t = act(p, t, btn_in(layers(t)[1]["content"], "Done")["action"])  # inner dismiss: only the nested sheet goes
+assert [l["kind"] for l in layers(t)] == ["sheet"], layers(t)
+t = act(p, t, layers(t)[0]["dismiss"]); assert t["root"]["kind"] == "navigation"
+# confirmation dialog: popover anchored to its source button; automatic Cancel; outside tap = the cancel action
+src = button(t, "Show dialog")
+t = act(p, t, src["action"])
+dg = layers(t)[0]
+assert dg["kind"] == "dialog" and dg["title"] == "Volume preset" and dg["titleVisible"] is True and alltexts(dg["message"]) == ["Pick a preset level."], dg
+assert [(alltexts(b)[0], b.get("role")) for b in dg["actions"]] == [("Mute", "destructive"), ("Max", None), ("Cancel", "cancel")], dg["actions"]
+assert dg["anchor"] == src["id"] and dg["dismiss"] == dg["actions"][2]["action"], (dg["anchor"], src["id"])
+t = act(p, t, dg["dismiss"]); assert t["root"]["kind"] == "navigation" and "Volume: 0" in alltexts(t["root"])
+t = act(p, t, button(t, "Show dialog")["action"])
+t = act(p, t, layers(t)[0]["actions"][1]["action"])  # Max
+assert t["root"]["kind"] == "navigation" and "Volume: 10" in alltexts(t["root"]), alltexts(t["root"])
+# full screen cover
+t = act(p, t, button(t, "Show cover")["action"])
+cv = layers(t)[0]; assert cv["kind"] == "cover" and "Full screen" in alltexts(cv["content"])
+t = act(p, t, btn_in(cv["content"], "Close")["action"]); assert t["root"]["kind"] == "navigation"
 t = act(p, t, t["root"]["back"]["action"])
 # Typography + environment
 t = act(p, t, button(t, "Typography")["action"])
@@ -189,7 +247,10 @@ assert home(t)["title"] == "Dataflow" and "back" not in home(t)
 for s in ["User: ada", "Appeared: 1", "Disappeared: 0", "Path: 0", "Type size: large", "Group A", "Group B"]:
     assert s in tx(t), (s, tx(t))  # onAppear fired exactly once (first pass + one re-eval)
 links = home(t)["content"]["sections"][1]["rows"]
-assert len(links) == 5 and [alltexts(l)[0] for l in links[:3]] == ["Alpha", "Number 2", "Lists"], links  # Group flattened into the list
+assert len(links) == 7 and [alltexts(l)[0] for l in links[:5]] == ["Alpha", "Number 2", "Lists", "Plain", "Orphan"], links  # Group flattened into the list
+# a modifier on a multi-child Group lands on each child, not on a wrapping vstack
+assert [(alltexts(l)[0], l["kind"], l["modifiers"]) for l in links[5:]] == [
+    ("Group A", "text", [{"opacity": 0.5}]), ("Group B", "text", [{"opacity": 0.5}])], links[5:]
 # value link -> destination(for:), env object on the pushed screen, root onDisappear
 t = act(p, t, button(t, "Alpha")["action"])
 assert home(t)["title"] == "Item Alpha" and home(t)["back"]["label"] == "Dataflow", home(t)
@@ -201,6 +262,10 @@ for s in ["User: grace", "Appeared: 2", "Disappeared: 1", "Path: 0"]: assert s i
 # Int value, then a nested push, then back pops one at a time
 t = act(p, t, button(t, "Number 2")["action"])
 assert home(t)["title"] == "Number 2" and "Depth: 1" in tx(t), tx(t)
+# destination link on top of a path-driven screen: pushes above it, back pops it first
+t = act(p, t, button(t, "Detail")["action"])
+assert home(t)["title"] == "Detail" and "Detail depth 1" in tx(t) and home(t)["back"]["label"] == "Number 2", tx(t)
+t = act(p, t, home(t)["back"]["action"]); assert home(t)["title"] == "Number 2" and "Depth: 1" in tx(t)
 t = act(p, t, button(t, "Nested")["action"])
 assert home(t)["title"] == "Item Nested" and "Depth: 2" in tx(t) and home(t)["back"]["label"] == "Number 2", tx(t)
 t = act(p, t, home(t)["back"]["action"]); assert home(t)["title"] == "Number 2" and "Depth: 1" in tx(t)
@@ -212,6 +277,12 @@ lists = [m for m in walk(home(t)) if m.get("kind") == "list"]
 assert [[alltexts(r)[0] for s in l["sections"] for r in s["rows"]] for l in lists] == [
     ["Person Ada", "Person Grace"], ["Key x", "Key y"], ["Range 0", "Range 1", "Range 2"]], lists
 t = act(p, t, home(t)["back"]["action"])
+# value with no navigationDestination pushes nothing (SwiftUI only logs)
+send(p, type="action", id=button(t, "Orphan")["action"], version=t["version"])  # nothing changes, so no new tree
+# destination-style link in a path-bound stack pushes (one level only: the orphan left nothing behind)
+t = act(p, t, button(t, "Plain")["action"])
+assert home(t)["title"] == "Plain" and "Plain pushed" in tx(t) and home(t)["back"]["label"] == "Dataflow", home(t)
+t = act(p, t, home(t)["back"]["action"]); assert home(t)["title"] == "Dataflow" and "back" not in home(t) and "Path: 0" in tx(t)
 # [T] path binding
 typed = lambda t: navs(t)[1]
 assert typed(t)["title"] == "Typed" and "Typed depth: 0" in alltexts(typed(t))
@@ -225,5 +296,34 @@ finish(p)
 p = spawn(sys.argv[4], {**os.environ, "SIMCORE_DYNAMIC_TYPE": "accessibility2"})
 assert recv(p)["type"] == "hello"
 assert "Type size: accessibility2" in tx(recv(p))
+finish(p)
+# --- presentation: item / presenting variants, onDismiss, locked sheets, detents
+p = spawn(sys.argv[5])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+L = lambda t: t["root"].get("layers", [])
+base = lambda t: t["root"]["content"] if t["root"]["kind"] == "presentation" else t["root"]
+def tap(t, label): return act(p, t, next(m for m in walk(base(t)) if m.get("kind") == "button" and label in alltexts(m))["action"])
+assert t["root"]["kind"] != "presentation" and "Dismissed: 0" in alltexts(t["root"])
+t = tap(t, "Plain"); assert [l["kind"] for l in L(t)] == ["sheet"] and L(t)[0].get("dismiss")
+t = tap(t, "Clear plain")  # app code clears the binding: onDismiss still fires
+assert not L(t) and "Dismissed: 1" in alltexts(t["root"]), alltexts(t["root"])
+t = tap(t, "Plain"); t = act(p, t, L(t)[0]["dismiss"])  # the swipe path
+assert not L(t) and "Dismissed: 2" in alltexts(t["root"]), alltexts(t["root"])
+t = tap(t, "Locked"); assert "dismiss" not in L(t)[0], L(t)[0]  # interactiveDismissDisabled: no swipe action
+t = tap(t, "Tall")  # a second sheet from the same presenter stacks on top
+assert [l["kind"] for l in L(t)] == ["sheet", "sheet"], L(t)
+assert sorted((d["kind"], d.get("value")) for d in L(t)[1]["detents"]) == [("fraction", 0.4), ("height", 300.0), ("large", None)], L(t)[1]["detents"]
+t = act(p, t, L(t)[1]["dismiss"]); t = tap(t, "Item")  # item: the sheet gets the item
+assert [l["kind"] for l in L(t)] == ["sheet", "sheet"] and "Item 3" in alltexts(L(t)[1]["content"]), L(t)
+t = act(p, t, L(t)[1]["dismiss"])  # swiping it away clears the item binding
+assert [l["kind"] for l in L(t)] == ["sheet"], L(t)
+t = tap(t, "Cover item"); assert L(t)[-1]["kind"] == "cover" and "Cover 5" in alltexts(L(t)[-1]["content"])
+t = tap(t, "Alert")  # alert with presenting data, above the cover
+assert [l["kind"] for l in L(t)][-2:] == ["cover", "alert"], L(t)
+al = L(t)[-1]; assert alltexts(al["message"]) == ["Greeting Ada"] and [alltexts(b)[0] for b in al["actions"]] == ["Hi Ada"], al
+t = act(p, t, al["actions"][0]["action"])
+t = tap(t, "Dialog"); dg = L(t)[-1]
+assert dg["kind"] == "dialog" and [alltexts(b)[0] for b in dg["actions"]] == ["Use 9", "Cancel"] and dg["titleVisible"] is False, dg
 finish(p)
 print("PASS")

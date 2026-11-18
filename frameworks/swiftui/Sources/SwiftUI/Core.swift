@@ -121,6 +121,10 @@ final class _Runtime {
     var buttonStyle = "automatic"
     var nav: _NavState?
     var envObjects: [ObjectIdentifier: AnyObject] = [:]
+    // Presentation layer: set by .alert / .sheet while evaluating; hoisted above the tree by `_evaluate`.
+    var layers: [Node] = []          // alerts, dialogs, sheets, covers, bottom to top (a sheet reserves its slot before its content)
+    var autoDismiss: (() -> Void)?   // runs after any Button in an alert's actions
+    var dismissHook: (() -> Void)?   // `@Environment(\.dismiss)` inside a sheet
     var dynamicType = DynamicTypeSize.large   // from SIMCORE_DYNAMIC_TYPE at launch; the env callback carries no live updates
     // onAppear/onDisappear: keys seen in this evaluation vs. the previous one (value = that key's onDisappear).
     var lifecycleNow: [String: (appear: () -> Void, disappear: () -> Void)] = [:]
@@ -161,9 +165,11 @@ final class _Runtime {
         actions.removeAll(keepingCapacity: true)
         fields.removeAll(keepingCapacity: true)
         disabled = false; buttonStyle = "automatic"; nav = nil; envObjects = [:]
+        layers = []; autoDismiss = nil; dismissHook = nil
         lifecycleNow = [:]; lifecycleOrder = []
         touched.removeAll(keepingCapacity: true)
-        let tree = render()
+        var tree = render()
+        if !layers.isEmpty { tree = ["kind": "presentation", "id": "presentation", "content": tree, "layers": layers] }
         slots = slots.filter { touched.contains($0.key) }
         dirty = false
         return tree

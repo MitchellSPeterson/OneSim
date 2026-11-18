@@ -5,10 +5,43 @@ import Foundation
 public struct Text: View, _Primitive {
     public typealias Body = Never
     public var body: Never { fatalError() }
-    let content: String
-    public init(_ content: String) { self.content = content }
-    public init(verbatim content: String) { self.content = content }
-    func _emit(_ path: String) -> Node { ["kind": "text", "id": path, "text": content] }
+    /// One styled run: `attrs` holds the wire keys `font` / `fontWeight` / `foregroundColor` set on it.
+    struct Run { var text: String; var attrs: Node }
+    var runs: [Run]
+    public init(_ content: String) { runs = [Run(text: content, attrs: [:])] }
+    public init(verbatim content: String) { self.init(content) }
+
+    /// `Text + Text`: keeps each side's own styling.
+    public static func + (l: Text, r: Text) -> Text { var t = l; t.runs += r.runs; return t }
+
+    // Text-returning modifiers (so the result can still be concatenated). On a concatenation an
+    // explicit inner style wins over the outer one, as in SwiftUI.
+    func _with(_ key: String, _ value: Any) -> Text {
+        var t = self
+        for i in t.runs.indices where runs.count == 1 || t.runs[i].attrs[key] == nil { t.runs[i].attrs[key] = value }
+        return t
+    }
+    public func bold() -> Text { _with("fontWeight", "bold") }
+    public func fontWeight(_ weight: Font.Weight?) -> Text { _with("fontWeight", weight?.name ?? "regular") }
+    public func font(_ font: Font?) -> Text { _with("font", font?.json ?? ["style": "body"] as Node) }
+    public func foregroundColor(_ color: Color?) -> Text { _with("foregroundColor", color?.json ?? ["semantic": "primary"] as Node) }
+    public func foregroundStyle<S: ShapeStyle>(_ style: S) -> Text { _with("foregroundColor", style._json) }
+    public func italic() -> Text { _with("italic", true) }
+    public func underline(_ active: Bool = true) -> Text { _with("underline", active) }
+    public func strikethrough(_ active: Bool = true) -> Text { _with("strikethrough", active) }
+
+    func _emit(_ path: String) -> Node {
+        var n: Node = ["kind": "text", "id": path, "text": runs.map { $0.text }.joined()]
+        // Italic and underline exist only as run fields; everything else of a lone run is plain modifiers.
+        if runs.count == 1, runs[0].attrs["italic"] == nil, runs[0].attrs["underline"] == nil {
+            let a = runs[0].attrs
+            let mods = a.keys.sorted().map { [$0: a[$0]!] as Node }
+            if !mods.isEmpty { n["modifiers"] = mods }
+        } else {
+            n["runs"] = runs.map { r -> Node in var j = r.attrs; j["text"] = r.text; return j }
+        }
+        return n
+    }
 }
 
 public struct Spacer: View, _Primitive {
@@ -20,20 +53,31 @@ public struct Spacer: View, _Primitive {
 }
 
 
+public struct ButtonRole: Equatable {
+    let name: String
+    public static let cancel = ButtonRole(name: "cancel")
+    public static let destructive = ButtonRole(name: "destructive")
+}
+
 public struct Button<Label: View>: View, _Primitive {
     public typealias Body = Never
     public var body: Never { fatalError() }
     let action: () -> Void
     let label: Label
-    public init(action: @escaping () -> Void, @ViewBuilder label: () -> Label) { self.action = action; self.label = label() }
+    let role: ButtonRole?
+    public init(role: ButtonRole? = nil, action: @escaping () -> Void, @ViewBuilder label: () -> Label) { self.role = role; self.action = action; self.label = label() }
     func _emit(_ path: String) -> Node {
         let rt = _Runtime.shared
-        return ["kind": "button", "id": path, "action": rt.disabled ? 0 : rt.registerAction(action), "label": _eval(label, path + "/0"),
-                "style": rt.buttonStyle, "disabled": rt.disabled]
+        // Buttons in an alert's actions also dismiss it (after running their own action).
+        let act = rt.autoDismiss.map { d in { action(); d() } } ?? action
+        var n: Node = ["kind": "button", "id": path, "action": rt.disabled ? 0 : rt.registerAction(act), "label": _eval(label, path + "/0"),
+                       "style": rt.buttonStyle, "disabled": rt.disabled]
+        if let role { n["role"] = role.name }
+        return n
     }
 }
 extension Button where Label == Text {
-    public init(_ title: String, action: @escaping () -> Void) { self.init(action: action) { Text(title) } }
+    public init(_ title: String, role: ButtonRole? = nil, action: @escaping () -> Void) { self.init(role: role, action: action) { Text(title) } }
 }
 
 public struct VStack<Content: View>: View, _Primitive {
@@ -168,10 +212,15 @@ struct _ModifiedView<Content: View>: View, _Flattenable {
     let content: Content
     let modifier: (String) -> Node   // lazy: `background`/`overlay` evaluate their view at emit time
     func _children(_ path: String) -> [Node] {
-        var n = _eval(content, path)
-        n["modifiers"] = ((n["modifiers"] as? [Node]) ?? []) + [modifier(path)]
-        return [n]
+        _modTargets(content, path).map { var n = $0; n["modifiers"] = ((n["modifiers"] as? [Node]) ?? []) + [modifier(path)]; return n }
     }
+}
+
+/// A multi-child `Group` hands a modifier to each child (SwiftUI semantics); everything else is evaluated to one node.
+protocol _ModifierTransparent {}
+func _modTargets<C: View>(_ c: C, _ path: String) -> [Node] {
+    if c is _ModifierTransparent { let k = _children(c, path); if !k.isEmpty { return k } }
+    return [_eval(c, path)]
 }
 
 extension View {
@@ -216,8 +265,10 @@ struct _BackgroundView<Content: View, B: View>: View, _Flattenable {
     let content: Content
     let background: B
     func _children(_ path: String) -> [Node] {
-        var n = _eval(content, path)
-        n["modifiers"] = ((n["modifiers"] as? [Node]) ?? []) + [["background": _eval(background, path + "/bg")]]
-        return [n]
+        _modTargets(content, path).enumerated().map { i, c in
+            var n = c
+            n["modifiers"] = ((n["modifiers"] as? [Node]) ?? []) + [["background": _eval(background, path + (i == 0 ? "/bg" : "/bg\(i)"))]]
+            return n
+        }
     }
 }

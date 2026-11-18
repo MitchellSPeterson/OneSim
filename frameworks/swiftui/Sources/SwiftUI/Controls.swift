@@ -53,7 +53,7 @@ extension ForEach where Data == Range<Int>, ID == Int {
     public init(_ data: Range<Int>, @ViewBuilder content: @escaping (Int) -> Content) { self.init(data, id: \.self, content: content) }
 }
 
-public struct Group<Content: View>: View, _Flattenable {
+public struct Group<Content: View>: View, _Flattenable, _ModifierTransparent {
     public typealias Body = Never
     public var body: Never { fatalError() }
     let content: Content
@@ -185,22 +185,34 @@ public struct NavigationPath {
 /// Guest-owned path stack, persisted in the state registry. Root is depth 0; pushed screens have ids `<stack>/s<depth>`.
 /// With `NavigationStack(path:)` the binding is the source of truth for depth and screens are built from its values.
 final class _NavState {
+    /// Destination-style screens. With a bound path they sit on top of the path-driven screens (back pops them first).
     var stack: [_NavScreen] = []
     var titles: [Int: String] = [:]   // last evaluated title per depth, for the back label
     var destinations: [ObjectIdentifier: (Any, String) -> Node] = [:]   // kept across evaluations: hidden screens register nothing
     var ext: _NavPath?
-    var depth: Int { ext?.count() ?? stack.count }
-    func push(_ s: _NavScreen) { stack.append(s); _Runtime.shared.dirty = true }   // destination links; not tracked in path-bound stacks
+    var depth: Int { (ext?.count() ?? 0) + stack.count }
+    func push(_ s: _NavScreen) { stack.append(s); _Runtime.shared.dirty = true }
     func pushValue(_ v: Any) {
-        if let ext { ext.append(v) } else { stack.append(_NavScreen { [self] in build(v, $0) }) }
+        // Like SwiftUI: a value nobody handles pushes nothing.
+        guard destinations[ObjectIdentifier(type(of: v))] != nil else {
+            #if !os(WASI)
+            fputs("A NavigationLink is presenting a value of type \(type(of: v)) but there is no matching navigationDestination declaration visible from the location of the link.\n", stderr)
+            #endif
+            return
+        }
+        // ponytail: a value pushed from a destination screen goes on the screen stack, not into the bound path.
+        if let ext, stack.isEmpty { ext.append(v) } else { stack.append(_NavScreen { [self] in build(v, $0) }) }
         _Runtime.shared.dirty = true
     }
-    func screen(_ i: Int, _ path: String) -> Node { ext.map { build($0.element(i), path) } ?? stack[i].build(path) }
+    func screen(_ i: Int, _ path: String) -> Node {
+        let n = ext?.count() ?? 0
+        return i < n ? build(ext!.element(i), path) : stack[i - n].build(path)
+    }
     func build(_ v: Any, _ path: String) -> Node {
-        destinations[ObjectIdentifier(type(of: v))]?(v, path) ?? ["kind": "empty", "id": path]   // no destination: blank screen
+        destinations[ObjectIdentifier(type(of: v))]?(v, path) ?? ["kind": "empty", "id": path]
     }
     func pop() {
-        if let ext { if ext.count() > 0 { ext.removeLast() } } else if !stack.isEmpty { stack.removeLast() }
+        if !stack.isEmpty { stack.removeLast() } else if let ext, ext.count() > 0 { ext.removeLast() }
         _Runtime.shared.dirty = true
     }
 }

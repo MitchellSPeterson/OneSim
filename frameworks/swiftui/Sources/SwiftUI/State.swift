@@ -136,10 +136,15 @@ public struct DismissAction {
 
 public struct EnvironmentValues {
     var nav: _NavState? = _Runtime.shared.nav   // captured at body time so `dismiss` still works from an action later
+    var sheetDismiss: (() -> Void)? = _Runtime.shared.dismissHook
     public init() {}
     public var colorScheme: ColorScheme { _Runtime.shared.appearance == "dark" ? .dark : .light }
     public var dynamicTypeSize: DynamicTypeSize { _Runtime.shared.dynamicType }
-    public var dismiss: DismissAction { let n = nav; return DismissAction { n?.pop() } }
+    /// Pops a pushed screen, else dismisses the enclosing sheet.
+    public var dismiss: DismissAction {
+        let n = nav, s = sheetDismiss
+        return DismissAction { if let n, n.depth > 0 { n.pop() } else if let s { s() } else { n?.pop() } }
+    }
 }
 
 /// Snapshotted when the owning view's `body` is about to run (like @State), so closures can use it after evaluation.

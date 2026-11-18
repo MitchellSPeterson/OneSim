@@ -3,7 +3,8 @@
 Real SwiftUI (`examples/swiftui-showcase/Showcase.swift`) built with `scripts/build-ios-sim.sh examples/swiftui-showcase target/ios/Showcase.app`
 and captured on a real iOS Simulator via agent-device. One `<name>.png` + `<name>.json` per state:
 home, typography, shapes, todos, todos-toggled, todos-typed, controls, controls-changed, home-dark,
-symbols, symbols-dark, keyboard-dark, keyboard-shift (recaptured 2026-11-17, see "Recapture notes" at the bottom).
+symbols, symbols-dark, keyboard-dark, keyboard-shift (recaptured 2026-11-17, see "Recapture notes" at the bottom);
+alert, alert-dark, sheet, sheet-dark, sheet-medium, sheet-medium-dark, sheet-nested, sheet-nested-dark, dialog, dialog-dark, cover, cover-dark (new 2026-11-18, see "Alert and sheet"; `controls`/`controls-changed` recaptured the same day: Controls has a second section with "Show alert" / "Show sheet").
 
 - Device: iPhone 17 Pro simulator, iOS 26.5. Screen 402 x 874 pt, scale 3 -> PNGs are 1206 x 2622 px.
 - PNG: `screenshot --pixel-density 3 --normalize-status-bar` (status bar 9:41, wifi, battery full/charging bolt; cellular shows no-service dots).
@@ -256,3 +257,100 @@ Scroll-edge model (fitted to typography-scrolled at 40pt, Typography at 337pt an
 ramp holds up to 8pt above the bar's bottom, then rises to 0.95 alpha at the screen top; a blur (sigma 1.5pt) is mixed
 in fully at the top, 0.55 at the bar's bottom, gone 7.75pt below it (`EDGE_*` in `simcore-render/src/glass.rs`).
 
+## Alert and sheet (captured 2026-11-18; Controls second section "Show alert" / "Show sheet")
+Captured on a dedicated iPhone 17 Pro / iOS 26.5 simulator ("SimCore iPhone 17 Pro"); its `home` matched `home.png` (0.01% of px differ by >24). Same procedure as above (build, install, agent-device, `--normalize-status-bar`, retake until island; dark PNGs cannot show the island).
+New states: `controls` and `controls-changed` (recaptured, now with the extra section: cells "Show alert" 16,423.33 370x52 and "Show sheet" 16,475.33 370x52, second card starts y=423.33),
+`alert` / `alert-dark` (Controls -> tap "Show alert", 3 s settle), `sheet` / `sheet-dark` (Controls -> tap "Show sheet", 4 s settle). Dark via `settings appearance dark`. Back-to-back shots were pixel-identical except the status-bar/island strip.
+In the alert PNGs the Controls screen stays visible underneath; the alert snapshot has no divider nodes: iOS 26 alerts have two separate capsule buttons side by side, no lines.
+
+### Alert (alert.json, pt x,y,w,h)
+| element | frame / value |
+|---|---|
+| alert group "Reset volume?" (card) | 41,375, 320x152; centred x=201, centre y=451 (screen centre 437 + 14); corner radius ~34 (fit from the corner profile: card edge offset 13pt at 7pt below top) |
+| title "Reset volume?" | 71,397, 260x20.33 (bold ~17pt, centred; 30 inset from card) |
+| message "Volume goes back to 0." | 71,424.67, 260x18 (~13-14pt, secondary colour, centred) |
+| Cancel button | 57,463, 140x48 (capsule r=24, hit frame; painted fill ~y 466..491 px-sampled at its text row) |
+| Reset button (destructive) | 205,463, 140x48; gap between buttons 8, inset to card 16 left/right, 16 bottom (463+48=511, card bottom 527) |
+| button dividers | none (buttons are filled capsules) |
+| dimming | whole screen incl. status area and safe areas; covered cells are reported `covered` in the snapshot |
+| card edge | 1px lighter rim (light 251,251,252 at the top edge; dark 52,52,54), a soft darker shadow just below the card (light 183-187 on dim 194; dark none visible on black) |
+
+### Sheet (sheet.json, pt)
+| element | frame / value |
+|---|---|
+| sheet top y | 62 (screen 874, so sheet is 812 tall, to the screen bottom); full width x 0..402 |
+| corner radius (top) | ~40 (fit: left edge x=27.3/14.7/6.0 at 2/8/18pt below the top -> r~38-40), only top corners rounded |
+| grabber | none (no pixel change along x=201 between y=62 and the first row at y=97) |
+| presenting screen | NOT visible scaled back: above the sheet (y<62) it is just the dim (light 194,194,198 = grouped bg 242,242,247 x 0.8; dark 0,0,0); no inset/scale of the Controls screen, no nav bar visible |
+| status bar / island | island at its usual 138.33,14 (black); status text stays on the dim |
+| collection view | 0,62, 402x812 (List, inset grouped) |
+| row "Volume is 3 of 10" | cell 16,97, 370x52 (text frame fills the cell; "3" bold, "of 10" secondary: `Text("Volume is ") + Text("3").bold() + Text(" of 10").foregroundStyle(.secondary)` style) |
+| row "Done" | cell 16,149, 370x52 (blue button text, left aligned) |
+| first row offset | 97 - 62 = 35 under the sheet top (no nav bar; the list has top section inset ~35) |
+
+### Colors (sampled from the PNGs, RGB)
+| thing | light | dark |
+|---|---|---|
+| dim overlay over the app (effective) | black alpha ~0.20 (grouped bg 242,242,247 -> 194,194,198; white row card 255 -> 204) | black alpha ~0.46 (row card 28,28,30 -> 15,15,16; bg stays 0,0,0) |
+| alert card fill | 238,238,239 (title area 236,236,239) | 22,22,23 (19,19,19 near the top) |
+| alert button fill (Cancel and Reset, same) | 209,209,210 | 47,47,48 |
+| alert title / message text | 0,0,0 / ~107,107,108 | 255 / ~162 |
+| Cancel text | 0,0,0 | 255,255,255 |
+| Reset text (destructive) | 255,56,60 | ~255,66,69 |
+| sheet background (List grouped) | 242,242,247 | 28,28,30 (#1C1C1E, elevated grouped bg, NOT black) |
+| sheet row card | 255,255,255 | 44,44,46 (#2C2C2E) |
+| area above sheet (dimmed presenter / status bar) | 194,194,198 | 0,0,0 |
+
+### Round 2 (2026-11-18): Controls second section now has 5 buttons; half sheet, nested sheet, dialog, cover
+All six earlier Controls/alert/sheet states were recaptured (background changed: the second card now holds "Show alert" 16,423.33 / "Show sheet" 475.33 / "Show half sheet" 527.33 / "Show dialog" 579.33 / "Show cover" 631.33, each 370x52; card 423.33..683.33).
+New: `sheet-medium`, `sheet-medium-dark` (Show half sheet), `sheet-nested` (half sheet -> "Open another"), `dialog`, `dialog-dark` (Show dialog), `cover` (Show cover). Always set appearance BEFORE opening the presentation:
+a popover switched to dark while open kept light styling (grey popover with black text), so `dialog-dark` and `alert-dark` were retaken after `settings appearance dark` + relaunch.
+
+#### Half sheet (`.presentationDetents([.medium, .large])` + visible drag indicator), sheet-medium.json/png
+| element | value |
+|---|---|
+| shape | NOT edge-to-edge: a floating card inset 8pt left/right: x 8..394 (w 386), y 415..866 (h ~451), 8pt gap to the screen bottom (874). Top corner radius ~36 (edge offset from the left at 1/2/4/8pt below top: 30/25/19.7/13.3 from x=8); bottom corners ~device-corner-like (card is narrower at y=850: x 11.3..390.3) |
+| sheet top y | 415 (medium detent = about 52% of 874 less the inset); presenting Controls screen stays full size behind it (NOT scaled), dimmed |
+| dim | same as sheet: black alpha ~0.20 light (242,242,247 -> 194,194,198, white card 255 -> 204); dark: bg stays 0, card 28,28,30 -> 15,15,16 |
+| fill | translucent glass: blurred list rows of the presenter show through (blurred "Show ..." labels at x~25-160). light (236,236,236) at top -> (233,233,235) lower; dark (33,33,34) -> (30,30,30). 1px lighter rim at top edge (light 250,250,252; dark 70,70,70) |
+| grabber (visual) | x 183.67..218.33 (w ~34.7), y 419.67..424.67 (h 5, capsule), 4.67 below the sheet top; light (177,177,180), dark (103,103,108) |
+| grabber (snapshot button "Sheet Grabber") | 164.51,410.23 72.98x24 (hit frame) |
+| content cards | text cell "Drag down to dismiss" 23.36,448.63 355.27x49.93; "Open another" 23.36,498.56 355.27x49.93 (370x52 at scale 0.96 = reported snapshot geometry; card visual x 24..378, y 448.5..547.6, one inset-grouped card, fill light (222,222,222)/dark ~(46,46,47)), separator at y~497.5 |
+| "Open another" text | blue (0,136,255) |
+| text runs ("Drag " + italic "down" + " to " + underlined "dismiss") | baseline y ~479.67 (ink bottom), text starts x 40.3, "down" italic (oblique, visible slant; approx x 79..118), "dismiss" underlined: underline x 141.3..196.7 (exactly the word width, 55.4pt), thickness 1.0pt (px rows 481.67-482.67), top of underline 2.0pt below the baseline, colour = text colour (0,0,0) |
+
+#### Nested sheet (sheet-nested.json/png: half sheet -> "Open another")
+| element | value |
+|---|---|
+| second sheet | standard (full) sheet: top y=72 (not 62; 10pt lower than a single presented sheet), to the screen bottom; full width; top corner radius ~38; List first row cell at y=107 (35 below top), rows "Volume is 7 of 10" 16,107 370x52 and "Done" 16,159 370x52 (note: shows 7 here, from the app's nested content) |
+| first (half) sheet | NOT visible: the dim above the second sheet (y 51..72 and the corners, x<27) is plain (194,194,198), nothing scaled-back or peeking above it; Controls also not visible |
+| dim | single level: (194,194,198), not compounded by the second sheet |
+| colors | sheet bg (242,242,247), row card (255,255,255) as the single sheet |
+
+#### Confirmation dialog (`.confirmationDialog("Volume preset", titleVisibility: .visible)` attached to the "Show dialog" Button; recaptured after moving it from the List onto the button): iOS 26 shows a POPOVER anchored to that button, not a bottom action sheet
+| element | value |
+|---|---|
+| container | popover card "Volume preset" group 138,501, 240x208.33 (visual x 138..377, y 501..709, corner radius ~40). It sits to the RIGHT of the source row (the "Show dialog" row is 16,579.33 370x52), vertically centred on neither: card spans 501..709 around the button (centre y 605) |
+| arrow | on the card's LEFT edge pointing LEFT toward the button text: tip at about (130, 605) (button/row centre y=605.3, label text ends x~124), base on the card edge x=138 |
+| title | "Volume preset" 168,523 180x20.33, bold ~17pt, left aligned (30 inset from card) |
+| message | "Pick a preset level." 168,551 180x18, ~14pt secondary (light 110,110,111; dark 161,162,162) |
+| buttons | "Mute" (destructive, red text) 154,589.33 208x48; "Max" 154,645.33 208x48; capsule fills, gap 8, inset 16 from the card sides (138 -> 154), 16 below the last button (693.33 -> 709) |
+| Cancel | NOT shown (popover style omits it; dismiss by tapping outside: snapshot element "dismiss popup" 0,0 402x874) |
+| separators | none (filled capsule buttons) |
+| dim | NONE: the Controls screen is not dimmed (white row card stays 255; dark card stays 28,28,30; bg 242,242,247 / 0). Only a soft shadow around the card (right of it, card 2 at x=370 reads 248 instead of 255 / dark 25,26,27 instead of 28,28,30) and the backdrop under the card is blurred (rows "Show half sheet" are cut by the card and hazy near it) |
+| colors light | card fill (244,245,247) top -> (242,242,245) bottom; button fill (215,216,217); Mute (255,56,60); Max and title (0,0,0) |
+| colors dark | card fill (20,23,23) top -> (16,18,17) bottom; button fill (46,49,49); Mute (255,66,69); Max and title (243,243,243) |
+| tapped source | no longer highlighted (the earlier grey "More" was the wrong anchor; now "More" is still its normal gray prominent fill) |
+
+#### Full screen cover (cover.png/json, cover-dark.png/json)
+| element | value |
+|---|---|
+| background | (255,255,255) white edge to edge, incl. under status bar and home indicator area; covers the whole app, nothing behind visible, no dim, no nav bar |
+| title "Full screen" | 115.5,405.5 171x40.67, large bold (~34pt), centred x=201 |
+| Close | borderedProminent capsule 167.67,462.33 67x34.33, fill (0,136,255), white text (255,255,255) |
+| layout | title+button stack spans y 405.5..496.7, centre y=451 = centre of the safe area (62..840), gap title->button 16 |
+| status bar | normal (dark text on white), island present |
+| cover-dark | background (0,0,0) pure black edge to edge; title (255,255,255); Close fill (0,145,255) with white text; frames identical to light |
+
+#### Nested sheet, dark (sheet-nested-dark.png/json)
+Same frames as `sheet-nested` (second sheet top y=72, first row 107, "Done" 159). Colors: sheet bg (28,28,30), row card (44,44,46); above the sheet (y<72, x outside the corners) plain (0,0,0) (dim over black unobservable); no first sheet visible. Also added the states `cover-dark` and `sheet-nested-dark` to the list above.

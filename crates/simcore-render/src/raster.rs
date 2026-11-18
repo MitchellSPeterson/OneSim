@@ -105,6 +105,39 @@ fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: 
         Glyph::Shift | Glyph::ShiftFilled | Glyph::Backspace | Glyph::Return | Glyph::Emoji | Glyph::Mic => {
             crate::chrome::draw_glyph(pm, g, c, b, xf, mask);
         }
+        Glyph::ArrowDown | Glyph::ArrowUp | Glyph::ArrowLeft => {
+            // Popover arrow: a triangle with a softened tip filling the box, base on the card's edge.
+            let mut pb = PathBuilder::new();
+            match g {
+                Glyph::ArrowDown => {
+                    pb.move_to(x, y);
+                    pb.line_to(x + w, y);
+                    pb.line_to(cx + 1.5, y + h - 1.0);
+                    pb.line_to(cx - 1.5, y + h - 1.0);
+                }
+                Glyph::ArrowUp => {
+                    pb.move_to(x, y + h);
+                    pb.line_to(x + w, y + h);
+                    pb.line_to(cx + 1.5, y + 1.0);
+                    pb.line_to(cx - 1.5, y + 1.0);
+                }
+                _ => {
+                    pb.move_to(x + w, y);
+                    pb.line_to(x + w, y + h);
+                    pb.line_to(x + 1.0, cy + 1.5);
+                    pb.line_to(x + 1.0, cy - 1.5);
+                }
+            }
+            pb.close();
+            if let Some(p) = pb.finish() {
+                // The card's soft shadow follows the notch: a few widening faint strokes stand in for a blur.
+                for k in 1..=5 {
+                    let st = Stroke { width: k as f32 * 2.4, line_join: LineJoin::Round, ..Stroke::default() };
+                    pm.stroke_path(&p, &paint(Color::rgba(0.0, 0.0, 0.0, 0.016), 1.0), &st, xf, mask);
+                }
+                pm.fill_path(&p, &paint(c, 1.0), FillRule::Winding, xf, mask);
+            }
+        }
         Glyph::Battery => {
             let col = |a: f32| Color { a: c.a * a, ..c };
             if let Some(p) = rrect(x + 0.5, y + 0.5, 24.0, h - 1.0, 3.8) {
@@ -329,7 +362,7 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
         // Liquid Glass: snapshot the backdrop before our own halo lands on it.
         let glass = n.glass.as_ref().filter(|g| g.variant != crate::glass::GlassVariant::Identity).map(|g| {
             let dark = scene.appearance == simcore_protocol::Appearance::Dark;
-            let p = crate::glass::params(g.variant, dark);
+            let p = crate::glass::spec_params(g, dark);
             let r = (n.radius as f32).min(bw / 2.0).min(bh / 2.0) * s;
             let shape = crate::glass::Shape { x: bx * s, y: by * s, w: bw * s, h: bh * s, r };
             (g, p, shape, crate::glass::snapshot(&pm, shape, s, &p), dark)
@@ -393,18 +426,27 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
             let (ox, oy) = ((bx + t.offset_x + ldx) * s, (by - (t.font.pitch - t.font.line_height).max(0.0) / 2.0 - lift) * s);
             let spec = FontSpec { size: t.font.size * s, line_height: t.font.line_height * s, pitch: t.font.pitch * s, ..t.font };
             // +2px slack so rounding differences vs layout never re-wrap.
-            let base_a = rgba[3] as u32;
-            let spans = fonts.draw(&t.text, &spec, bw * s + 2.0, rgba, (ox, oy), |x, y, w, h, c| {
+            // Styled runs carry their own color (alpha included); only the node opacity is applied on top.
+            let base_a = if t.spans.is_empty() { rgba[3] as u32 } else { (n.opacity * 255.0).round() as u32 };
+            let spans = fonts.draw(&t.text, &spec, bw * s + 2.0, rgba, (ox, oy), &t.spans, |x, y, w, h, c| {
                 // cosmic-text replaces the colour alpha with glyph coverage; reapply ours.
                 blend_rect(&mut pm, (x, y, w, h), [c[0], c[1], c[2], (c[3] as u32 * base_a / 255) as u8], mask.as_deref());
             });
-            if t.strike {
-                let th = (spec.size * 0.065).max(1.0);
-                for sp in spans {
-                    let y = oy + sp.baseline - spec.size * 0.27 - th / 2.0;
+            // Strikethrough / underline: per line, or per styled run (in the run's own color and size).
+            for sp in spans {
+                let run = sp.run.and_then(|i| t.spans.get(i));
+                let (strike, under) = (t.strike || run.is_some_and(|r| r.strike), run.is_some_and(|r| r.underline));
+                let size = run.map_or(spec.size, |r| spec.size * r.pt / t.font.pt);
+                let col = run.map_or(rgba, |r| [(r.color.r * 255.0).round() as u8, (r.color.g * 255.0).round() as u8, (r.color.b * 255.0).round() as u8, (r.color.a * n.opacity * 255.0).round() as u8]);
+                for (on, drop) in [(strike, 0.27f32), (under, -0.11)] {
+                    if !on {
+                        continue;
+                    }
+                    let th = (size * 0.065).max(1.0);
+                    let y = oy + sp.baseline - size * drop - th / 2.0;
                     if let Some(r) = Rect::from_xywh(ox + sp.x0, y, (sp.x1 - sp.x0).max(0.0), th) {
                         let mut p = Paint::default();
-                        p.set_color_rgba8(rgba[0], rgba[1], rgba[2], rgba[3]);
+                        p.set_color_rgba8(col[0], col[1], col[2], col[3]);
                         p.anti_alias = false;
                         pm.fill_rect(r, &p, Transform::identity(), mask.as_deref());
                     }
