@@ -39,16 +39,17 @@ const all = (n, pred) => { const r = []; walk(n, (v) => pred(v) && r.push(v)); r
 function session(port) {
   const host = spawn('node', [hostJs], { stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env, SIMCORE_METRO_URL: `http://localhost:${port}`, SIMCORE_VIEWPORT: `${W}x${H}`, SIMCORE_APPEARANCE: 'light', SIMCORE_HMR: '0' } });
   children.push(host);
-  const s = { tree: null, text: '', errors: [], versions: 0, laidOut: new Set(), waiters: [], host };
+  const s = { tree: null, text: '', errors: [], navs: [], versions: 0, laidOut: new Set(), waiters: [], host };
   s.send = (m) => host.stdin.write(JSON.stringify(m) + '\n');
   const check = () => { s.waiters = s.waiters.filter((w) => { if (w.pred()) { clearTimeout(w.t); w.res(); return false; } return true; }); };
   s.until = (pred, what, ms = 30000) => new Promise((res, rej) => {
-    const w = { pred, res, t: setTimeout(() => { s.waiters = s.waiters.filter((x) => x !== w); rej(new Error(`timeout waiting for ${what}; text="${s.text.slice(0, 300)}" errors=${s.errors.map((e) => e.slice(0, 300))}`)); }, ms) };
+    const w = { pred, res, t: setTimeout(() => { s.waiters = s.waiters.filter((x) => x !== w); rej(new Error(`timeout waiting for ${what}; text="${s.text.slice(0, 300)}" errors=${s.errors.map((e) => e.slice(0, 300))} navs=${JSON.stringify(s.navs)}`)); }, ms) };
     s.waiters.push(w); check();
   });
   createInterface({ input: host.stdout }).on('line', (line) => {
     const m = JSON.parse(line);
     if (m.type === 'error') s.errors.push(m.message);
+    else if (m.type === 'event' && m.name === 'navigation.changed') s.navs.push(m.detail);
     else if (m.type === 'tree') {
       s.tree = m.root; s.text = textOf(m.root); s.versions++;
       walk(m.root, (v) => { if (v.props.nativeID != null && v.props.opacity > 0 && v.props.opacity < 1) s.midFade = true; }); // an entering animation in flight
@@ -75,6 +76,8 @@ const noErrors = (s, app) => {
   const bad = s.errors.filter((e) => !ALLOWED_ERRORS.some((re) => re.test(e)));
   if (bad.length) throw new Error(`${app}: unexpected errors:\n${bad.map((e) => e.slice(0, 600)).join('\n---\n')}`);
 };
+const lastNav = (s) => s.navs[s.navs.length - 1];
+const navIs = (s, route, stack) => lastNav(s) && lastNav(s).route === route && (!stack || lastNav(s).stack.join() === stack.join());
 const SPLASH = 4280322799; // #208AEF, the splash overlay background
 
 async function tabsApp() {
@@ -97,6 +100,8 @@ async function tabsApp() {
   s.send({ type: 'select_tab', tag: +host.id, key: 'explore' });
   const selected = () => find(s.tree, (v) => v.component === 'RNSTabsHostIOS').props.navStateRequest;
   await s.until(() => /File-based routing/.test(s.text) && selected().selectedScreenKey === 'explore', 'Explore tab text + navStateRequest');
+  await s.until(() => navIs(s, '/explore'), 'navigation.changed /explore');
+  ok(`tabs: navigation.changed ${JSON.stringify(lastNav(s))}`);
   ok(`tabs: select_tab explore shows Explore (navStateRequest ${JSON.stringify(selected())})`);
   // FadeIn entering on content mounted later (Collapsible): runs through Reanimated's layout-animation path too
   s.midFade = false;
@@ -106,7 +111,8 @@ async function tabsApp() {
   ok('tabs: Collapsible FadeIn entering animates (opacity strictly between 0 and 1 seen)');
   s.send({ type: 'select_tab', tag: +host.id, index: 0 });
   await s.until(() => selected().selectedScreenKey === 'index' && /Welcome to.Expo/.test(s.text), 'back to Home');
-  ok('tabs: select_tab by index goes back to Home');
+  await s.until(() => navIs(s, '/'), 'navigation.changed /');
+  ok('tabs: select_tab by index goes back to Home (navigation.changed /)');
   noErrors(s, 'tabs');
   s.close();
 }
@@ -117,13 +123,16 @@ async function stackApp() {
   await s.until(list, 'fruit list');
   const header = () => all(s.tree, (v) => v.component === 'RNSScreenStackHeaderConfig').map((v) => v.props.title);
   if (!header().includes('Fruits')) throw new Error('header title: ' + header());
-  ok('stack: Fruits list, header title "Fruits"');
+  await s.until(() => navIs(s, '/', ['/']), 'navigation.changed / [/]');
+  ok('stack: Fruits list, header title "Fruits", navigation.changed ' + JSON.stringify(lastNav(s)));
   s.tap('Apple');
   await s.until(() => s.text.includes('You picked Apple') && header().includes('Apple'), 'detail Apple + header title');
-  ok('stack: tap Apple pushes detail, header title "Apple"');
+  await s.until(() => navIs(s, '/item/Apple', ['/', '/item/Apple']), 'navigation.changed /item/Apple');
+  ok('stack: tap Apple pushes detail, header title "Apple", navigation.changed ' + JSON.stringify(lastNav(s)));
   s.tap('Go back');
   await s.until(() => list() && all(s.tree, (v) => v.component === 'RNSScreen').length === 1, 'list after Go back');
-  ok('stack: Go back pops to the list');
+  await s.until(() => navIs(s, '/', ['/']), 'navigation.changed back to /');
+  ok('stack: Go back pops to the list, navigation.changed ' + JSON.stringify(lastNav(s)));
   s.tap('Banana');
   await s.until(() => s.text.includes('You picked Banana') && header().includes('Banana'), 'detail Banana');
   await new Promise((r) => setTimeout(r, 600)); // let the push transition finish (appear events)

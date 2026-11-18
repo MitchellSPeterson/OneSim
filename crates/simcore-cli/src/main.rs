@@ -15,8 +15,13 @@ struct Cli {
 #[derive(Subcommand)]
 #[allow(clippy::large_enum_variant)]
 enum Cmd {
-    /// Serve the JSON-lines external API on stdin/stdout (logs go to stderr).
-    Serve,
+    /// Serve the JSON-lines external API on stdin/stdout (logs go to stderr), or with `--listen` the
+    /// v2 JSON-RPC API over WebSocket (docs/api.md). No authentication: keep it on loopback.
+    Serve {
+        /// Address for the WebSocket API, e.g. 127.0.0.1:3030.
+        #[arg(long, value_name = "ADDR")]
+        listen: Option<String>,
+    },
     /// Build and run an app headlessly, applying --click/--type/--key/--scroll in command-line
     /// order, then optionally screenshotting and inspecting.
     Run {
@@ -126,7 +131,13 @@ fn main() -> Result<()> {
     let matches = Cli::command().get_matches();
     let cli = Cli::from_arg_matches(&matches)?;
     match cli.cmd {
-        Cmd::Serve => {
+        Cmd::Serve { listen: Some(addr) } => {
+            let listener = std::net::TcpListener::bind(&addr).with_context(|| format!("listen on {addr}"))?;
+            eprintln!("listening on ws://{}/", listener.local_addr()?);
+            simcore_host::serve_ws(listener, simcore_host::Server::new())?;
+            Ok(())
+        }
+        Cmd::Serve { listen: None } => {
             let stdin = std::io::stdin();
             Host::new().serve(stdin.lock(), std::io::stdout().lock())?;
             Ok(())

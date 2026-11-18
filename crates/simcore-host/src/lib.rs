@@ -4,7 +4,10 @@
 //! `"prebuilt": true` is passed or `app_path` is an executable file that is not `*.swift`.
 //! `simcore-fake-guest` (a bin of this crate) is such an executable.
 
+mod events;
+mod rpc;
 mod session;
+mod ws;
 
 use base64::Engine;
 use serde::Serialize;
@@ -15,7 +18,10 @@ use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::time::{Duration, Instant};
 
+pub use events::EventLog;
+pub use rpc::Server;
 pub use session::{device, simcore_home, Device, State, DEVICES};
+pub use ws::serve_ws;
 use session::Session;
 
 fn err(code: ErrorCode, msg: impl Into<String>) -> ApiError {
@@ -66,11 +72,18 @@ impl Host {
         Self { sessions: HashMap::new(), next_id: 1, fonts: None, greeted: false }
     }
 
-    fn get(&mut self, id: &str) -> Result<&mut Session, ApiError> {
+    pub(crate) fn get(&mut self, id: &str) -> Result<&mut Session, ApiError> {
         self.sessions.get_mut(id).ok_or_else(|| err(ErrorCode::NotFound, format!("unknown session {id}")))
     }
 
-    pub fn create_session(&mut self, mut p: CreateSessionParams) -> Result<String, ApiError> {
+    pub fn create_session(&mut self, p: CreateSessionParams) -> Result<String, ApiError> {
+        let id = format!("s{}", self.next_id);
+        self.next_id += 1;
+        self.create_session_as(id, p)
+    }
+
+    /// `create_session` with a caller-chosen id (the v2 server owns the id space).
+    pub(crate) fn create_session_as(&mut self, id: String, mut p: CreateSessionParams) -> Result<String, ApiError> {
         if p.framework == "expo" {
             p.framework = "react-native".into();
         }
@@ -92,9 +105,8 @@ impl Host {
                 return Err(err(ErrorCode::Unsupported, format!("device {d:?} (known: {})", known.join(", "))));
             }
         }
-        let id = format!("s{}", self.next_id);
-        self.next_id += 1;
-        self.sessions.insert(id.clone(), Session::new(id.clone(), p));
+        let log = EventLog::new(id.clone());
+        self.sessions.insert(id.clone(), Session::new(id.clone(), p, log));
         Ok(id)
     }
 
@@ -108,6 +120,11 @@ impl Host {
             let _ = self.scene_within(id, STARTUP_MAX);
         }
         Ok(())
+    }
+
+    /// The session's event log (v2 API).
+    pub fn events(&mut self, id: &str) -> Result<std::sync::Arc<EventLog>, ApiError> {
+        Ok(self.get(id)?.log())
     }
 
     pub fn stop_session(&mut self, id: &str) -> Result<(), ApiError> {
@@ -165,7 +182,8 @@ impl Host {
 
     /// `scene`, where an animation that keeps trees coming (layout unchanged) is waited on for `anim` at most.
     fn scene_within(&mut self, id: &str, anim: Duration) -> Result<(Scene, u64, f64), ApiError> {
-        if !self.get(id)?.is_rn() {
+        // A paused guest cannot answer: serve the last frame as is.
+        if !self.get(id)?.is_rn() || self.get(id)?.state() == State::Paused {
             return self.build(id);
         }
         let (start, deadline) = (Instant::now(), Instant::now() + SETTLE_MAX.max(anim));
@@ -401,11 +419,74 @@ impl Host {
 
     /// PNG bytes plus pixel size.
     pub fn screenshot(&mut self, id: &str) -> Result<(u32, u32, Vec<u8>), ApiError> {
-        let (scene, _, scale) = self.scene(id)?;
+        self.screenshot_sized(id, None, None, None).map(|(w, h, png, _)| (w, h, png))
+    }
+
+    /// Screenshot at a different resolution: `scale` = device pixels per point, or a target `width` /
+    /// `height` in pixels (aspect kept; both = the largest size that fits). Also returns the tree version.
+    pub fn screenshot_sized(
+        &mut self,
+        id: &str,
+        scale: Option<f64>,
+        width: Option<u32>,
+        height: Option<u32>,
+    ) -> Result<(u32, u32, Vec<u8>, u64), ApiError> {
+        let (scene, version, dev_scale) = self.scene(id)?;
+        let fit = |px: u32, pt: f64| f64::from(px) / pt;
+        let scale = match (width, height) {
+            (Some(w), Some(h)) => fit(w, scene.size.0).min(fit(h, scene.size.1)),
+            (Some(w), None) => fit(w, scene.size.0),
+            (None, Some(h)) => fit(h, scene.size.1),
+            (None, None) => scale.unwrap_or(dev_scale),
+        };
+        let px = |v: f64| (v * scale).round().max(1.0) as u32;
+        if !scale.is_finite() || scale <= 0.0 || px(scene.size.0).max(px(scene.size.1)) > 8192 {
+            return Err(err(ErrorCode::BadRequest, "screenshot size must be between 1 and 8192 pixels"));
+        }
         let fonts = self.fonts.get_or_insert_with(Fonts::new);
         let png = render_png(&scene, fonts, scale).map_err(|e| err(ErrorCode::RuntimeError, e))?;
-        let px = |v: f64| (v * scale).round().max(1.0) as u32;
-        Ok((px(scene.size.0), px(scene.size.1), png))
+        Ok((px(scene.size.0), px(scene.size.1), png, version))
+    }
+
+    /// Switch the device profile: viewport, scale and chrome follow; the guest gets the new dimensions.
+    pub fn set_device(&mut self, id: &str, name: &str) -> Result<(), ApiError> {
+        let dev = *device(name).ok_or_else(|| err(ErrorCode::Unsupported, format!("device {name:?}")))?;
+        let s = self.get(id)?;
+        s.device = dev;
+        s.viewport = dev.viewport;
+        s.scale = dev.scale;
+        s.params.device = Some(dev.name.to_string());
+        Self::push_env(s)
+    }
+
+    /// Hide the software keyboard by blurring the focused field.
+    pub fn hide_keyboard(&mut self, id: &str) -> Result<(), ApiError> {
+        let s = self.get(id)?;
+        s.require_running()?;
+        let before = s.inter.focus.take();
+        if s.is_rn() {
+            s.sync_focus(before)?;
+            self.scene(id)?;
+        }
+        Ok(())
+    }
+
+    /// React Native native-module inventory reported by the guest (empty until it has booted).
+    pub fn modules(&mut self, id: &str) -> Result<Value, ApiError> {
+        let s = self.get(id)?;
+        if !s.is_rn() {
+            return Err(err(ErrorCode::Unsupported, "native modules exist only in react-native sessions"));
+        }
+        Ok(s.modules().unwrap_or_else(|| json!([])))
+    }
+
+    pub fn simulate(&mut self, id: &str, module: String, state: Value) -> Result<(), ApiError> {
+        let s = self.get(id)?;
+        if !s.is_rn() {
+            return Err(err(ErrorCode::Unsupported, "native modules exist only in react-native sessions"));
+        }
+        s.require_running()?;
+        s.send(&HostMessage::Simulate { module, state })
     }
 
     pub fn inspect(&mut self, id: &str) -> Result<(u64, UiNode), ApiError> {

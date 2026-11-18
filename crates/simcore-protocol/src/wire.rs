@@ -19,6 +19,8 @@ pub enum GuestMessage {
     ScrollTo { tag: u64, x: ScrollTarget, y: ScrollTarget },
     /// Lifecycle event (`bundle.loaded`, `bundle.reloaded`, `bundle.error`, `refresh.applied`).
     Event { name: String, #[serde(default)] detail: serde_json::Value },
+    /// React Native native-module inventory, once after boot (same shape as the API's `modules.list`).
+    Modules { modules: serde_json::Value },
 }
 
 /// A `scroll_to` coordinate: an offset in points or the string `"end"` (max offset).
@@ -156,6 +158,8 @@ pub enum HostMessage {
         width: f64,
         height: f64,
     },
+    /// React Native: set simulated platform state of a native module (`modules.simulate`).
+    Simulate { module: String, state: serde_json::Value },
     /// React Native: tab bar item tapped (`RNSTabsHostIOS` tag, `screenKey`).
     #[serde(rename = "select_tab")]
     SelectTab { tag: u64, key: String },

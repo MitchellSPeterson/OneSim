@@ -106,11 +106,18 @@ const cfg = {
 const sendEvent = (name, detail) => send({ type: 'event', name, detail: detail || {} });
 const sendError = (message) => { log('SimCore error:', message); send({ type: 'error', message: String(message) }); };
 const reportedModules = new Set();
-function unsupported(mod, method) {
-  const msg = `SimCore: ${mod} is not supported (method: ${method})`;
-  log(msg);
+// Diagnostic for functionality SimCore does not provide: stderr every time, `error` + `module.unsupported` once per module+method.
+// Returns the Error callers throw / reject with (message = first diagnostic line).
+function unsupported(mod, method, pkg) {
+  const first = `SimCore: ${mod} is not supported.`, text = `${first}\n\nModule: ${pkg || mod}\nMethod: ${method}`;
+  log(text);
   if (env.SIMCORE_DEBUG) log(new Error().stack);
-  if (!reportedModules.has(mod)) { reportedModules.add(mod); send({ type: 'error', message: msg }); }
+  if (!reportedModules.has(`${mod}.${method}`)) {
+    reportedModules.add(`${mod}.${method}`);
+    send({ type: 'error', message: text });
+    sendEvent('module.unsupported', pkg ? { module: mod, method, package: pkg } : { module: mod, method });
+  }
+  return new Error(first);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -192,6 +199,7 @@ class Runtime {
     this.shown = new Set(); // Modal tags that got topShow
     this.blobs = new Map(); // BlobModule store: blobId -> Buffer
     this.eventHandler = null;
+    this.simQueue = [];
     this.eventPriority = 32;
     this.worklets = require('./worklets.js')(this, { node, log, sendError, unsupported }); // react-native-worklets / -reanimated natives
     this.nav = { stacks: new Map(), tabs: new Map(), providers: new Map(), headers: new Set() }; // native navigation state, see navCommit
@@ -368,6 +376,7 @@ class Runtime {
       const root = { kind: 'rn', id: String(ROOT_TAG), component: 'RootView', props: this.rootProps, children: this.rootChildren.map((c) => ser(c, ROOT_TAG)) };
       if (env.SIMCORE_DEBUG) log('emit tree', version + 1);
       send({ type: 'tree', version: ++version, root });
+      if (this.navCheck && !this.navSeen) this.navCheck();
       this.navCommit(found, after);
       after.forEach((f) => f());
       this.fireLayouts();
@@ -529,6 +538,7 @@ class Runtime {
         }
         break;
       }
+      case 'simulate': if (this.registry) this.registry.simulate(m.module, m.state); else this.simQueue.push(m); break; // before boot: applied once the registry exists
       case 'native_back': this.nativeBack(m.tag); break;
       case 'select_tab': this.selectTab(m); break;
       case 'focus': this.focus(m.tag); break;
@@ -685,119 +695,12 @@ class Runtime {
     this.dead = true;
   }
 
-  // ---- TurboModules ----
-  makeModules(bundleSource) {
-    const self = this;
+  // ---- native modules: the registry in modules.js (TurboModules, expo modules, simulated state) ----
+  makeRegistry(bundleSource) {
     const ver = /ReactNativeVersion\.major = (\d+);\s*ReactNativeVersion\.minor = (\d+);\s*ReactNativeVersion\.patch = (\d+)/.exec(bundleSource) || [0, 0, 0, 0];
-    const noop = () => {};
-    const listener = { addListener: noop, removeListeners: noop };
-    const stub = (o) => Object.assign({ getConstants: () => ({}) }, o);
-    const reportException = (d) => sendError(`${d.message}\n${(d.stack || []).map((f) => `  at ${f.methodName || '?'} (${f.file}:${f.lineNumber}:${f.column})`).join('\n')}`);
-    const modules = {
-      PlatformConstants: () => ({
-        getConstants: () => ({
-          isTesting: false, isDisableAnimations: false, reactNativeVersion: { major: +ver[1], minor: +ver[2], patch: +ver[3] },
-          forceTouchAvailable: false, osVersion: '26.5', systemName: 'iOS', interfaceIdiom: 'phone',
-        }),
-      }),
-      DeviceInfo: () => ({ getConstants: () => ({ Dimensions: self.dimensions() }) }),
-      Appearance: () => ({ getColorScheme: () => self.appearance, ...listener }),
-      SourceCode: () => ({ getConstants: () => ({ scriptURL: self.scriptURL }) }),
-      I18nManager: () => stub({
-        getConstants: () => ({ isRTL: false, doLeftAndRightSwapInRTL: true, localeIdentifier: 'en_US' }),
-        allowRTL: noop, forceRTL: noop, swapLeftAndRightInRTL: noop,
-      }),
-      // Host chrome (status bar) is the Rust host's job; calls are accepted and logged, not rendered.
-      StatusBarManager: () => ({
-        getConstants: () => ({ HEIGHT: 54, DEFAULT_BACKGROUND_COLOR: 0, STYLE: 'default' }),
-        ...listener, getHeight: (cb) => cb({ height: 54 }),
-        setStyle: (s) => log('SimCore: StatusBar.setStyle', s), setHidden: noop, setNetworkActivityIndicatorVisible: noop,
-      }),
-      ExceptionsManager: () => ({
-        reportException, reportFatalException: (m, s) => reportException({ message: m, stack: s }),
-        reportSoftException: (m) => log('SimCore soft exception:', m), updateExceptionMessage: noop, dismissRedbox: noop,
-      }),
-      AppState: () => ({ getConstants: () => ({ initialAppState: 'active' }), getCurrentAppState: (cb) => cb({ app_state: 'active' }), ...listener }),
-      SettingsManager: () => ({ getConstants: () => ({ settings: { AppleLocale: 'en_US', AppleLanguages: ['en'] } }), setValues: noop, deleteValues: noop }),
-      AccessibilityInfo: () => stub({
-        isReduceMotionEnabled: (cb) => cb(false), isReduceTransparencyEnabled: (cb) => cb(false), isBoldTextEnabled: (cb) => cb(false),
-        isGrayscaleEnabled: (cb) => cb(false), isInvertColorsEnabled: (cb) => cb(false), isDarkerSystemColorsEnabled: (cb) => cb(false),
-        isScreenReaderEnabled: (cb) => cb(false), getCurrentReduceMotionState: (cb) => cb(false), getCurrentReduceTransparencyState: (cb) => cb(false),
-        getCurrentBoldTextState: (cb) => cb(false), getCurrentGrayscaleState: (cb) => cb(false), getCurrentInvertColorsState: (cb) => cb(false),
-        getCurrentDarkerSystemColorsState: (cb) => cb(false), getCurrentPrefersCrossFadeTransitionsState: (cb) => cb(false),
-        setAccessibilityFocus: noop, announceForAccessibility: noop, ...listener,
-      }),
-      KeyboardObserver: () => listener,
-      Networking: () => self.networking(),
-      BlobModule: () => self.blobModule(),
-      FileReaderModule: () => self.fileReaderModule(),
-      LogBox: () => ({ show: noop, hide: noop }),
-      DevSettings: () => ({ reload: () => self.reload('reload'), reloadWithReason: (r) => self.reload(r), onFastRefresh: () => sendEvent('refresh.applied', {}), ...listener, setHotLoadingEnabled: noop, setIsDebuggingRemotely: noop, toggleElementInspector: noop, addMenuItem: noop, openDebugger: noop, setProfilingEnabled: noop }),
-      DevLoadingView: () => ({ showMessage: noop, hide: noop }),
-      DevMenu: () => ({ show: noop, reload: noop, setProfilingEnabled: noop, setHotLoadingEnabled: noop }),
-      RedBox: () => ({ setExtraData: noop, dismiss: noop }),
-      Timing: () => ({ createTimer: noop, deleteTimer: noop, setSendIdleEvents: noop }),
-      NativePerformanceCxx: () => ({
-        now: () => node.performance.now(), timeOrigin: () => node.performance.timeOrigin, reportMark: noop, reportMeasure: noop,
-        getMarkTime: () => undefined, clearMarks: noop, clearMeasures: noop, getEntries: () => [], getEntriesByName: () => [],
-        getEntriesByType: () => [], getEventCounts: () => [], getSimpleMemoryInfo: () => ({}), getReactNativeStartupTiming: () => ({}),
-        createObserver: () => ({}), getDroppedEntriesCount: () => 0, observe: noop, disconnect: noop, takeRecords: () => [],
-        getSupportedPerformanceEntryTypes: () => [], clearEventCountsForTesting: noop,
-      }),
-      NativeMicrotasksCxx: () => ({ queueMicrotask: (f) => node.queueMicrotask(self.guard(f)) }),
-      // Sizes are pixels (scale 1), like iOS for an unscaled image.
-      ImageLoader: () => ({
-        getConstants: () => ({}),
-        getSize: (uri) => loadImage(uri).then((i) => [i.width, i.height]),
-        getSizeWithHeaders: (uri, headers) => loadImage(uri, headers).then((i) => ({ width: i.width, height: i.height })),
-        prefetchImage: (uri) => loadImage(uri).then(() => true, () => false),
-        prefetchImageWithMetadata: (uri) => loadImage(uri).then(() => true, () => false),
-        queryCache: (uris) => Promise.resolve(Object.fromEntries(uris.filter((u) => imageDone.has(u)).map((u) => [u, 'disk']))),
-        abortRequest: noop,
-      }),
-      LinkingManager: () => ({ getInitialURL: () => Promise.resolve(null), canOpenURL: () => Promise.resolve(false), openURL: () => { unsupported('LinkingManager', 'openURL'); return Promise.reject(new Error('openURL unsupported')); }, openSettings: () => Promise.reject(new Error('unsupported')), ...listener }),
-      WebSocketModule: () => self.webSocketModule(),
-      // JS defaults apply for every flag when the native getter returns undefined.
-      NativeReactNativeFeatureFlagsCxx: () => new Proxy({}, { get: (t, p) => (typeof p === 'string' ? () => undefined : undefined) }),
-      // Portrait insets by viewport height (62/34 on the 402x874 iPhone 17 Pro); the Rust host owns the real chrome.
-      RNCSafeAreaContext: () => ({
-        getConstants: () => {
-          const insets = insetsFor(self.window.height);
-          return { initialWindowMetrics: { frame: { x: 0, y: 0, width: self.window.width, height: self.window.height }, insets, verticalCornerAdaptedInsets: insets, horizontalCornerAdaptedInsets: insets } };
-        },
-      }),
-      RNSModule: () => ({}), // react-native-screens: empty spec, presence only
-      ExpoModulesCore: () => ({ installModules: noop }),
-      ...self.worklets.modules,
-      NativeDOMCxx: () => self.domModule(),
-      EventDispatcher: () => ({}),
-    };
-    // Optional modules RN feature-detects: absent => JS falls back (JS Animated driver, no perf API, ...).
-    const absent = new Set(['NativeAnimatedModule', 'NativeAnimatedTurboModule', 'NativeCPUTime', 'ReactDevToolsRuntimeSettingsModule', 'NativeReactDevToolsSettingsManager', 'NativeAnimatedModule', 'NativeIdleCallbacksCxx', 'NativeIdleCallbacks', 'JSCExecutor', 'IntentAndroid', 'SoundManager', 'Performance', 'HeadlessJsTaskSupport', 'PerformanceObserver', 'IntersectionObserver', 'MutationObserver', 'ResizeObserver', 'FrameRateLogger', 'UIManager', 'I18nManagerAndroid']);
-    // Real iOS RN modules with platform behaviour we do not implement: every call is a loud diagnostic.
-    // Anything not listed anywhere is simply absent (null), so getEnforcing throws and the error is reported.
-    const known = new Set(['ActionSheetManager', 'AlertManager', 'Clipboard', 'ShareModule', 'PushNotificationManager', 'ImageStoreManager', 'AccessibilityManager', 'DevToolsSettingsManager', 'Vibration', 'ImageEditor']);
-    const cache = new Map();
-    return {
-      absent,
-      explicit: (name) => (modules[name] ? modules[name]() : undefined), // legacy NativeModules.X: absent = undefined
-      get(name) {
-        if (cache.has(name)) return cache.get(name);
-        let m = null;
-        if (modules[name]) m = modules[name]();
-        else if (known.has(name)) {
-          m = new Proxy({}, {
-            get: (t, p) => {
-              if (typeof p === 'symbol' || p === 'then' || p === 'toJSON') return undefined;
-              if (p === 'getConstants') return () => { unsupported(name, 'getConstants'); return {}; };
-              return () => { unsupported(name, String(p)); };
-            },
-          });
-        } else if (!absent.has(name)) log(`SimCore: TurboModule "${name}" is not available (null, as on a binary without it)`);
-        cache.set(name, m);
-        return m;
-      },
-    };
+    this.registry = require('./modules.js')(this, { node, log, sendError, sendEvent, unsupported, cfg, ver, insetsFor, loadImage, imageDone, expo: this.expoClasses() });
+    for (const m of this.simQueue.splice(0)) this.registry.simulate(m.module, m.state);
+    return this.registry;
   }
 
   // ---- Networking (Node fetch). Events are RCTDeviceEventEmitter events whose payload is the args array. ----
@@ -907,14 +810,8 @@ class Runtime {
     };
   }
 
-  // A native module whose `methods` all report "unsupported" and reject (async API) when called.
-  diagModule(name, methods) {
-    return Object.fromEntries(methods.map((m) => [m, async () => { unsupported(name, m); throw new Error(`SimCore: ${name}.${m} is not supported`); }]));
-  }
-
   // ---- expo-modules-core JSI surface (globalThis.expo) ----
-  makeExpo() {
-    const self = this;
+  expoClasses() {
     class EventEmitter {
       constructor() { this._l = new Map(); }
       addListener(n, f) { if (!this._l.has(n)) this._l.set(n, new Set()); this._l.get(n).add(f); return { remove: () => this._l.get(n)?.delete(f) }; }
@@ -927,69 +824,12 @@ class Runtime {
     class SharedObject extends EventEmitter { release() {} }
     class SharedRef extends SharedObject {}
     class NativeModule extends EventEmitter {}
-    // A native class whose every (non-SharedObject) method reports "unsupported" when called.
-    const diagClass = (mod, cls) => {
-      const C = class extends SharedObject {};
-      Object.setPrototypeOf(C.prototype, new Proxy(SharedObject.prototype, {
-        get: (t, p, r) => (p in t || typeof p === 'symbol' ? Reflect.get(t, p, r) : () => { unsupported(`expo.${mod}`, `${cls}.${String(p)}`); }),
-      }));
-      return C;
-    };
-    const defs = {
-      ExpoFetchModule: () => self.expoFetch(SharedObject),
-      ExpoAsset: () => ({ downloadAsync: async (uri) => { unsupported('expo.ExpoAsset', 'downloadAsync'); return uri; } }),
-      ExpoFontLoader: () => ({
-        getLoadedFonts: () => [], isLoaded: () => false,
-        loadAsync: async (name) => { unsupported('expo.ExpoFontLoader', `loadAsync(${name})`); },
-      }),
-      // Screen-awake is a no-op in a simulator surface; accepted, not rendered.
-      ExpoKeepAwake: () => ({ activate: async () => {}, deactivate: async () => {}, isActivated: async () => false }),
-      // expo-splash-screen: the native launch screen is not part of the SimCore surface, so hiding it has nothing to do.
-      ExpoSplashScreen: () => ({ setOptions: () => {}, hide: () => {}, hideAsync: async () => {}, preventAutoHideAsync: async () => true, internalPreventAutoHideAsync: async () => {}, internalMaybeHideAsync: async () => {} }),
-      // expo-system-ui: the root view's background colour is a prop of the tree's root node (processed colour int, like any view).
-      ExpoSystemUI: () => ({
-        setBackgroundColorAsync: async (c) => { if (c == null) delete self.rootProps.backgroundColor; else self.rootProps.backgroundColor = c; self.scheduleEmit(); },
-        getBackgroundColorAsync: async () => (self.rootProps.backgroundColor == null ? null : '#' + (self.rootProps.backgroundColor >>> 0).toString(16).padStart(8, '0').replace(/^(..)(......)$/, '$2$1')),
-      }),
-      ExpoDevice: () => ({
-        isDevice: false, brand: 'Apple', manufacturer: 'Apple', modelId: 'iPhone18,1', modelName: 'iPhone 17 Pro', deviceYearClass: 2025, totalMemory: 12 * 1024 ** 3,
-        osName: 'iOS', osVersion: '26.5', osBuildId: '23F77', osInternalBuildId: '23F77', deviceName: 'iPhone', deviceType: 1, supportedCpuArchitectures: ['arm64e', 'arm64'],
-        getDeviceTypeAsync: async () => 1, getUptimeAsync: async () => node.performance.now(), isRootedExperimentalAsync: async () => false,
-      }),
-      // expo-linking: no launch URL, so Expo Router falls back to the scheme root and lands on `index`. Opening URLs is unsupported.
-      ExpoLinking: () => ({ getLinkingURL: () => null, clearInitialURL: () => {} }),
-      ExpoWebBrowser: () => self.diagModule('ExpoWebBrowser', ['openBrowserAsync', 'dismissBrowser', 'openAuthSessionAsync', 'dismissAuthSession', 'warmUpAsync', 'coolDownAsync', 'mayInitWithUrlAsync', 'getCustomTabsSupportingBrowsers']),
-      // expo-image: ImageLoader shares the guest's image cache; the rest of the cache API is not backed by anything.
-      ExpoImage: () => ({
-        ViewPrototypes: {}, configureCache: () => {}, clearMemoryCache: async () => false, clearDiskCache: async () => false,
-        prefetch: async (urls) => (await Promise.all(urls.map((u) => loadImage(u).then(() => true, () => false)))).every(Boolean),
-        ...self.diagModule('ExpoImage', ['generateBlurhashAsync', 'generateThumbhashAsync', 'getCachePathAsync', 'writeToCacheAsync', 'readFromCacheAsync', 'loadAsync']),
-      }),
-      SymbolModule: () => ({ ViewPrototypes: {} }),
-      ExpoGlassEffect: () => ({ isLiquidGlassAvailable: true, isGlassEffectAPIAvailable: true, ViewPrototypes: {} }),
-      // expo-constants: the manifest is the same one Metro hands a real Expo client; expo-asset uses it to
-      // build dev-server asset URLs.
-      ExponentConstants: () => ({
-        manifest: self.manifest, experienceUrl: self.manifest ? `exp://${new URL(self.scriptURL).host}` : null,
-        appOwnership: null, executionEnvironment: 'bare', sessionId: cfg.session || 'simcore', installationId: 'simcore', statusBarHeight: 54,
-        systemFonts: [], isDevice: false, deviceName: 'iPhone', expoVersion: null, platform: { ios: { model: 'iPhone', systemVersion: '26.5' } },
-        getWebViewUserAgentAsync: async () => 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) SimCore',
-      }),
-    };
-    // Unknown modules are *absent* (undefined) so requireNativeModule throws / requireOptionalNativeModule is null,
-    // exactly as on a device without the module linked.
-    const modules = new Proxy({}, {
-      get: (t, name) => {
-        if (typeof name === 'symbol') return undefined;
-        if (!(name in t)) {
-          t[name] = defs[name] ? Object.assign(new NativeModule(), defs[name](), { __expo_module_name__: name }) : undefined;
-          if (!defs[name]) log(`SimCore: expo module "${name}" is not available`);
-        }
-        return t[name];
-      },
-    });
+    return (this.classes = { EventEmitter, SharedObject, SharedRef, NativeModule });
+  }
+  makeExpo() {
+    const self = this;
     return {
-      EventEmitter, SharedObject, SharedRef, NativeModule, modules,
+      ...this.classes, modules: this.registry.expoModules,
       // ExpoModulesCore reads these; "bare" matches an app without native expo modules linked.
       getViewConfig: (mod, view) => expoViewConfig(view ? `${mod}_${view}` : mod), reloadAppAsync: async () => self.reload('expo reloadAppAsync'),
       uuidv4: () => node.randomUUID(), uuidv5: (n, ns) => ns,
@@ -1046,7 +886,8 @@ class Runtime {
     } catch (e) { sendEvent('bundle.error', { message: e.message, url: bundleUrl }); return sendError(`bundle fetch failed (${bundleUrl}): ${e.message}`); }
     if (this.dead) return;
 
-    const modules = this.makeModules(src);
+    const modules = this.makeRegistry(src).turbo;
+    send({ type: 'modules', modules: this.registry.list() });
     const t = this.makeTimers();
     const sandbox = {
       ...t,
@@ -1079,9 +920,39 @@ class Runtime {
       this.guard(() => reg.runApplication(key, { rootTag: ROOT_TAG, initialProps: {}, fabric: true }))();
       sendEvent(cfg.generation ? 'bundle.reloaded' : 'bundle.loaded', { url: bundleUrl });
       if (cfg.hmr) this.setupHmr();
+      this.watchNavigation();
     } catch (e) { this.onUncaught(e); } finally {
       if (env.SIMCORE_DEBUG_EVAL) log('DEBUG', String(vm.runInThisContext(env.SIMCORE_DEBUG_EVAL)));
     }
+  }
+
+  // `navigation.changed`: Expo Router keeps one React Navigation container ref (`global-state/navigationRef`); no app change needed.
+  // Metro (dev) lets us reach its modules by path. route = pathname ("/item/Apple"), stack = pathnames of the focused stack's history.
+  // ponytail: Expo Router only; a bare React Navigation app has no global ref (add a tree-based fallback if needed).
+  watchNavigation() {
+    try {
+      const find = (suffix) => { for (const [id, m] of globalThis.__r.getModules()) if ((m.verboseName || '').endsWith(suffix)) return globalThis.__r(id); };
+      const ref = find('expo-router/build/global-state/navigationRef.js')?.navigationRef, info = find('expo-router/build/global-state/getRouteInfoFromState.js')?.getRouteInfoFromState;
+      if (!ref || !info) return;
+      let last = '';
+      const changed = this.guard(() => {
+        const root = ref.isReady() && ref.getRootState();
+        if (!root) return;
+        const chain = [];
+        for (let s = root; s; ) { chain.push(s); const r = s.routes[s.index ?? s.routes.length - 1]; s = r && r.state; }
+        const withRoutes = (level, routes) => { // the root state with chain[level]'s history cut to `routes`
+          let s = { ...chain[level], routes, index: routes.length - 1 };
+          for (let k = level - 1; k >= 0; k--) { const p = chain[k]; s = { ...p, routes: p.routes.map((r, j) => (j === p.index ? { ...r, state: s } : r)) }; }
+          return s;
+        };
+        const now = info(root), level = chain.map((s) => s.type).lastIndexOf('stack');
+        const stack = level < 0 ? [now.pathname] : chain[level].routes.map((_, i) => info(withRoutes(level, chain[level].routes.slice(0, i + 1))).pathname);
+        const detail = { route: now.pathname, params: now.params, stack }, key = JSON.stringify(detail);
+        if (key !== last) { last = key; this.navSeen = true; sendEvent('navigation.changed', detail); }
+      });
+      ref.addListener('state', changed);
+      this.navCheck = changed; // the container's first 'state' event can precede our listener: poll after commits until one event is out
+    } catch (e) { if (env.SIMCORE_DEBUG) log('SimCore: navigation watch failed:', e && e.stack); }
   }
 
   setupHmr() {
@@ -1137,11 +1008,13 @@ async function mainFetch(w, m, fetching) {
 // Main thread: protocol I/O + worker supervisor.
 function mainThread() {
   let worker = null, base = 0, last = 0, generation = -1;
+  const simulated = new Map(); // module -> merged `simulate` state, replayed into every new worker (state survives reloads)
   const out = (m) => process.stdout.write(JSON.stringify(m) + '\n');
   const start = () => {
     if (worker) worker.terminate();
     base = last; // tree versions stay monotonic across reloads
     const w = (worker = new Worker(__filename, { argv: process.argv.slice(2), stdout: false, stderr: false, workerData: { generation: ++generation } }));
+    for (const [module, state] of simulated) w.postMessage({ type: 'simulate', module, state });
     const sockets = new Map(), fetching = new Map();
     w.on('exit', () => { sockets.forEach((ws) => ws.close()); fetching.forEach((ac) => ac.abort()); fetching.clear(); });
     w.on('message', (m) => {
@@ -1172,6 +1045,7 @@ function mainThread() {
     let m; try { m = JSON.parse(line); } catch (_) { return; }
     if (m.type === 'shutdown') process.exit(0);
     else if (m.type === 'reload') start();
+    else if (m.type === 'simulate') { simulated.set(m.module, { ...simulated.get(m.module), ...m.state }); if (worker) worker.postMessage(m); }
     else if (worker) worker.postMessage(m);
   });
   rl.on('close', () => process.exit(0));

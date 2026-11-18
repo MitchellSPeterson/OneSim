@@ -1,0 +1,10 @@
+{
+  "name": "@simcore/sdk",
+  "version": "0.2.0",
+  "description": "TypeScript client for the SimCore JSON-RPC API (docs/api.md)",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "types": "./src/index.ts",
+  "engines": { "node": ">=22" },
+  "license": "MIT"
+}

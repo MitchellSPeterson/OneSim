@@ -150,6 +150,7 @@ fn run_rn() {
     let (mut text, mut log) = (String::new(), String::new());
     send(json!({"type": "hello", "protocol": 1}));
     send(json!({"type": "tree", "version": version, "root": rn_tree(count, frames, &text, &log)}));
+    send_boot_extras();
     for line in std::io::stdin().lock().lines() {
         let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line.unwrap_or_default()) else { continue };
         match msg["type"].as_str() {
@@ -169,6 +170,12 @@ fn run_rn() {
         version += 1;
         send(json!({"type": "tree", "version": version, "root": rn_tree(count, frames, &text, &log)}));
     }
+}
+
+/// A native-module inventory and a lifecycle event, like the React Native guest sends after boot.
+fn send_boot_extras() {
+    send(json!({"type": "modules", "modules": [{"name": "clipboard", "status": "simulated", "methods": ["getString"], "events": []}]}));
+    send(json!({"type": "event", "name": "bundle.loaded", "detail": {"url": "http://fake"}}));
 }
 
 fn send(v: serde_json::Value) {
@@ -194,6 +201,7 @@ fn main() {
     let (mut count, mut version) = (0u32, 1u64);
     send(json!({"type": "hello", "protocol": 1}));
     send(json!({"type": "tree", "version": version, "root": tree(count)}));
+    send_boot_extras();
     for line in std::io::stdin().lock().lines() {
         let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line.unwrap_or_default()) else { continue };
         match msg["type"].as_str() {

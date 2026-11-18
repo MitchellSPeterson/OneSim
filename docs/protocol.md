@@ -436,3 +436,11 @@ Host → guest:
 
 JS-driven push/pop needs no message. The guest spaces appear events by 350 ms
 (`SIMCORE_NAV_MS`, 0 = instant); the host does not animate transitions yet.
+
+### Milestone 4 additions (modules, simulation, v2 API)
+
+- Guest → host `{"type":"modules","modules":[{name,package,status,methods,events,permissions}]}`
+  after every (re)load; host → guest `{"type":"simulate","module","state"}`. Event lines add
+  `navigation.changed` (`{route,params,stack}`, Expo Router pathnames), `module.unsupported`,
+  `module.called`.
+- The v2 JSON-RPC/WebSocket API (`simcore serve --listen ADDR`) is specified in `docs/api.md`.

@@ -5,6 +5,8 @@ use simcore_protocol::{
     ViewNode,
 };
 pub use simcore_render::{device, Device, DEFAULT_DEVICE, DEVICES};
+use crate::events::EventLog;
+use serde_json::{json, Value};
 use simcore_render::{Effect, Interaction};
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
@@ -24,6 +26,7 @@ pub enum State {
     Created,
     Starting,
     Running,
+    Paused,
     Stopping,
     Stopped,
     Failed,
@@ -36,6 +39,7 @@ impl State {
             State::Created => "created",
             State::Starting => "starting",
             State::Running => "running",
+            State::Paused => "paused",
             State::Stopping => "stopping",
             State::Stopped => "stopped",
             State::Failed => "failed",
@@ -56,12 +60,19 @@ struct Inner {
     last_event: Option<Instant>,
     /// React Native `focus_request` / `scroll_to` messages not yet applied by the host.
     requests: Vec<GuestMessage>,
+    /// React Native native-module inventory (`modules` message), once the guest has sent it.
+    modules: Option<Value>,
+    /// The next tree is the first after load/reload: it raises `runtime.ready`.
+    ready_pending: bool,
+    /// The host is stopping the guest on purpose (its exit is not a crash).
+    stopping: bool,
+    stopped_emitted: bool,
 }
 
-#[derive(Default)]
 struct Shared {
     inner: Mutex<Inner>,
     cv: Condvar,
+    log: Arc<EventLog>,
 }
 
 impl Shared {
@@ -69,10 +80,27 @@ impl Shared {
         self.inner.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    fn new(log: Arc<EventLog>) -> Self {
+        Self { inner: Mutex::new(Inner { ready_pending: true, ..Inner::default() }), cv: Condvar::new(), log }
+    }
+
     fn push_error(&self, source: &str, message: String) {
         let mut g = self.lock();
         if g.errors.len() < MAX_ERRORS {
-            g.errors.push(SessionError { message, source: source.into() });
+            g.errors.push(SessionError { message: message.clone(), source: source.into() });
+            drop(g);
+            // Guest stderr is app/console logging, not an error event (it stays in `get_errors` like v1).
+            if source != "stderr" {
+                self.log.emit("runtime.error", json!({"message": message, "source": source}));
+            }
+        }
+    }
+
+    /// `runtime.stopped`, at most once per session.
+    fn stopped(&self, reason: &str) {
+        let mut g = self.lock();
+        if !std::mem::replace(&mut g.stopped_emitted, true) {
+            self.log.emit("runtime.stopped", json!({"reason": reason}));
         }
     }
 }
@@ -102,6 +130,7 @@ pub struct Session {
 impl Drop for Session {
     fn drop(&mut self) {
         if let Some(c) = &mut self.child {
+            signal(c, SIGCONT);
             let _ = c.kill();
             let _ = c.wait();
         }
@@ -114,6 +143,29 @@ fn is_multiline(n: &ViewNode, id: &str) -> bool {
             (n.id == id && component == "RCTMultilineTextInputView") || children.iter().any(|c| is_multiline(c, id))
         }
         _ => false,
+    }
+}
+
+#[cfg(unix)]
+const SIGSTOP: i32 = libc::SIGSTOP;
+#[cfg(unix)]
+const SIGCONT: i32 = libc::SIGCONT;
+#[cfg(not(unix))]
+const SIGSTOP: i32 = 0;
+#[cfg(not(unix))]
+const SIGCONT: i32 = 0;
+
+/// Send a stop/continue signal to the guest child (unix only; a no-op elsewhere, `pause` refuses first).
+fn signal(c: &Child, sig: i32) -> bool {
+    #[cfg(unix)]
+    {
+        // SAFETY: plain kill(2) on a pid we spawned and still own (not yet waited).
+        unsafe { libc::kill(c.id() as i32, sig) == 0 }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (c, sig);
+        false
     }
 }
 
@@ -137,7 +189,7 @@ fn is_prebuilt(p: &CreateSessionParams) -> bool {
 }
 
 impl Session {
-    pub fn new(id: String, p: CreateSessionParams) -> Self {
+    pub fn new(id: String, p: CreateSessionParams, log: Arc<EventLog>) -> Self {
         let dev = *device(p.device.as_deref().unwrap_or(DEFAULT_DEVICE)).expect("device validated by create_session");
         Self {
             id,
@@ -154,7 +206,7 @@ impl Session {
             state: State::Created,
             child: None,
             stdin: None,
-            shared: Arc::default(),
+            shared: Arc::new(Shared::new(log)),
         }
     }
 
@@ -171,15 +223,28 @@ impl Session {
         }
     }
 
+    pub fn log(&self) -> Arc<EventLog> {
+        self.shared.log.clone()
+    }
+
+    pub fn tree_version(&self) -> Option<u64> {
+        self.shared.lock().tree.as_ref().map(|t| t.0)
+    }
+
+    pub fn modules(&self) -> Option<Value> {
+        self.shared.lock().modules.clone()
+    }
+
     pub fn tree(&self) -> Option<(u64, ViewNode)> {
         self.shared.lock().tree.clone()
     }
 
     /// Record a host-side error once per distinct `(origin, message)`.
     pub fn report_once(&self, origin: &str, message: String) {
-        let mut g = self.shared.lock();
+        let g = self.shared.lock();
         if g.errors.len() < MAX_ERRORS && !g.errors.iter().any(|e| e.source == origin && e.message == message) {
-            g.errors.push(SessionError { message, source: origin.into() });
+            drop(g);
+            self.shared.push_error(origin, message);
         }
     }
 
@@ -198,12 +263,15 @@ impl Session {
         self.shared.push_error("host", e.message.clone());
         self.state = State::Failed;
         self.kill();
+        self.shared.stopped("failed");
         e
     }
 
     fn kill(&mut self) {
+        self.shared.lock().stopping = true;
         self.stdin = None;
         if let Some(mut c) = self.child.take() {
+            signal(&c, SIGCONT);
             let _ = c.kill();
             let _ = c.wait();
         }
@@ -323,7 +391,13 @@ impl Session {
                         g.tree = Some((version, root));
                         g.generation += 1;
                         g.last_event = Some(Instant::now());
+                        let first = std::mem::replace(&mut g.ready_pending, false);
                         sh.cv.notify_all();
+                        drop(g);
+                        if first {
+                            sh.log.emit("runtime.ready", json!({"treeVersion": version}));
+                        }
+                        sh.log.render_updated(version);
                     }
                     Ok(m @ (GuestMessage::FocusRequest { .. } | GuestMessage::ScrollTo { .. })) => {
                         let mut g = sh.lock();
@@ -336,13 +410,23 @@ impl Session {
                         sh.push_error("guest", format!("unexpected guest protocol version {protocol}"))
                     }
                     Ok(GuestMessage::Hello { .. }) => {}
-                    // ponytail: lifecycle events are only logged; the M4 event stream will deliver them to clients.
-                    Ok(GuestMessage::Event { name, detail }) => log::debug!("guest event {name}: {detail}"),
+                    Ok(GuestMessage::Modules { modules }) => sh.lock().modules = Some(modules),
+                    Ok(GuestMessage::Event { name, detail }) => match name.as_str() {
+                        "bundle.loaded" | "bundle.reloaded" | "bundle.error" | "refresh.applied" | "navigation.changed"
+                        | "module.unsupported" | "module.called" => sh.log.emit(&name, detail),
+                        _ => log::debug!("guest event {name}: {detail}"),
+                    },
                     Err(e) => sh.push_error("host", format!("bad guest message ({e}): {line}")),
                 }
             }
-            sh.lock().exited = true;
+            let mut g = sh.lock();
+            g.exited = true;
+            let crashed = !g.stopping && g.tree.is_some(); // no tree yet: `start` reports it as failed
             sh.cv.notify_all();
+            drop(g);
+            if crashed {
+                sh.stopped("crashed");
+            }
         });
         let sh = self.shared.clone();
         let id = self.id.clone();
@@ -507,7 +591,11 @@ impl Session {
     /// Full JS reload (React Native): returns once the reloaded app submits its first tree.
     pub fn reload(&mut self) -> Result<(), ApiError> {
         self.require_running()?;
-        let before = self.shared.lock().generation;
+        let before = {
+            let mut g = self.shared.lock();
+            g.ready_pending = true;
+            g.generation
+        };
         self.send(&HostMessage::Reload)?;
         let g = self.shared.lock();
         let (g, _) = self
@@ -521,9 +609,43 @@ impl Session {
         Ok(())
     }
 
+    /// Suspend the guest process (SIGSTOP). Input and reload are refused until `resume`.
+    pub fn pause(&mut self) -> Result<(), ApiError> {
+        if cfg!(not(unix)) {
+            return Err(err(ErrorCode::Unsupported, "runtime.pause needs a unix host"));
+        }
+        self.require_running()?;
+        let c = self.child.as_ref().ok_or_else(|| err(ErrorCode::InvalidState, "guest not running"))?;
+        if !signal(c, SIGSTOP) {
+            return Err(err(ErrorCode::RuntimeError, "cannot suspend the guest process"));
+        }
+        self.state = State::Paused;
+        self.shared.log.emit("runtime.paused", json!({}));
+        Ok(())
+    }
+
+    pub fn resume(&mut self) -> Result<(), ApiError> {
+        if cfg!(not(unix)) {
+            return Err(err(ErrorCode::Unsupported, "runtime.resume needs a unix host"));
+        }
+        if self.state != State::Paused {
+            return Err(err(ErrorCode::InvalidState, format!("session {} is {}", self.id, self.state().as_str())));
+        }
+        if let Some(c) = &self.child {
+            signal(c, SIGCONT);
+        }
+        self.state = State::Running;
+        self.shared.log.emit("runtime.resumed", json!({}));
+        Ok(())
+    }
+
     pub fn stop(&mut self) {
         if matches!(self.state, State::Stopped) {
             return;
+        }
+        self.shared.lock().stopping = true;
+        if let Some(c) = &self.child {
+            signal(c, SIGCONT); // a suspended guest could not read the shutdown message
         }
         self.state = State::Stopping;
         let _ = self.send(&HostMessage::Shutdown);
@@ -539,5 +661,6 @@ impl Session {
             let _ = c.wait();
         }
         self.state = State::Stopped;
+        self.shared.stopped("stopped");
     }
 }

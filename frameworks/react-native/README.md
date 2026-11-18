@@ -37,6 +37,17 @@ node frameworks/react-native/guest/run-standalone.mjs   # guest-only check: tap 
 
 Wire contract: `docs/protocol.md` §G.
 
+## Native-module registry
+
+All native modules (TurboModules and `expo.modules`) come from one table in
+`guest/modules.js`: name, package, status (`implemented` / `simulated` / `unsupported`),
+constants, methods, events, permissions. Simulated: clipboard (`expo-clipboard`, RN Clipboard),
+haptics (`expo-haptics`, emits `module.called`), location (`expo-location`, default Apple Park,
+`modules.simulate location`), permissions (undetermined → granted on request, or forced via
+`modules.simulate permissions`), device info, dimensions, appearance, safe areas. Unsupported
+calls print the PRD diagnostic and reject/throw (never fake success). Check:
+`node frameworks/react-native/guest/run-modules.mjs`.
+
 ## Shimmed native surface
 
 Real behavior: `RN$Bridgeless`, `RN$registerCallableModule`, Fabric UIManager core, timers /
@@ -54,7 +65,7 @@ guest main thread because RN's polyfills break Node `fetch` inside the worker), 
 BlobModule / FileReaderModule, ImageLoader (shared download cache), TextInput, ScrollView and
 Switch events, Modal `onShow`.
 
-Unsupported (diagnostic): Linking.openURL, Alert, ActionSheet, Clipboard, Share, Vibration,
+Unsupported (diagnostic): Linking.openURL, Alert, ActionSheet, Share, Vibration, expo-camera, expo-web-browser,
 push notifications, layout animations, cookies (`clearCookies` returns false).
 
 Milestone 3 (Expo Router): react-native-screens (`RNSScreenStack`/`RNSScreen`/header config, `RNSTabsHostIOS`/`RNSTabsScreenIOS`)
