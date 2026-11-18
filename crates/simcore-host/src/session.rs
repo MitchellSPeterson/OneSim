@@ -8,7 +8,7 @@ pub use simcore_render::{device, Device, DEFAULT_DEVICE, DEVICES};
 use crate::events::EventLog;
 use serde_json::{json, Value};
 use simcore_render::{Effect, Interaction};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -20,6 +20,8 @@ pub const BUILD_TIMEOUT: Duration = Duration::from_secs(300);
 pub const ACTION_TIMEOUT: Duration = Duration::from_secs(2);
 const SETTLE_TAIL: Duration = Duration::from_millis(800);
 const MAX_ERRORS: usize = 1000;
+/// Guest stderr lines kept (oldest evicted), separate from `errors` so a chatty guest can't starve real errors.
+const MAX_LOG_LINES: usize = 500;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
@@ -55,6 +57,8 @@ struct Inner {
     /// Number of trees received; lets waiters detect "a new tree arrived".
     generation: u64,
     errors: Vec<SessionError>,
+    /// Last `MAX_LOG_LINES` guest stderr lines (reported by `get_errors` with source `stderr`).
+    logs: VecDeque<SessionError>,
     exited: bool,
     /// When the last tree or guest request arrived (settling).
     last_event: Option<Instant>,
@@ -84,15 +88,28 @@ impl Shared {
         Self { inner: Mutex::new(Inner { ready_pending: true, ..Inner::default() }), cv: Condvar::new(), log }
     }
 
+    /// Wait on the condvar for one wakeup or `timeout`.
+    fn wait<'a>(&self, g: MutexGuard<'a, Inner>, timeout: Duration) -> MutexGuard<'a, Inner> {
+        self.cv.wait_timeout(g, timeout).unwrap_or_else(|e| e.into_inner()).0
+    }
+
+    /// Wait until `generation` moves past `before` (a new tree), the guest exits, or `timeout`.
+    /// Returns the guard; callers compare `g.generation` to `before`.
+    fn wait_generation<'a>(&self, g: MutexGuard<'a, Inner>, before: u64, timeout: Duration) -> MutexGuard<'a, Inner> {
+        self.cv.wait_timeout_while(g, timeout, |i| i.generation == before && !i.exited).unwrap_or_else(|e| e.into_inner()).0
+    }
+
     fn push_error(&self, source: &str, message: String) {
         let mut g = self.lock();
-        if g.errors.len() < MAX_ERRORS {
+        if source == "stderr" {
+            if g.logs.len() == MAX_LOG_LINES {
+                g.logs.pop_front();
+            }
+            g.logs.push_back(SessionError { message, source: source.into() });
+        } else if g.errors.len() < MAX_ERRORS {
             g.errors.push(SessionError { message: message.clone(), source: source.into() });
             drop(g);
-            // Guest stderr is app/console logging, not an error event (it stays in `get_errors` like v1).
-            if source != "stderr" {
-                self.log.emit("runtime.error", json!({"message": message, "source": source}));
-            }
+            self.log.emit("runtime.error", json!({"message": message, "source": source}));
         }
     }
 
@@ -249,7 +266,8 @@ impl Session {
     }
 
     pub fn errors(&self) -> Vec<SessionError> {
-        self.shared.lock().errors.clone()
+        let g = self.shared.lock();
+        g.errors.iter().chain(&g.logs).cloned().collect()
     }
 
     pub fn require_running(&self) -> Result<(), ApiError> {
@@ -304,10 +322,10 @@ impl Session {
                 drop(g);
                 return Err(self.fail(err(ErrorCode::Timeout, "guest produced no tree within 30s")));
             }
-            g = self.shared.cv.wait_timeout(g, left).unwrap_or_else(|e| e.into_inner()).0;
+            g = self.shared.wait(g, left);
         }
         if g.tree.is_none() {
-            let tail = g.errors.iter().rev().take(5).map(|e| e.message.as_str()).collect::<Vec<_>>().join("\n");
+            let tail = g.errors.iter().chain(&g.logs).rev().take(5).map(|e| e.message.as_str()).collect::<Vec<_>>().join("\n");
             drop(g);
             return Err(self.fail(err(ErrorCode::RuntimeError, format!("guest exited before first tree\n{tail}"))));
         }
@@ -455,7 +473,7 @@ impl Session {
         let frames: BTreeMap<String, [f64; 4]> = scene
             .nodes
             .iter()
-            .filter(|n| n.action.is_some())
+            .filter(|n| n.tag.is_some())
             .map(|n| (n.id.clone(), [n.bounds.x, n.bounds.y, n.bounds.w, n.bounds.h]))
             .collect();
         let changed: BTreeMap<_, _> = frames.iter().filter(|(k, v)| self.sent_frames.get(*k) != Some(*v)).map(|(k, v)| (k.clone(), *v)).collect();
@@ -488,7 +506,7 @@ impl Session {
             if left.is_zero() || g.exited {
                 return;
             }
-            g = self.shared.cv.wait_timeout(g, left).unwrap_or_else(|e| e.into_inner()).0;
+            g = self.shared.wait(g, left);
         }
     }
 
@@ -556,12 +574,7 @@ impl Session {
     pub fn send_and_wait_tree(&mut self, msg: &HostMessage) -> Result<bool, ApiError> {
         let before = self.shared.lock().generation;
         self.send(msg)?;
-        let g = self.shared.lock();
-        let (g, _) = self
-            .shared
-            .cv
-            .wait_timeout_while(g, ACTION_TIMEOUT, |i| i.generation == before && !i.exited)
-            .unwrap_or_else(|e| e.into_inner());
+        let g = self.shared.wait_generation(self.shared.lock(), before, ACTION_TIMEOUT);
         Ok(g.generation != before)
     }
 
@@ -580,7 +593,7 @@ impl Session {
             if left.is_zero() || g.exited {
                 break;
             }
-            g = self.shared.cv.wait_timeout_while(g, left, |i| i.generation == seen && !i.exited).unwrap_or_else(|e| e.into_inner()).0;
+            g = self.shared.wait_generation(g, seen, left);
             if g.generation == seen {
                 break;
             }
@@ -597,12 +610,7 @@ impl Session {
             g.generation
         };
         self.send(&HostMessage::Reload)?;
-        let g = self.shared.lock();
-        let (g, _) = self
-            .shared
-            .cv
-            .wait_timeout_while(g, LAUNCH_TIMEOUT, |i| i.generation == before && !i.exited)
-            .unwrap_or_else(|e| e.into_inner());
+        let g = self.shared.wait_generation(self.shared.lock(), before, LAUNCH_TIMEOUT);
         if g.generation == before {
             return Err(err(ErrorCode::Timeout, "no tree after reload"));
         }
@@ -662,5 +670,23 @@ impl Session {
         }
         self.state = State::Stopped;
         self.shared.stopped("stopped");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stderr_flood_does_not_evict_errors() {
+        let sh = Shared::new(EventLog::new("t"));
+        sh.push_error("guest", "real".into());
+        for i in 0..MAX_ERRORS + 10 {
+            sh.push_error("stderr", format!("log {i}"));
+        }
+        let g = sh.lock();
+        assert_eq!(g.errors.len(), 1);
+        assert_eq!(g.logs.len(), MAX_LOG_LINES);
+        assert_eq!(g.logs.back().unwrap().message, format!("log {}", MAX_ERRORS + 9));
     }
 }

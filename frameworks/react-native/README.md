@@ -16,6 +16,7 @@ Run it:
 cd examples/expo-counter && npm install && CI=1 npx expo start --port 8081 &
 simcore expo --url http://localhost:8081 --screenshot out.png
 node frameworks/react-native/guest/run-standalone.mjs   # guest-only check: tap increments the counter
+node frameworks/react-native/guest/run-components.mjs   # core components (TextInput, scroll, Image, fetch, Switch, Modal) against examples/expo-components
 ```
 
 ## Decisions

@@ -346,7 +346,7 @@ impl Host {
         let hit = scene.hit_test(ev.x, ev.y).map(|i| &scene.nodes[i]);
         let touch = |phase, n: &simcore_render::Node| HostMessage::Touch {
             phase,
-            tag: n.action.unwrap_or(0),
+            tag: n.tag.unwrap_or(0),
             x: ev.x,
             y: ev.y,
             lx: ev.x - n.bounds.x,
@@ -356,13 +356,13 @@ impl Host {
         let mut target = hit;
         match ev.kind {
             PointerKind::Down => {
-                s.touch = hit.and_then(|n| n.action);
+                s.touch = hit.and_then(|n| n.tag);
                 if let Some(n) = hit {
                     s.send(&touch(TouchPhase::Start, n))?;
                 }
             }
             PointerKind::Up => {
-                target = s.touch.take().and_then(|t| scene.nodes.iter().find(|n| n.action == Some(t))).or(hit);
+                target = s.touch.take().and_then(|t| scene.nodes.iter().find(|n| n.tag == Some(t))).or(hit);
                 if let Some(n) = target {
                     s.send_and_settle(&touch(TouchPhase::End, n))?;
                 }

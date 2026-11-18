@@ -1,7 +1,7 @@
 //! React Native layout: Fabric's flat props -> Yoga-style flexbox (via taffy) -> `Scene`.
 //!
-//! Node ids in the scene are the reactTags; every RN box has `action = Some(tag)` so the scene's
-//! hit test returns the deepest tag under a point. Content starts at y=0 (RN handles safe areas).
+//! Node ids in the scene are the reactTags; every RN box has `tag = Some(tag)` so the scene's
+//! hit test returns the deepest tag under a point (`action` stays for real native actions: nav back, tabs). Content starts at y=0 (RN handles safe areas).
 
 use super::swiftui::{add_chrome, rn_nav_bar, rn_nav_height, switch_style, NavBack, SceneParams, KNOB, SWITCH};
 use crate::scene::{Color, ImageRun, Node, Rect, Role, Scene, ScrollInfo, TextRun};
@@ -674,7 +674,7 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
     let mut n = Node::new(&it.node.id, "view");
     n.bounds = Rect { x, y, w, h };
     n.parent = Some(parent);
-    n.action = it.node.id.parse().ok();
+    n.tag = it.node.id.parse().ok();
     n.opacity = (num(p, "opacity").unwrap_or(1.0) as f32).clamp(0.0, 1.0) * parent_opacity;
     n.fill = cx.color(p.get("backgroundColor"));
     let black = Color::rgba(0.0, 0.0, 0.0, 1.0);

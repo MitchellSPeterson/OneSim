@@ -195,6 +195,8 @@ pub struct Node {
     pub role: Role,
     pub label: Option<String>,
     pub action: Option<u64>,
+    /// React Native reactTag (the node is a hit-test target and a layout-frame source); SwiftUI nodes have none.
+    pub tag: Option<u64>,
     /// Text field id: tapping focuses the node.
     pub field: Option<u64>,
     pub value: Option<String>,
@@ -231,6 +233,7 @@ impl Node {
             role: Role::None,
             label: None,
             action: None,
+            tag: None,
             field: None,
             value: None,
             focused: false,
@@ -256,7 +259,7 @@ pub struct Scene {
 }
 
 impl Scene {
-    /// Topmost node with an action under the point (points, respecting clips).
+    /// Topmost node with an action (or RN tag) under the point (points, respecting clips).
     pub fn hit_test(&self, x: f64, y: f64) -> Option<usize> {
         // Content scrolled under the navigation bar / status bar is not tappable there.
         // Under an alert or sheet only the presentation layer (and chrome drawn after it) is reachable.
@@ -280,7 +283,7 @@ impl Scene {
             if y < bar_bottom && modal.is_none() && under_bar(i) && n.kind != "keyboard" && n.role != Role::Key {
                 return false;
             }
-            (n.action.is_some() || n.field.is_some() || n.role == Role::Key) && n.bounds.contains(x, y) && self.clipped_in(i, x, y)
+            (n.action.is_some() || n.tag.is_some() || n.field.is_some() || n.role == Role::Key) && n.bounds.contains(x, y) && self.clipped_in(i, x, y)
         })
     }
 
