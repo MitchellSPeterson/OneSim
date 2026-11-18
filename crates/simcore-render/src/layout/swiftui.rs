@@ -593,7 +593,7 @@ impl Ctx<'_> {
         // SwiftUI rounds text sizes up to the device pixel.
         let w = (w * self.scale).ceil() / self.scale;
         let mut n = Node::new(id, "text");
-        n.text = Some(TextRun { text: text.to_string(), font: spec, color, strike: false, offset_x: 0.0, spans, rich: None });
+        n.text = Some(TextRun { text: text.to_string(), font: spec, color, strike: false, offset_x: 0.0, spans });
         n.role = Role::Text;
         n.label = Some(text.to_string());
         Lay::new(Size { w, h }, Some(n), vec![])
@@ -743,7 +743,7 @@ impl Ctx<'_> {
                             (s as f32, w.value())
                         });
                         let weight = r.font_weight.map(|w| w.value()).or(if r.font.is_some() { None } else { env.weight }).unwrap_or(base);
-                        Span { text: r.text.clone(), pt, weight, color: r.foreground_color.as_ref().map_or(fg, |c| self.color(c)), italic: r.italic, underline: r.underline, strike: r.strikethrough || env.strike }
+                        Span { text: r.text.clone(), pt, weight, color: r.foreground_color.as_ref().map_or(fg, |c| self.color(c)), italic: r.italic, underline: r.underline, strike: r.strikethrough || env.strike, mono: false }
                     })
                     .collect();
                 // Line metrics come from the largest run.

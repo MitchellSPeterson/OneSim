@@ -5,7 +5,7 @@
 
 use super::swiftui::{add_chrome, rn_nav_bar, rn_nav_height, switch_style, NavBack, SceneParams, KNOB, SWITCH};
 use crate::scene::{Color, ImageRun, Node, Rect, Role, Scene, ScrollInfo, TextRun};
-use crate::text::{FontSpec, Fonts, Rich, RichSpan, TextAlign};
+use crate::text::{FontSpec, Fonts, Span, TextAlign};
 use serde_json::Value;
 use simcore_protocol::{Appearance, ViewKind, ViewNode};
 use std::collections::BTreeSet;
@@ -24,7 +24,7 @@ struct Text {
     single: bool,
     /// Intrinsic size of a control (`RCTSwitch`).
     fixed: Option<(f32, f32)>,
-    rich: Option<Rich>,
+    spans: Vec<Span>,
     explicit_lh: bool,
 }
 
@@ -97,6 +97,33 @@ struct SpanStyle {
     weight: Option<u16>,
     size: Option<f32>,
     mono: bool,
+}
+
+/// Cut `text` at every styled-range edge: one run per piece, styled by the (last) range covering it, else the paragraph's.
+fn runs(text: &str, ranges: &[(usize, usize, SpanStyle)], spec: &FontSpec, base: Color) -> Vec<Span> {
+    if ranges.is_empty() {
+        return vec![];
+    }
+    let mut cuts: Vec<usize> = vec![0, text.len()];
+    cuts.extend(ranges.iter().flat_map(|r| [r.0, r.1]).filter(|c| *c <= text.len() && text.is_char_boundary(*c)));
+    cuts.sort_unstable();
+    cuts.dedup();
+    cuts.windows(2)
+        .map(|w| {
+            let st = ranges.iter().rfind(|r| r.0 <= w[0] && w[1] <= r.1).map(|r| r.2).unwrap_or_default();
+            let color = st.color.map_or(base, |c| Color::rgba(c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, base.a));
+            Span {
+                text: text[w[0]..w[1]].to_string(),
+                pt: st.size.unwrap_or(spec.pt),
+                weight: st.weight.unwrap_or(spec.weight),
+                color,
+                italic: false,
+                underline: false,
+                strike: false,
+                mono: st.mono,
+            }
+        })
+        .collect()
 }
 
 fn rn_component(n: &ViewNode) -> &str {
@@ -386,7 +413,7 @@ impl<'a> Cx<'a, '_> {
     /// Text of a paragraph subtree; `RCTVirtualText` spans that restyle color, weight, size or family become spans
     /// (inherited by nested spans).
     // ponytail: per-span fontStyle, letterSpacing and underline are ignored; `numberOfLines` always ellipsizes at the tail.
-    fn collect(&mut self, n: &ViewNode, out: &mut String, spans: &mut Vec<RichSpan>, inherit: SpanStyle, transform: Option<&str>) {
+    fn collect(&mut self, n: &ViewNode, out: &mut String, spans: &mut Vec<(usize, usize, SpanStyle)>, inherit: SpanStyle, transform: Option<&str>) {
         let ViewKind::Rn { component, props, children } = &n.kind else { return };
         let mut inh = inherit;
         let transform = props.get("textTransform").and_then(Value::as_str).or(transform);
@@ -413,7 +440,7 @@ impl<'a> Cx<'a, '_> {
                 _ => t.to_string(),
             };
             if inh != SpanStyle::default() {
-                spans.push(RichSpan { start: out.len(), end: out.len() + t.len(), color: inh.color, weight: inh.weight, size: inh.size, mono: inh.mono });
+                spans.push((out.len(), out.len() + t.len(), inh));
             }
             out.push_str(&t);
         }
@@ -429,7 +456,6 @@ impl<'a> Cx<'a, '_> {
         self.span_lh = 0.0;
         self.collect(node, &mut text, &mut spans, SpanStyle::default(), None);
         let lines = num(p, "numberOfLines").filter(|n| *n >= 1.0).map(|n| n as usize);
-        let rich = (lines.is_some() || !spans.is_empty()).then_some(Rich { spans, lines });
         let size = num(p, "fontSize").unwrap_or(14.0) as f32;
         let align = match p.get("textAlign").and_then(Value::as_str) {
             Some("center") => TextAlign::Center,
@@ -443,9 +469,12 @@ impl<'a> Cx<'a, '_> {
         if let Some(lh) = Some(self.span_lh as f64).filter(|l| *l > 0.0).or(num(p, "lineHeight").filter(|l| *l > 0.0)) {
             (spec.line_height, spec.pitch) = (lh as f32, lh as f32);
         }
+        spec.lines = lines;
+        spec.fixed_pitch = self.span_lh > 0.0 || num(p, "lineHeight").is_some_and(|l| l > 0.0);
         let color = self.color(p.get("color")).unwrap_or(Color::rgba(0.0, 0.0, 0.0, 1.0));
+        let spans = runs(&text, &spans, &spec, color);
         let strike = p.get("textDecorationLine").and_then(Value::as_str).is_some_and(|d| d.contains("line-through"));
-        Text { text, spec, color, strike, field: false, single: false, fixed: None, rich, explicit_lh: num(p, "lineHeight").is_some() }
+        Text { text, spec, color, strike, field: false, single: false, fixed: None, spans, explicit_lh: num(p, "lineHeight").is_some() }
     }
 
     fn build(&mut self, node: &'a ViewNode) -> Option<Item<'a>> {
@@ -505,7 +534,7 @@ impl<'a> Cx<'a, '_> {
                 field: false,
                 single: false,
                 fixed: Some((SWITCH.0 as f32, SWITCH.1 as f32)),
-                rich: None,
+                spans: vec![],
                 explicit_lh: false,
             };
             let id = self.tree.new_leaf_with_context(st, t).ok()?;
@@ -579,7 +608,7 @@ impl<'a> Cx<'a, '_> {
                         // Yoga measures flex bases at most as wide as the container; the screen bounds any container.
                         AvailableSpace::MaxContent => Some(w as f32),
                     });
-                    let (mw, mh) = fonts.measure_rich(&t.text, &t.spec, if t.single { None } else { wrap }, t.rich.as_ref());
+                    let (mw, mh) = fonts.measure(&t.text, &t.spec, if t.single { None } else { wrap }, &t.spans);
                     let mh = if t.field { mh.max(t.spec.line_height as f64) } else { mh };
                     // Yoga rounds text sizes up to the pixel grid.
                     let up = |x: f64| (x as f32 * scale).ceil() / scale;
@@ -808,7 +837,7 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
         n.kind = "text";
         n.role = Role::Text;
         n.label = Some(t.text.clone());
-        let run = TextRun { text: t.text, font: t.spec, color: t.color, strike: t.strike, offset_x: 0.0, spans: vec![], rich: t.rich };
+        let run = TextRun { text: t.text, font: t.spec, color: t.color, strike: t.strike, offset_x: 0.0, spans: t.spans };
         let (b, pd) = (l.border, l.padding);
         // A lineHeight below the font's own line height puts the glyphs higher in the line box than centering
         // (UIKit's maximumLineHeight drops the surplus ascent; fitted to the iOS 26.5 "Welcome to Expo" title: 0.55 x surplus).
@@ -948,7 +977,7 @@ fn tab_bar(cx: &mut Cx, t: &Tabs, host: &str, parent: usize, opacity: f32, param
         lb.parent = Some(item_i);
         lb.opacity = opacity;
         lb.inspect = false;
-        lb.text = Some(TextRun { text: tab.title.clone(), font: spec, color: label, strike: false, offset_x: 0.0, spans: vec![], rich: None });
+        lb.text = Some(TextRun { text: tab.title.clone(), font: spec, color: label, strike: false, offset_x: 0.0, spans: vec![] });
         out.push(lb);
     }
 }
@@ -1005,7 +1034,7 @@ fn text_field(cx: &mut Cx, n: &mut Node, it: &Item, me: usize, l: &taffy::Layout
     text.parent = Some(me);
     text.opacity = n.opacity;
     text.inspect = false;
-    text.text = Some(TextRun { text: shown, font: t.spec, color, strike: false, offset_x: -overflow as f32, spans: vec![], rich: None });
+    text.text = Some(TextRun { text: shown, font: t.spec, color, strike: false, offset_x: -overflow as f32, spans: vec![] });
     let mut kids = vec![text];
     if n.focused && !n.disabled {
         let (cx0, cy0) = if single {

@@ -70,10 +70,8 @@ pub struct TextRun {
     pub strike: bool,
     /// Horizontal shift of the text inside its bounds (scrolled text fields).
     pub offset_x: f32,
-    /// Styled runs of a concatenated `Text` (then `text` is their concatenation); empty otherwise.
+    /// Styled runs of a concatenated or nested `Text` (then `text` is their concatenation); empty otherwise.
     pub spans: Vec<Span>,
-    /// Per-range styles and a line cap (React Native `Text`).
-    pub rich: Option<crate::text::Rich>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

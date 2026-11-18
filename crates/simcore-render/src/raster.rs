@@ -489,16 +489,10 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
             // +2px slack so rounding differences vs layout never re-wrap.
             // Styled runs carry their own color (alpha included); only the node opacity is applied on top.
             let base_a = if t.spans.is_empty() { rgba[3] as u32 } else { (n.opacity * 255.0).round() as u32 };
-            let spans = if t.rich.is_some() {
-                fonts.draw_rich(&t.text, &spec, bw * s + 2.0, rgba, (ox, oy), t.rich.as_ref(), |x, y, w, h, c| {
-                    // cosmic-text replaces the colour alpha with glyph coverage; reapply ours.
-                    blend_rect(&mut pm, (x, y, w, h), [c[0], c[1], c[2], (c[3] as u32 * base_a / 255) as u8], mask.as_deref());
-                })
-            } else {
-                fonts.draw(&t.text, &spec, bw * s + 2.0, rgba, (ox, oy), &t.spans, |x, y, w, h, c| {
-                    blend_rect(&mut pm, (x, y, w, h), [c[0], c[1], c[2], (c[3] as u32 * base_a / 255) as u8], mask.as_deref());
-                })
-            };
+            let spans = fonts.draw(&t.text, &spec, bw * s + 2.0, rgba, (ox, oy), &t.spans, |x, y, w, h, c| {
+                // cosmic-text replaces the colour alpha with glyph coverage; reapply ours.
+                blend_rect(&mut pm, (x, y, w, h), [c[0], c[1], c[2], (c[3] as u32 * base_a / 255) as u8], mask.as_deref());
+            });
             // Strikethrough / underline: per line, or per styled run (in the run's own color and size).
             for sp in spans {
                 let run = sp.run.and_then(|i| t.spans.get(i));
