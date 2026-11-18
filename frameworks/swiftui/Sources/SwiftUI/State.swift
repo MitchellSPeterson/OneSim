@@ -123,15 +123,80 @@ public struct StateObject<ObjectType: ObservableObject>: _StateProperty {
 
 public enum ColorScheme: CaseIterable, Equatable, Hashable { case light, dark }
 
-public struct EnvironmentValues {
-    public init() {}
-    public var colorScheme: ColorScheme { _Runtime.shared.appearance == "dark" ? .dark : .light }
+public enum DynamicTypeSize: CaseIterable, Hashable, Comparable {
+    case xSmall, small, medium, large, xLarge, xxLarge, xxxLarge, accessibility1, accessibility2, accessibility3, accessibility4, accessibility5
+    public var isAccessibilitySize: Bool { self >= .accessibility1 }
+    public static func < (a: Self, b: Self) -> Bool { allCases.firstIndex(of: a)! < allCases.firstIndex(of: b)! }
 }
 
-/// Read live at `body` time, so an `environment` message followed by re-evaluation is enough.
+public struct DismissAction {
+    let action: () -> Void
+    public func callAsFunction() { action() }
+}
+
+public struct EnvironmentValues {
+    var nav: _NavState? = _Runtime.shared.nav   // captured at body time so `dismiss` still works from an action later
+    public init() {}
+    public var colorScheme: ColorScheme { _Runtime.shared.appearance == "dark" ? .dark : .light }
+    public var dynamicTypeSize: DynamicTypeSize { _Runtime.shared.dynamicType }
+    public var dismiss: DismissAction { let n = nav; return DismissAction { n?.pop() } }
+}
+
+/// Snapshotted when the owning view's `body` is about to run (like @State), so closures can use it after evaluation.
 @propertyWrapper
-public struct Environment<Value> {
+public struct Environment<Value>: _StateProperty {
+    final class Box { var values: EnvironmentValues? }
     let keyPath: KeyPath<EnvironmentValues, Value>
+    let box = Box()
     public init(_ keyPath: KeyPath<EnvironmentValues, Value>) { self.keyPath = keyPath }
-    public var wrappedValue: Value { EnvironmentValues()[keyPath: keyPath] }
+    func _bind(_ key: String) { box.values = EnvironmentValues() }
+    public var wrappedValue: Value { (box.values ?? EnvironmentValues())[keyPath: keyPath] }
+}
+
+/// Resolved from the evaluation context (`.environmentObject(_:)` on an ancestor) when `body` is about to run.
+@propertyWrapper
+public struct EnvironmentObject<ObjectType: ObservableObject>: _StateProperty {
+    final class Box { var object: ObjectType? }
+    let box = Box()
+    public init() {}
+    func _bind(_ key: String) { box.object = _Runtime.shared.envObjects[ObjectIdentifier(ObjectType.self)] as? ObjectType }
+    public var wrappedValue: ObjectType {
+        guard let o = box.object else {
+            fatalError("No ObservableObject of type \(ObjectType.self) found. A View.environmentObject(_:) for \(ObjectType.self) may be missing as an ancestor of this view.")
+        }
+        return o
+    }
+    public var projectedValue: ObservedObject<ObjectType>.Wrapper { .init(object: wrappedValue) }
+}
+
+func _withEnv<T>(_ env: [ObjectIdentifier: AnyObject], _ f: () -> T) -> T {
+    let rt = _Runtime.shared, saved = rt.envObjects
+    rt.envObjects = env
+    defer { rt.envObjects = saved }
+    return f()
+}
+
+struct _EnvObjectView<Content: View, O: ObservableObject>: View, _Flattenable {
+    typealias Body = Never
+    var body: Never { fatalError() }
+    let content: Content, object: O
+    func _children(_ path: String) -> [Node] {
+        _withEnv(_Runtime.shared.envObjects.merging([ObjectIdentifier(O.self): object]) { $1 }) { SwiftUI._children(content, path) }
+    }
+}
+
+struct _LifecycleView<Content: View>: View, _Flattenable {
+    typealias Body = Never
+    var body: Never { fatalError() }
+    let content: Content, onAppear: (() -> Void)?, onDisappear: (() -> Void)?
+    func _children(_ path: String) -> [Node] {
+        _Runtime.shared.noteLifecycle(path, onAppear, onDisappear)
+        return SwiftUI._children(content, path)
+    }
+}
+
+extension View {
+    public func environmentObject<O: ObservableObject>(_ object: O) -> some View { _EnvObjectView(content: self, object: object) }
+    public func onAppear(perform action: (() -> Void)? = nil) -> some View { _LifecycleView(content: self, onAppear: action, onDisappear: nil) }
+    public func onDisappear(perform action: (() -> Void)? = nil) -> some View { _LifecycleView(content: self, onAppear: nil, onDisappear: action) }
 }

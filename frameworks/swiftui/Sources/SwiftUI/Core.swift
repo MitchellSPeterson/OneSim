@@ -120,6 +120,27 @@ final class _Runtime {
     var disabled = false
     var buttonStyle = "automatic"
     var nav: _NavState?
+    var envObjects: [ObjectIdentifier: AnyObject] = [:]
+    var dynamicType = DynamicTypeSize.large   // from SIMCORE_DYNAMIC_TYPE at launch; the env callback carries no live updates
+    // onAppear/onDisappear: keys seen in this evaluation vs. the previous one (value = that key's onDisappear).
+    var lifecycleNow: [String: (appear: () -> Void, disappear: () -> Void)] = [:]
+    var lifecycleOrder: [String] = []
+    var appeared: [String: () -> Void] = [:]
+
+    func noteLifecycle(_ path: String, _ appear: (() -> Void)?, _ disappear: (() -> Void)?) {
+        var k = path
+        while lifecycleNow[k] != nil { k += "'" }   // several modifiers on one view
+        lifecycleNow[k] = (appear ?? {}, disappear ?? {})
+        lifecycleOrder.append(k)
+    }
+
+    /// Fire onDisappear for keys that vanished, then onAppear for new ones.
+    private func _lifecycle() {
+        let now = lifecycleNow, prev = appeared
+        appeared = now.mapValues { $0.disappear }
+        for k in prev.keys.sorted() where now[k] == nil { prev[k]?() }
+        for k in lifecycleOrder where prev[k] == nil { now[k]?.appear() }
+    }
 
     func registerField(_ f: @escaping (String) -> Void) -> UInt64 {
         defer { nextAction += 1 }
@@ -136,13 +157,26 @@ final class _Runtime {
     /// Re-evaluate the whole root, drop stale actions/state, and submit.
     func submitTree() { _pool { _submitTree() } }
 
-    private func _submitTree() {
+    private func _evaluate() -> Node {
         actions.removeAll(keepingCapacity: true)
         fields.removeAll(keepingCapacity: true)
-        disabled = false; buttonStyle = "automatic"; nav = nil
+        disabled = false; buttonStyle = "automatic"; nav = nil; envObjects = [:]
+        lifecycleNow = [:]; lifecycleOrder = []
         touched.removeAll(keepingCapacity: true)
         let tree = render()
         slots = slots.filter { touched.contains($0.key) }
+        dirty = false
+        return tree
+    }
+
+    private func _submitTree() {
+        var tree = _evaluate()
+        // Lifecycle callbacks run after the pass; if they dirtied state, re-evaluate (capped against onAppear loops).
+        for _ in 0..<8 {
+            _lifecycle()
+            guard dirty else { break }
+            tree = _evaluate()
+        }
         dirty = false
         version += 1
         #if os(WASI)
@@ -192,6 +226,7 @@ public func _simcoreRun<V: View>(_ root: V) -> Never {
     if let vp = env["SIMCORE_VIEWPORT"]?.split(separator: "x").compactMap({ Double($0) }), vp.count == 2 {
         rt.viewport = (vp[0], vp[1])
     }
+    if let d = env["SIMCORE_DYNAMIC_TYPE"], let s = DynamicTypeSize.allCases.first(where: { "\($0)" == d }) { rt.dynamicType = s }
     rt.render = { _eval(root, "0") }
     _simcoreRegisterCallbacks()
     rt.submitTree()
