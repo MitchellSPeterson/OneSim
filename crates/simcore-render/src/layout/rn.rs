@@ -5,7 +5,7 @@
 
 use super::swiftui::{add_chrome, rn_nav_bar, rn_nav_height, switch_style, NavBack, SceneParams, KNOB, SWITCH};
 use crate::scene::{Color, ImageRun, Node, Rect, Role, Scene, ScrollInfo, TextRun};
-use crate::text::{FontSpec, Fonts, Rich, Span, TextAlign};
+use crate::text::{FontSpec, Fonts, Rich, RichSpan, TextAlign};
 use serde_json::Value;
 use simcore_protocol::{Appearance, ViewKind, ViewNode};
 use std::collections::BTreeSet;
@@ -386,7 +386,7 @@ impl<'a> Cx<'a, '_> {
     /// Text of a paragraph subtree; `RCTVirtualText` spans that restyle color, weight, size or family become spans
     /// (inherited by nested spans).
     // ponytail: per-span fontStyle, letterSpacing and underline are ignored; `numberOfLines` always ellipsizes at the tail.
-    fn collect(&mut self, n: &ViewNode, out: &mut String, spans: &mut Vec<Span>, inherit: SpanStyle, transform: Option<&str>) {
+    fn collect(&mut self, n: &ViewNode, out: &mut String, spans: &mut Vec<RichSpan>, inherit: SpanStyle, transform: Option<&str>) {
         let ViewKind::Rn { component, props, children } = &n.kind else { return };
         let mut inh = inherit;
         let transform = props.get("textTransform").and_then(Value::as_str).or(transform);
@@ -413,7 +413,7 @@ impl<'a> Cx<'a, '_> {
                 _ => t.to_string(),
             };
             if inh != SpanStyle::default() {
-                spans.push(Span { start: out.len(), end: out.len() + t.len(), color: inh.color, weight: inh.weight, size: inh.size, mono: inh.mono });
+                spans.push(RichSpan { start: out.len(), end: out.len() + t.len(), color: inh.color, weight: inh.weight, size: inh.size, mono: inh.mono });
             }
             out.push_str(&t);
         }
@@ -757,7 +757,7 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
     if component.starts_with("ViewManagerAdapter_ExpoGlassEffect_GlassView") {
         let variant = if p.get("glassEffectStyle").and_then(Value::as_str) == Some("clear") { simcore_protocol::GlassVariant::Clear } else { simcore_protocol::GlassVariant::Regular };
         let tint = p.get("tintColor").and_then(|t| t.as_str().and_then(css_color).or_else(|| cx.color(Some(t))));
-        n.glass = Some(crate::glass::GlassSpec { variant, tint, interactive: p.get("isInteractive").and_then(Value::as_bool) == Some(true) });
+        n.glass = Some(crate::glass::GlassSpec { variant, tint, interactive: p.get("isInteractive").and_then(Value::as_bool) == Some(true), blur: None, mix: None, shadow: None });
         if n.radius == 0.0 {
             n.radius = h.min(w) / 2.0;
         }
@@ -808,7 +808,7 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
         n.kind = "text";
         n.role = Role::Text;
         n.label = Some(t.text.clone());
-        let run = TextRun { text: t.text, font: t.spec, color: t.color, strike: t.strike, offset_x: 0.0, rich: t.rich };
+        let run = TextRun { text: t.text, font: t.spec, color: t.color, strike: t.strike, offset_x: 0.0, spans: vec![], rich: t.rich };
         let (b, pd) = (l.border, l.padding);
         // A lineHeight below the font's own line height puts the glyphs higher in the line box than centering
         // (UIKit's maximumLineHeight drops the surplus ascent; fitted to the iOS 26.5 "Welcome to Expo" title: 0.55 x surplus).
@@ -905,7 +905,7 @@ fn tab_bar(cx: &mut Cx, t: &Tabs, host: &str, parent: usize, opacity: f32, param
     bar.parent = Some(parent);
     bar.opacity = opacity;
     bar.radius = 1.0e6;
-    bar.glass = Some(crate::glass::GlassSpec { variant: simcore_protocol::GlassVariant::Regular, tint: None, interactive: false });
+    bar.glass = Some(crate::glass::GlassSpec { variant: simcore_protocol::GlassVariant::Regular, tint: None, interactive: false, blur: None, mix: None, shadow: None });
     let bar_i = out.len();
     out.push(bar);
     let (label, accent) = if cx.dark { (Color::rgba(1.0, 1.0, 1.0, 1.0), Color::rgba(10.0 / 255.0, 132.0 / 255.0, 1.0, 1.0)) } else { (Color::rgba(0.0, 0.0, 0.0, 1.0), Color::rgba(0.0, 136.0 / 255.0, 1.0, 1.0)) };
@@ -948,7 +948,7 @@ fn tab_bar(cx: &mut Cx, t: &Tabs, host: &str, parent: usize, opacity: f32, param
         lb.parent = Some(item_i);
         lb.opacity = opacity;
         lb.inspect = false;
-        lb.text = Some(TextRun { text: tab.title.clone(), font: spec, color: label, strike: false, offset_x: 0.0, rich: None });
+        lb.text = Some(TextRun { text: tab.title.clone(), font: spec, color: label, strike: false, offset_x: 0.0, spans: vec![], rich: None });
         out.push(lb);
     }
 }
@@ -995,7 +995,7 @@ fn text_field(cx: &mut Cx, n: &mut Node, it: &Item, me: usize, l: &taffy::Layout
     let lh = t.spec.line_height as f64;
     let single = t.single;
     let shown = t.text.clone();
-    let (tw, th) = cx.fonts.measure(&shown, &t.spec, if single { None } else { Some(cw as f32) });
+    let (tw, th) = cx.fonts.measure(&shown, &t.spec, if single { None } else { Some(cw as f32) }, &[]);
     let tw = if empty { 0.0 } else { tw };
     let overflow = if single { (tw - cw).max(0.0) } else { 0.0 };
     let ty = if single { iy + (ch - lh) / 2.0 } else { iy };
@@ -1005,7 +1005,7 @@ fn text_field(cx: &mut Cx, n: &mut Node, it: &Item, me: usize, l: &taffy::Layout
     text.parent = Some(me);
     text.opacity = n.opacity;
     text.inspect = false;
-    text.text = Some(TextRun { text: shown, font: t.spec, color, strike: false, offset_x: -overflow as f32, rich: None });
+    text.text = Some(TextRun { text: shown, font: t.spec, color, strike: false, offset_x: -overflow as f32, spans: vec![], rich: None });
     let mut kids = vec![text];
     if n.focused && !n.disabled {
         let (cx0, cy0) = if single {
@@ -1017,7 +1017,7 @@ fn text_field(cx: &mut Cx, n: &mut Node, it: &Item, me: usize, l: &taffy::Layout
             ((start + tw - overflow).min(cw - 2.0) + 1.0, ty)
         } else {
             let last = value.rsplit('\n').next().unwrap_or("");
-            let lw = if last.is_empty() { 0.0 } else { cx.fonts.measure(last, &t.spec, None).0 };
+            let lw = if last.is_empty() { 0.0 } else { cx.fonts.measure(last, &t.spec, None, &[]).0 };
             (lw.min(cw - 2.0) + 1.0, ty + if empty { 0.0 } else { (th - lh).max(0.0) })
         };
         let mut c = Node::new(format!("{}#caret", it.node.id), "caret");
@@ -1069,6 +1069,7 @@ mod tests {
             overscroll: false,
             status_bar: true,
             chrome: Default::default(),
+            sheets: &HashMap::new(),
         };
         let scene = build_scene(&tree, &params, &mut Fonts::new());
         assert!(scene.notes.is_empty(), "{:?}", scene.notes);
@@ -1113,7 +1114,7 @@ mod tests {
         let scroll = HashMap::new();
         let params = SceneParams {
             viewport: (402.0, 874.0), device: dev, scale: 3.0, appearance: Appearance::Light, dynamic_type: Default::default(),
-            scroll: &scroll, focus: Some("2"), overscroll: false, status_bar: true, chrome: crate::ChromeParams { keyboard: true, shift: false },
+            scroll: &scroll, focus: Some("2"), overscroll: false, status_bar: true, chrome: crate::ChromeParams { keyboard: true, shift: false }, sheets: &HashMap::new(),
         };
         let scene = build_scene(&tree, &params, &mut Fonts::new());
         assert!(scene.notes.is_empty(), "{:?}", scene.notes);
@@ -1158,7 +1159,7 @@ mod tests {
         let scroll = HashMap::new();
         let params = SceneParams {
             viewport: (402.0, 874.0), device: dev, scale: 3.0, appearance: Appearance::Light, dynamic_type: Default::default(),
-            scroll: &scroll, focus: None, overscroll: false, status_bar: true, chrome: Default::default(),
+            scroll: &scroll, focus: None, overscroll: false, status_bar: true, chrome: Default::default(), sheets: &HashMap::new(),
         };
         let scene = build_scene(&tree, &params, &mut Fonts::new());
         assert!(scene.notes.is_empty(), "{:?}", scene.notes);

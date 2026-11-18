@@ -9,9 +9,9 @@
 use crate::device::Device;
 use crate::scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, Shadow, SymbolRun, TextRun};
 use crate::symbols::{self, SymbolSpec};
-use crate::text::{FontSpec, Fonts, TextAlign};
+use crate::text::{FontSpec, Fonts, Span, TextAlign};
 use simcore_protocol::{
-    Alignment, Appearance, ButtonStyle, DynamicTypeSize, GlassShapeKind, GlassVariant, ContentMode, DisplayMode, Font, ImageScale, ListStyle, Modifier, Section, Semantic, ShapeKind, Stroke,
+    Alignment, Appearance, ButtonStyle, Detent, Layer, DynamicTypeSize, GlassShapeKind, GlassVariant, ContentMode, DisplayMode, Font, ImageScale, ListStyle, Modifier, Section, Semantic, ShapeKind, Stroke,
     ViewKind, ViewNode,
 };
 use std::cmp::Ordering;
@@ -22,6 +22,75 @@ const DEFAULT_SPACING: f64 = 8.0;
 /// Radius that always clamps to a capsule / circle.
 const PILL: f64 = 1.0e6;
 
+// Presentation layer (alert / sheet). Estimated from iOS 26 behavior, to be tuned against the simulator
+// references (`alert`, `alert-dark`, `sheet`, `sheet-dark` in tests/fixtures/showcase-ios).
+/// Black dimming over the presenting screen (light, dark): measured on the simulator.
+const ALERT_SCRIM: (f32, f32) = (0.20, 0.46);
+const SHEET_SCRIM: (f32, f32) = (0.20, 0.46);
+const ALERT_W: f64 = 320.0;
+const ALERT_RADIUS: f64 = 34.0;
+/// Card center sits this far below the screen center.
+const ALERT_DY: f64 = 14.0;
+/// Text side inset, title top, gaps, button metrics.
+const ALERT_TEXT_PAD: f64 = 30.0;
+const ALERT_TOP: f64 = 22.0;
+const ALERT_TITLE_MESSAGE_GAP: f64 = 7.33;
+const ALERT_TEXT_BUTTON_GAP: f64 = 20.33;
+const ALERT_BTN_H: f64 = 48.0;
+const ALERT_BTN_GAP: f64 = 8.0;
+const ALERT_BTN_PAD: f64 = 16.0;
+/// Alert message size (pt, scales with nothing: measured 18pt line).
+const ALERT_MESSAGE_PT: f32 = 15.0;
+/// Button fill (light, dark) and gray the presenter's prominent buttons turn while an alert is up.
+// Alert message: iOS draws a vibrant gray, darker than .secondary over the card (sampled from alert(-dark).png).
+const ALERT_MESSAGE_FG: ((u8, u8, u8), (u8, u8, u8)) = ((106, 107, 108), (162, 162, 162));
+const ALERT_BTN_FILL: ((u8, u8, u8), (u8, u8, u8)) = ((209, 209, 210), (47, 47, 48));
+const ALERT_DESAT: (u8, u8) = (160, 115);
+/// Confirmation popover (measured on the simulator).
+/// Glass (mul, add) of the popover on a light backdrop, and its wide soft shadow (alpha, sigma, dy).
+const POPOVER_GLASS: (f32, f32) = (0.196, 0.76);
+const POPOVER_SHADOW: (f32, f32, f32) = (0.16, 40.0, 12.0);
+/// Glass (mul, add) of a floating sheet (light, dark).
+const SHEET_GLASS: ((f32, f32), (f32, f32)) = ((0.43, 0.585), (0.35, 0.118));
+const POPOVER_W: f64 = 240.0;
+const POPOVER_RADIUS: f64 = 40.0;
+const POPOVER_ARROW_W: f64 = 30.0;
+const POPOVER_ARROW_H: f64 = 12.5;
+/// Arrow tip sits this far inside the anchor.
+const POPOVER_TIP_INSET: f64 = 5.0;
+const POPOVER_MARGIN: f64 = 8.0;
+/// Length of the arrow when the popover sits beside its anchor.
+const POPOVER_SIDE_ARROW: f64 = 12.5;
+const POPOVER_BTN_FILL: ((u8, u8, u8), (u8, u8, u8)) = ((214, 214, 215), (48, 49, 49));
+const POPOVER_ARROW: ((u8, u8, u8), (u8, u8, u8)) = ((242, 242, 244), (17, 20, 18));
+/// Medium detent height as a fraction of the screen (floating card top at y 415 on 874).
+const SHEET_MEDIUM: f64 = 0.525;
+/// A sheet below its large detent floats: inset from the sides and bottom, glass fill.
+const SHEET_FLOAT_INSET: f64 = 8.0;
+const SHEET_FLOAT_RADIUS: f64 = 36.0;
+/// White alpha (light, dark) of the back button's disc while a sheet is up (measured: 195 on 194, 13 on 0).
+const BACK_FLAT: (f32, f32) = (0.017, 0.05);
+/// A floating sheet shows the large-sheet layout (402 wide) scaled by this, about its top center (the card is 386 wide).
+const SHEET_FLOAT_SCALE: f64 = 0.96;
+/// Inset-grouped card color inside a floating sheet (light, dark).
+const FLOAT_CARD: ((u8, u8, u8), (u8, u8, u8)) = ((222, 222, 222), (46, 46, 47));
+/// Row separator inside a floating sheet's card (light, dark).
+const FLOAT_SEP: ((u8, u8, u8), (u8, u8, u8)) = ((189, 189, 189), (74, 74, 76));
+/// A sheet presented from a sheet sits this much lower per level.
+const SHEET_STACK_STEP: f64 = 10.0;
+/// Grabber colors (light, dark).
+const GRABBER_FG: ((u8, u8, u8), (u8, u8, u8)) = ((177, 177, 180), (103, 103, 108));
+/// Drag indicator: size and distance from the sheet's top.
+const GRABBER: (f64, f64) = (34.7, 5.0);
+const GRABBER_Y: f64 = 4.67;
+/// Gap between the safe-area top and the sheet's top edge (large detent).
+const SHEET_TOP_GAP: f64 = 0.0;
+const SHEET_RADIUS: f64 = 40.0;
+/// Backdrop blur (sigma, pt) under floating sheets, alert and dialog glass.
+const PRESENT_BLUR: f32 = 12.0;
+/// Space above the sheet content (a list starts this far below the sheet's top edge).
+const SHEET_CONTENT_TOP: f64 = 35.0;
+
 // iOS 26 measurements (points).
 const ROW_MIN_H: f64 = 52.0;
 const ROW_VPAD: f64 = 10.0;
@@ -29,6 +98,8 @@ const ROW_VPAD: f64 = 10.0;
 const ROW_VPAD_BORDERED: f64 = 15.0;
 const CARD_RADIUS: f64 = 26.0;
 const SECTION_GAP: f64 = 17.7;
+/// Extra gap above a header-less section that follows another (35pt in total).
+const HEADERLESS_EXTRA_GAP: f64 = 17.3;
 const HEADER_PAD: f64 = 20.0;
 const NAV_INLINE_H: f64 = 54.0;
 /// Scroll distance over which the inline title fades in as the large title finishes collapsing.
@@ -43,6 +114,19 @@ const LABEL_ICON_COL: f64 = 24.0;
 const LABEL_ROW_GAP: f64 = 16.0;
 /// Icon-to-title gap of a `Label` outside a list (not measured).
 const LABEL_GAP: f64 = 8.0;
+
+/// Screen geometry shared by the root and the presentation layers.
+#[derive(Clone, Copy)]
+struct Geo {
+    w: f64,
+    h: f64,
+    safe_top: f64,
+    /// Bottom inset including the keyboard (the root avoids it).
+    safe_bottom: f64,
+    /// Device bottom inset (presented content ignores the keyboard).
+    dev_bottom: f64,
+    body: f32,
+}
 
 #[derive(Clone, Copy)]
 struct Prop {
@@ -150,6 +234,14 @@ struct Ctx<'a> {
     memo: HashMap<(usize, u64, u64), Lay>,
     /// Symbols that fell back to a placeholder.
     unsupported: BTreeSet<String>,
+    /// Elevated grouped colors (content of a sheet in dark mode).
+    elevated: bool,
+    /// Inside a floating (non-large) sheet: lists are transparent over its glass.
+    floating: bool,
+    /// An alert is up: prominent tints in the presenter turn gray.
+    desat: bool,
+    /// A sheet is up over this screen: its back button loses the glass circle (alerts keep it).
+    sheet_up: bool,
 }
 
 /// Fill `sw` as an iOS switch track (role, value, fill, disabled dimming; `fill` overrides the state's default color) and return its knob node
@@ -185,6 +277,8 @@ pub struct SceneParams<'a> {
     pub dynamic_type: DynamicTypeSize,
     /// Scroll offsets keyed by node id.
     pub scroll: &'a HashMap<String, (f64, f64)>,
+    /// Detent / drag position of sheets by layer id.
+    pub sheets: &'a HashMap<String, crate::SheetPos>,
     /// Node id of the focused text field.
     pub focus: Option<&'a str>,
     /// Let offsets past the edges show (rubber band) instead of clamping them: only while
@@ -206,6 +300,10 @@ fn ctx<'a>(params: &'a SceneParams, fonts: &'a mut Fonts) -> Ctx<'a> {
         focus: params.focus,
         memo: HashMap::new(),
         unsupported: BTreeSet::new(),
+        elevated: false,
+        floating: false,
+        desat: false,
+        sheet_up: false,
     }
 }
 
@@ -252,17 +350,44 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     screen.bounds = Rect { x: 0.0, y: 0.0, w, h };
     screen.fill = Some(cx.semantic(Semantic::Background));
     let mut nodes = vec![screen];
-    let full_bleed = matches!(root.kind, ViewKind::Navigation { .. } | ViewKind::List { .. } | ViewKind::Scroll { .. });
-    if full_bleed {
-        let env = Env { safe_top, bottom_inset: safe_bottom, size: body, ..Env::new() };
-        let lay = cx.view(root, Prop { w: Some(w), h: Some(h) }, env);
+    let (layers, root): (&[Layer], &ViewNode) = match &root.kind {
+        ViewKind::Presentation { content, layers } => (layers, &**content),
+        _ => (&[], root),
+    };
+    cx.desat = !layers.is_empty();
+    cx.sheet_up = layers.iter().any(|l| matches!(l, Layer::Sheet { .. }));
+    let geo = Geo { w, h, safe_top, safe_bottom, dev_bottom, body };
+    let lay = cx.place_root(root, &geo);
+    flatten(lay, 0.0, 0.0, Some(0), 1.0, &mut nodes);
+    for (i, layer) in layers.iter().enumerate() {
+        let id = format!("layer{i}");
+        // Whatever lies under a higher layer is desaturated; a layer's own content is not.
+        cx.desat = i + 1 < layers.len();
+        cx.sheet_up = layers[i + 1..].iter().any(|l| matches!(l, Layer::Sheet { .. }));
+        let lay = match layer {
+            Layer::Sheet { content, detents, drag_indicator, dismiss } => {
+                cx.sheet(&id, content, detents, *drag_indicator, *dismiss, params.sheets.get(&id).copied().unwrap_or_default(), layers[..i].iter().filter(|l| matches!(l, Layer::Sheet { .. })).count(), &geo)
+            }
+            Layer::Cover { content } => cx.cover(content, &geo),
+            Layer::Alert { title, message, actions } => cx.alert(title, message.as_deref(), actions, &geo),
+            Layer::Dialog { title, title_visible, message, actions, anchor, dismiss } => {
+                // The popover points at the anchor's label (its first text), not the whole row.
+                let rect = anchor.as_ref().and_then(|a| nodes.iter().position(|n| &n.id == a)).map(|i| {
+                    let under = |mut j: usize| loop {
+                        if j == i {
+                            return true;
+                        }
+                        match nodes[j].parent {
+                            Some(p) => j = p,
+                            None => return false,
+                        }
+                    };
+                    nodes.iter().enumerate().skip(i).find(|(j, n)| n.text.is_some() && under(*j)).map_or(nodes[i].bounds, |(_, n)| n.bounds)
+                });
+                cx.popover(title_visible.then_some(title.as_str()), message.as_deref(), actions, rect, *dismiss, &geo)
+            }
+        };
         flatten(lay, 0.0, 0.0, Some(0), 1.0, &mut nodes);
-    } else {
-        // Root view is centered in the safe area.
-        let sh = (h - safe_top - safe_bottom).max(0.0);
-        let lay = cx.view(root, Prop { w: Some(w), h: Some(sh) }, Env { size: body, ..Env::new() });
-        let (x, y) = ((w - lay.size.w) / 2.0, safe_top + (sh - lay.size.h) / 2.0);
-        flatten(lay, x, y, Some(0), 1.0, &mut nodes);
     }
     if params.status_bar {
         let lay = cx.status_bar(w, params.device);
@@ -313,7 +438,7 @@ fn v_frac(a: Alignment) -> f64 {
 
 fn first_text(v: &ViewNode) -> Option<String> {
     match &v.kind {
-        ViewKind::Text { text } => Some(text.clone()),
+        ViewKind::Text { text, .. } => Some(text.clone()),
         ViewKind::VStack { children, .. } | ViewKind::HStack { children, .. } | ViewKind::ZStack { children, .. } => {
             children.iter().find_map(first_text)
         }
@@ -379,6 +504,15 @@ fn is_scroller(v: &ViewNode) -> bool {
     matches!(v.kind, ViewKind::List { .. } | ViewKind::Scroll { .. })
 }
 
+/// A corner radius scaled by `k` (pill/circle radii stay pills).
+fn scaled_radius(x: f64, k: f64) -> f64 {
+    if x >= PILL / 2.0 {
+        x
+    } else {
+        x * k
+    }
+}
+
 fn rgba(r: u8, g: u8, b: u8, a: f32) -> Color {
     Color::rgba(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, a)
 }
@@ -406,15 +540,17 @@ impl Ctx<'_> {
             Semantic::Background => rgba(255, 255, 255, 1.0),
             Semantic::Separator if d => rgba(56, 56, 59, 1.0),
             Semantic::Separator => rgba(232, 232, 232, 1.0),
+            Semantic::GroupedBackground if d && self.elevated => rgba(28, 28, 30, 1.0),
             Semantic::GroupedBackground if d => rgba(0, 0, 0, 1.0),
             Semantic::GroupedBackground => rgba(242, 242, 247, 1.0),
+            Semantic::SecondaryGroupedBackground if d && self.elevated => rgba(44, 44, 46, 1.0),
             Semantic::SecondaryGroupedBackground if d => rgba(28, 28, 30, 1.0),
             Semantic::SecondaryGroupedBackground => rgba(255, 255, 255, 1.0),
         }
     }
 
     fn glass_spec(&self, variant: GlassVariant, tint: Option<&simcore_protocol::Color>, interactive: bool) -> crate::glass::GlassSpec {
-        crate::glass::GlassSpec { variant, tint: tint.map(|c| self.color(c)), interactive }
+        crate::glass::GlassSpec { variant, tint: tint.map(|c| self.color(c)), interactive, blur: None, mix: None, shadow: None }
     }
 
     /// Neutral control fill (systemFill-like) of the given strength.
@@ -448,11 +584,16 @@ impl Ctx<'_> {
 
     /// A text leaf with an explicit font.
     fn text_lay(&mut self, id: &str, text: &str, spec: FontSpec, color: Color, wrap: Option<f32>) -> Lay {
-        let (w, h) = self.fonts.measure(text, &spec, wrap);
+        self.text_lay_runs(id, text, spec, color, wrap, vec![])
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn text_lay_runs(&mut self, id: &str, text: &str, spec: FontSpec, color: Color, wrap: Option<f32>, spans: Vec<Span>) -> Lay {
+        let (w, h) = self.fonts.measure(text, &spec, wrap, &spans);
         // SwiftUI rounds text sizes up to the device pixel.
         let w = (w * self.scale).ceil() / self.scale;
         let mut n = Node::new(id, "text");
-        n.text = Some(TextRun { text: text.to_string(), font: spec, color, strike: false, offset_x: 0.0, rich: None });
+        n.text = Some(TextRun { text: text.to_string(), font: spec, color, strike: false, offset_x: 0.0, spans, rich: None });
         n.role = Role::Text;
         n.label = Some(text.to_string());
         Lay::new(Size { w, h }, Some(n), vec![])
@@ -546,13 +687,7 @@ impl Ctx<'_> {
                 Lay::new(inner.size, Some(n), vec![(0.0, 0.0, inner)])
             }
             Modifier::Font(f) => {
-                let (size, weight) = match f {
-                    Font::Style { style, weight } => {
-                        let (_, w) = style.spec();
-                        (style.size_at(self.dts), weight.unwrap_or(w))
-                    }
-                    Font::System { size, weight } => (*size, *weight),
-                };
+                let (size, weight) = self.font_size_weight(f);
                 self.mods(v, rest, p, Env { size: size as f32, base_weight: weight.value(), ..env })
             }
             Modifier::FontWeight(w) => {
@@ -585,14 +720,37 @@ impl Ctx<'_> {
         }
     }
 
+    /// Point size (at the current Dynamic Type size) and weight of a `Font`.
+    fn font_size_weight(&self, f: &Font) -> (f64, simcore_protocol::Weight) {
+        match f {
+            Font::Style { style, weight } => (style.size_at(self.dts), weight.unwrap_or(style.spec().1)),
+            Font::System { size, weight } => (*size, *weight),
+        }
+    }
+
     fn base(&mut self, v: &ViewNode, p: Prop, env: Env) -> Lay {
         let fg = env.fg.unwrap_or_else(|| self.semantic(Semantic::Primary));
         let child_env = Env { axis: None, ..env };
         match &v.kind {
-            ViewKind::Text { text } => {
+            ViewKind::Text { text, runs } => {
                 let wrap = p.w.filter(|w| w.is_finite()).map(|w| w.max(1.0) as f32);
-                let spec = self.spec(&env);
-                let mut l = self.text_lay(&v.id, text, spec, fg, wrap);
+                let mut spec = self.spec(&env);
+                let spans: Vec<Span> = runs
+                    .iter()
+                    .map(|r| {
+                        let (pt, base) = r.font.as_ref().map_or((env.size, env.base_weight), |f| {
+                            let (s, w) = self.font_size_weight(f);
+                            (s as f32, w.value())
+                        });
+                        let weight = r.font_weight.map(|w| w.value()).or(if r.font.is_some() { None } else { env.weight }).unwrap_or(base);
+                        Span { text: r.text.clone(), pt, weight, color: r.foreground_color.as_ref().map_or(fg, |c| self.color(c)), italic: r.italic, underline: r.underline, strike: r.strikethrough || env.strike }
+                    })
+                    .collect();
+                // Line metrics come from the largest run.
+                if let Some(big) = spans.iter().max_by(|a, b| a.pt.total_cmp(&b.pt)) {
+                    spec = FontSpec::new(big.pt, self.line_h(big.pt), big.weight, env.align);
+                }
+                let mut l = self.text_lay_runs(&v.id, text, spec, fg, wrap, spans);
                 if let Some(t) = l.node.as_mut().and_then(|n| n.text.as_mut()) {
                     t.strike = env.strike;
                 }
@@ -626,7 +784,7 @@ impl Ctx<'_> {
                 };
                 Lay::new(size, Some(Node::new(&v.id, "spacer")), vec![])
             }
-            ViewKind::Button { action, label, style, disabled } => self.button(v, *action, label, *style, *disabled, p, env),
+            ViewKind::Button { action, label, style, disabled, .. } => self.button(v, *action, label, *style, *disabled, p, env),
             ViewKind::Color { color } => {
                 let mut n = Node::new(&v.id, "color");
                 n.fill = Some(self.color(color));
@@ -672,6 +830,8 @@ impl Ctx<'_> {
                 Lay::new(size, Some(n), vec![])
             }
             ViewKind::Empty | ViewKind::Rn { .. } => Lay::new(Size::default(), Some(Node::new(&v.id, "empty")), vec![]),
+            // Only the root's presentation layer is drawn (see `layout`); nested, it is transparent.
+            ViewKind::Presentation { content, .. } => self.view(content, p, env),
             ViewKind::Scroll { axis, child } => self.scroll(v, *axis == simcore_protocol::Axis::Vertical, child, p, env),
             ViewKind::List { style, sections } => self.list(v, *style, sections, p, env),
             ViewKind::Navigation { title, display_mode, back, content } => {
@@ -783,7 +943,7 @@ impl Ctx<'_> {
                 let prominent = style == ButtonStyle::BorderedProminent;
                 let (fg, bg) = match (prominent, disabled) {
                     (_, true) => (dim, self.control_fill(0.16)),
-                    (true, _) => (rgba(255, 255, 255, 1.0), accent),
+                    (true, _) => (rgba(255, 255, 255, 1.0), if self.desat { let g = if self.dark { ALERT_DESAT.1 } else { ALERT_DESAT.0 }; rgba(g, g, g, 1.0) } else { accent }),
                     (false, _) => (accent, self.control_fill(0.16)),
                 };
                 let (hp, vp) = (12.0, 7.0);
@@ -948,8 +1108,8 @@ impl Ctx<'_> {
         let gw = w - 2.0 * margin;
         let inner_w = gw - 2.0 * self.margin;
         let row_env = Env { axis: None, safe_top: 0.0, bottom_inset: 0.0, fg: None, in_row: true, ..env };
-        let sec_col = self.semantic(Semantic::SecondaryGroupedBackground);
-        let sep_col = self.semantic(Semantic::Separator);
+        let sec_col = if self.floating { let c = if self.dark { FLOAT_CARD.1 } else { FLOAT_CARD.0 }; rgba(c.0, c.1, c.2, 1.0) } else { self.semantic(Semantic::SecondaryGroupedBackground) };
+        let sep_col = if self.floating { let c = if self.dark { FLOAT_SEP.1 } else { FLOAT_SEP.0 }; rgba(c.0, c.1, c.2, 1.0) } else { self.semantic(Semantic::Separator) };
         let mut y = top;
         let mut kids: Vec<(f64, f64, Lay)> = vec![];
         for (si, sec) in sections.iter().enumerate() {
@@ -1008,6 +1168,10 @@ impl Ctx<'_> {
             }
             // Between sections 17.7; after the last one the list ends 20pt above the bottom inset (measured).
             y += if si + 1 == sections.len() { 20.0 } else { SECTION_GAP };
+            // Measured: a header-less section after another sits 35pt below it (header-ful ones: 17.7 + header).
+            if sections.get(si + 1).is_some_and(|n| n.header.is_none()) {
+                y += HEADERLESS_EXTRA_GAP;
+            }
         }
         let ch = y + bottom;
         let fin_h = p.h.filter(|h| h.is_finite());
@@ -1015,7 +1179,7 @@ impl Ctx<'_> {
         let max = (0.0, (ch - h).max(0.0));
         let off = self.clamp_offset(self.scroll.get(&v.id).map_or(0.0, |o| o.1), max.1, h);
         let mut n = Node::new(&v.id, "list");
-        n.fill = Some(self.semantic(if inset { Semantic::GroupedBackground } else { Semantic::Background }));
+        n.fill = (!self.floating).then(|| self.semantic(if inset { Semantic::GroupedBackground } else { Semantic::Background }));
         n.clip_radius = Some(0.0);
         n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max, snap: None, content: None });
         let kids = kids.into_iter().map(|(x, ky, k)| (x, ky - off, k)).collect();
@@ -1140,8 +1304,21 @@ impl Ctx<'_> {
             n.role = Role::Button;
             n.action = b.action;
             n.label = Some(if b.label.is_empty() { "Back".into() } else { b.label.clone() });
-            n.glass = Some(self.glass_spec(GlassVariant::Regular, None, true));
+            if self.sheet_up {
+                // Under a sheet the glass goes flat: a barely visible disc remains.
+                let a = if self.dark { BACK_FLAT.1 } else { BACK_FLAT.0 };
+                n.fill = Some(Color::rgba(1.0, 1.0, 1.0, a));
+            } else {
+                n.glass = Some(self.glass_spec(GlassVariant::Regular, None, true));
+            }
             n.radius = PILL;
+            // Under a presentation the chevron desaturates like the rest of the presenter.
+            let primary = if self.desat {
+                let g = if self.dark { ALERT_DESAT.1 } else { ALERT_DESAT.0 };
+                rgba(g, g, g, 1.0)
+            } else {
+                primary
+            };
             if b.pill {
                 // Pill with chevron and the previous title (measured iOS 26.5: chevron centre 19pt in, text at 35, 17.7 trailing).
                 let spec = FontSpec::new(17.0, self.line_h(17.0), 400, TextAlign::Leading);
@@ -1161,6 +1338,283 @@ impl Ctx<'_> {
             }
         }
         Lay::new(Size { w, h: bar_h - collapse }, Some(bar), bar_kids)
+    }
+
+    /// Scale a laid-out subtree by `k` about its origin: geometry, fonts, symbols, strokes, radii, shadows.
+    fn scale_lay(&mut self, l: &mut Lay, k: f64) {
+        let one_line = l.node.as_ref().and_then(|n| n.text.as_ref()).is_some_and(|t| l.size.h <= t.font.line_height as f64 * 1.5);
+        l.size = Size { w: l.size.w * k, h: l.size.h * k };
+        l.infl = (l.infl.0 * k, l.infl.1 * k, l.infl.2 * k, l.infl.3 * k);
+        if let Some(n) = l.node.as_mut() {
+                        n.radius = scaled_radius(n.radius, k);
+            n.clip_radius = n.clip_radius.map(|x| scaled_radius(x, k));
+            n.stroke = n.stroke.map(|(c, w)| (c, w * k));
+            if let Some(sh) = n.shadow.as_mut() {
+                (sh.radius, sh.dx, sh.dy) = (sh.radius * k, sh.dx * k, sh.dy * k);
+            }
+            if let Some(t) = n.text.as_mut() {
+                let kf = k as f32;
+                (t.font.size, t.font.pt, t.font.line_height, t.font.pitch) = (t.font.size * kf, t.font.pt * kf, t.font.line_height * kf, t.font.pitch * kf);
+                t.offset_x *= kf;
+                for sp in t.spans.iter_mut() {
+                    sp.pt *= kf;
+                }
+                // Smaller type tracks differently: re-measure a single line so it never wraps at its own width.
+                if one_line {
+                    let (w, _) = self.fonts.measure(&t.text, &FontSpec { align: TextAlign::Leading, ..t.font }, None, &t.spans);
+                    l.size.w = (w * self.scale).ceil() / self.scale;
+                }
+            }
+            if let Some(sy) = n.symbol.as_mut() {
+                sy.spec.point_size *= k;
+                sy.size = (sy.size.0 * k, sy.size.1 * k);
+            }
+            n.caret = n.caret.map(|c| c * k);
+            if let Some(sc) = n.scroll.as_mut() {
+                sc.offset = (sc.offset.0 * k, sc.offset.1 * k);
+                sc.max = (sc.max.0 * k, sc.max.1 * k);
+                sc.snap = sc.snap.map(|s| s * k);
+            }
+        }
+        for (dx, dy, c) in l.kids.iter_mut() {
+            *dx *= k;
+            *dy *= k;
+            self.scale_lay(c, k);
+        }
+    }
+
+    fn scrim(&self, id: &str, (w, h): (f64, f64), alpha: f32, tap: Option<u64>) -> Node {
+        let mut n = Node::new(id, "scrim");
+        n.action = tap;
+        n.fill = Some(Color::rgba(0.0, 0.0, 0.0, alpha));
+        n.bounds = Rect { x: 0.0, y: 0.0, w, h };
+        n.inspect = false;
+        n
+    }
+
+    /// The root view: full-bleed scrollers span the screen, anything else is centered in the safe area.
+    fn place_root(&mut self, root: &ViewNode, g: &Geo) -> Lay {
+        let full_bleed = matches!(root.kind, ViewKind::Navigation { .. } | ViewKind::List { .. } | ViewKind::Scroll { .. });
+        if full_bleed {
+            let env = Env { safe_top: g.safe_top, bottom_inset: g.safe_bottom, size: g.body, ..Env::new() };
+            let lay = self.view(root, Prop { w: Some(g.w), h: Some(g.h) }, env);
+            Lay::new(Size { w: g.w, h: g.h }, None, vec![(0.0, 0.0, lay)])
+        } else {
+            let sh = (g.h - g.safe_top - g.safe_bottom).max(0.0);
+            let lay = self.view(root, Prop { w: Some(g.w), h: Some(sh) }, Env { size: g.body, ..Env::new() });
+            let (x, y) = ((g.w - lay.size.w) / 2.0, g.safe_top + (sh - lay.size.h) / 2.0);
+            Lay::new(Size { w: g.w, h: g.h }, None, vec![(x, y, lay)])
+        }
+    }
+
+    /// `.fullScreenCover`: an opaque screen above everything (status bar aside).
+    fn cover(&mut self, content: &ViewNode, g: &Geo) -> Lay {
+        let g = Geo { safe_bottom: g.dev_bottom, ..*g };
+        let inner = self.place_root(content, &g);
+        let mut card = Node::new("cover", "cover");
+        card.fill = Some(self.semantic(Semantic::Background));
+        card.inspect = false;
+        let scrim = Lay::new(Size { w: g.w, h: g.h }, Some(self.scrim("cover#scrim", (g.w, g.h), 0.0, None)), vec![]);
+        let cardl = Lay::new(Size { w: g.w, h: g.h }, Some(card), vec![(0.0, 0.0, inner)]);
+        Lay::new(Size { w: g.w, h: g.h }, None, vec![(0.0, 0.0, scrim), (0.0, 0.0, cardl)])
+    }
+
+    /// Height of a detent (points). `max` is the large detent's height.
+    fn detent_h(d: &Detent, h: f64, max: f64) -> f64 {
+        match d {
+            Detent::Medium => h * SHEET_MEDIUM,
+            Detent::Large => max,
+            Detent::Fraction { value } => value * max,
+            Detent::Height { value } => *value,
+        }
+        .clamp(1.0, max)
+    }
+
+    /// `.sheet`: dimmed screen, a card from its top edge to the bottom. Detents (ascending) set the
+    /// resting heights; `pos` is the interaction state (which detent, or a drag in progress). Below its
+    /// largest detent the card floats (inset, glass); `depth` is the number of sheets under this one.
+    #[allow(clippy::too_many_arguments)]
+    fn sheet(&mut self, id: &str, c: &ViewNode, detents: &[Detent], indicator: bool, dismiss: Option<u64>, pos: crate::SheetPos, depth: usize, g: &Geo) -> Lay {
+        let (w, h) = (g.w, g.h);
+        let large_top = g.safe_top + SHEET_TOP_GAP + depth as f64 * SHEET_STACK_STEP;
+        let max = (h - large_top).max(1.0);
+        let mut hs: Vec<f64> = if detents.is_empty() { vec![max] } else { detents.iter().map(|d| Self::detent_h(d, h, max)).collect() };
+        hs.sort_by(f64::total_cmp);
+        hs.dedup_by(|a, b| (*a - *b).abs() < 0.5);
+        let tops: Vec<f64> = hs.iter().map(|x| h - x).collect();
+        let detent = pos.detent.min(tops.len() - 1);
+        let top = pos.top.unwrap_or(tops[detent]).clamp(large_top, h);
+        let float = top > large_top + 0.5;
+        let (cx, cw) = if float { (SHEET_FLOAT_INSET, w - 2.0 * SHEET_FLOAT_INSET) } else { (0.0, w) };
+        let sh = (h - top - if float { SHEET_FLOAT_INSET } else { 0.0 }).max(0.0);
+        let radius = if float { SHEET_FLOAT_RADIUS } else { SHEET_RADIUS };
+        let list = is_list(c);
+        let scroller = is_scroller(c);
+        let ctop = SHEET_CONTENT_TOP;
+        let env = Env { size: g.body, safe_top: if scroller { ctop } else { 0.0 }, bottom_inset: if float { 0.0 } else { g.dev_bottom }, ..Env::new() };
+        (self.elevated, self.floating) = (true, float);
+        // Floating: lay the content out as in the large sheet (full width), then shrink it onto the card.
+        let k = if float { SHEET_FLOAT_SCALE } else { 1.0 };
+        let mut cl = self.view(c, Prop { w: Some(if float { w } else { cw }), h: Some(sh / k) }, env);
+        if float {
+            self.scale_lay(&mut cl, k);
+        }
+        let mut card = Node::new(id, "sheet");
+        if float {
+            card.glass = Some(crate::glass::GlassSpec { blur: Some(PRESENT_BLUR), mix: Some(if self.dark { SHEET_GLASS.1 } else { SHEET_GLASS.0 }), ..self.glass_spec(GlassVariant::Regular, None, false) });
+        } else {
+            card.fill = Some(self.semantic(if list { Semantic::GroupedBackground } else { Semantic::Background }));
+        }
+        (self.elevated, self.floating) = (false, false);
+        card.radius = radius;
+        card.clip_radius = Some(radius);
+        card.sheet = Some(crate::SheetInfo { tops, detent, top, dismiss });
+        let (dx, dy) = ((cw - cl.size.w) / 2.0, if scroller { 0.0 } else { (sh - cl.size.h) / 2.0 });
+        let mut kids = vec![(dx, dy, cl)];
+        if indicator {
+            let mut gr = Node::new(format!("{id}#grabber"), "grabber");
+            let c = if self.dark { GRABBER_FG.1 } else { GRABBER_FG.0 };
+            gr.fill = Some(rgba(c.0, c.1, c.2, 1.0));
+            gr.radius = PILL;
+            gr.inspect = false;
+            kids.push(((cw - GRABBER.0) / 2.0, GRABBER_Y, Lay::new(Size { w: GRABBER.0, h: GRABBER.1 }, Some(gr), vec![])));
+        }
+        // A full-width card runs past the screen's bottom edge so only its top corners are rounded on screen.
+        let ch = if float { sh } else { sh + 2.0 * radius };
+        let cardl = Lay::new(Size { w: cw, h: ch }, Some(card), kids);
+        // A single dim for stacked sheets (the lower one is covered anyway).
+        let dim = if depth > 0 { 0.0 } else if self.dark { SHEET_SCRIM.1 } else { SHEET_SCRIM.0 };
+        let scrim = Lay::new(Size { w, h }, Some(self.scrim(&format!("{id}#scrim"), (w, h), dim, None)), vec![]);
+        Lay::new(Size { w, h }, None, vec![(0.0, 0.0, scrim), (cx, top, cardl)])
+    }
+
+    /// The card of an alert or confirmation popover: title, message (left-aligned) and capsule buttons.
+    /// Alerts put two buttons side by side (cancel first) and stack more (cancel last); a popover stacks
+    /// them and has no cancel button (tapping outside cancels).
+    fn alert_card(&mut self, kind: &'static str, title: Option<&str>, message: Option<&ViewNode>, actions: &[ViewNode], card_w: f64) -> Lay {
+        let popover = kind == "popover";
+        let inner = card_w - 2.0 * ALERT_TEXT_PAD;
+        let primary = self.semantic(Semantic::Primary);
+        let mut kids: Vec<(f64, f64, Lay)> = vec![];
+        let mut y = ALERT_TOP;
+        let mut gap = 0.0;
+        if let Some(t) = title {
+            let tsz = simcore_protocol::TextStyle::Headline.size_at(self.dts) as f32;
+            let mut tl = self.text_lay("alert#title", t, FontSpec::new(tsz, self.line_h(tsz), 600, TextAlign::Leading), primary, Some(inner as f32));
+            if let Some(n) = tl.node.as_mut() {
+                n.inspect = false;
+            }
+            let th = tl.size.h;
+            kids.push((ALERT_TEXT_PAD, y, tl));
+            y += th;
+            gap = ALERT_TITLE_MESSAGE_GAP;
+        }
+        if let Some(m) = message {
+            let fg = if self.dark { ALERT_MESSAGE_FG.1 } else { ALERT_MESSAGE_FG.0 };
+            let env = Env { size: ALERT_MESSAGE_PT, align: TextAlign::Leading, fg: Some(rgba(fg.0, fg.1, fg.2, 1.0)), ..Env::new() };
+            let ml = self.view(m, Prop { w: Some(inner), h: None }, env);
+            y += gap;
+            let mh = ml.size.h;
+            kids.push((ALERT_TEXT_PAD, y, ml));
+            y += mh;
+        }
+        y += ALERT_TEXT_BUTTON_GAP;
+        let is_cancel = |b: &ViewNode| matches!(b.kind, ViewKind::Button { role: Some(simcore_protocol::ButtonRole::Cancel), .. });
+        let mut acts: Vec<&ViewNode> = actions.iter().filter(|b| !(popover && is_cancel(b))).collect();
+        let side_by_side = !popover && acts.len() == 2;
+        acts.sort_by_key(|b| is_cancel(b) != side_by_side); // stable: cancel first when side by side, last when stacked
+        let n = acts.len().max(1);
+        let bw = if side_by_side { (card_w - 2.0 * ALERT_BTN_PAD - ALERT_BTN_GAP) / 2.0 } else { card_w - 2.0 * ALERT_BTN_PAD };
+        let bh = ALERT_BTN_H;
+        let accent = self.semantic(Semantic::Accent);
+        let red = self.color(&simcore_protocol::Color::Rgba { r: 1.0, g: 56.0 / 255.0, b: 60.0 / 255.0, a: 1.0, dark: Some([1.0, 66.0 / 255.0, 69.0 / 255.0]) });
+        let fills = if popover { POPOVER_BTN_FILL } else { ALERT_BTN_FILL };
+        for (i, b) in acts.iter().enumerate() {
+            let ViewKind::Button { action, label, disabled, role, .. } = &b.kind else { continue };
+            let (fg, weight) = match role {
+                Some(simcore_protocol::ButtonRole::Destructive) => (red, 600),
+                Some(simcore_protocol::ButtonRole::Cancel) => (primary, 600),
+                None => (if popover { primary } else { accent }, 600),
+            };
+            let env = Env { fg: Some(if *disabled { self.semantic(Semantic::Tertiary) } else { fg }), base_weight: weight, align: TextAlign::Center, ..Env::new() };
+            let l = self.view(label, Prop { w: Some(bw - 24.0), h: None }, env);
+            let mut bn = Node::new(&b.id, "button");
+            bn.role = Role::Button;
+            bn.action = (!disabled).then_some(*action);
+            bn.disabled = *disabled;
+            bn.label = first_text(label);
+            let f = if self.dark { fills.1 } else { fills.0 };
+            bn.fill = Some(rgba(f.0, f.1, f.2, 1.0));
+            bn.radius = PILL;
+            let (lw, lh) = (l.size.w, l.size.h);
+            let bl = Lay::new(Size { w: bw, h: bh }, Some(bn), vec![((bw - lw) / 2.0, (bh - lh) / 2.0, l)]);
+            let (bx, by) = if side_by_side {
+                (ALERT_BTN_PAD + i as f64 * (bw + ALERT_BTN_GAP), y)
+            } else {
+                (ALERT_BTN_PAD, y + i as f64 * (bh + ALERT_BTN_GAP))
+            };
+            kids.push((bx, by, bl));
+        }
+        let rows = if side_by_side { 1 } else { n };
+        y += rows as f64 * bh + (rows - 1) as f64 * ALERT_BTN_GAP + ALERT_BTN_PAD;
+        let mut card = Node::new(if popover { "dialog" } else { "alert" }, kind);
+        card.label = title.map(str::to_string);
+        card.radius = if popover { POPOVER_RADIUS } else { ALERT_RADIUS };
+        let (mix, shadow) = if popover { (Some(POPOVER_GLASS), Some(POPOVER_SHADOW)) } else { (None, None) };
+        card.glass = Some(crate::glass::GlassSpec { blur: Some(PRESENT_BLUR), mix: mix.filter(|_| !self.dark), shadow, ..self.glass_spec(GlassVariant::Regular, None, false) });
+        Lay::new(Size { w: card_w, h: y }, Some(card), kids)
+    }
+
+    /// `.alert`: dimmed screen, a centered Liquid Glass card.
+    fn alert(&mut self, title: &str, message: Option<&ViewNode>, actions: &[ViewNode], g: &Geo) -> Lay {
+        let (w, h) = (g.w, g.h);
+        let cardl = self.alert_card("alert", Some(title), message, actions, ALERT_W);
+        let y = cardl.size.h;
+        let scrim = Lay::new(Size { w, h }, Some(self.scrim("alert#scrim", (w, h), if self.dark { ALERT_SCRIM.1 } else { ALERT_SCRIM.0 }, None)), vec![]);
+        Lay::new(Size { w, h }, None, vec![(0.0, 0.0, scrim), ((w - ALERT_W) / 2.0, h / 2.0 + ALERT_DY - y / 2.0, cardl)])
+    }
+
+    /// `.confirmationDialog`: a popover pointing at `anchor` (the label of the presenting view): to its
+    /// right when there is room, else above, else below. No dim; a tap outside dismisses it.
+    fn popover(&mut self, title: Option<&str>, message: Option<&ViewNode>, actions: &[ViewNode], anchor: Option<Rect>, dismiss: Option<u64>, g: &Geo) -> Lay {
+        let (w, h) = (g.w, g.h);
+        let cardl = self.alert_card("popover", title, message, actions, POPOVER_W);
+        let ch = cardl.size.h;
+        let a = anchor.unwrap_or(Rect { x: w / 2.0, y: h / 2.0, w: 0.0, h: 0.0 });
+        let (acx, acy) = a.center();
+        #[derive(PartialEq)]
+        enum Side { Right, Above, Below }
+        let side = if a.x + a.w + POPOVER_SIDE_ARROW + POPOVER_W + POPOVER_MARGIN <= w {
+            Side::Right
+        } else if a.y + POPOVER_TIP_INSET - POPOVER_ARROW_H - ch >= g.safe_top {
+            Side::Above
+        } else {
+            Side::Below
+        };
+        let y_clamp = |y: f64| y.clamp(g.safe_top, h - g.dev_bottom - ch);
+        let (x, y, glyph, (aw, ah), (ax, ay)) = match side {
+            Side::Right => {
+                let (x, y) = (a.x + a.w + POPOVER_SIDE_ARROW, y_clamp(acy - ch / 2.0));
+                (x, y, Glyph::ArrowLeft, (POPOVER_SIDE_ARROW, POPOVER_ARROW_W), (x - POPOVER_SIDE_ARROW + 0.5, (acy - POPOVER_ARROW_W / 2.0).clamp(y + POPOVER_RADIUS, y + ch - POPOVER_RADIUS - POPOVER_ARROW_W)))
+            }
+            _ => {
+                let x = (acx - POPOVER_W / 2.0).clamp(POPOVER_MARGIN, w - POPOVER_W - POPOVER_MARGIN);
+                let ax = (acx - POPOVER_ARROW_W / 2.0).clamp(x + POPOVER_RADIUS, x + POPOVER_W - POPOVER_RADIUS - POPOVER_ARROW_W);
+                if side == Side::Above {
+                    let y = a.y + POPOVER_TIP_INSET - POPOVER_ARROW_H - ch;
+                    (x, y, Glyph::ArrowDown, (POPOVER_ARROW_W, POPOVER_ARROW_H), (ax, y + ch - 0.5))
+                } else {
+                    let y = a.y + a.h - POPOVER_TIP_INSET + POPOVER_ARROW_H;
+                    (x, y, Glyph::ArrowUp, (POPOVER_ARROW_W, POPOVER_ARROW_H), (ax, y - POPOVER_ARROW_H + 0.5))
+                }
+            }
+        };
+        let mut arrow = Node::new("dialog#arrow", "arrow");
+        arrow.glyph = Some((glyph, { let c = if self.dark { POPOVER_ARROW.1 } else { POPOVER_ARROW.0 }; rgba(c.0, c.1, c.2, 1.0) }));
+        arrow.inspect = false;
+        let arrowl = Lay::new(Size { w: aw, h: ah }, Some(arrow), vec![]);
+        let scrim = Lay::new(Size { w, h }, Some(self.scrim("dialog#scrim", (w, h), 0.0, dismiss)), vec![]);
+        Lay::new(Size { w, h }, None, vec![(0.0, 0.0, scrim), (x, y, cardl), (ax, ay, arrowl)])
     }
 
     /// iOS status bar: "9:41" at the left, signal / wifi / battery at the right.
@@ -1337,6 +1791,10 @@ mod tests {
     const TYPOGRAPHY: &str = include_str!("../../tests/data/typography.json");
 
     fn scene_with(json: &str, vp: (f64, f64), dark: bool, safe: (f64, f64), scroll: &HashMap<String, (f64, f64)>, focus: Option<&str>) -> Scene {
+        scene_sheets(json, vp, dark, safe, scroll, focus, &HashMap::new())
+    }
+
+    fn scene_sheets(json: &str, vp: (f64, f64), dark: bool, safe: (f64, f64), scroll: &HashMap<String, (f64, f64)>, focus: Option<&str>, sheets: &HashMap<String, crate::SheetPos>) -> Scene {
         let v: ViewNode = serde_json::from_str(json).unwrap();
         let dev = Device { safe_top: safe.0, safe_bottom: safe.1, island: None, ..*crate::device::device(crate::device::DEFAULT_DEVICE).unwrap() };
         let params = SceneParams {
@@ -1347,6 +1805,7 @@ mod tests {
             dynamic_type: DynamicTypeSize::Large,
             scroll,
             focus,
+            sheets,
             overscroll: false,
             status_bar: safe.0 > 0.0,
             chrome: Default::default(),
@@ -1478,6 +1937,7 @@ mod tests {
                 appearance: Appearance::Dark,
                 dynamic_type: DynamicTypeSize::Large,
                 scroll: &HashMap::new(),
+                sheets: &HashMap::new(),
                 focus: None,
                 overscroll: false,
                 status_bar: true,
@@ -1739,9 +2199,70 @@ mod tests {
     }
 
     #[test]
+    fn runs_share_a_line_and_alert_blocks_what_is_under_it() {
+        let runs = r#"{"kind":"text","id":"t","text":"ab","runs":[{"text":"a"},{"text":"b","fontWeight":"bold"}]}"#;
+        let plain = phone(r#"{"kind":"text","id":"t","text":"ab"}"#);
+        let mixed = phone(runs);
+        assert!((by_id(&mixed, "t").bounds.h - by_id(&plain, "t").bounds.h).abs() < 0.01);
+        assert!(by_id(&mixed, "t").bounds.w > by_id(&plain, "t").bounds.w - 1.0);
+        let btn = |id: &str, a: u64, l: &str, role: &str| format!(r#"{{"kind":"button","id":"{id}","action":{a},"role":"{role}","label":{{"kind":"text","id":"{id}l","text":"{l}"}}}}"#);
+        let j = format!(
+            r#"{{"kind":"presentation","id":"p","content":{{"kind":"button","id":"under","action":1,"label":{{"kind":"text","id":"ul","text":"Under"}}}},
+              "layers":[{{"kind":"alert","title":"T","actions":[{},{}]}}]}}"#,
+            btn("ok", 2, "OK", "destructive"),
+            btn("cx", 3, "Cancel", "cancel")
+        );
+        let s = phone(&j);
+        let (ok, cx) = (by_id(&s, "ok").bounds, by_id(&s, "cx").bounds);
+        assert!(cx.x < ok.x, "cancel is left of the destructive button");
+        let (ux, uy) = by_id(&s, "under").bounds.center();
+        assert!(s.hit_test(ux, uy).is_none_or(|i| s.nodes[i].id != "under"), "scrim blocks the presenting screen");
+        let (x, y) = ok.center();
+        assert_eq!(s.hit_test(x, y).and_then(|i| s.nodes[i].action), Some(2));
+    }
+
+    #[test]
+    fn sheet_swipes_dismiss_and_snap_between_detents() {
+        use crate::{DragPhase, Effect, Interaction};
+        let json = |dismiss: &str| {
+            format!(
+                r#"{{"kind":"presentation","id":"p","content":{{"kind":"text","id":"u","text":"under"}},
+                "layers":[{{"kind":"sheet","detents":[{{"kind":"medium"}},{{"kind":"large"}}]{dismiss},
+                  "content":{{"kind":"vstack","id":"c","children":[{{"kind":"text","id":"t","text":"hi"}}]}}}}]}}"#
+            )
+        };
+        let show = |inter: &Interaction, j: &str| scene_sheets(j, (402.0, 874.0), false, (62.0, 34.0), &HashMap::new(), None, &inter.sheets);
+        let j = json(r#","dismiss":7"#);
+        let top = |s: &Scene| s.nodes.iter().find(|n| n.id == "layer0").unwrap().bounds.y;
+        let mut inter = Interaction::default();
+        let s = show(&inter, &j);
+        assert!((top(&s) - 415.0).abs() < 1.0, "medium detent is the initial one: {}", top(&s));
+        // Dragging up (on content that does not scroll) expands to large and the card stops floating.
+        let swipe = |inter: &mut Interaction, s: &Scene, dy: f64| {
+            inter.drag(s, DragPhase::Begin, 200.0, 700.0, 0.0);
+            inter.drag(s, DragPhase::Move, 200.0, 700.0 + dy, 16.0);
+            inter.drag(s, DragPhase::End, 200.0, 700.0 + dy, 1000.0)
+        };
+        assert_eq!(swipe(&mut inter, &s, -200.0), Effect::Redraw);
+        let s = show(&inter, &j);
+        assert!((top(&s) - 62.0).abs() < 1.0, "large: {}", top(&s));
+        // A moderate pull down snaps back to medium; a long one dismisses.
+        assert_eq!(swipe(&mut inter, &s, 250.0), Effect::Redraw);
+        assert!((top(&show(&inter, &j)) - 415.0).abs() < 1.0);
+        let s = show(&inter, &j);
+        let e = swipe(&mut inter, &s, 400.0);
+        assert!(matches!(e, Effect::Action { id: 7, .. }), "{e:?}");
+        // interactiveDismissDisabled: no action, it settles back.
+        let mut inter = Interaction::default();
+        let s = show(&inter, &json(""));
+        assert_eq!(swipe(&mut inter, &s, 400.0), Effect::Redraw);
+        assert!((top(&show(&inter, &json(""))) - 415.0).abs() < 1.0);
+    }
+
+    #[test]
     fn weights_are_distinct() {
         let mut f = Fonts::new();
-        let w = |f: &mut Fonts, wt| f.measure("Hamburgefonstiv", &FontSpec::new(17.0, 20.33, wt, TextAlign::Leading), None).0;
+        let w = |f: &mut Fonts, wt| f.measure("Hamburgefonstiv", &FontSpec::new(17.0, 20.33, wt, TextAlign::Leading), None, &[]).0;
         let (r, sb, b) = (w(&mut f, 400), w(&mut f, 600), w(&mut f, 700));
         if f.has_sf() {
             assert!(r < sb && sb < b, "variable wght axis applies: {r} {sb} {b}");

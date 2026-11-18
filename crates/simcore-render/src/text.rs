@@ -1,4 +1,4 @@
-use cosmic_text::{fontdb, Align, Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, SwashCache, Weight};
+use cosmic_text::{fontdb, Align, Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, Style, SwashCache, Weight};
 use std::collections::HashMap;
 
 /// macOS system UI font (variable SF Pro: wght axis). Family name as registered in fontdb.
@@ -20,7 +20,7 @@ pub enum TextAlign {
 
 /// A byte range of the text with its own color and/or weight (React Native nested `Text` spans).
 #[derive(Debug, Clone, PartialEq)]
-pub struct Span {
+pub struct RichSpan {
     pub start: usize,
     pub end: usize,
     pub color: Option<[u8; 3]>,
@@ -33,8 +33,21 @@ pub struct Span {
 /// Rich-text extras of a run: per-range styles and a line cap with ellipsis. Plain text has none.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Rich {
-    pub spans: Vec<Span>,
+    pub spans: Vec<RichSpan>,
     pub lines: Option<usize>,
+}
+
+/// One styled run of a concatenated `Text`: its own size (points), weight and color.
+/// The `FontSpec` passed alongside is the largest run's (line metrics); every run scales from it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Span {
+    pub text: String,
+    pub pt: f32,
+    pub weight: u16,
+    pub color: crate::scene::Color,
+    pub italic: bool,
+    pub underline: bool,
+    pub strike: bool,
 }
 
 /// Font parameters shared by measuring and drawing.
@@ -162,6 +175,8 @@ pub struct LineSpan {
     pub x0: f32,
     pub x1: f32,
     pub baseline: f32,
+    /// Index of the styled run this extent belongs to (`None` for plain text).
+    pub run: Option<usize>,
 }
 
 impl Default for Fonts {
@@ -210,8 +225,8 @@ impl Fonts {
 
     /// Shaped text; with a line cap (`rich.lines`) that the text exceeds, the last allowed line is cut
     /// to whole glyphs followed by `…` (tail truncation, like iOS).
-    fn buffer(&mut self, text: &str, f: &FontSpec, width: Option<f32>, rich: Option<&Rich>) -> Buffer {
-        let b = self.build(text, f, width, rich);
+    fn buffer(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span], rich: Option<&Rich>) -> Buffer {
+        let b = self.build(text, f, width, spans, rich);
         let (Some(n), Some(_)) = (rich.and_then(|r| r.lines), width) else { return b };
         if b.layout_runs().count() <= n {
             return b;
@@ -231,7 +246,7 @@ impl Fonts {
         let (mut lo, mut hi) = (0, bounds.len() - 1);
         while lo < hi {
             let mid = (lo + hi).div_ceil(2);
-            let probe = self.build(&format!("{}\u{2026}", rest[..bounds[mid]].trim_end()), &one, None, None);
+            let probe = self.build(&format!("{}\u{2026}", rest[..bounds[mid]].trim_end()), &one, None, &[], None);
             if probe.layout_runs().map(|r| r.line_w).fold(0.0, f32::max) <= limit {
                 lo = mid;
             } else {
@@ -244,13 +259,14 @@ impl Fonts {
             head = head.rsplit_once(' ').map_or(head, |(h, _)| h.trim_end());
         }
         let cut = Rich {
-            spans: rich.map_or(vec![], |r| r.spans.iter().filter(|s| s.start < head.len()).map(|s| Span { end: s.end.min(head.len()), ..s.clone() }).collect()),
+            spans: rich.map_or(vec![], |r| r.spans.iter().filter(|s| s.start < head.len()).map(|s| RichSpan { end: s.end.min(head.len()), ..s.clone() }).collect()),
             lines: None,
         };
-        self.build(&format!("{head}\u{2026}"), f, width, Some(&cut))
+        self.build(&format!("{head}\u{2026}"), f, width, &[], Some(&cut))
     }
 
-    fn build(&mut self, text: &str, f: &FontSpec, width: Option<f32>, rich: Option<&Rich>) -> Buffer {
+    // ponytail: two styled-text models (SwiftUI `spans` runs, React Native `Rich` ranges); unify once both suites stay green.
+    fn build(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span], rich: Option<&Rich>) -> Buffer {
         // Inter's glyphs are ~8% larger than SF's at the same size; at accessibility sizes that is a lot
         // of ink, so the fallback draws them slightly smaller (tracking is fitted for it).
         let big = !self.sf && f.pt > 40.0;
@@ -267,9 +283,27 @@ impl Fonts {
         };
         let wght = if big { (f.weight as i32 + INTER_BIG_WEIGHT).clamp(100, 900) as u16 } else { f.weight };
         let attrs = Attrs::new().family(family).weight(Weight(wght)).letter_spacing(tracking);
-        match rich.filter(|r| !r.spans.is_empty()) {
-            None => b.set_text(text, &attrs, Shaping::Advanced, None),
-            Some(r) => {
+        if !spans.is_empty() {
+            let (sf, fam) = (self.sf, family);
+            let runs = spans.iter().enumerate().map(|(i, s)| {
+                let k = s.pt / f.pt;
+                let size_px = f.size * k;
+                let big = !sf && s.pt > 40.0;
+                let tracking = if sf {
+                    tracking_em(s.pt, s.weight)
+                } else if big {
+                    inter_ax_tracking(s.pt, s.weight)
+                } else {
+                    inter_tracking_em(size_px, s.weight)
+                };
+                let wght = if big { (s.weight as i32 + INTER_BIG_WEIGHT).clamp(100, 900) as u16 } else { s.weight };
+                let m = Metrics::new(if big { size_px * INTER_BIG_SCALE } else { size_px }, f.pitch * k);
+                let c = Color::rgba((s.color.r * 255.0).round() as u8, (s.color.g * 255.0).round() as u8, (s.color.b * 255.0).round() as u8, (s.color.a * 255.0).round() as u8);
+                let a = Attrs::new().family(fam).weight(Weight(wght)).letter_spacing(tracking).metrics(m).color(c).metadata(i);
+                (s.text.as_str(), if s.italic { a.style(Style::Italic) } else { a })
+            });
+            b.set_rich_text(runs, &attrs, Shaping::Advanced, None);
+        } else if let Some(r) = rich.filter(|r| !r.spans.is_empty()) {
                 // Cut the text at every span edge; each piece takes the style of the span covering it.
                 let mut cuts: Vec<usize> = vec![0, text.len()];
                 cuts.extend(r.spans.iter().flat_map(|sp| [sp.start, sp.end]).filter(|c| *c <= text.len() && text.is_char_boundary(*c)));
@@ -298,7 +332,8 @@ impl Fonts {
                     })
                     .collect();
                 b.set_rich_text(pieces, &attrs, Shaping::Advanced, None);
-            }
+        } else {
+            b.set_text(text, &attrs, Shaping::Advanced, None);
         }
         let align = match f.align {
             TextAlign::Leading => None,
@@ -313,23 +348,31 @@ impl Fonts {
     }
 
     /// Size of `text`, wrapping at `width` when given.
-    pub fn measure(&mut self, text: &str, f: &FontSpec, width: Option<f32>) -> (f64, f64) {
-        self.measure_rich(text, f, width, None)
+    pub fn measure(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span]) -> (f64, f64) {
+        self.measure_impl(text, f, width, spans, None)
     }
 
+    /// React Native rich text: per-range styles and a line cap.
     pub fn measure_rich(&mut self, text: &str, f: &FontSpec, width: Option<f32>, rich: Option<&Rich>) -> (f64, f64) {
+        self.measure_impl(text, f, width, &[], rich)
+    }
+
+    fn measure_impl(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span], rich: Option<&Rich>) -> (f64, f64) {
         let key = (text.to_string(), f.size.to_bits(), f.weight, width.map_or(u32::MAX, f32::to_bits));
-        if let Some(r) = self.measured.get(&key).filter(|_| rich.is_none()) {
-            return *r;
+        let plain = spans.is_empty() && rich.is_none();
+        if plain {
+            if let Some(r) = self.measured.get(&key) {
+                return *r;
+            }
         }
-        let b = self.buffer(text, &FontSpec { align: TextAlign::Leading, ..*f }, width, rich);
+        let b = self.buffer(text, &FontSpec { align: TextAlign::Leading, ..*f }, width, spans, rich);
         let (mut w, mut lines) = (0f32, 0usize);
         for run in b.layout_runs() {
             w = w.max(run.line_w);
             lines += 1;
         }
         let r = (w as f64, (f.line_height + (lines.max(1) - 1) as f32 * f.pitch) as f64);
-        if rich.is_none() {
+        if plain {
             self.measured.insert(key, r);
         }
         r
@@ -340,6 +383,7 @@ impl Fonts {
     /// Rasterize `text` with its origin at `origin` (device px, fractional): `f(x, y, w, h, rgba)` gets
     /// absolute pixels. Glyphs keep their sub-pixel phase in both axes (cosmic-text's own `draw`
     /// truncates the baseline to whole pixels, which CoreText does not).
+    #[allow(clippy::too_many_arguments)]
     pub fn draw(
         &mut self,
         text: &str,
@@ -347,11 +391,13 @@ impl Fonts {
         width: f32,
         rgba: [u8; 4],
         origin: (f32, f32),
+        spans: &[Span],
         f: impl FnMut(i32, i32, u32, u32, [u8; 4]),
     ) -> Vec<LineSpan> {
-        self.draw_rich(text, spec, width, rgba, origin, None, f)
+        self.draw_impl(text, spec, width, rgba, origin, spans, None, f)
     }
 
+    /// React Native rich text: per-range styles and a line cap.
     #[allow(clippy::too_many_arguments)]
     pub fn draw_rich(
         &mut self,
@@ -361,16 +407,37 @@ impl Fonts {
         rgba: [u8; 4],
         origin: (f32, f32),
         rich: Option<&Rich>,
+        f: impl FnMut(i32, i32, u32, u32, [u8; 4]),
+    ) -> Vec<LineSpan> {
+        self.draw_impl(text, spec, width, rgba, origin, &[], rich, f)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn draw_impl(
+        &mut self,
+        text: &str,
+        spec: &FontSpec,
+        width: f32,
+        rgba: [u8; 4],
+        origin: (f32, f32),
+        spans: &[Span],
+        rich: Option<&Rich>,
         mut f: impl FnMut(i32, i32, u32, u32, [u8; 4]),
     ) -> Vec<LineSpan> {
-        let mut b = self.buffer(text, spec, Some(width), rich);
+        let mut b = self.buffer(text, spec, Some(width), spans, rich);
         b.shape_until_scroll(&mut self.sys, false);
-        let spans = b
+        let lines = b
             .layout_runs()
-            .filter_map(|r| {
-                let first = r.glyphs.first()?;
-                let last = r.glyphs.last()?;
-                Some(LineSpan { x0: first.x, x1: last.x + last.w, baseline: r.line_y })
+            .flat_map(|r| {
+                let mut out: Vec<LineSpan> = vec![];
+                for g in r.glyphs {
+                    let run = (!spans.is_empty()).then_some(g.metadata);
+                    match out.last_mut() {
+                        Some(l) if l.run == run => l.x1 = g.x + g.w,
+                        _ => out.push(LineSpan { x0: g.x, x1: g.x + g.w, baseline: r.line_y, run }),
+                    }
+                }
+                out
             })
             .collect();
         let c = Color::rgba(rgba[0], rgba[1], rgba[2], rgba[3]);
@@ -391,12 +458,14 @@ impl Fonts {
                     g.cache_key_flags,
                 );
                 let (bx, by) = (gx + ix as i32, gy + iy as i32);
+                // cosmic-text replaces the color alpha with glyph coverage: reapply the run's own alpha.
+                let sa = spans.get(g.metadata).map_or(1.0, |s| s.color.a);
                 self.cache.with_pixels(&mut self.sys, key, g.color_opt.unwrap_or(c), |px, py, col| {
-                    f(bx + px, by + py, 1, 1, [col.r(), col.g(), col.b(), col.a()])
+                    f(bx + px, by + py, 1, 1, [col.r(), col.g(), col.b(), (col.a() as f32 * sa).round() as u8])
                 });
             }
         }
-        spans
+        lines
     }
 }
 
@@ -411,9 +480,9 @@ mod rich_tests {
         let t = "Plain red blue bold green text.";
         for size in [15.0f32, 17.0] {
             let spec = FontSpec::new(size, size * 1.2, 400, TextAlign::Leading);
-            let plain = f.measure(t, &spec, None).0;
+            let plain = f.measure(t, &spec, None, &[]).0;
             let empty = f.measure_rich(t, &spec, None, Some(&Rich::default())).0;
-            let full = Rich { spans: vec![Span { start: 0, end: t.len(), color: Some([255, 0, 0]), weight: Some(400), size: None, mono: false }], lines: Some(3) };
+            let full = Rich { spans: vec![RichSpan { start: 0, end: t.len(), color: Some([255, 0, 0]), weight: Some(400), size: None, mono: false }], lines: Some(3) };
             let spanned = f.measure_rich(t, &spec, Some(10000.0), Some(&full)).0;
             assert_eq!((plain, empty), (plain, plain), "{size}");
             assert!((spanned - plain).abs() < 0.01, "{size}: spans {spanned} vs plain {plain}");

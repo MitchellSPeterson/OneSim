@@ -68,6 +68,10 @@ struct Opts {
     /// Scroll the scroller under (X,Y) by (DX,DY) points; positive DY reveals later content. Repeatable.
     #[arg(long = "scroll", value_name = "X,Y,DX,DY")]
     scrolls: Vec<String>,
+    /// Drag a finger from (X,Y) by (DX,DY) points as one gesture: scrolls a scroller (content follows
+    /// the finger) or swipes a sheet (down past the dismiss line dismisses, up expands). Repeatable.
+    #[arg(long = "drag", value_name = "X,Y,DX,DY")]
+    drags: Vec<String>,
     /// Print the UI tree as JSON on stdout.
     #[arg(long)]
     inspect: bool,
@@ -97,6 +101,7 @@ enum Step {
     Type(String),
     Key(String),
     Scroll(String),
+    Drag(String),
 }
 
 /// Collect the repeatable interaction flags in the order they were given.
@@ -111,6 +116,7 @@ fn steps(m: &ArgMatches) -> Vec<Step> {
     add("texts", Step::Type);
     add("keys", Step::Key);
     add("scrolls", Step::Scroll);
+    add("drags", Step::Drag);
     all.sort_by_key(|(i, _)| *i);
     all.into_iter().map(|(_, s)| s).collect()
 }
@@ -215,6 +221,13 @@ fn drive(host: &mut Host, id: &str, shot: Option<String>, steps: &[Step], inspec
             }
             Step::Type(t) => host.keyboard(id, KeyboardEvent::Text { text: t.clone() }).context("--type")?,
             Step::Key(k) => host.keyboard(id, KeyboardEvent::Key { key: k.clone() }).context("--key")?,
+            Step::Drag(s) => {
+                let [x, y, dx, dy] = parse_nums::<4>(s).with_context(|| format!("--drag wants X,Y,DX,DY, got {s:?}"))?;
+                let (hit, _) = host.pointer(id, PointerEvent { kind: PointerKind::Drag, x, y, dx, dy })?;
+                if hit.is_none() {
+                    bail!("nothing to drag at {x},{y}");
+                }
+            }
             Step::Scroll(s) => {
                 let [x, y, dx, dy] = parse_nums::<4>(s).with_context(|| format!("--scroll wants X,Y,DX,DY, got {s:?}"))?;
                 let (hit, _) = host.pointer(id, PointerEvent { kind: PointerKind::Scroll, x, y, dx, dy })?;

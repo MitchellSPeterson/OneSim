@@ -14,6 +14,12 @@ pub struct GlassSpec {
     pub variant: GlassVariant,
     pub tint: Option<Color>,
     pub interactive: bool,
+    /// Backdrop blur sigma (pt) overriding the variant's (alert cards blur more).
+    pub blur: Option<f32>,
+    /// Color transform (mul, add) replacing the variant's (floating sheets and popovers are lighter).
+    pub mix: Option<(f32, f32)>,
+    /// Outer shadow (alpha, sigma pt, dy pt) replacing the variant's, in light appearance.
+    pub shadow: Option<(f32, f32, f32)>,
 }
 
 /// Fitted parameters. Lengths are points, colors/mixes are 0...1.
@@ -79,6 +85,19 @@ pub fn params(variant: GlassVariant, dark: bool) -> Params {
             p.sh_a = 0.0;
         }
         _ => {}
+    }
+    p
+}
+
+/// Parameters of one glass node: the variant's, with the spec's overrides.
+pub fn spec_params(spec: &GlassSpec, dark: bool) -> Params {
+    let mut p = params(spec.variant, dark);
+    p.sigma = spec.blur.unwrap_or(p.sigma);
+    if let Some((mul, add)) = spec.mix {
+        (p.mul, p.add) = (mul, add);
+    }
+    if let (Some((a, sg, dy)), false) = (spec.shadow, dark) {
+        (p.sh_a, p.sh_sigma, p.sh_dy) = (a, sg, dy);
     }
     p
 }
@@ -208,7 +227,7 @@ fn mix(a: f32, b: f32, t: f32) -> f32 {
 /// Paint the glass for `spec` over `shape`. `snap` must come from [`snapshot`] with the same `shape`.
 #[allow(clippy::too_many_arguments)]
 pub fn draw(pm: &mut Pixmap, snap: Snapshot, shape: Shape, spec: &GlassSpec, scale: f32, dark: bool, opacity: f32, mask: Option<&Mask>) {
-    let p = params(spec.variant, dark);
+    let p = spec_params(spec, dark);
     if spec.variant == GlassVariant::Identity {
         return;
     }
@@ -423,7 +442,7 @@ mod tests {
         let mut g = Node::new("g", "glass");
         g.bounds = Rect { x: 50.0, y: 50.0, w: 100.0, h: 100.0 };
         g.radius = 20.0;
-        g.glass = Some(GlassSpec { variant, tint, interactive: false });
+        g.glass = Some(GlassSpec { variant, tint, interactive: false, blur: None, mix: None, shadow: None });
         let appearance = if dark { Appearance::Dark } else { Appearance::Light };
         crate::Scene { size: (200.0, 200.0), appearance, nodes: vec![bg, g], unsupported_symbols: vec![], notes: vec![] }
     }

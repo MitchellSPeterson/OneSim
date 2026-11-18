@@ -295,6 +295,92 @@ pub enum ContentMode {
     Fill,
 }
 
+/// `ButtonRole`: `cancel` / `destructive` (alerts order and color buttons by it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ButtonRole {
+    Cancel,
+    Destructive,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+/// One styled run of a concatenated `Text` (`Text + Text`). Unset fields inherit from the environment.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Run {
+    pub text: String,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub italic: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub underline: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub strikethrough: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font: Option<Font>,
+    #[serde(default, rename = "fontWeight", skip_serializing_if = "Option::is_none")]
+    pub font_weight: Option<Weight>,
+    #[serde(default, rename = "foregroundColor", skip_serializing_if = "Option::is_none")]
+    pub foreground_color: Option<Color>,
+}
+
+/// `PresentationDetent`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum Detent {
+    Medium,
+    Large,
+    /// Fraction of the large detent's height.
+    Fraction { value: f64 },
+    /// Height in points.
+    Height { value: f64 },
+}
+
+/// One presented layer, bottom to top in `presentation.layers`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum Layer {
+    /// `.sheet`. `detents` ascending by height (empty = large only); the first is the initial one.
+    Sheet {
+        content: Box<ViewNode>,
+        #[serde(default)]
+        detents: Vec<Detent>,
+        #[serde(default, rename = "dragIndicator")]
+        drag_indicator: bool,
+        /// Guest action that clears the binding (swipe-to-dismiss); `None` when dismissal is disabled.
+        #[serde(default)]
+        dismiss: Option<u64>,
+    },
+    /// `.fullScreenCover`.
+    Cover { content: Box<ViewNode> },
+    /// `.alert`; `actions` are `button` nodes in source order.
+    Alert {
+        title: String,
+        #[serde(default)]
+        message: Option<Box<ViewNode>>,
+        #[serde(default)]
+        actions: Vec<ViewNode>,
+    },
+    /// `.confirmationDialog`: a popover on iPhone, anchored to the view it is attached to.
+    Dialog {
+        #[serde(default)]
+        title: String,
+        #[serde(default, rename = "titleVisible")]
+        title_visible: bool,
+        #[serde(default)]
+        message: Option<Box<ViewNode>>,
+        #[serde(default)]
+        actions: Vec<ViewNode>,
+        /// Id of the node the popover points at.
+        #[serde(default)]
+        anchor: Option<String>,
+        /// Guest action that clears the binding (tap outside the popover).
+        #[serde(default)]
+        dismiss: Option<u64>,
+    },
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ButtonStyle {
@@ -382,6 +468,9 @@ pub enum ViewKind {
     },
     Text {
         text: String,
+        /// Styled runs of a concatenation; `text` is their plain concatenation. Empty for a plain `Text`.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        runs: Vec<Run>,
     },
     VStack {
         #[serde(default)]
@@ -416,6 +505,14 @@ pub enum ViewKind {
         style: ButtonStyle,
         #[serde(default)]
         disabled: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        role: Option<ButtonRole>,
+    },
+    /// Modal layer above the whole navigation tree; present only while an alert or sheet is shown.
+    Presentation {
+        content: Box<ViewNode>,
+        #[serde(default)]
+        layers: Vec<Layer>,
     },
     Shape {
         shape: ShapeKind,
@@ -574,6 +671,29 @@ mod tests {
         assert_eq!(c, Color::Semantic { semantic: Semantic::SecondaryGroupedBackground });
         let b: ViewNode = serde_json::from_str(r#"{"kind":"button","id":"b","action":1,"label":{"kind":"empty","id":"e"}}"#).unwrap();
         assert!(matches!(b.kind, ViewKind::Button { style: ButtonStyle::Automatic, disabled: false, .. }));
+    }
+
+    #[test]
+    fn runs_roles_and_presentation_parse() {
+        let j = json!({"kind":"presentation","id":"p",
+          "content":{"kind":"text","id":"t","text":"ab","runs":[{"text":"a","fontWeight":"bold","italic":true},{"text":"b","underline":true,"foregroundColor":{"semantic":"secondary"}}]},
+          "layers":[
+            {"kind":"sheet","content":{"kind":"empty","id":"s"},"detents":[{"kind":"medium"},{"kind":"fraction","value":0.8},{"kind":"large"}],"dragIndicator":true,"dismiss":4},
+            {"kind":"alert","title":"T","message":{"kind":"text","id":"m","text":"M"},
+             "actions":[{"kind":"button","id":"b","action":2,"role":"destructive","label":{"kind":"empty","id":"e"}}]},
+            {"kind":"dialog","title":"D","titleVisible":true,"actions":[],"anchor":"x","dismiss":9},
+            {"kind":"cover","content":{"kind":"empty","id":"c"}}]});
+        let n: ViewNode = serde_json::from_value(j).unwrap();
+        let ViewKind::Presentation { content, layers } = &n.kind else { panic!() };
+        let ViewKind::Text { runs, .. } = &content.kind else { panic!() };
+        assert_eq!(runs[0].font_weight, Some(Weight::Bold));
+        assert!(runs[0].italic && runs[1].underline && !runs[1].italic && runs[1].foreground_color.is_some());
+        assert!(matches!(&layers[0], Layer::Sheet { detents, drag_indicator: true, dismiss: Some(4), .. } if detents[1] == Detent::Fraction { value: 0.8 }));
+        let Layer::Alert { actions, .. } = &layers[1] else { panic!() };
+        assert!(matches!(actions[0].kind, ViewKind::Button { role: Some(ButtonRole::Destructive), .. }));
+        assert!(matches!(&layers[2], Layer::Dialog { title_visible: true, dismiss: Some(9), .. }) && matches!(&layers[3], Layer::Cover { .. }));
+        let again: ViewNode = serde_json::from_value(serde_json::to_value(&n).unwrap()).unwrap();
+        assert_eq!(n, again);
     }
 
     #[test]

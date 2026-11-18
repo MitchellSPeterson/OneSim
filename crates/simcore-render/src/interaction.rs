@@ -3,7 +3,7 @@
 //! Owns scroll offsets, text focus, software-keyboard shift and the press target. Feed it pointer
 //! and keyboard events together with the scene they hit; it returns what the transport must do:
 //! the native host sends the effect over the guest wire, the browser calls the Swift callbacks.
-use crate::{autocap, ChromeParams, Role, Scene};
+use crate::{autocap, ChromeParams, Role, Scene, SheetPos};
 use simcore_protocol::{KeyboardEvent, PointerEvent, PointerKind};
 use std::collections::HashMap;
 
@@ -23,6 +23,8 @@ pub enum Effect {
 pub struct Interaction {
     /// Scroll offsets by node id; survive across trees.
     pub scroll: HashMap<String, (f64, f64)>,
+    /// Detent and drag position of presented sheets by layer id; survive across trees while shown.
+    pub sheets: HashMap<String, SheetPos>,
     /// Node id of the focused text field.
     pub focus: Option<String>,
     /// Software keyboard shift state. Key taps and focus update it; `keyboard` does not.
@@ -36,6 +38,9 @@ pub struct Interaction {
     pressed: Option<String>,
     /// Finger currently scrolling (or holding) a scroller.
     drag: Option<Drag>,
+    /// Finger down inside a sheet, before it is clear whether it drags the sheet or scrolls its content.
+    pending: Option<SheetDrag>,
+    sheet_drag: Option<SheetDrag>,
     /// Scrollers in flight: node id -> (velocity along the axis in pt/s, spring target). Without a
     /// target it is momentum (and a bounce past an edge); with one, a spring to that offset.
     motion: HashMap<String, (f64, Option<f64>)>,
@@ -51,6 +56,24 @@ struct Drag {
     /// Recent (time ms, finger position) samples for the release velocity.
     samples: Vec<(f64, f64)>,
 }
+
+/// A finger gesture on a sheet card.
+#[derive(Debug, Clone)]
+struct SheetDrag {
+    id: String,
+    tops: Vec<f64>,
+    detent: usize,
+    top0: f64,
+    dismiss: Option<u64>,
+    start: (f64, f64),
+    last: f64,
+    samples: Vec<(f64, f64)>,
+}
+
+/// Dragging down past this fraction of the way from the smallest detent to the screen bottom dismisses.
+const SHEET_DISMISS_FRAC: f64 = 0.25;
+/// A release projects the sheet this far ahead along the finger's velocity (s).
+const SHEET_PROJECT: f64 = 0.15;
 
 /// Drag gesture phases (`Interaction::drag`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -144,6 +167,15 @@ impl Interaction {
         self.forget_gone(scene);
         self.hit = None;
         self.acted = false;
+        if ev.kind == PointerKind::Drag {
+            // One whole gesture; the end time is long after the last move, so there is no fling.
+            let (ex, ey) = (ev.x + ev.dx, ev.y + ev.dy);
+            self.drag(scene, DragPhase::Begin, ev.x, ev.y, 0.0);
+            self.drag(scene, DragPhase::Move, ex, ey, 16.0);
+            let e = self.drag(scene, DragPhase::End, ex, ey, 1000.0);
+            self.pressed = None;
+            return if matches!(e, Effect::Action { .. }) { self.acted = true; e } else if self.hit.is_some() { Effect::Redraw } else { Effect::None };
+        }
         if ev.kind == PointerKind::Scroll {
             let Some(i) = scene.scroll_target(ev.x, ev.y) else { return Effect::None };
             let n = &scene.nodes[i];
@@ -211,6 +243,12 @@ impl Interaction {
         let live: std::collections::HashSet<&str> = scene.nodes.iter().filter(|n| n.scroll.is_some()).map(|n| n.id.as_str()).collect();
         self.scroll.retain(|id, _| live.contains(id.as_str()));
         self.motion.retain(|id, _| live.contains(id.as_str()));
+        let sheets: std::collections::HashSet<&str> = scene.nodes.iter().filter(|n| n.sheet.is_some()).map(|n| n.id.as_str()).collect();
+        self.sheets.retain(|id, _| sheets.contains(id.as_str()));
+        if self.pending.as_ref().or(self.sheet_drag.as_ref()).is_some_and(|d| !sheets.contains(d.id.as_str())) {
+            self.pending = None;
+            self.sheet_drag = None;
+        }
         if self.drag.as_ref().is_some_and(|d| !live.contains(d.id.as_str())) {
             self.drag = None;
         }
@@ -227,18 +265,11 @@ impl Interaction {
     /// past the edges; on release it carries on with the finger's velocity (see `tick`).
     pub fn drag(&mut self, scene: &Scene, phase: DragPhase, x: f64, y: f64, t: f64) -> Effect {
         self.forget_gone(scene);
+        if let Some(e) = self.sheet_gesture(scene, phase, x, y, t) {
+            return e;
+        }
         match phase {
-            DragPhase::Begin => {
-                let Some(n) = scene.scroll_target(x, y).map(|i| &scene.nodes[i]) else { return Effect::None };
-                self.pressed = None;
-                self.motion.remove(&n.id);
-                if self.drag.as_ref().is_none_or(|d| d.id != n.id) {
-                    self.catch(n, x, y);
-                }
-                let d = self.drag.as_mut().expect("caught");
-                d.samples = vec![(t, d.last)];
-                Effect::None
-            }
+            DragPhase::Begin => self.scroll_begin(scene, x, y, t),
             DragPhase::Move => {
                 let Some(d) = self.drag.as_mut() else { return Effect::None };
                 let Some(n) = scene.nodes.iter().find(|n| n.id == d.id) else { return Effect::None };
@@ -271,6 +302,104 @@ impl Interaction {
                     self.motion.insert(d.id, (v, None));
                 }
                 Effect::None
+            }
+        }
+    }
+
+    fn scroll_begin(&mut self, scene: &Scene, x: f64, y: f64, t: f64) -> Effect {
+        let Some(n) = scene.scroll_target(x, y).map(|i| &scene.nodes[i]) else { return Effect::None };
+        self.pressed = None;
+        self.motion.remove(&n.id);
+        if self.drag.as_ref().is_none_or(|d| d.id != n.id) {
+            self.catch(n, x, y);
+        }
+        let d = self.drag.as_mut().expect("caught");
+        d.samples = vec![(t, d.last)];
+        Effect::None
+    }
+
+    /// Sheet swipes. A finger down inside the topmost sheet card is held back until it moves: the
+    /// sheet follows it unless the sheet is at its largest detent over content that can still
+    /// scroll that way, in which case the content scrolls (UIKit's rule). Returns `None` when the
+    /// gesture is the scroll engine's.
+    fn sheet_gesture(&mut self, scene: &Scene, phase: DragPhase, x: f64, y: f64, t: f64) -> Option<Effect> {
+        match phase {
+            DragPhase::Begin => {
+                self.pending = None;
+                self.sheet_drag = None;
+                let scrim = scene.nodes.iter().rposition(|n| n.kind == "scrim");
+                let i = scene.nodes.iter().rposition(|n| n.sheet.is_some() && n.bounds.contains(x, y))?;
+                if scrim.is_some_and(|s| s > i) {
+                    return None; // a layer above (alert, another sheet) owns the touch
+                }
+                let (n, info) = (&scene.nodes[i], scene.nodes[i].sheet.as_ref()?);
+                self.pressed = None;
+                self.pending = Some(SheetDrag {
+                    id: n.id.clone(),
+                    tops: info.tops.clone(),
+                    detent: info.detent,
+                    top0: info.top,
+                    dismiss: info.dismiss,
+                    start: (x, y),
+                    last: y,
+                    samples: vec![(t, y)],
+                });
+                Some(Effect::None)
+            }
+            DragPhase::Move => {
+                if let Some(p) = self.pending.take() {
+                    let dy = y - p.start.1;
+                    if dy.abs() < 2.0 {
+                        self.pending = Some(p);
+                        return Some(Effect::None);
+                    }
+                    let at_largest = p.detent + 1 >= p.tops.len();
+                    let content = scene.scroll_target(p.start.0, p.start.1).map(|i| &scene.nodes[i]);
+                    let scrolls = at_largest && content.and_then(|n| n.scroll).is_some_and(|s| dy < 0.0 || s.offset.1 > 0.0);
+                    if scrolls {
+                        // Hand the touch to the scroller, from where it started.
+                        self.sheet_drag = None;
+                        self.scroll_begin(scene, p.start.0, p.start.1, t);
+                        return None;
+                    }
+                    self.sheet_drag = Some(p);
+                }
+                let d = self.sheet_drag.as_mut()?;
+                d.last = y;
+                d.samples.push((t, y));
+                d.samples.retain(|s| t - s.0 <= VELOCITY_WINDOW);
+                // Not above the largest detent, not below the screen's bottom edge.
+                let top = (d.top0 + (y - d.start.1)).clamp(*d.tops.last().unwrap_or(&0.0), scene.size.1);
+                self.hit = Some(d.id.clone());
+                let pos = self.sheets.entry(d.id.clone()).or_default();
+                let changed = pos.top != Some(top);
+                *pos = SheetPos { detent: d.detent, top: Some(top) };
+                Some(if changed { Effect::Redraw } else { Effect::None })
+            }
+            DragPhase::End => {
+                if self.pending.take().is_some() {
+                    return Some(Effect::None);
+                }
+                let d = self.sheet_drag.take()?;
+                self.hit = Some(d.id.clone());
+                let fresh = d.samples.last().is_some_and(|s| t - s.0 <= VELOCITY_WINDOW);
+                let v = match (d.samples.first(), fresh) {
+                    (Some(a), true) if t > a.0 => (d.last - a.1) / ((t - a.0) / 1000.0),
+                    _ => 0.0,
+                };
+                let top = (d.top0 + (d.last - d.start.1)).clamp(*d.tops.last().unwrap_or(&0.0), scene.size.1) + v * SHEET_PROJECT;
+                // Past the dismiss line: gone. Otherwise the nearest detent.
+                let low = d.tops.first().copied().unwrap_or(0.0);
+                let line = low + SHEET_DISMISS_FRAC * (scene.size.1 - low);
+                if top > line {
+                    if let Some(id) = d.dismiss {
+                        self.sheets.insert(d.id, SheetPos { detent: d.detent, top: None });
+                        return Some(Effect::Action { id, version: self.version });
+                    }
+                }
+                let near = (0..d.tops.len()).min_by(|&a, &b| (d.tops[a] - top).abs().total_cmp(&(d.tops[b] - top).abs())).unwrap_or(0);
+                self.sheets.insert(d.id, SheetPos { detent: near, top: None });
+                Some(Effect::Redraw)
             }
         }
     }

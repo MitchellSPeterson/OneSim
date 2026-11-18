@@ -127,6 +127,8 @@ pub enum PointerKind {
     Up,
     Click,
     Scroll,
+    /// A finger drag from (x, y) by (dx, dy) points, as one gesture (touch scrolling, sheet swipes).
+    Drag,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -134,7 +136,7 @@ pub struct PointerEvent {
     pub kind: PointerKind,
     pub x: f64,
     pub y: f64,
-    /// Scroll deltas in points; positive scrolls content forward (reveals later content).
+    /// Scroll deltas in points; positive scrolls content forward (reveals later content). For `drag`, how far the finger moves.
     #[serde(default)]
     pub dx: f64,
     #[serde(default)]

@@ -35,7 +35,7 @@ node frameworks/react-native/guest/run-standalone.mjs   # guest-only check: tap 
 - **Unsupported native modules fail loudly**: `SimCore: <Module> is not supported (method: m)`
   on stderr plus one `error` message per module. Nothing reports fake success.
 
-Wire contract: `docs/protocol.md` §G.
+Wire contract: `docs/protocol.md` §H.
 
 ## Native-module registry
 

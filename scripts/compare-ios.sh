@@ -20,6 +20,18 @@ shot todos-toggled    --click Todos --click "Ship the SwiftUI subset"
 shot todos-typed      --click Todos --click "Ship the SwiftUI subset" --click "New todo" --type "Buy milk"
 shot controls         --click Controls
 shot controls-changed --click Controls --click Notifications --click More --click More
+shot alert            --click Controls --click "Show alert"
+shot alert-dark       --dark --click Controls --click "Show alert"
+shot sheet            --click Controls --click "Show sheet"
+shot sheet-dark       --dark --click Controls --click "Show sheet"
+shot sheet-medium      --click Controls --click "Show half sheet"
+shot sheet-medium-dark --dark --click Controls --click "Show half sheet"
+shot sheet-nested      --click Controls --click "Show half sheet" --click "Open another"
+shot sheet-nested-dark --dark --click Controls --click "Show half sheet" --click "Open another"
+shot dialog            --click Controls --click "Show dialog"
+shot dialog-dark       --dark --click Controls --click "Show dialog"
+shot cover             --click Controls --click "Show cover"
+shot cover-dark        --dark --click Controls --click "Show cover"
 shot home-dark        --dark
 shot symbols          --click Symbols
 shot symbols-dark     --click Symbols --dark

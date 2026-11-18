@@ -36,7 +36,7 @@ An `environment` message stores appearance/viewport and re-sends a tree.
 | Area | Supported |
 |---|---|
 | Protocols | `View`, `App`, `Scene`, `Never: View`, `@ViewBuilder` (up to 10 children, `if`/`if-else`, optionals), `@SceneBuilder` (single scene) |
-| Views | `Text(_:)`, `Text(verbatim:)`, `VStack`, `HStack`, `ZStack`, `Spacer(minLength:)`, `Button(_:action:)`, `Button(action:label:)`, `Color`, `Rectangle`, `EmptyView`, `TupleView` |
+| Views | `Text(_:)`, `Text(verbatim:)`, `VStack`, `HStack`, `ZStack`, `Spacer(minLength:)`, `Button(_:role:action:)`, `Button(role:action:label:)` (`ButtonRole` `.cancel`/`.destructive`), `Text + Text` (with `Text.bold()`, `.font`, `.fontWeight`, `.foregroundColor`, `.foregroundStyle` per run), `Color`, `Rectangle`, `EmptyView`, `TupleView` |
 | Scenes | `WindowGroup { }` (first one launches) |
 | Colors | `Color(red:green:blue:opacity:)`, `Color(white:opacity:)`, `.red .green .blue .orange .yellow .purple .pink .gray .black .white .clear .primary .secondary .accentColor` |
 | Layout types | `HorizontalAlignment`, `VerticalAlignment`, `Alignment`, `Edge`, `Edge.Set`, `CGFloat` (Foundation) |
@@ -65,18 +65,31 @@ so `@State` persists while a screen is on the stack (hidden screens' slots are k
 `disabled: true` and action `0` (never registered). `TextField` allocates a `field` id per evaluation; a `text_input` message
 (version-gated) sets the bound String via `simcore_text_cb`.
 
+### Presentation
+
+- `.alert(_:isPresented:actions:message:)`, `.alert(_:isPresented:actions:)` (no actions: an OK button), `.alert(_:isPresented:presenting:actions:message:)` / `presenting:actions:`.
+- `.confirmationDialog(_:isPresented:titleVisibility:actions:message:)`, without `message`, and the `presenting:` forms (rendered as the iPhone popover; a Cancel is added when the app has none, and tapping outside cancels).
+- `.sheet(isPresented:onDismiss:content:)`, `.sheet(item:onDismiss:content:)`, `.fullScreenCover(isPresented:onDismiss:content:)`, `.fullScreenCover(item:onDismiss:content:)`.
+- `.presentationDetents(_:)` (`.medium`, `.large`, `.fraction(_:)`, `.height(_:)`; starts at the smallest), `.presentationDragIndicator(_:)`, `.interactiveDismissDisabled(_:)`; `Visibility`.
+- Sheets and covers can present further sheets/alerts (a stack). `@Environment(\.dismiss)` inside a sheet or cover clears its binding (a pushed screen inside it is popped first). `onDismiss` runs whenever the presentation goes away: `dismiss()`, a swipe, or app code clearing the binding.
+- Swipe: a sheet follows a downward drag (dismisses past 25% of the way down, settles at the nearest detent otherwise) and an upward drag expands it; content scrolls first at the largest detent. See protocol section G for the gesture rules.
+
+Presented content is evaluated in place (a sheet's `@State` lives at `<view path>/sheet` only while shown) and hoisted by the runtime above the whole tree as a `presentation` node (protocol section G). Any `Button` inside alert/dialog actions dismisses it after its own action. `Button(_:role:action:)` takes `ButtonRole` `.cancel` / `.destructive`.
+
+Limits: no animations (settled states only; the sheet snaps to its detent on release), no `presentationBackground`, `presentationCornerRadius`, `presentationBackgroundInteraction`, `presentationCompactAdaptation`, `dialogSeverity`, `alert` with text fields or `Text` titles, `popover`, or `inspector`. Presented content is hoisted above the whole screen, not just its presenting view. The popover points at the first text of the view the dialog is attached to. `Text` runs: no underline color/pattern, `baselineOffset` or `kerning`; a concatenation's line height follows its largest run.
+
 ## Known limitations
 
 - Images: only SF Symbols (`Image(systemName:)`), rendered by the host in monochrome (foreground tint); no `Image("asset")`,
   `renderingMode`, `symbolRenderingMode`, `symbolVariant`, `Image(uiImage:)`. `aspectRatio` applies only to images (other views ignore it);
   `scaledToFill` crops to the proposed size. A `Label` inside a list row forces its icon to `imageScale(.large)`.
 - Liquid Glass: `GlassEffectContainer` does not merge/morph shapes, `glassEffectID`/`glassEffectUnion`/`glassEffectTransition` are missing, `interactive` has no visual effect, `Ellipse` as a plain shape view draws as a capsule, and a non-square `.circle` is a capsule.
-- Dynamic Type is a host setting (`--dynamic-type`) that scales text styles only; `@Environment(\.dynamicTypeSize)` is read once from `SIMCORE_DYNAMIC_TYPE` at launch (the `environment` callback does not carry later changes).
-- `Group` is transparent: a modifier applied to a multi-child `Group` wraps the children in a vstack instead of applying to each.
-- Value navigation: destinations registered by `navigationDestination` are remembered per stack (only the top screen is evaluated, so a stack that starts with a non-empty `path` has no destinations until its root has been evaluated once); a value with no destination pushes a blank screen. Destination-style `NavigationLink`s are not tracked in a path-bound stack.
+- Dynamic Type is a host setting (`--dynamic-type`) that scales text styles only; `@Environment(\.dynamicTypeSize)` is read once from `SIMCORE_DYNAMIC_TYPE` at launch. A session's size is fixed at `create_session` (no API changes it later), so that value stays correct; the web demo's `setDynamicType` re-renders on the host only and the guest is not told.
+- Value navigation: destinations registered by `navigationDestination` are remembered per stack (only the top screen is evaluated, so a stack that starts with a non-empty `path` has no destinations until its root has been evaluated once). A value with no registered destination pushes nothing and logs SwiftUI's "no matching navigationDestination" warning to stderr (there is no guest-to-host error channel). Destination-style `NavigationLink`s in a `NavigationStack(path:)` push on top of the path-driven screens and back pops them first; a value pushed from such a screen goes on that screen stack rather than into the bound path.
+- A modifier on a multi-child `Group` applies to each child, as in SwiftUI (other multi-root views are still wrapped in a vstack).
 - `onAppear`/`onDisappear` fire per structural path after the evaluation pass (a screen covered by a push disappears, and appears again on pop); if they dirty state the root is re-evaluated, at most 8 times, before the tree is sent. `@EnvironmentObject`/`@Environment` are snapshotted when a view's `body` runs.
 - Not implemented: animations, custom `Shape.path(in:)`,
-  `Text` concatenation, `.environment(_:_:)`; `Color.opacity` on semantic colors is ignored.
+  `.environment(_:_:)`; `Color.opacity` on semantic colors is ignored.
 - `@State` only inside `View`s (not `App`); the `WindowGroup` content closure runs once.
 - Structural identity is positional (`if`/`else` branches share a path; state is distinguished by view type).
 - Whole-root re-evaluation on every state change.

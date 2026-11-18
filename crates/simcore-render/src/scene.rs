@@ -1,5 +1,5 @@
 use crate::symbols::SymbolSpec;
-use crate::text::FontSpec;
+use crate::text::{FontSpec, Span};
 use simcore_protocol::{Appearance, UiFrame, UiNode};
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -70,6 +70,8 @@ pub struct TextRun {
     pub strike: bool,
     /// Horizontal shift of the text inside its bounds (scrolled text fields).
     pub offset_x: f32,
+    /// Styled runs of a concatenated `Text` (then `text` is their concatenation); empty otherwise.
+    pub spans: Vec<Span>,
     /// Per-range styles and a line cap (React Native `Text`).
     pub rich: Option<crate::text::Rich>,
 }
@@ -99,6 +101,10 @@ pub enum Glyph {
     Return,
     Emoji,
     Mic,
+    /// Popover arrow (filled triangle) pointing down / up.
+    ArrowDown,
+    ArrowUp,
+    ArrowLeft,
 }
 
 /// An SF Symbol painted as an alpha mask in `color`, `size` points, centred in the node's bounds
@@ -124,6 +130,27 @@ pub struct ImageRun {
 pub struct Gradient {
     pub angle: f32,
     pub stops: Vec<Color>,
+}
+
+/// A sheet the user can drag (`Node::sheet`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct SheetInfo {
+    /// Top edge (y, points) of each detent, ascending by detent height, so descending in y.
+    pub tops: Vec<f64>,
+    /// Index into `tops` the sheet rests at (or is dragged from).
+    pub detent: usize,
+    /// Current top edge, including a drag in progress.
+    pub top: f64,
+    /// Guest action that dismisses it; `None` = `interactiveDismissDisabled`.
+    pub dismiss: Option<u64>,
+}
+
+/// Interaction state of one sheet layer (`Interaction::sheets`, keyed by layer id).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct SheetPos {
+    pub detent: usize,
+    /// Top edge while a finger drags it.
+    pub top: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -176,6 +203,7 @@ pub struct Node {
     /// Caret x offset inside bounds (focused text field).
     pub caret: Option<f64>,
     pub scroll: Option<ScrollInfo>,
+    pub sheet: Option<SheetInfo>,
     /// False for layout-only helper nodes (clip/opacity layers); hidden from inspection.
     pub inspect: bool,
 }
@@ -209,6 +237,7 @@ impl Node {
             disabled: false,
             caret: None,
             scroll: None,
+            sheet: None,
             inspect: true,
         }
     }
@@ -230,6 +259,8 @@ impl Scene {
     /// Topmost node with an action under the point (points, respecting clips).
     pub fn hit_test(&self, x: f64, y: f64) -> Option<usize> {
         // Content scrolled under the navigation bar / status bar is not tappable there.
+        // Under an alert or sheet only the presentation layer (and chrome drawn after it) is reachable.
+        let modal = self.nodes.iter().rposition(|n| n.kind == "scrim");
         let bar = self.nodes.iter().position(|n| n.kind == "navbar");
         let bar_bottom = bar.map_or(0.0, |b| self.nodes[b].bounds.y + self.nodes[b].bounds.h);
         let under_bar = |mut i: usize| {
@@ -243,7 +274,10 @@ impl Scene {
         };
         (0..self.nodes.len()).rev().find(|&i| {
             let n = &self.nodes[i];
-            if y < bar_bottom && under_bar(i) && n.kind != "keyboard" && n.role != Role::Key {
+            if modal.is_some_and(|m| i < m) {
+                return false;
+            }
+            if y < bar_bottom && modal.is_none() && under_bar(i) && n.kind != "keyboard" && n.role != Role::Key {
                 return false;
             }
             (n.action.is_some() || n.field.is_some() || n.role == Role::Key) && n.bounds.contains(x, y) && self.clipped_in(i, x, y)
@@ -276,9 +310,10 @@ impl Scene {
         if self.nodes.iter().any(|n| n.kind == "navbar" && y < n.bounds.y) {
             return None;
         }
+        let modal = self.nodes.iter().rposition(|n| n.kind == "scrim");
         (0..self.nodes.len()).rev().find(|&i| {
             let n = &self.nodes[i];
-            n.scroll.is_some() && n.bounds.contains(x, y) && self.clipped_in(i, x, y)
+            modal.is_none_or(|m| i > m) && n.scroll.is_some() && n.bounds.contains(x, y) && self.clipped_in(i, x, y)
         })
     }
 

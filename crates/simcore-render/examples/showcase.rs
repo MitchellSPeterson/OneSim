@@ -41,6 +41,7 @@ fn main() {
                 appearance: a,
                 dynamic_type: Default::default(),
                 scroll: &scroll,
+                sheets: &Default::default(),
                 focus: focus.as_deref(),
                 overscroll: false,
                 status_bar: true,

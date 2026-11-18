@@ -36,5 +36,17 @@ shot typography-scrolled-dark --dynamic-type accessibility5 --dark --click Typog
 shot long-list           --click "Long list"
 shot long-list-collapsed --click "Long list" --scroll 200,500,0,52
 shot long-list-scrolled  --click "Long list" --scroll 200,500,0,775.66
+shot alert              --click Controls --click "Show alert"
+shot alert-dark         --dark --click Controls --click "Show alert"
+shot sheet              --click Controls --click "Show sheet"
+shot sheet-dark         --dark --click Controls --click "Show sheet"
+shot sheet-medium      --click Controls --click "Show half sheet"
+shot sheet-medium-dark --dark --click Controls --click "Show half sheet"
+shot sheet-nested      --click Controls --click "Show half sheet" --click "Open another"
+shot sheet-nested-dark --dark --click Controls --click "Show half sheet" --click "Open another"
+shot dialog            --click Controls --click "Show dialog"
+shot dialog-dark       --dark --click Controls --click "Show dialog"
+shot cover             --click Controls --click "Show cover"
+shot cover-dark        --dark --click Controls --click "Show cover"
 # native is the reference; both sides are fallback fonts, so the 2% rule applies (never loosen it)
 SIMCORE_MAX_DIFF=2.0 python3 scripts/compare_ios.py "$out/native" "$out/web" "$out"

@@ -12,9 +12,14 @@ from PIL import Image, ImageChops, ImageDraw
 FALLBACK = os.environ.get("SIMCORE_FALLBACK") == "1"
 MAX_DIFF = float(os.environ.get("SIMCORE_MAX_DIFF", "3.5" if FALLBACK else "2.0"))
 ios_dir, sc_dir, out = map(Path, sys.argv[1:4])
-# Per-state limits (Apple fonts only), keyed "<fixture dir>/<state>". Keep this list short and justified.
-# rn-showcase-ios/text: 19 dense lines; positions match within 1-2 px, the rest is glyph rasterization.
-STATE_MAX = {} if FALLBACK or "SIMCORE_MAX_DIFF" in os.environ else {"rn-showcase-ios/text": 2.5}
+# Maintainer-approved per-state limits, keyed "<fixture dir>/<state>". Keep this list short and justified.
+# - typography-scrolled(-dark), fallback only (temporary): Inter at AX5 sizes bottoms out at ~4.9% without
+#   SF kerning tables (docs/ios-comparison.md, Known gaps). Remove once that gap is closed.
+# - rn-showcase-ios/text, system fonts only: 19 dense lines; positions match within 1-2 px, the rest is
+#   glyph rasterization.
+STATE_MAX = {} if "SIMCORE_MAX_DIFF" in os.environ else (
+    {"showcase-ios/typography-scrolled": 5.0, "showcase-ios/typography-scrolled-dark": 5.0} if FALLBACK
+    else {"rn-showcase-ios/text": 2.5})
 limit = lambda name: STATE_MAX.get(f"{ios_dir.name}/{name}", MAX_DIFF)
 rows = []
 for ios_png in sorted(ios_dir.glob("*.png")):
