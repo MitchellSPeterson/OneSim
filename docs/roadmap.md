@@ -20,3 +20,7 @@ v0.2 definition of done (PRD §14): all items met except visual fidelity of the 
 Next SwiftUI surface: `@Binding`, `@ObservedObject`/`@StateObject`, `ScrollView`, `List`, `TextField` (needs keyboard events), `Toggle`, `NavigationStack`, sheets/alerts, animations, environment values.
 
 Later: Jetpack Compose engine (own layout, Kotlin runtime out of process), React Native engine (Hermes + Fabric, Yoga layout), WASM execution backend (Wasmtime), binary wire encoding, native module registry (implemented / simulated / unsupported).
+
+## Apple frameworks beyond SwiftUI
+
+SimCore's SwiftUI is a reimplementation of SwiftUI in Swift. We will extend the same approach to the frameworks SwiftUI apps reach for, so their previews run unchanged: Charts, SpriteKit, SceneKit, RealityKit, ARKit, MapKit, StoreKit, MusicKit, PencilKit, WidgetKit, UIKit, CoreGraphics, Metal and Vision. None of these are started yet; each gets its own milestone, compatibility notes and iOS reference states like the SwiftUI work.

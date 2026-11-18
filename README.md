@@ -12,6 +12,8 @@ $ simcore run examples/swiftui-counter --root-view CounterView --click Increment
 | Expo / React Native | 🧪 v0.2 preview: core components, Fast Refresh, Expo Router native stack and tabs, Reanimated, simulated device modules ([API coverage](docs/expo-api-coverage.md)) | 🔜 coming ([API coverage](docs/expo-api-coverage.md)) |
 | Jetpack Compose | n/a | 🔜 planned |
 
+Beyond SwiftUI, we will reimplement the Apple frameworks apps reach for (Charts, SpriteKit, SceneKit, RealityKit, ARKit, MapKit, StoreKit, MusicKit, PencilKit, WidgetKit, UIKit, CoreGraphics, Metal, Vision); see the [roadmap](docs/roadmap.md#apple-frameworks-beyond-swiftui).
+
 Milestones: [docs/roadmap.md](docs/roadmap.md).
 
 Rendered output stays within 0.4–1.9% of the iOS 26 Simulator pixel-for-pixel across 13 states, including SF Symbols and the software keyboard, on the [showcase app](examples/swiftui-showcase/Showcase.swift). See [docs/ios-comparison.md](docs/ios-comparison.md).
