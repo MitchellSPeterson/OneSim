@@ -4,6 +4,7 @@
 //! [`Scene`]; everything else works on the scene only.
 
 pub mod layout {
+    pub mod rn;
     pub mod swiftui;
 }
 mod chrome;
@@ -29,7 +30,10 @@ use simcore_protocol::ViewNode;
 
 /// Layout a view tree into a scene (see [`SceneParams`]).
 pub fn build_scene(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
-    layout::swiftui::layout(root, params, fonts)
+    match root.kind {
+        simcore_protocol::ViewKind::Rn { .. } => layout::rn::layout(root, params, fonts),
+        _ => layout::swiftui::layout(root, params, fonts),
+    }
 }
 
 /// `SIMCORE_FALLBACK=1` forces the open-licensed fallbacks (Inter, Phosphor Icons) even where Apple's resources exist.

@@ -24,44 +24,65 @@ enum Cmd {
         app_path: String,
         #[arg(long)]
         root_view: Option<String>,
-        /// Write a PNG screenshot (after all interactions).
-        #[arg(long)]
-        screenshot: Option<String>,
-        /// Click "X,Y" (points) or a control by label: button, navigation link, toggle (its switch),
-        /// text field (placeholder; focuses it), or a stepper half as "LABEL#increment" / "LABEL#decrement"
-        /// where LABEL is the stepper's current label. Repeatable.
-        #[arg(long = "click", value_name = "LABEL_OR_X,Y")]
-        clicks: Vec<String>,
-        /// Type text into the focused text field. Repeatable.
-        #[arg(long = "type", value_name = "TEXT")]
-        texts: Vec<String>,
-        /// Press a key in the focused text field: backspace or enter. Repeatable.
-        #[arg(long = "key", value_name = "backspace|enter")]
-        keys: Vec<String>,
-        /// Scroll the scroller under (X,Y) by (DX,DY) points; positive DY reveals later content. Repeatable.
-        #[arg(long = "scroll", value_name = "X,Y,DX,DY")]
-        scrolls: Vec<String>,
-        /// Print the UI tree as JSON on stdout.
-        #[arg(long)]
-        inspect: bool,
-        /// Device profile (default iphone-17-pro: 402x874 pt @3x).
-        #[arg(long)]
-        device: Option<String>,
-        /// Override the device viewport width (points).
-        #[arg(long)]
-        width: Option<f64>,
-        /// Override the device viewport height (points).
-        #[arg(long)]
-        height: Option<f64>,
-        /// Override the device pixel scale.
-        #[arg(long)]
-        scale: Option<f64>,
-        #[arg(long)]
-        dark: bool,
-        /// Dynamic Type size: xSmall ... large (default) ... xxxLarge, accessibility1 ... accessibility5.
-        #[arg(long = "dynamic-type", value_name = "SIZE")]
-        dynamic_type: Option<String>,
+        #[command(flatten)]
+        opts: Opts,
     },
+    /// Run an Expo / React Native app served by Metro headlessly (same options as `run`).
+    Expo {
+        /// Metro dev server (default http://localhost:8081).
+        #[arg(long)]
+        url: Option<String>,
+        /// Accepted for symmetry with other runners: there is no window, every run is headless.
+        #[arg(long)]
+        headless: bool,
+        /// light (default) or dark; same as --dark.
+        #[arg(long, value_name = "light|dark")]
+        appearance: Option<String>,
+        #[command(flatten)]
+        opts: Opts,
+    },
+}
+
+/// Options shared by `run` and `expo`.
+#[derive(clap::Args)]
+struct Opts {
+    /// Write a PNG screenshot (after all interactions).
+    #[arg(long)]
+    screenshot: Option<String>,
+    /// Click "X,Y" (points) or a control by label: button, navigation link, toggle (its switch),
+    /// text field (placeholder; focuses it), or a stepper half as "LABEL#increment" / "LABEL#decrement"
+    /// where LABEL is the stepper's current label. Repeatable.
+    #[arg(long = "click", value_name = "LABEL_OR_X,Y")]
+    clicks: Vec<String>,
+    /// Type text into the focused text field. Repeatable.
+    #[arg(long = "type", value_name = "TEXT")]
+    texts: Vec<String>,
+    /// Press a key in the focused text field: backspace or enter. Repeatable.
+    #[arg(long = "key", value_name = "backspace|enter")]
+    keys: Vec<String>,
+    /// Scroll the scroller under (X,Y) by (DX,DY) points; positive DY reveals later content. Repeatable.
+    #[arg(long = "scroll", value_name = "X,Y,DX,DY")]
+    scrolls: Vec<String>,
+    /// Print the UI tree as JSON on stdout.
+    #[arg(long)]
+    inspect: bool,
+    /// Device profile (default iphone-17-pro: 402x874 pt @3x).
+    #[arg(long)]
+    device: Option<String>,
+    /// Override the device viewport width (points).
+    #[arg(long)]
+    width: Option<f64>,
+    /// Override the device viewport height (points).
+    #[arg(long)]
+    height: Option<f64>,
+    /// Override the device pixel scale.
+    #[arg(long)]
+    scale: Option<f64>,
+    #[arg(long)]
+    dark: bool,
+    /// Dynamic Type size: xSmall ... large (default) ... xxxLarge, accessibility1 ... accessibility5.
+    #[arg(long = "dynamic-type", value_name = "SIZE")]
+    dynamic_type: Option<String>,
 }
 
 /// One interaction, in command-line order.
@@ -110,38 +131,60 @@ fn main() -> Result<()> {
             Host::new().serve(stdin.lock(), std::io::stdout().lock())?;
             Ok(())
         }
-        Cmd::Run { app_path, root_view, screenshot, inspect, device, width, height, scale, dark, dynamic_type, .. } => {
-            let run = matches.subcommand_matches("run").expect("run subcommand");
-            let steps = steps(run);
-            let viewport = match (width, height) {
-                (None, None) => None,
-                (w, h) => Some(Viewport { width: w.unwrap_or(402.0), height: h.unwrap_or(874.0) }),
+        Cmd::Run { app_path, root_view, opts } => {
+            run(&matches, "run", CreateSessionParams { app_path, root_view, ..params("swiftui") }, opts, None)
+        }
+        Cmd::Expo { url, appearance, opts, .. } => {
+            let appearance = match appearance.as_deref() {
+                None | Some("light") => None,
+                Some("dark") => Some(Appearance::Dark),
+                Some(a) => bail!("unknown --appearance {a:?} (light, dark)"),
             };
-            let mut host = Host::new();
-            let id = host.create_session(CreateSessionParams {
-                framework: "swiftui".into(),
-                platform: "ios".into(),
-                app_path,
-                root_view,
-                viewport,
-                scale,
-                appearance: Some(if dark { Appearance::Dark } else { Appearance::Light }),
-                dynamic_type_size: dynamic_type
-                    .map(|d| DynamicTypeSize::parse(&d).with_context(|| format!("unknown --dynamic-type {d:?}")))
-                    .transpose()?,
-                device,
-                prebuilt: false,
-            })?;
-            let result = drive(&mut host, &id, screenshot, &steps, inspect);
-            if result.is_err() {
-                for e in host.errors(&id).unwrap_or_default() {
-                    eprintln!("[{}] {}", e.source, e.message);
-                }
-            }
-            host.shutdown();
-            result
+            run(&matches, "expo", CreateSessionParams { metro_url: url, ..params("react-native") }, opts, appearance)
         }
     }
+}
+
+fn params(framework: &str) -> CreateSessionParams {
+    CreateSessionParams {
+        framework: framework.into(),
+        platform: "ios".into(),
+        app_path: String::new(),
+        root_view: None,
+        viewport: None,
+        scale: None,
+        appearance: None,
+        dynamic_type_size: None,
+        device: None,
+        prebuilt: false,
+        metro_url: None,
+    }
+}
+
+/// Create a session from the shared options, drive it in command-line order, then shut down.
+fn run(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: Opts, appearance: Option<Appearance>) -> Result<()> {
+    let steps = steps(matches.subcommand_matches(name).expect("subcommand"));
+    p.viewport = match (o.width, o.height) {
+        (None, None) => None,
+        (w, h) => Some(Viewport { width: w.unwrap_or(402.0), height: h.unwrap_or(874.0) }),
+    };
+    p.scale = o.scale;
+    p.appearance = Some(appearance.unwrap_or(if o.dark { Appearance::Dark } else { Appearance::Light }));
+    p.dynamic_type_size = o
+        .dynamic_type
+        .map(|d| DynamicTypeSize::parse(&d).with_context(|| format!("unknown --dynamic-type {d:?}")))
+        .transpose()?;
+    p.device = o.device;
+    let mut host = Host::new();
+    let id = host.create_session(p)?;
+    let result = drive(&mut host, &id, o.screenshot, &steps, o.inspect);
+    if result.is_err() {
+        for e in host.errors(&id).unwrap_or_default() {
+            eprintln!("[{}] {}", e.source, e.message);
+        }
+    }
+    host.shutdown();
+    result
 }
 
 fn drive(host: &mut Host, id: &str, shot: Option<String>, steps: &[Step], inspect: bool) -> Result<()> {

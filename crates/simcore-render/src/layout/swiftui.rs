@@ -147,6 +147,32 @@ pub struct SceneParams<'a> {
     pub chrome: crate::chrome::ChromeParams,
 }
 
+fn ctx<'a>(params: &'a SceneParams, fonts: &'a mut Fonts) -> Ctx<'a> {
+    Ctx {
+        fonts,
+        dark: params.appearance == Appearance::Dark,
+        dts: params.dynamic_type,
+        scale: params.scale.max(1.0),
+        margin: if params.viewport.0 >= 414.0 { 20.0 } else { 16.0 },
+        scroll: params.scroll,
+        overscroll: params.overscroll,
+        focus: params.focus,
+        memo: HashMap::new(),
+        unsupported: BTreeSet::new(),
+    }
+}
+
+/// Status bar and Dynamic Island on top of `nodes`, for layouts that draw their own content (React Native).
+pub(crate) fn add_chrome(nodes: &mut Vec<Node>, params: &SceneParams, fonts: &mut Fonts) {
+    if params.status_bar {
+        let lay = ctx(params, fonts).status_bar(params.viewport.0, params.device);
+        flatten(lay, 0.0, 0.0, Some(0), 1.0, nodes);
+    }
+    if let Some(isl) = params.device.island {
+        crate::chrome::island(nodes, isl);
+    }
+}
+
 pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
     let (w, h) = params.viewport;
     // Keyboard avoidance: the keyboard top replaces the bottom safe-area inset.
@@ -154,18 +180,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     let kb_h = params.device.kb_base_h + params.device.safe_bottom;
     let (safe_top, dev_bottom) = (params.device.safe_top, params.device.safe_bottom);
     let safe_bottom = if kb { kb_h } else { dev_bottom };
-    let mut cx = Ctx {
-        fonts,
-        dark: params.appearance == Appearance::Dark,
-        dts: params.dynamic_type,
-        scale: params.scale.max(1.0),
-        margin: if w >= 414.0 { 20.0 } else { 16.0 },
-        scroll: params.scroll,
-        overscroll: params.overscroll,
-        focus: params.focus,
-        memo: HashMap::new(),
-        unsupported: BTreeSet::new(),
-    };
+    let mut cx = ctx(params, fonts);
     // Unstyled text is `.body`, which scales with Dynamic Type.
     let body = simcore_protocol::TextStyle::Body.size_at(params.dynamic_type) as f32;
     let mut screen = Node::new("root", "screen");
@@ -195,7 +210,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     if let Some(isl) = params.device.island {
         crate::chrome::island(&mut nodes, isl);
     }
-    Scene { size: params.viewport, appearance: params.appearance, nodes, unsupported_symbols: cx.unsupported.into_iter().collect() }
+    Scene { size: params.viewport, appearance: params.appearance, nodes, unsupported_symbols: cx.unsupported.into_iter().collect(), notes: vec![] }
 }
 
 fn flatten(lay: Lay, x: f64, y: f64, mut parent: Option<usize>, mut opacity: f32, out: &mut Vec<Node>) {
@@ -595,7 +610,7 @@ impl Ctx<'_> {
                 n.fill = Some(if self.dark { rgba(84, 84, 88, 0.6) } else { rgba(60, 60, 67, 0.29) });
                 Lay::new(size, Some(n), vec![])
             }
-            ViewKind::Empty => Lay::new(Size::default(), Some(Node::new(&v.id, "empty")), vec![]),
+            ViewKind::Empty | ViewKind::Rn { .. } => Lay::new(Size::default(), Some(Node::new(&v.id, "empty")), vec![]),
             ViewKind::Scroll { axis, child } => self.scroll(v, *axis == simcore_protocol::Axis::Vertical, child, p, env),
             ViewKind::List { style, sections } => self.list(v, *style, sections, p, env),
             ViewKind::Navigation { title, display_mode, back, content } => {

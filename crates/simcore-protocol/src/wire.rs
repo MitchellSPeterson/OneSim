@@ -1,6 +1,8 @@
 //! Guest wire messages (host <-> app process), JSON lines.
 
 use crate::view::ViewNode;
+#[cfg(test)]
+use crate::view::ViewKind;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -75,6 +77,15 @@ pub struct Viewport {
     pub height: f64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TouchPhase {
+    Start,
+    Move,
+    End,
+    Cancel,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum HostMessage {
@@ -88,6 +99,11 @@ pub enum HostMessage {
         #[serde(default, rename = "dynamicTypeSize", skip_serializing_if = "Option::is_none")]
         dynamic_type_size: Option<DynamicTypeSize>,
     },
+    /// React Native touch: `x`/`y` page points, `lx`/`ly` relative to the target node (`tag`).
+    Touch { phase: TouchPhase, tag: u64, x: f64, y: f64, lx: f64, ly: f64, timestamp: f64 },
+    /// React Native layout frames `tag -> [x, y, w, h]` in page points.
+    Layout { frames: std::collections::BTreeMap<String, [f64; 4]> },
+    Reload,
     Shutdown,
 }
 
@@ -131,6 +147,23 @@ mod tests {
             serde_json::to_string(&HostMessage::Action { id: 1, version: 2 }).unwrap(),
             r#"{"type":"action","id":1,"version":2}"#
         );
+        let t = HostMessage::Touch { phase: TouchPhase::Start, tag: 7, x: 1.0, y: 2.0, lx: 0.5, ly: 1.5, timestamp: 10.0 };
+        let j = serde_json::to_string(&t).unwrap();
+        assert_eq!(j, r#"{"type":"touch","phase":"start","tag":7,"x":1.0,"y":2.0,"lx":0.5,"ly":1.5,"timestamp":10.0}"#);
+        assert_eq!(serde_json::from_str::<HostMessage>(&j).unwrap(), t);
+        let l = HostMessage::Layout { frames: [("7".to_string(), [1.0, 2.0, 3.0, 4.0])].into() };
+        let j = serde_json::to_string(&l).unwrap();
+        assert_eq!(j, r#"{"type":"layout","frames":{"7":[1.0,2.0,3.0,4.0]}}"#);
+        assert_eq!(serde_json::from_str::<HostMessage>(&j).unwrap(), l);
+        assert_eq!(serde_json::to_string(&HostMessage::Reload).unwrap(), r#"{"type":"reload"}"#);
+        let rn: GuestMessage = serde_json::from_str(
+            r#"{"type":"tree","version":1,"root":{"kind":"rn","id":"1","component":"RootView","props":{"flex":1},"children":[{"kind":"rn","id":"2","component":"RCTRawText","props":{"text":"hi"},"children":[]}]}}"#,
+        )
+        .unwrap();
+        let GuestMessage::Tree { root, .. } = rn else { panic!() };
+        let ViewKind::Rn { component, props, children } = &root.kind else { panic!() };
+        assert_eq!((component.as_str(), props["flex"].as_i64(), children.len()), ("RootView", Some(1), 1));
+        assert_eq!(serde_json::from_str::<ViewNode>(&serde_json::to_string(&root).unwrap()).unwrap(), root);
         assert_eq!(serde_json::to_string(&HostMessage::Shutdown).unwrap(), r#"{"type":"shutdown"}"#);
         assert_eq!(
             serde_json::to_string(&HostMessage::TextInput { field: 4, version: 2, text: "hi".into() }).unwrap(),

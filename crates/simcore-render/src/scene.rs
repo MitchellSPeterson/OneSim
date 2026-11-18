@@ -197,6 +197,8 @@ pub struct Scene {
     pub nodes: Vec<Node>,
     /// Symbol names the host could not render (placeholders were drawn), sorted, deduplicated.
     pub unsupported_symbols: Vec<String>,
+    /// Full host-side diagnostics (e.g. `unsupported_component: X`), sorted, deduplicated.
+    pub notes: Vec<String>,
 }
 
 impl Scene {

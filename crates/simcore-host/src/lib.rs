@@ -60,14 +60,20 @@ impl Host {
         self.sessions.get_mut(id).ok_or_else(|| err(ErrorCode::NotFound, format!("unknown session {id}")))
     }
 
-    pub fn create_session(&mut self, p: CreateSessionParams) -> Result<String, ApiError> {
-        if p.framework != "swiftui" {
-            return Err(err(ErrorCode::Unsupported, format!("framework {:?} (only \"swiftui\")", p.framework)));
+    pub fn create_session(&mut self, mut p: CreateSessionParams) -> Result<String, ApiError> {
+        if p.framework == "expo" {
+            p.framework = "react-native".into();
+        }
+        if !matches!(p.framework.as_str(), "swiftui" | "react-native") {
+            return Err(err(
+                ErrorCode::Unsupported,
+                format!("framework {:?} (\"swiftui\", \"react-native\")", p.framework),
+            ));
         }
         if p.platform != "ios" {
             return Err(err(ErrorCode::Unsupported, format!("platform {:?} (only \"ios\")", p.platform)));
         }
-        if !std::path::Path::new(&p.app_path).exists() {
+        if p.framework == "swiftui" && !std::path::Path::new(&p.app_path).exists() {
             return Err(err(ErrorCode::BadRequest, format!("app_path {:?} does not exist", p.app_path)));
         }
         if let Some(d) = &p.device {
@@ -158,7 +164,14 @@ impl Host {
         for name in &scene.unsupported_symbols {
             s.report_once("host", format!("unsupported_symbol: no system symbol {name:?} on this host; drew a placeholder"));
         }
-        Ok((scene, version, s.scale))
+        for note in &scene.notes {
+            s.report_once("host", note.clone());
+        }
+        let scale = s.scale;
+        if s.is_rn() {
+            self.get(id)?.sync_layout(&scene);
+        }
+        Ok((scene, version, scale))
     }
 
     /// Returns `(hit node id, action dispatched)`. `click` = down + up. A hit on a text field
@@ -168,10 +181,57 @@ impl Host {
         self.get(id)?.require_running()?;
         let (scene, version, _) = self.scene(id)?;
         let s = self.get(id)?;
+        if s.is_rn() && ev.kind != PointerKind::Scroll {
+            return self.rn_touch(id, &scene, ev);
+        }
         s.inter.version = version;
         let effect = s.inter.pointer(&scene, ev);
         let out = (s.inter.hit.clone(), s.inter.acted);
+        let redraw = effect == simcore_render::Effect::Redraw;
         s.send_effect(effect)?;
+        if s.is_rn() && redraw {
+            self.scene(id)?; // scrolled: tell the guest the moved frames
+        }
+        Ok(out)
+    }
+
+    /// React Native touches: down = `start` on the deepest tag, up = `end` on the same tag, click = both.
+    /// After `end` wait for the next tree, but a tap that changes nothing is fine.
+    fn rn_touch(&mut self, id: &str, scene: &Scene, ev: PointerEvent) -> Result<(Option<String>, bool), ApiError> {
+        let s = self.get(id)?;
+        let hit = scene.hit_test(ev.x, ev.y).map(|i| &scene.nodes[i]);
+        let touch = |phase, n: &simcore_render::Node| HostMessage::Touch {
+            phase,
+            tag: n.action.unwrap_or(0),
+            x: ev.x,
+            y: ev.y,
+            lx: ev.x - n.bounds.x,
+            ly: ev.y - n.bounds.y,
+            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64() * 1000.0),
+        };
+        let mut target = hit;
+        match ev.kind {
+            PointerKind::Down => {
+                s.touch = hit.and_then(|n| n.action);
+                if let Some(n) = hit {
+                    s.send(&touch(TouchPhase::Start, n))?;
+                }
+            }
+            PointerKind::Up => {
+                target = s.touch.take().and_then(|t| scene.nodes.iter().find(|n| n.action == Some(t))).or(hit);
+                if let Some(n) = target {
+                    s.send_and_settle(&touch(TouchPhase::End, n))?;
+                }
+            }
+            _ => {
+                if let Some(n) = hit {
+                    s.send(&touch(TouchPhase::Start, n))?;
+                    s.send_and_settle(&touch(TouchPhase::End, n))?;
+                }
+            }
+        }
+        let out = (target.map(|n| n.id.clone()), ev.kind != PointerKind::Down && target.is_some());
+        let _ = self.scene(id); // push the new layout
         Ok(out)
     }
 
@@ -246,7 +306,7 @@ impl Host {
         }
         match method {
             "get_capabilities" => ok(json!({
-                "frameworks": ["swiftui"], "platforms": ["ios"], "commands": COMMANDS, "headless": true,
+                "frameworks": ["swiftui", "react-native"], "platforms": ["ios"], "commands": COMMANDS, "headless": true,
                 "devices": DEVICES.iter().map(|d| d.name).collect::<Vec<_>>(),
                 "pointer_events": ["down", "up", "click", "scroll"],
                 "keyboard": {"events": ["text", "key"], "keys": ["backspace", "enter"]},

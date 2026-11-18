@@ -5,6 +5,7 @@ use simcore_protocol::{
 };
 pub use simcore_render::{device, Device, DEFAULT_DEVICE, DEVICES};
 use simcore_render::{Effect, Interaction};
+use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -80,6 +81,10 @@ pub struct Session {
     pub dynamic_type: DynamicTypeSize,
     /// Scroll, focus, shift and press state (shared with the browser backend).
     pub inter: Interaction,
+    /// React Native: frames last sent to the guest (`layout` message), to send only changes.
+    pub sent_frames: BTreeMap<String, [f64; 4]>,
+    /// React Native: tag the current touch started on.
+    pub touch: Option<u64>,
     state: State,
     child: Option<Child>,
     stdin: Option<ChildStdin>,
@@ -125,12 +130,18 @@ impl Session {
             appearance: p.appearance.unwrap_or(Appearance::Light),
             dynamic_type: p.dynamic_type_size.unwrap_or_default(),
             inter: Interaction::default(),
+            sent_frames: BTreeMap::new(),
+            touch: None,
             params: p,
             state: State::Created,
             child: None,
             stdin: None,
             shared: Arc::default(),
         }
+    }
+
+    pub fn is_rn(&self) -> bool {
+        self.params.framework == "react-native"
     }
 
     /// Current state; a running session whose guest exited reads as crashed.
@@ -186,12 +197,19 @@ impl Session {
             return Err(err(ErrorCode::InvalidState, format!("session {} is {}", self.id, self.state.as_str())));
         }
         self.state = State::Starting;
-        let exe = if is_prebuilt(&self.params) {
-            PathBuf::from(&self.params.app_path)
+        let cmd = if self.is_rn() && !self.params.prebuilt {
+            // No build step: node runs the Expo/Metro bundle (frameworks/react-native/guest/host.js).
+            let mut c = Command::new("node");
+            c.arg(simcore_home().join("frameworks/react-native/guest/host.js"))
+                .env("SIMCORE_METRO_URL", self.params.metro_url.as_deref().unwrap_or("http://localhost:8081"))
+                .env("SIMCORE_SCALE", self.scale.to_string());
+            c
+        } else if is_prebuilt(&self.params) {
+            Command::new(&self.params.app_path)
         } else {
-            self.build().map_err(|e| self.fail(e))?
+            Command::new(self.build().map_err(|e| self.fail(e))?)
         };
-        self.spawn(&exe).map_err(|e| self.fail(e))?;
+        self.spawn(cmd).map_err(|e| self.fail(e))?;
         let deadline = Instant::now() + LAUNCH_TIMEOUT;
         let mut g = self.shared.lock();
         while g.tree.is_none() && !g.exited {
@@ -262,8 +280,9 @@ impl Session {
         Ok(out)
     }
 
-    fn spawn(&mut self, exe: &Path) -> Result<(), ApiError> {
-        let mut child = Command::new(exe)
+    fn spawn(&mut self, mut cmd: Command) -> Result<(), ApiError> {
+        let what = cmd.get_program().to_string_lossy().into_owned();
+        let mut child = cmd
             .env("SIMCORE_SESSION_ID", &self.id)
             .env("SIMCORE_VIEWPORT", format!("{}x{}", self.viewport.width, self.viewport.height))
             .env("SIMCORE_DYNAMIC_TYPE", self.dynamic_type.name())
@@ -272,7 +291,7 @@ impl Session {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| err(ErrorCode::RuntimeError, format!("cannot launch {}: {e}", exe.display())))?;
+            .map_err(|e| err(ErrorCode::RuntimeError, format!("cannot launch {what}: {e}")))?;
         self.stdin = child.stdin.take();
         let (stdout, stderr) = (child.stdout.take().expect("piped"), child.stderr.take().expect("piped"));
         self.child = Some(child);
@@ -318,6 +337,20 @@ impl Session {
             .map_err(|e| err(ErrorCode::RuntimeError, format!("guest pipe closed: {e}")))
     }
 
+    /// React Native: send the frames that changed since the last `layout` message.
+    pub fn sync_layout(&mut self, scene: &simcore_render::Scene) {
+        let frames: BTreeMap<String, [f64; 4]> = scene
+            .nodes
+            .iter()
+            .filter(|n| n.action.is_some())
+            .map(|n| (n.id.clone(), [n.bounds.x, n.bounds.y, n.bounds.w, n.bounds.h]))
+            .collect();
+        let changed: BTreeMap<_, _> = frames.iter().filter(|(k, v)| self.sent_frames.get(*k) != Some(*v)).map(|(k, v)| (k.clone(), *v)).collect();
+        if !changed.is_empty() && self.state() == State::Running && self.send(&HostMessage::Layout { frames: changed }).is_ok() {
+            self.sent_frames = frames;
+        }
+    }
+
     /// Deliver an interaction effect to the guest (no-op for `None`/`Redraw`).
     pub fn send_effect(&mut self, e: Effect) -> Result<(), ApiError> {
         match e {
@@ -341,6 +374,27 @@ impl Session {
             .wait_timeout_while(g, ACTION_TIMEOUT, |i| i.generation == before && !i.exited)
             .unwrap_or_else(|e| e.into_inner());
         Ok(g.generation != before)
+    }
+
+    /// Like `send_and_wait_tree`, then keeps waiting while trees keep coming (quiet for 200 ms, capped
+    /// at `ACTION_TIMEOUT`). React Native commits a press in several trees: the state update, then
+    /// Pressability's delayed `pressOut` (130 ms minimum press duration), so the first tree is not final.
+    pub fn send_and_settle(&mut self, msg: &HostMessage) -> Result<bool, ApiError> {
+        let deadline = Instant::now() + ACTION_TIMEOUT;
+        let changed = self.send_and_wait_tree(msg)?;
+        let mut g = self.shared.lock();
+        loop {
+            let seen = g.generation;
+            let left = deadline.saturating_duration_since(Instant::now()).min(Duration::from_millis(200));
+            if left.is_zero() || g.exited {
+                break;
+            }
+            g = self.shared.cv.wait_timeout_while(g, left, |i| i.generation == seen && !i.exited).unwrap_or_else(|e| e.into_inner()).0;
+            if g.generation == seen {
+                break;
+            }
+        }
+        Ok(changed)
     }
 
     pub fn stop(&mut self) {

@@ -449,7 +449,7 @@ mod tests {
         let mut n = Node::new("card", "shadow");
         n.bounds = SRect { x: 40.0, y: 40.0, w: 100.0, h: 60.0 };
         n.shadow = Some(Shadow { color: Color::rgba(0.0, 0.0, 0.0, 0.33), radius: 6.0, dx: 0.0, dy: 0.0 });
-        let scene = Scene { size: (180.0, 140.0), appearance: Appearance::Light, nodes: vec![n], unsupported_symbols: vec![] };
+        let scene = Scene { size: (180.0, 140.0), appearance: Appearance::Light, nodes: vec![n], unsupported_symbols: vec![], notes: vec![] };
         let pm = render(&scene, &mut Fonts::new(), 3.0);
         // alpha at distance d above the top edge: 0.33 * (1 - Phi(d / 6))
         let a = |d: f32| pm.pixel(270, ((40.0 - d) * 3.0) as u32).unwrap().alpha() as f32 / 255.0;

@@ -290,3 +290,55 @@ System chrome uses the same effect:
 - The navigation back button is a regular glass circle (44pt).
 - **Scroll-edge effect.** Scrollers under a navigation bar span the whole screen with the bar as a top inset, so content scrolls under the bar and status bar. Once scrolled (offset > 0) the host veils content toward the background color: alpha 0.42 down to the bar's bottom edge, then 0.27@+4pt, 0.16@+6, 0.095@+12, 0.04@+20, 0.016@+28, 0@+32 (piecewise linear), plus a 3/255 darkening (light only) fading out by bar+12. There is no blur. Content under the bars is not tappable; scrolling over the status bar does nothing.
 - The keyboard panel is not glass in the fixtures and is unchanged.
+
+---
+
+## G. v1 additions: React Native / Expo (additive)
+
+Guest: `node frameworks/react-native/guest/host.js` (see `frameworks/react-native/README.md`).
+It loads the app bundle from Metro and runs React Native's own Fabric renderer; no build step.
+
+### API
+
+- `create_session` accepts `"framework": "react-native"` (alias `"expo"`) and `"metro_url"`
+  (alias `metroUrl`, default `http://localhost:8081`); `app_path` is not used.
+- `get_capabilities.frameworks` includes `"react-native"`.
+- `send_pointer_event` on an RN session: `down` → touch `start` on the deepest node at the
+  point, `up` → touch `end` on the same target, `click` = both. After `end` the call waits for
+  the next tree (2 s); a tap that changes nothing is not an error.
+- CLI: `simcore expo [--url URL] [--device NAME] [--headless] [--appearance light|dark] [--screenshot out.png] [--click X,Y ...]`.
+
+### Guest launch env
+
+`SIMCORE_METRO_URL`, `SIMCORE_VIEWPORT=393x852`, `SIMCORE_APPEARANCE`, `SIMCORE_SESSION_ID`,
+`SIMCORE_SCALE` (default 3). Optional: `SIMCORE_HMR=1` (connect Metro `/hot`), `SIMCORE_DEBUG=1`.
+Bundle: `GET <metro>/` with `expo-platform: ios` → manifest `launchAsset.url`
+(fallback `/index.bundle?platform=ios&dev=true&minify=false`).
+
+### ViewNode kind `rn`
+
+`{"kind":"rn","id":"<reactTag>","component":"<Fabric viewName>","props":{...},"children":[...]}`
+
+- The root is synthetic: `component: "RootView"`, `id: "1"` (surface rootTag 1), fills the viewport.
+- `props` is Fabric's flat attribute payload merged across clones: style keys are top level,
+  colors are `processColor` numbers (`0xAARRGGBB`), functions are dropped, event handlers
+  appear as `true` flags (`onClick`, `onStartShouldSetResponder`, ...).
+- Components: `RCTView`, `RCTText` (paragraph; text = concatenated `RCTRawText.props.text`),
+  `RCTVirtualText` (nested span), `RCTRawText`, `RCTScrollView` (`horizontal` prop),
+  `RCTImageView` (`source: [{uri,width,height,scale}]`, placeholder for now). Other names are
+  laid out as a View and reported once as `unsupported_component: <name>`.
+- Layout follows Yoga (column, `flexShrink: 0`, `alignContent: flex-start`, border-box);
+  default text: system 14pt, black. Scene node ids are reactTags, so hit tests return tags.
+
+### Host → guest (additions)
+
+- `{"type":"touch","phase":"start"|"move"|"end"|"cancel","tag":u64,"x","y","lx","ly","timestamp"}`
+  — page coords (pt), `lx/ly` relative to the target. Guest dispatches
+  `topTouchStart/Move/End/Cancel`; RN's responder system bubbles from the target.
+- `{"type":"layout","frames":{"<tag>":[x,y,w,h]}}` — page frames after each layout. Answers
+  `measure*` and fires `onLayout`. Optional: guest works without it (zeros).
+- `{"type":"reload"}` — full reload (fresh JS global).
+- `environment` → Appearance `appearanceChanged`, Dimensions `didUpdateDimensions`.
+
+Unsupported native modules: stderr `SimCore: <Module> is not supported (method: <m>)` plus one
+`{"type":"error"}` per module (surfaced by `get_errors`). Nothing reports fake success.

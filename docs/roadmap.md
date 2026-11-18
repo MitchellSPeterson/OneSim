@@ -9,6 +9,10 @@
 | 4 Headless sessions + API (`simcore serve`) | done |
 | WASM execution backend: counter runs in the browser, 0.0% pixel diff vs native (`scripts/build-web.sh`) | prototype |
 | 5 DemoKit integration | not started: PRD section truncated, needs spec |
+| v0.2 M0 Expo/RN spike: unmodified Expo app from Metro, React Native Fabric in a Node guest, Yoga-style layout (taffy), tap → state update (`simcore expo`) | done |
+| v0.2 M1 core components: TextInput, ScrollView events, Image loading, Networking, iOS reference states | next |
+| v0.2 M2 Fast Refresh (`/hot` connects behind `SIMCORE_HMR=1`; updates untested) | not started |
+| v0.2 M3 Expo Router · M4 native-module registry + JSON-RPC session API | not started |
 
 Next SwiftUI surface: `@Binding`, `@ObservedObject`/`@StateObject`, `ScrollView`, `List`, `TextField` (needs keyboard events), `Toggle`, `NavigationStack`, sheets/alerts, animations, environment values.
 

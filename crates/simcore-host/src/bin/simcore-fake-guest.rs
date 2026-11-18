@@ -3,6 +3,7 @@
 //! If its executable name contains "crash" it aborts on the first action.
 //! If it contains "nav" it serves a small navigation + list app (home, todos, controls, long
 //! scroll page) that handles `action` and `text_input`.
+//! If it contains "rn" it serves a React Native tree (tag 5 is a pressable counting touch ends).
 
 use serde_json::json;
 use std::io::{BufRead, Write};
@@ -132,6 +133,33 @@ fn run_nav() {
     }
 }
 
+fn rn_tree(count: u32, frames: usize) -> serde_json::Value {
+    let raw = |id: &str, t: &str| json!({"kind": "rn", "id": id, "component": "RCTRawText", "props": {"text": t}, "children": []});
+    json!({"kind": "rn", "id": "1", "component": "RootView", "props": {}, "children": [
+        {"kind": "rn", "id": "2", "component": "RCTView", "props": {"flex": 1, "alignItems": "center", "justifyContent": "center"}, "children": [
+            {"kind": "rn", "id": "3", "component": "RCTText", "props": {}, "children": [raw("4", &format!("Count: {count} frames:{frames}"))]},
+            {"kind": "rn", "id": "5", "component": "RCTView", "props": {"padding": 12, "borderRadius": 8, "backgroundColor": 0xFF0080FFu32}, "children": [
+                {"kind": "rn", "id": "6", "component": "RCTText", "props": {"color": 0xFFFFFFFFu32}, "children": [raw("7", "Press")]}]}]}]})
+}
+
+fn run_rn() {
+    let (mut count, mut frames, mut version) = (0u32, 0usize, 1u64);
+    send(json!({"type": "hello", "protocol": 1}));
+    send(json!({"type": "tree", "version": version, "root": rn_tree(count, frames)}));
+    for line in std::io::stdin().lock().lines() {
+        let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line.unwrap_or_default()) else { continue };
+        match msg["type"].as_str() {
+            Some("layout") => frames = msg["frames"].as_object().map_or(0, |f| f.len()),
+            Some("touch") if msg["phase"] == "end" && msg["tag"] == 5 => count += 1,
+            Some("touch") if msg["phase"] == "end" => continue, // a tap that changes nothing
+            Some("shutdown") => return,
+            _ => continue,
+        }
+        version += 1;
+        send(json!({"type": "tree", "version": version, "root": rn_tree(count, frames)}));
+    }
+}
+
 fn send(v: serde_json::Value) {
     let mut o = std::io::stdout().lock();
     writeln!(o, "{v}").unwrap();
@@ -146,6 +174,9 @@ fn main() {
         std::env::var("SIMCORE_VIEWPORT").unwrap_or_default(),
         std::env::var("SIMCORE_APPEARANCE").unwrap_or_default(),
     );
+    if std::env::args().next().is_some_and(|a| a.contains("rn")) {
+        return run_rn();
+    }
     if std::env::args().next().is_some_and(|a| a.contains("nav")) {
         return run_nav();
     }
