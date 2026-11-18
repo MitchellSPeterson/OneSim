@@ -306,7 +306,8 @@ impl Session {
             let mut c = Command::new("node");
             c.arg(simcore_home().join("frameworks/react-native/guest/host.js"))
                 .env("SIMCORE_METRO_URL", self.params.metro_url.as_deref().unwrap_or("http://localhost:8081"))
-                .env("SIMCORE_SCALE", self.scale.to_string());
+                .env("SIMCORE_SCALE", self.scale.to_string())
+                .env("SIMCORE_SAFE_AREA", format!("{},{}", self.device.safe_top, self.device.safe_bottom));
             c
         } else if is_prebuilt(&self.params) {
             Command::new(&self.params.app_path)

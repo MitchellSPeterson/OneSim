@@ -168,6 +168,7 @@ impl Host {
                 appearance: s.appearance,
                 viewport: s.viewport,
                 dynamic_type_size: (s.dynamic_type != DynamicTypeSize::Large).then_some(s.dynamic_type),
+                safe_area: s.is_rn().then_some(SafeArea { top: s.device.safe_top, bottom: s.device.safe_bottom }),
             };
             s.send_and_wait_tree(&m)?;
         }

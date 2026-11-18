@@ -123,6 +123,13 @@ pub enum TouchPhase {
     Cancel,
 }
 
+/// Safe-area insets in points (portrait; left/right are 0 on every supported iPhone).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct SafeArea {
+    pub top: f64,
+    pub bottom: f64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum HostMessage {
@@ -135,6 +142,9 @@ pub enum HostMessage {
         /// Omitted at the default size (`large`).
         #[serde(default, rename = "dynamicTypeSize", skip_serializing_if = "Option::is_none")]
         dynamic_type_size: Option<DynamicTypeSize>,
+        /// Device safe-area insets (React Native sessions; the SwiftUI host draws its own chrome).
+        #[serde(default, rename = "safeArea", skip_serializing_if = "Option::is_none")]
+        safe_area: Option<SafeArea>,
     },
     /// React Native touch: `x`/`y` page points, `lx`/`ly` relative to the target node (`tag`).
     Touch { phase: TouchPhase, tag: u64, x: f64, y: f64, lx: f64, ly: f64, timestamp: f64 },
@@ -205,6 +215,7 @@ mod tests {
             appearance: Appearance::Dark,
             viewport: Viewport { width: 393.0, height: 852.0 },
             dynamic_type_size: None,
+            safe_area: None,
         };
         assert_eq!(
             serde_json::to_string(&h).unwrap(),
