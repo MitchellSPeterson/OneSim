@@ -444,7 +444,7 @@ mod tests {
         g.radius = 20.0;
         g.glass = Some(GlassSpec { variant, tint, interactive: false, blur: None, mix: None, shadow: None });
         let appearance = if dark { Appearance::Dark } else { Appearance::Light };
-        crate::Scene { size: (200.0, 200.0), appearance, nodes: vec![bg, g], unsupported_symbols: vec![] }
+        crate::Scene { size: (200.0, 200.0), appearance, nodes: vec![bg, g], unsupported_symbols: vec![], notes: vec![] }
     }
 
     fn center(s: &crate::Scene) -> [u8; 3] {

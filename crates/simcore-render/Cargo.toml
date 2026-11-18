@@ -10,15 +10,17 @@ description = "SimCore framework-neutral scene, SwiftUI-semantics layout, raster
 window = ["dep:winit", "dep:softbuffer"]
 
 [dependencies]
+serde_json.workspace = true
 simcore-protocol = { path = "../simcore-protocol" }
 tiny-skia = "0.11"
 cosmic-text = "0.19"
+taffy = "0.15"
 resvg = { version = "0.45", default-features = false }
 winit = { version = "0.30", optional = true }
 softbuffer = { version = "0.4", optional = true }
+zune-jpeg = "0.5.15"
 
 [dev-dependencies]
-serde_json.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

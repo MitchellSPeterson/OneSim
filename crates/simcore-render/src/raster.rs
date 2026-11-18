@@ -26,6 +26,61 @@ fn rrect(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
     b.finish()
 }
 
+/// `mask` (or the whole canvas) intersected with `path`, which is in points.
+fn clip_mask(mask: Option<&Mask>, path: &Path, xf: Transform, pw: u32, ph: u32) -> Mask {
+    let mut m = match mask {
+        Some(m) => m.clone(),
+        None => {
+            let mut m = Mask::new(pw, ph).expect("mask");
+            m.fill_path(&PathBuilder::from_rect(Rect::from_xywh(0.0, 0.0, pw as f32, ph as f32).unwrap()), FillRule::Winding, false, Transform::identity());
+            m
+        }
+    };
+    m.intersect_path(path, FillRule::Winding, true, xf);
+    m
+}
+
+/// Linear gradient over the node's rounded bounds.
+fn draw_gradient(pm: &mut Pixmap, n: &crate::scene::Node, g: &crate::scene::Gradient, s: f32, mask: Option<&Mask>) {
+    let b = n.bounds;
+    let Some(path) = rrect(b.x as f32, b.y as f32, b.w as f32, b.h as f32, n.radius as f32) else { return };
+    let a = g.angle.to_radians();
+    let (dx, dy) = (a.sin(), -a.cos());
+    let (cx, cy) = ((b.x + b.w / 2.0) as f32, (b.y + b.h / 2.0) as f32);
+    let half = (b.w as f32 * dx.abs() + b.h as f32 * dy.abs()) / 2.0;
+    let k = g.stops.len().saturating_sub(1).max(1) as f32;
+    let stops: Vec<tiny_skia::GradientStop> = g
+        .stops
+        .iter()
+        .enumerate()
+        .map(|(i, c)| tiny_skia::GradientStop::new(i as f32 / k, tiny_skia::Color::from_rgba(c.r, c.g, c.b, c.a * n.opacity).unwrap_or(tiny_skia::Color::BLACK)))
+        .collect();
+    let Some(sh) = tiny_skia::LinearGradient::new((cx - dx * half, cy - dy * half).into(), (cx + dx * half, cy + dy * half).into(), stops, tiny_skia::SpreadMode::Pad, Transform::identity()) else { return };
+    let p = Paint { shader: sh, ..Paint::default() };
+    pm.fill_path(&path, &p, FillRule::Winding, Transform::from_scale(s, s), mask);
+}
+
+/// Draw `im.dest` of the bitmap, clipped to the node's rounded bounds.
+fn draw_image(pm: &mut Pixmap, n: &crate::scene::Node, im: &crate::scene::ImageRun, s: f32, mask: Option<&Mask>) {
+    let (b, d) = (n.bounds, im.dest);
+    let (iw, ih) = (im.pixmap.width() as f32, im.pixmap.height() as f32);
+    let Some(clip) = rrect(b.x as f32, b.y as f32, b.w as f32, b.h as f32, n.radius as f32) else { return };
+    let xf = Transform::from_scale(s, s);
+    let m = clip_mask(mask, &clip, xf, pm.width(), pm.height());
+    // A rotated bitmap may reach anywhere in the bounds.
+    let d = if im.rotation != 0.0 { b } else { d };
+    let (x0, y0) = (d.x.max(b.x) as f32, d.y.max(b.y) as f32);
+    let (x1, y1) = ((d.x + d.w).min(b.x + b.w) as f32, (d.y + d.h).min(b.y + b.h) as f32);
+    let Some(r) = Rect::from_ltrb(x0, y0, x1, y1) else { return };
+    let mut p = Paint::default();
+    let mut to_pt = Transform::from_row(d.w as f32 / iw, 0.0, 0.0, d.h as f32 / ih, d.x as f32, d.y as f32);
+    if im.rotation != 0.0 {
+        to_pt = to_pt.post_rotate_at(im.rotation, (d.x + d.w / 2.0) as f32, (d.y + d.h / 2.0) as f32);
+    }
+    p.shader = tiny_skia::Pattern::new(im.pixmap.as_ref().as_ref(), tiny_skia::SpreadMode::Pad, tiny_skia::FilterQuality::Bicubic, n.opacity, to_pt);
+    pm.fill_rect(r, &p, xf, Some(&m));
+}
+
 fn stroke_pts(pm: &mut Pixmap, pts: &[(f32, f32)], c: Color, w: f32, xf: Transform, mask: Option<&Mask>) {
     let mut b = PathBuilder::new();
     for (i, (x, y)) in pts.iter().enumerate() {
@@ -396,6 +451,9 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
                 }
             }
         }
+        if let Some(g) = &n.gradient {
+            draw_gradient(&mut pm, n, g, s, mask.as_deref());
+        }
         if let Some((c, lw)) = n.stroke {
             if let Some(p) = rrect(bx, by, bw, bh, n.radius as f32) {
                 let st = Stroke { width: lw as f32, ..Stroke::default() };
@@ -407,6 +465,9 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
         }
         if let Some(sy) = &n.symbol {
             draw_symbol(&mut pm, sy, sh, n.opacity, s, mask.as_deref());
+        }
+        if let Some(im) = &n.image {
+            draw_image(&mut pm, n, im, s, mask.as_deref());
         }
         if let Some(t) = &n.text {
             let rgba = [
@@ -457,18 +518,7 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
         // slower masked blending under it). Full scrollers are exactly that.
         let covers = n.clip_radius == Some(0.0) && bx * s <= 0.0 && by * s <= 0.0 && (bx + bw) * s >= pw as f32 && (by + bh) * s >= ph as f32;
         let child_mask = match n.clip_radius.filter(|_| !covers).and_then(|r| rrect(bx, by, bw, bh, r as f32)) {
-            Some(path) => {
-                let mut m = match &mask {
-                    Some(m) => (**m).clone(),
-                    None => {
-                        let mut m = Mask::new(pw, ph).expect("mask");
-                        m.fill_path(&tiny_skia::PathBuilder::from_rect(Rect::from_xywh(0.0, 0.0, pw as f32, ph as f32).unwrap()), FillRule::Winding, false, Transform::identity());
-                        m
-                    }
-                };
-                m.intersect_path(&path, FillRule::Winding, true, xf);
-                Some(Rc::new(m))
-            }
+            Some(path) => Some(Rc::new(clip_mask(mask.as_deref(), &path, xf, pw, ph))),
             None => mask,
         };
         masks.push(child_mask);
@@ -491,7 +541,7 @@ mod tests {
         let mut n = Node::new("card", "shadow");
         n.bounds = SRect { x: 40.0, y: 40.0, w: 100.0, h: 60.0 };
         n.shadow = Some(Shadow { color: Color::rgba(0.0, 0.0, 0.0, 0.33), radius: 6.0, dx: 0.0, dy: 0.0 });
-        let scene = Scene { size: (180.0, 140.0), appearance: Appearance::Light, nodes: vec![n], unsupported_symbols: vec![] };
+        let scene = Scene { size: (180.0, 140.0), appearance: Appearance::Light, nodes: vec![n], unsupported_symbols: vec![], notes: vec![] };
         let pm = render(&scene, &mut Fonts::new(), 3.0);
         // alpha at distance d above the top edge: 0.33 * (1 - Phi(d / 6))
         let a = |d: f32| pm.pixel(270, ((40.0 - d) * 3.0) as u32).unwrap().alpha() as f32 / 255.0;

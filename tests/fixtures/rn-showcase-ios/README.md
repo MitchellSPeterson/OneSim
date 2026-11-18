@@ -1,0 +1,33 @@
+# rn-showcase-ios ground-truth fixtures
+
+`examples/expo-showcase` (plain React Native, Expo SDK 58) running in **Expo Go 58.0.7** on the iPhone 17 Pro simulator, iOS 26.5
+(402 x 874 pt, scale 3, PNGs 1206 x 2622). Compared by `scripts/compare-ios.sh` (RN block) against `simcore expo`.
+
+## Capture steps
+1. `cd examples/expo-showcase && npm install && CI=1 npx expo start --port 8095` (Expo Go 58 must be installed on the sim; `npx expo start --ios` installs it).
+2. Light appearance. Open Expo Go, then `open host.exp.Exponent "exp://127.0.0.1:8095?__expo_disable_fab=1&__expo_disable_auto_launch=1&__expo_disable_onboarding=1"`
+   with agent-device (this adds a "< Showcase" back-link to the status bar; instead open Expo Go without URL and tap the "expo-showcase" recent entry).
+3. First run only: tap the floating gear (Expo Go tools button), scroll the sheet, turn **Tools button** off, close. The setting persists, so screenshots show only the app.
+4. Each PNG: `agent-device screenshot <name>.png --pixel-density 3 --normalize-status-bar`, retaken until the Dynamic Island is fully drawn (status bar 9:41, battery full).
+   Taps are agent-device `press X Y` in points; typing is `agent-device type Hello` (if the runner watchdog trips, relaunch Expo Go and redo).
+5. `home-dark`: `agent-device settings appearance dark`, wait, screenshot, then back to light. The app follows `useColorScheme` (black bg, white text).
+
+## States and SimCore equivalents (`simcore expo --url http://localhost:PORT ...`)
+| state | iOS capture | SimCore |
+|---|---|---|
+| home | launch | (none) |
+| layout / text / controls | press row (60,145) / (60,197) / (60,249) | `--click Layout` / `--click Text` / `--click Controls` |
+| controls-changed | Controls, press Increment (60,194) twice, press Alpha switch (354,250) | `--click Controls --click Increment --click Increment --click Alpha` |
+| controls-typed | fresh Controls, press input (200,358), type `Hello` (keyboard visible) | `--click Controls --click "Type here" --type Hello` |
+| scroll | press Scroll row (60,301) | `--click Scroll` |
+| scroll-scrolled | Scroll, press **Jump** (365,84): `scrollToOffset({offset: 440, animated: false})` | `--click Scroll --click Jump` (or `--scroll 200,500,0,440`: same 440 pt offset) |
+| image | press Image row (60,353) | `--click Image` |
+| home-dark | dark appearance | `--dark` |
+
+## App facts SimCore must match
+- Root `paddingTop: 62` (iPhone 17 Pro inset), no safe-area lib; Expo Go adds no chrome with the Tools button off. `StatusBar` style follows scheme.
+- Plain system font (SF Pro), explicit sizes; Home title 34 bold, rows 52 pt with 1 pt hairline, chevron is a ">" glyph, #C7C7CC.
+- Header row: 44 pt tall at y=62 ("Back" link blue 17pt left, title gray 17pt semibold, Scroll also "Jump" right). Labels (`accessibilityLabel`): rows Layout/Text/Controls/Scroll/Image, Back, Increment, Alpha, Beta (Switch), "Type here" (TextInput), Jump.
+- FlatList: 50 rows "Row N", fixed height 44, `getItemLayout`; starts at y=106.
+- Native controls: iOS 26 UISwitch, UITextInput with caret and floating iOS 26 keyboard (lowercase keys when empty/typed text).
+- Image screen uses a bundled PNG (`assets/gradient.png` 200x120) with resizeMode cover/contain and borderRadius 24.

@@ -4,11 +4,13 @@
 //! [`Scene`]; everything else works on the scene only.
 
 pub mod layout {
+    pub mod rn;
     pub mod swiftui;
 }
 mod chrome;
 mod device;
 pub mod glass;
+mod image;
 mod interaction;
 mod raster;
 mod scene;
@@ -22,14 +24,17 @@ pub use chrome::{autocap, ChromeParams};
 pub use device::{device, Device, StatusBar, DEFAULT_DEVICE, DEVICES};
 pub use interaction::{resolve_label, DragPhase, Effect, Interaction};
 pub use layout::swiftui::SceneParams;
-pub use scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, SheetInfo, SheetPos, Shadow, SymbolRun, TextRun};
+pub use scene::{Color, Glyph, Gradient, ImageRun, Node, Rect, Role, Scene, ScrollInfo, SheetInfo, SheetPos, Shadow, SymbolRun, TextRun};
 pub use text::{fonts_capability, inter_tracking_em, tracking_em, FontSpec, Fonts, Span, TextAlign};
 
 use simcore_protocol::ViewNode;
 
 /// Layout a view tree into a scene (see [`SceneParams`]).
 pub fn build_scene(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
-    layout::swiftui::layout(root, params, fonts)
+    match root.kind {
+        simcore_protocol::ViewKind::Rn { .. } => layout::rn::layout(root, params, fonts),
+        _ => layout::swiftui::layout(root, params, fonts),
+    }
 }
 
 /// `SIMCORE_FALLBACK=1` forces the open-licensed fallbacks (Inter, Phosphor Icons) even where Apple's resources exist.

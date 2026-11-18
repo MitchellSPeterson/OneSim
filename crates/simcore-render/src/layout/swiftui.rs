@@ -104,7 +104,9 @@ const HEADER_PAD: f64 = 20.0;
 const NAV_INLINE_H: f64 = 54.0;
 /// Scroll distance over which the inline title fades in as the large title finishes collapsing.
 const INLINE_FADE: f64 = 12.0;
-const SWITCH: (f64, f64) = (63.0, 28.0);
+pub(crate) const SWITCH: (f64, f64) = (63.0, 28.0);
+/// Switch knob size (inset 2pt from the track edge).
+pub(crate) const KNOB: (f64, f64) = (37.0, 24.0);
 const STEPPER: (f64, f64) = (94.0, 32.0);
 /// `Label` in a list row: icon centred in a leading column of this width, title starts after it.
 /// Measured: icon centred 12pt in, title at +40 (column 24 + gap 16), icons at imageScale large.
@@ -195,6 +197,28 @@ impl Env {
     }
 }
 
+/// A back button for [`Ctx::nav_bar`]: a 44pt circle (SwiftUI) or a pill carrying the previous title (React Native).
+pub(crate) struct NavBack {
+    pub action: Option<u64>,
+    pub label: String,
+    pub pill: bool,
+}
+
+struct NavBar<'a> {
+    id: &'a str,
+    w: f64,
+    h: f64,
+    top: f64,
+    bar_h: f64,
+    title: Option<&'a str>,
+    large: bool,
+    large_title: Option<Lay>,
+    title_h: f64,
+    band: f64,
+    offset: f64,
+    back: Option<NavBack>,
+}
+
 struct Ctx<'a> {
     fonts: &'a mut Fonts,
     dark: bool,
@@ -220,6 +244,29 @@ struct Ctx<'a> {
     sheet_up: bool,
 }
 
+/// Fill `sw` as an iOS switch track (role, value, fill, disabled dimming; `fill` overrides the state's default color) and return its knob node
+/// (no bounds yet). Shared by SwiftUI `Toggle` and React Native `Switch`.
+pub(crate) fn switch_style(sw: &mut Node, id: &str, dark: bool, on: bool, disabled: bool, fill: Option<Color>, thumb: Option<Color>) -> Node {
+    sw.role = Role::Toggle;
+    sw.value = Some(if on { "on" } else { "off" }.into());
+    sw.disabled = disabled;
+    sw.radius = PILL;
+    sw.fill = fill.or(Some(if on { rgba(52, 199, 89, 1.0) } else { control_fill_for(dark, 0.16) }));
+    if disabled {
+        sw.opacity = 0.5;
+    }
+    let mut knob = Node::new(format!("{id}#knob"), "knob");
+    knob.fill = Some(thumb.unwrap_or(rgba(255, 255, 255, 1.0)));
+    knob.radius = PILL;
+    knob.shadow = Some(Shadow { color: Color::rgba(0.0, 0.0, 0.0, 0.18), radius: 1.0, dx: 0.0, dy: 1.0 });
+    knob.inspect = false;
+    knob
+}
+
+fn control_fill_for(dark: bool, light_a: f32) -> Color {
+    Color::rgba(120.0 / 255.0, 120.0 / 255.0, 128.0 / 255.0, if dark { light_a * 2.0 } else { light_a })
+}
+
 /// Inputs to one layout pass.
 pub struct SceneParams<'a> {
     pub viewport: (f64, f64),
@@ -241,19 +288,13 @@ pub struct SceneParams<'a> {
     pub chrome: crate::chrome::ChromeParams,
 }
 
-pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
-    let (w, h) = params.viewport;
-    // Keyboard avoidance: the keyboard top replaces the bottom safe-area inset.
-    let kb = params.chrome.keyboard && params.focus.is_some();
-    let kb_h = params.device.kb_base_h + params.device.safe_bottom;
-    let (safe_top, dev_bottom) = (params.device.safe_top, params.device.safe_bottom);
-    let safe_bottom = if kb { kb_h } else { dev_bottom };
-    let mut cx = Ctx {
+fn ctx<'a>(params: &'a SceneParams, fonts: &'a mut Fonts) -> Ctx<'a> {
+    Ctx {
         fonts,
         dark: params.appearance == Appearance::Dark,
         dts: params.dynamic_type,
         scale: params.scale.max(1.0),
-        margin: if w >= 414.0 { 20.0 } else { 16.0 },
+        margin: if params.viewport.0 >= 414.0 { 20.0 } else { 16.0 },
         scroll: params.scroll,
         overscroll: params.overscroll,
         focus: params.focus,
@@ -263,7 +304,46 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         floating: false,
         desat: false,
         sheet_up: false,
-    };
+    }
+}
+
+/// Status bar and Dynamic Island on top of `nodes`, for layouts that draw their own content (React Native).
+pub(crate) fn add_chrome(nodes: &mut Vec<Node>, params: &SceneParams, fonts: &mut Fonts) {
+    if params.status_bar {
+        let lay = ctx(params, fonts).status_bar(params.viewport.0, params.device);
+        flatten(lay, 0.0, 0.0, Some(0), 1.0, nodes);
+    }
+    if let Some(isl) = params.device.island {
+        crate::chrome::island(nodes, isl);
+    }
+}
+
+/// Height of the navigation bar below the status bar for a React Native stack header.
+pub(crate) fn rn_nav_height(params: &SceneParams, fonts: &mut Fonts, w: f64, title: Option<&str>, large: bool) -> f64 {
+    let (_, _, band) = ctx(params, fonts).nav_large("nav", w, title, large);
+    NAV_INLINE_H + band
+}
+
+/// Append a React Native native-stack header (`top` = safe-area top) to `out`: the same bar the SwiftUI
+/// `NavigationStack` draws. `id` is the stack tag; the back pill's node is `{id}#back`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn rn_nav_bar(params: &SceneParams, fonts: &mut Fonts, id: &str, top: f64, title: Option<&str>, large: bool, back: Option<NavBack>, parent: usize, out: &mut Vec<Node>) {
+    let mut cx = ctx(params, fonts);
+    let w = params.viewport.0;
+    let (large_title, title_h, band) = cx.nav_large(id, w, title, large);
+    let bar_h = NAV_INLINE_H + band;
+    let bar = NavBar { id, w, h: params.viewport.1, top, bar_h, title, large: large && title.is_some(), large_title, title_h, band, offset: 0.0, back };
+    flatten(cx.nav_bar(bar), 0.0, top, Some(parent), 1.0, out);
+}
+
+pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
+    let (w, h) = params.viewport;
+    // Keyboard avoidance: the keyboard top replaces the bottom safe-area inset.
+    let kb = params.chrome.keyboard && params.focus.is_some();
+    let kb_h = params.device.kb_base_h + params.device.safe_bottom;
+    let (safe_top, dev_bottom) = (params.device.safe_top, params.device.safe_bottom);
+    let safe_bottom = if kb { kb_h } else { dev_bottom };
+    let mut cx = ctx(params, fonts);
     // Unstyled text is `.body`, which scales with Dynamic Type.
     let body = simcore_protocol::TextStyle::Body.size_at(params.dynamic_type) as f32;
     let mut screen = Node::new("root", "screen");
@@ -320,7 +400,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     if let Some(isl) = params.device.island {
         crate::chrome::island(&mut nodes, isl);
     }
-    Scene { size: params.viewport, appearance: params.appearance, nodes, unsupported_symbols: cx.unsupported.into_iter().collect() }
+    Scene { size: params.viewport, appearance: params.appearance, nodes, unsupported_symbols: cx.unsupported.into_iter().collect(), notes: vec![] }
 }
 
 fn flatten(lay: Lay, x: f64, y: f64, mut parent: Option<usize>, mut opacity: f32, out: &mut Vec<Node>) {
@@ -475,11 +555,7 @@ impl Ctx<'_> {
 
     /// Neutral control fill (systemFill-like) of the given strength.
     fn control_fill(&self, light_a: f32) -> Color {
-        if self.dark {
-            Color::rgba(120.0 / 255.0, 120.0 / 255.0, 128.0 / 255.0, light_a * 2.0)
-        } else {
-            Color::rgba(120.0 / 255.0, 120.0 / 255.0, 128.0 / 255.0, light_a)
-        }
+        control_fill_for(self.dark, light_a)
     }
 
     fn color(&self, c: &simcore_protocol::Color) -> Color {
@@ -667,7 +743,7 @@ impl Ctx<'_> {
                             (s as f32, w.value())
                         });
                         let weight = r.font_weight.map(|w| w.value()).or(if r.font.is_some() { None } else { env.weight }).unwrap_or(base);
-                        Span { text: r.text.clone(), pt, weight, color: r.foreground_color.as_ref().map_or(fg, |c| self.color(c)), italic: r.italic, underline: r.underline, strike: r.strikethrough || env.strike }
+                        Span { text: r.text.clone(), pt, weight, color: r.foreground_color.as_ref().map_or(fg, |c| self.color(c)), italic: r.italic, underline: r.underline, strike: r.strikethrough || env.strike, mono: false }
                     })
                     .collect();
                 // Line metrics come from the largest run.
@@ -753,7 +829,7 @@ impl Ctx<'_> {
                 n.fill = Some(if self.dark { rgba(84, 84, 88, 0.6) } else { rgba(60, 60, 67, 0.29) });
                 Lay::new(size, Some(n), vec![])
             }
-            ViewKind::Empty => Lay::new(Size::default(), Some(Node::new(&v.id, "empty")), vec![]),
+            ViewKind::Empty | ViewKind::Rn { .. } => Lay::new(Size::default(), Some(Node::new(&v.id, "empty")), vec![]),
             // Only the root's presentation layer is drawn (see `layout`); nested, it is transparent.
             ViewKind::Presentation { content, .. } => self.view(content, p, env),
             ViewKind::Scroll { axis, child } => self.scroll(v, *axis == simcore_protocol::Axis::Vertical, child, p, env),
@@ -920,22 +996,10 @@ impl Ctx<'_> {
         let w = fin.unwrap_or(l.size.w + 8.0 + SWITCH.0);
         let h = l.size.h.max(SWITCH.1);
         let mut sw = Node::new(format!("{}#switch", v.id), "switch");
-        sw.role = Role::Toggle;
+        let knob = switch_style(&mut sw, &v.id, self.dark, on, disabled, None, None);
         sw.label = first_text(label);
-        sw.value = Some(if on { "on" } else { "off" }.into());
         sw.action = (!disabled).then_some(action);
-        sw.disabled = disabled;
-        sw.radius = PILL;
-        sw.fill = Some(if on { rgba(52, 199, 89, 1.0) } else { self.control_fill(0.16) });
-        if disabled {
-            sw.opacity = 0.5;
-        }
-        let (kw, kh) = (37.0, 24.0);
-        let mut knob = Node::new(format!("{}#knob", v.id), "knob");
-        knob.fill = Some(rgba(255, 255, 255, 1.0));
-        knob.radius = PILL;
-        knob.shadow = Some(Shadow { color: Color::rgba(0.0, 0.0, 0.0, 0.18), radius: 1.0, dx: 0.0, dy: 1.0 });
-        knob.inspect = false;
+        let (kw, kh) = KNOB;
         let kx = if on { SWITCH.0 - 2.0 - kw } else { 2.0 };
         let kl = Lay::new(Size { w: kw, h: kh }, Some(knob), vec![]);
         let sl = Lay::new(Size { w: SWITCH.0, h: SWITCH.1 }, Some(sw), vec![(kx, (SWITCH.1 - kh) / 2.0, kl)]);
@@ -1030,7 +1094,7 @@ impl Ctx<'_> {
         let off = if vertical { (0.0, self.clamp_offset(off.1, max.1, h)) } else { (self.clamp_offset(off.0, max.0, w), 0.0) };
         let mut n = Node::new(&v.id, "scroll");
         n.clip_radius = Some(0.0);
-        n.scroll = Some(ScrollInfo { vertical, offset: off, max, snap: None });
+        n.scroll = Some(ScrollInfo { vertical, offset: off, max, snap: None, content: None });
         n.inspect = true;
         let cx = if vertical { (w - c.size.w) / 2.0 } else { 0.0 };
         Lay::new(Size { w, h }, Some(n), vec![(cx - off.0, top - off.1, c)])
@@ -1117,7 +1181,7 @@ impl Ctx<'_> {
         let mut n = Node::new(&v.id, "list");
         n.fill = (!self.floating).then(|| self.semantic(if inset { Semantic::GroupedBackground } else { Semantic::Background }));
         n.clip_radius = Some(0.0);
-        n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max, snap: None });
+        n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max, snap: None, content: None });
         let kids = kids.into_iter().map(|(x, ky, k)| (x, ky - off, k)).collect();
         Lay::new(Size { w, h }, Some(n), kids)
     }
@@ -1139,16 +1203,7 @@ impl Ctx<'_> {
         let h = p.h.filter(|h| h.is_finite()).unwrap_or(874.0);
         let (top, bottom) = (env.safe_top, env.bottom_inset);
         let large = mode == DisplayMode::Large && title.is_some();
-        let primary = self.semantic(Semantic::Primary);
-        // Large title: LargeTitle bold, growing with Dynamic Type. Its band below the inline bar is
-        // 52pt, or the title's height + 1.33 when taller (measured: 106pt bar at large, 127 at AX5).
-        let large_title = title.filter(|_| large).map(|t| {
-            let sz = simcore_protocol::TextStyle::LargeTitle.size_at(self.dts) as f32;
-            let spec = FontSpec::new(sz, self.line_h(sz), 700, TextAlign::Leading);
-            self.text_lay(&format!("{}#title", v.id), t, spec, primary, Some((w - 32.0) as f32))
-        });
-        let title_h = large_title.as_ref().map_or(0.0, |l| l.size.h);
-        let band = if large { (title_h + 1.33).max(52.0) } else { 0.0 };
+        let (large_title, title_h, band) = self.nav_large(&v.id, w, title, large);
         let bar_h = if title.is_none() && back.is_none() { 0.0 } else { NAV_INLINE_H + band };
         let ctop = top + bar_h;
         let scroller = is_scroller(content);
@@ -1183,11 +1238,36 @@ impl Ctx<'_> {
             let c = self.view(content, Prop { w: Some(w), h: Some(avail) }, Env { bottom_inset: 0.0, ..cenv });
             kids.push(((w - c.size.w) / 2.0, ctop + (avail - c.size.h) / 2.0, c));
         }
-        // Bar (no background at rest on iOS 26): title + glass back button above content.
-        // The large title scrolls with the content and disappears under the inline bar; the bar
+        let back = back.map(|b| NavBack { action: Some(b.action), label: b.label.clone(), pill: false });
+        let bar = NavBar { id: &v.id, w, h, top, bar_h, title, large, large_title, title_h, band, offset, back };
+        kids.push((0.0, top, self.nav_bar(bar)));
+        Lay::new(Size { w, h }, Some(bg), kids)
+    }
+
+    /// Large title lay (when `large`), its height and the band it occupies below the inline bar.
+    /// Large title: LargeTitle bold, growing with Dynamic Type. Its band below the inline bar is
+    /// 52pt, or the title's height + 1.33 when taller (measured: 106pt bar at large, 127 at AX5).
+    fn nav_large(&mut self, id: &str, w: f64, title: Option<&str>, large: bool) -> (Option<Lay>, f64, f64) {
+        let primary = self.semantic(Semantic::Primary);
+        let large_title = title.filter(|_| large).map(|t| {
+            let sz = simcore_protocol::TextStyle::LargeTitle.size_at(self.dts) as f32;
+            let spec = FontSpec::new(sz, self.line_h(sz), 700, TextAlign::Leading);
+            self.text_lay(&format!("{id}#title"), t, spec, primary, Some((w - 32.0) as f32))
+        });
+        let title_h = large_title.as_ref().map_or(0.0, |l| l.size.h);
+        let band = if large { (title_h + 1.33).max(52.0) } else { 0.0 };
+        (large_title, title_h, band)
+    }
+
+    /// The navigation bar (no background at rest on iOS 26): large + inline title and the glass back
+    /// button. Shared by SwiftUI `NavigationStack` and React Native's native stack header.
+    fn nav_bar(&mut self, nb: NavBar) -> Lay {
+        let NavBar { id, w, h, top, bar_h, title, large, large_title, title_h, band, offset, back } = nb;
+        let primary = self.semantic(Semantic::Primary);
+                // The large title scrolls with the content and disappears under the inline bar; the bar
         // shrinks with it and the inline title fades in over the last INLINE_FADE points.
         let collapse = offset.clamp(0.0, band);
-        let mut bar = Node::new(format!("{}#bar", v.id), "navbar");
+        let mut bar = Node::new(format!("{}#bar", id), "navbar");
         bar.label = title.map(str::to_string);
         let mut bar_kids = vec![];
         if let Some(tl) = large_title.filter(|_| offset < band) {
@@ -1195,7 +1275,7 @@ impl Ctx<'_> {
             let ty = NAV_INLINE_H + (band - title_h - 7.6).max(0.0) - offset;
             if offset > 0.0 {
                 // Mid-collapse: cut off where it slides under the inline bar.
-                let mut clip = Node::new(format!("{}#largetitle", v.id), "clip");
+                let mut clip = Node::new(format!("{}#largetitle", id), "clip");
                 clip.clip_radius = Some(0.0);
                 clip.inspect = false;
                 let clip_h = h - top - NAV_INLINE_H;
@@ -1210,7 +1290,7 @@ impl Ctx<'_> {
                 // Inline titles grow with Dynamic Type but cap at x1.225 (measured at accessibility5).
                 let nsz = 17.0 * (simcore_protocol::TextStyle::Body.size_at(self.dts) as f32 / 17.0).min(1.225);
                 let spec = FontSpec::new(nsz, self.line_h(nsz), 600, TextAlign::Leading);
-                let id = if large { format!("{}#inline", v.id) } else { format!("{}#title", v.id) };
+                let id = if large { format!("{}#inline", id) } else { format!("{}#title", id) };
                 let mut tl = self.text_lay(&id, t, spec, primary, Some((w - 120.0) as f32));
                 if let Some(n) = tl.node.as_mut() {
                     n.opacity = alpha;
@@ -1220,9 +1300,9 @@ impl Ctx<'_> {
             }
         }
         if let Some(b) = back {
-            let mut n = Node::new(format!("{}#back", v.id), "button");
+            let mut n = Node::new(format!("{id}#back"), "button");
             n.role = Role::Button;
-            n.action = Some(b.action);
+            n.action = b.action;
             n.label = Some(if b.label.is_empty() { "Back".into() } else { b.label.clone() });
             if self.sheet_up {
                 // Under a sheet the glass goes flat: a barely visible disc remains.
@@ -1232,16 +1312,32 @@ impl Ctx<'_> {
                 n.glass = Some(self.glass_spec(GlassVariant::Regular, None, true));
             }
             n.radius = PILL;
-            n.glyph = Some((Glyph::BackChevron, if self.desat {
+            // Under a presentation the chevron desaturates like the rest of the presenter.
+            let primary = if self.desat {
                 let g = if self.dark { ALERT_DESAT.1 } else { ALERT_DESAT.0 };
                 rgba(g, g, g, 1.0)
             } else {
-                self.semantic(Semantic::Primary)
-            }));
-            bar_kids.push((self.margin, 0.0, Lay::new(Size { w: 44.0, h: 44.0 }, Some(n), vec![])));
+                primary
+            };
+            if b.pill {
+                // Pill with chevron and the previous title (measured iOS 26.5: chevron centre 19pt in, text at 35, 17.7 trailing).
+                let spec = FontSpec::new(17.0, self.line_h(17.0), 400, TextAlign::Leading);
+                let mut tl = self.text_lay(&format!("{id}#backtitle"), &b.label, spec, primary, None);
+                if let Some(t) = tl.node.as_mut() {
+                    t.inspect = false;
+                }
+                let mut chev = Node::new(format!("{id}#chevron"), "chevron");
+                chev.glyph = Some((Glyph::BackChevron, primary));
+                chev.inspect = false;
+                let (tw, th) = (tl.size.w, tl.size.h);
+                let kids = vec![(0.0, 0.0, Lay::new(Size { w: 38.0, h: 44.0 }, Some(chev), vec![])), (35.0, (44.0 - th) / 2.0, tl)];
+                bar_kids.push((self.margin, 0.0, Lay::new(Size { w: 35.0 + tw + 17.7, h: 44.0 }, Some(n), kids)));
+            } else {
+                n.glyph = Some((Glyph::BackChevron, primary));
+                bar_kids.push((self.margin, 0.0, Lay::new(Size { w: 44.0, h: 44.0 }, Some(n), vec![])));
+            }
         }
-        kids.push((0.0, top, Lay::new(Size { w, h: bar_h - collapse }, Some(bar), bar_kids)));
-        Lay::new(Size { w, h }, Some(bg), kids)
+        Lay::new(Size { w, h: bar_h - collapse }, Some(bar), bar_kids)
     }
 
     /// Scale a laid-out subtree by `k` about its origin: geometry, fonts, symbols, strokes, radii, shadows.

@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "expo-components",
+    "slug": "expo-components",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": { "supportsTablet": true }
+  }
+}

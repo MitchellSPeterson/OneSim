@@ -316,3 +316,157 @@ System chrome uses the same effect:
   - **Alert**: centered glass card (320 wide), left-aligned title and message, capsule buttons (two side by side with cancel first; more stacked with cancel last).
   - **Dialog**: popover card 240 wide pointing at the anchor's label (the notch tip touches the label's end; the card starts 12.5pt later): to its right when there is room, else above, else below. No dim; capsule buttons stacked; no Cancel button shown.
 - `PROTOCOL_VERSION` stays 1.
+
+---
+
+## H. v1 additions: React Native / Expo (additive)
+
+Guest: `node frameworks/react-native/guest/host.js` (see `frameworks/react-native/README.md`).
+It loads the app bundle from Metro and runs React Native's own Fabric renderer; no build step.
+
+### API
+
+- `create_session` accepts `"framework": "react-native"` (alias `"expo"`) and `"metro_url"`
+  (alias `metroUrl`, default `http://localhost:8081`); `app_path` is not used.
+- `get_capabilities.frameworks` includes `"react-native"`.
+- `send_pointer_event` on an RN session: `down` → touch `start` on the deepest node at the
+  point, `up` → touch `end` on the same target, `click` = both. After `end` the call waits for
+  the next tree (2 s); a tap that changes nothing is not an error.
+- CLI: `simcore expo [--url URL] [--device NAME] [--headless] [--appearance light|dark] [--screenshot out.png] [--click X,Y ...]`.
+
+### Guest launch env
+
+`SIMCORE_METRO_URL`, `SIMCORE_VIEWPORT=393x852`, `SIMCORE_APPEARANCE`, `SIMCORE_SESSION_ID`,
+`SIMCORE_SCALE` (default 3). Optional: `SIMCORE_HMR=1` (connect Metro `/hot`), `SIMCORE_DEBUG=1`.
+Bundle: `GET <metro>/` with `expo-platform: ios` → manifest `launchAsset.url`
+(fallback `/index.bundle?platform=ios&dev=true&minify=false`).
+
+### ViewNode kind `rn`
+
+`{"kind":"rn","id":"<reactTag>","component":"<Fabric viewName>","props":{...},"children":[...]}`
+
+- The root is synthetic: `component: "RootView"`, `id: "1"` (surface rootTag 1), fills the viewport.
+- `props` is Fabric's flat attribute payload merged across clones: style keys are top level,
+  colors are `processColor` numbers (`0xAARRGGBB`), functions are dropped, event handlers
+  appear as `true` flags (`onClick`, `onStartShouldSetResponder`, ...).
+- Components: `RCTView`, `RCTText` (paragraph; text = concatenated `RCTRawText.props.text`),
+  `RCTVirtualText` (nested span), `RCTRawText`, `RCTScrollView` (`horizontal` prop),
+  `RCTImageView` (`source: [{uri,width,height,scale}]`, placeholder for now). Other names are
+  laid out as a View and reported once as `unsupported_component: <name>`.
+- Layout follows Yoga (column, `flexShrink: 0`, `alignContent: flex-start`, border-box);
+  default text: system 14pt, black. Scene node ids are reactTags, so hit tests return tags.
+
+### Host → guest (additions)
+
+- `{"type":"touch","phase":"start"|"move"|"end"|"cancel","tag":u64,"x","y","lx","ly","timestamp"}`
+  — page coords (pt), `lx/ly` relative to the target. Guest dispatches
+  `topTouchStart/Move/End/Cancel`; RN's responder system bubbles from the target.
+- `{"type":"layout","frames":{"<tag>":[x,y,w,h]}}` — page frames after each layout. Answers
+  `measure*` and fires `onLayout`. Optional: guest works without it (zeros).
+- `{"type":"reload"}` — full reload (fresh JS global).
+- `environment` → Appearance `appearanceChanged`, Dimensions `didUpdateDimensions`.
+
+Unsupported native modules: stderr `SimCore: <Module> is not supported (method: <m>)` plus one
+`{"type":"error"}` per module (surfaced by `get_errors`). Nothing reports fake success.
+
+### Milestone 1 additions (TextInput, ScrollView, Image, Switch, Modal)
+
+**TextInput** (`RCTSinglelineTextInputView`, `RCTMultilineTextInputView`). The guest owns the
+current text per tag and emits it as `props.__simcoreText` (string; empty when none), next to
+`placeholder`, `placeholderTextColor`, `editable`, `secureTextEntry`, `multiline`. The host
+treats these nodes as text fields (`field` = tag, value = `__simcoreText`) and drives them with
+its existing focus + software-keyboard machinery.
+- Host → guest `{"type":"focus","tag"}` / `{"type":"blur","tag"}` when host focus changes
+  → `topFocus` / `topBlur` (+ `topEndEditing` on blur).
+- Host → guest `text_input` with `field` = tag and the full new `text` → guest updates its text,
+  dispatches `topChange` `{text, eventCount, target}` (and `topSelectionChange` at the end of
+  the text), and emits a new tree.
+- Host → guest `{"type":"submit","tag"}` on return → `topSubmitEditing` `{text}`; then blur
+  unless `multiline`.
+- Guest → host `{"type":"focus_request","tag":<u64>|null}` when JS calls the `focus` / `blur`
+  commands (null = blur); host focuses/unfocuses that field and shows/hides the keyboard.
+  `setTextAndSelection` / `setNativeProps({text})` update the guest's text and re-emit.
+
+**ScrollView** (`RCTScrollView`). Host keeps the offset.
+- Host → guest `{"type":"scroll","tag","phase":"begin"|"scroll"|"end","x","y","contentWidth","contentHeight","width","height"}`
+  (x/y = content offset) → `topScrollBeginDrag` / `topScroll` / `topScrollEndDrag` +
+  `topMomentumScrollEnd`, nativeEvent `{contentOffset,contentSize,layoutMeasurement,contentInset:{0,0,0,0},zoomScale:1}`.
+  One `--scroll` gesture = begin, scroll, end.
+- Guest → host `{"type":"scroll_to","tag","x","y"}` for the `scrollTo` / `scrollToEnd` commands
+  (`scrollToEnd`: `x`/`y` = `"end"`); host sets the offset (clamped), re-renders and replies
+  with a `scroll` message (phase `end`).
+- `contentOffset` prop sets the initial offset.
+
+**Image** (`RCTImageView`). The guest downloads `source[0].uri` (http(s), `data:`, Metro
+assets) with Node `fetch` into `$TMPDIR/simcore-images/<sha1(uri)>.<ext>` and adds
+`props.__simcoreImage = {"path","width","height"}` (pixels) to the node, dispatching
+`topLoadStart`, `topLoad` `{source:{uri,width,height}}`, `topLoadEnd` (or `topError`
+`{error}`). Host decodes PNG/JPEG from `path` and draws with `resizeMode`
+`cover` (default) / `contain` / `stretch` / `center`, clipped to `borderRadius`; until
+`__simcoreImage` exists it draws only the background. `ImageLoader.getSize`/`prefetch` use the
+same cache.
+
+**Switch** (`RCTSwitch`, props `value`, `onTintColor`, `thumbTintColor`, `disabled`). Host draws
+the iOS 26 switch (same look and size as SwiftUI `Toggle`: 63×28, knob 37×24). The guest handles the tap: a touch `end`
+whose target is an `RCTSwitch` (not disabled) dispatches `topChange` `{value: !value, target}`.
+
+**Modal** (`RCTModalHostView`; RN's Fabric name `ModalHostView` is renamed by the guest; props `visible`, `animationType`, `transparent`,
+`presentationStyle`). Its children are laid out against the full viewport and painted above
+everything else (transparent → no backdrop; otherwise background color of the app default).
+`visible: false` or absent node → nothing. Guest dispatches `topShow` after first emit with it
+visible; `topRequestClose` is not generated (no hardware back on iOS).
+
+### Milestone 2 additions (Fast Refresh, reload)
+
+- API `reload_session` `{"session_id"}` → `{"state"}`: full JS reload (fresh JS global, React
+  state lost); returns after the reloaded app's first tree (30 s timeout → `timeout`).
+- The guest connects Metro's `/hot` socket by default (`SIMCORE_HMR=0` disables). Edits are
+  applied by Metro HMR + React Refresh inside the guest; the host just receives new trees.
+  Updates that React Refresh cannot apply trigger a full reload in the guest.
+- Guest → host `{"type":"event","name":"bundle.loaded"|"bundle.reloaded"|"bundle.error"|"refresh.applied","detail":{...}}`.
+  The host currently only logs these (client event stream: Milestone 4). Bundle and runtime
+  errors are also sent as `error` (→ `get_errors`).
+
+### Milestone 3 additions (Expo Router: native stack, native tabs, safe area)
+
+Native components (react-native-screens, safe-area-context, expo views) arrive as ordinary `rn`
+nodes; the host draws the platform chrome.
+
+- `RNSScreenStack` > `RNSScreen`* (last child = top) > `RNSScreenContentWrapper` (content) +
+  `RNSScreenStackHeaderConfig` (header props: `title`, `hidden`, `largeTitle`, `hideBackButton`,
+  `backTitle` (absent → previous screen's title), `backTitleVisible`, `color`, `backgroundColor`,
+  `titleColor`, `titleFontSize`, `titleFontWeight`, `translucent`; children
+  `RNSScreenStackHeaderSubview` `type` left/right/center/title/back/searchBar). Host draws the
+  top screen and an iOS 26 navigation bar (same look as SwiftUI `NavigationStack`).
+- `RNSTabsHostIOS` (`navStateRequest.selectedScreenKey`, `tabBarHidden`, `tabBarTintColor`) >
+  `RNSTabsScreenIOS` (`screenKey`, `title`, `badgeValue`, `iconType` image/sfSymbol/xcasset,
+  `iconResourceName`, guest-added `__simcoreIconImage` / `__simcoreSelectedIconImage`
+  `{path,width,height}`). Host draws the selected tab's content and the iOS 26 floating Liquid
+  Glass tab bar.
+- `RNCSafeAreaProvider`, `RNCSafeAreaView` (`edges` `{top,left,bottom,right}`: `additive`|`off`
+  → add the safe-area inset as padding), `RNSSafeAreaView`.
+- `ViewManagerAdapter_ExpoImage` (`source`, `contentFit`, `tintColor`, guest-added
+  `__simcoreImage`), `ViewManagerAdapter_SymbolModule` (`name`, `weight`, `scale`, `tintColor` as
+  CSS string, size from style), `ViewManagerAdapter_ExpoGlassEffect_GlassView`
+  (`glassEffectStyle`, `tintColor`, `isInteractive`, radii), `…_GlassContainer` (`spacing`).
+- Root `props.backgroundColor`: `expo-system-ui` background.
+- Safe-area insets come from the viewport height (874 → 62/34, 852 → 59/34, 844 → 47/34,
+  812 → 44/34, else 20/0); the guest sends them to `RNCSafeAreaProvider` (`topInsetsChange`).
+
+Host → guest:
+- `{"type":"select_tab","tag":<RNSTabsHostIOS tag>,"key":"<screenKey>"}` (or `"index":n`) when a
+  tab bar item is tapped. The guest fires `topTabSelected`; JS then updates
+  `navStateRequest.selectedScreenKey`, which the host follows.
+- `{"type":"native_back","tag":<RNSScreenStack tag>}` when the header back button is tapped. The
+  guest fires the iOS pop events (`topDismissed` …); JS removes the screen on its next commit.
+
+JS-driven push/pop needs no message. The guest spaces appear events by 350 ms
+(`SIMCORE_NAV_MS`, 0 = instant); the host does not animate transitions yet.
+
+### Milestone 4 additions (modules, simulation, v2 API)
+
+- Guest → host `{"type":"modules","modules":[{name,package,status,methods,events,permissions}]}`
+  after every (re)load; host → guest `{"type":"simulate","module","state"}`. Event lines add
+  `navigation.changed` (`{route,params,stack}`, Expo Router pathnames), `module.unsupported`,
+  `module.called`.
+- The v2 JSON-RPC/WebSocket API (`simcore serve --listen ADDR`) is specified in `docs/api.md`.

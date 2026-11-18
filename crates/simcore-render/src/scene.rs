@@ -70,7 +70,7 @@ pub struct TextRun {
     pub strike: bool,
     /// Horizontal shift of the text inside its bounds (scrolled text fields).
     pub offset_x: f32,
-    /// Styled runs of a concatenated `Text` (then `text` is their concatenation); empty otherwise.
+    /// Styled runs of a concatenated or nested `Text` (then `text` is their concatenation); empty otherwise.
     pub spans: Vec<Span>,
 }
 
@@ -114,6 +114,22 @@ pub struct SymbolRun {
     pub size: (f64, f64),
 }
 
+/// A decoded bitmap drawn into `dest` (points, absolute), clipped to the node's bounds and corner radius.
+#[derive(Debug, Clone)]
+pub struct ImageRun {
+    pub pixmap: std::sync::Arc<tiny_skia::Pixmap>,
+    pub dest: Rect,
+    /// Clockwise rotation in degrees about the centre of `dest`.
+    pub rotation: f32,
+}
+
+/// Linear gradient fill over a node's bounds: CSS `angle` (0 = up, 90 = right), evenly spaced stops.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Gradient {
+    pub angle: f32,
+    pub stops: Vec<Color>,
+}
+
 /// A sheet the user can drag (`Node::sheet`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct SheetInfo {
@@ -143,6 +159,8 @@ pub struct ScrollInfo {
     /// Vertical offset where a large navigation title has fully collapsed into the inline bar.
     /// Scrolling never comes to rest between 0 and this (iOS snaps to expanded or collapsed).
     pub snap: Option<f64>,
+    /// Real content size when the layout knows it (React Native); else viewport + `max`.
+    pub content: Option<(f64, f64)>,
 }
 
 /// One positioned element. `bounds` are absolute, in points.
@@ -165,6 +183,9 @@ pub struct Node {
     pub glyph: Option<(Glyph, Color)>,
     pub text: Option<TextRun>,
     pub symbol: Option<SymbolRun>,
+    pub image: Option<ImageRun>,
+    /// Painted over `fill`, inside the corner radius.
+    pub gradient: Option<Gradient>,
     /// Clips all descendants to `bounds` with this corner radius.
     pub clip_radius: Option<f64>,
     /// Effective opacity (already multiplied by ancestors).
@@ -172,6 +193,8 @@ pub struct Node {
     pub role: Role,
     pub label: Option<String>,
     pub action: Option<u64>,
+    /// React Native reactTag (the node is a hit-test target and a layout-frame source); SwiftUI nodes have none.
+    pub tag: Option<u64>,
     /// Text field id: tapping focuses the node.
     pub field: Option<u64>,
     pub value: Option<String>,
@@ -201,11 +224,14 @@ impl Node {
             glyph: None,
             text: None,
             symbol: None,
+            image: None,
+            gradient: None,
             clip_radius: None,
             opacity: 1.0,
             role: Role::None,
             label: None,
             action: None,
+            tag: None,
             field: None,
             value: None,
             focused: false,
@@ -226,10 +252,12 @@ pub struct Scene {
     pub nodes: Vec<Node>,
     /// Symbol names the host could not render (placeholders were drawn), sorted, deduplicated.
     pub unsupported_symbols: Vec<String>,
+    /// Full host-side diagnostics (e.g. `unsupported_component: X`), sorted, deduplicated.
+    pub notes: Vec<String>,
 }
 
 impl Scene {
-    /// Topmost node with an action under the point (points, respecting clips).
+    /// Topmost node with an action (or RN tag) under the point (points, respecting clips).
     pub fn hit_test(&self, x: f64, y: f64) -> Option<usize> {
         // Content scrolled under the navigation bar / status bar is not tappable there.
         // Under an alert or sheet only the presentation layer (and chrome drawn after it) is reachable.
@@ -253,7 +281,7 @@ impl Scene {
             if y < bar_bottom && modal.is_none() && under_bar(i) && n.kind != "keyboard" && n.role != Role::Key {
                 return false;
             }
-            (n.action.is_some() || n.field.is_some() || n.role == Role::Key) && n.bounds.contains(x, y) && self.clipped_in(i, x, y)
+            (n.action.is_some() || n.tag.is_some() || n.field.is_some() || n.role == Role::Key) && n.bounds.contains(x, y) && self.clipped_in(i, x, y)
         })
     }
 

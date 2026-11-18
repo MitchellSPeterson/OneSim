@@ -73,6 +73,8 @@ pub struct CreateSessionParams {
     pub framework: String,
     #[serde(default = "default_platform")]
     pub platform: String,
+    /// Swift app path; unused by `react-native` sessions.
+    #[serde(default)]
     pub app_path: String,
     #[serde(default)]
     pub root_view: Option<String>,
@@ -91,6 +93,9 @@ pub struct CreateSessionParams {
     /// Test hook: skip the Swift build and spawn `app_path` directly.
     #[serde(default)]
     pub prebuilt: bool,
+    /// `react-native` only: Metro dev server (default `http://localhost:8081`).
+    #[serde(default, alias = "metroUrl")]
+    pub metro_url: Option<String>,
 }
 
 fn default_platform() -> String {

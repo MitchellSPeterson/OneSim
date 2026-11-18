@@ -519,6 +519,8 @@ pub fn resolve_label(tree: &simcore_protocol::UiNode, spec: &str) -> Result<(f64
         None => find(tree, &|n| {
             matches!(n.role.as_deref(), Some("button" | "toggle" | "textfield")) && n.label.as_deref() == Some(spec)
         })
+        // A native stack header's back pill is labelled with the previous title; `Back` always finds it.
+        .or_else(|| find(tree, &|n| spec.eq_ignore_ascii_case("back") && n.id.ends_with("#back")))
         .ok_or_else(|| format!("no button, toggle, text field or key labelled {spec:?}"))?,
     };
     Ok(center(n))
@@ -589,9 +591,9 @@ mod tests {
         let screen = |with_scroller: bool| {
             let mut n = Node::new("0/s1", "scroll");
             n.bounds = Rect { x: 0.0, y: 0.0, w: 400.0, h: 800.0 };
-            n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, 0.0), max: (0.0, 500.0), snap: None });
+            n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, 0.0), max: (0.0, 500.0), snap: None, content: None });
             let nodes = if with_scroller { vec![n] } else { vec![] };
-            Scene { size: (400.0, 800.0), appearance: simcore_protocol::Appearance::Light, nodes, unsupported_symbols: vec![] }
+            Scene { size: (400.0, 800.0), appearance: simcore_protocol::Appearance::Light, nodes, unsupported_symbols: vec![], notes: vec![] }
         };
         let mut it = Interaction::default();
         let ev = |kind, dy| PointerEvent { kind, x: 100.0, y: 100.0, dx: 0.0, dy };
@@ -608,8 +610,8 @@ mod tests {
         let scene = |off: f64| {
             let mut n = Node::new("l", "list");
             n.bounds = Rect { x: 0.0, y: 0.0, w: 400.0, h: 800.0 };
-            n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max: (0.0, 500.0), snap: Some(52.0) });
-            Scene { size: (400.0, 800.0), appearance: simcore_protocol::Appearance::Light, nodes: vec![n], unsupported_symbols: vec![] }
+            n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max: (0.0, 500.0), snap: Some(52.0), content: None });
+            Scene { size: (400.0, 800.0), appearance: simcore_protocol::Appearance::Light, nodes: vec![n], unsupported_symbols: vec![], notes: vec![] }
         };
         for (start, want) in [(20.0, 0.0), (40.0, 52.0)] {
             let mut it = Interaction::default();

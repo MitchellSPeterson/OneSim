@@ -4,6 +4,7 @@ use std::collections::HashMap;
 /// macOS system UI font (variable SF Pro: wght axis). Family name as registered in fontdb.
 const SF_FILE: &str = "/System/Library/Fonts/SFNS.ttf";
 const SF_FAMILY: &str = ".SF NS";
+const MONO_FAMILY: &str = ".SF NS Mono";
 /// Open-licensed fallback (Inter, SIL OFL 1.1; variable `wght` axis), embedded for determinism.
 const INTER: &[u8] = include_bytes!("../../../assets/fonts/InterVariable.ttf");
 const INTER_FAMILY: &str = "Inter Variable";
@@ -17,8 +18,9 @@ pub enum TextAlign {
     Trailing,
 }
 
-/// One styled run of a concatenated `Text`: its own size (points), weight and color.
-/// The `FontSpec` passed alongside is the largest run's (line metrics); every run scales from it.
+/// One styled run of a concatenated `Text` (SwiftUI) or nested React Native `Text`: its own size
+/// (points), weight and color. The `FontSpec` passed alongside gives the line metrics (SwiftUI: the
+/// largest run's); every run scales from it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Span {
     pub text: String,
@@ -28,6 +30,8 @@ pub struct Span {
     pub italic: bool,
     pub underline: bool,
     pub strike: bool,
+    /// System monospaced face.
+    pub mono: bool,
 }
 
 /// Font parameters shared by measuring and drawing.
@@ -44,13 +48,19 @@ pub struct FontSpec {
     pub align: TextAlign,
     /// Letter spacing in em (see [`tracking_em`]); independent of the raster scale.
     pub tracking: f32,
+    /// System monospaced face (`ui-monospace`).
+    pub mono: bool,
+    /// Line cap: the last allowed line is cut to whole glyphs followed by `…` (React Native `numberOfLines`).
+    pub lines: Option<usize>,
+    /// Explicit paragraph line height (RN `lineHeight`): every run uses `pitch`; otherwise a run's pitch scales with its size.
+    pub fixed_pitch: bool,
 }
 
 impl FontSpec {
     pub fn new(size: f32, line_height: f32, weight: u16, align: TextAlign) -> Self {
         // Leading: 22/17 of the size up to large-title sizes, ~1.12 x size + 2.64 above (accessibility sizes, measured: 53pt -> 62pt).
         let pitch = if size > 34.0 { size * 1.12 + 2.64 } else { line_height.max(size * 22.0 / 17.0) };
-        Self { size, pt: size, line_height, pitch, weight, align, tracking: tracking_em(size, weight) }
+        Self { size, pt: size, line_height, pitch, weight, align, tracking: tracking_em(size, weight), mono: false, lines: None, fixed_pitch: false }
     }
 }
 
@@ -105,7 +115,9 @@ fn inter_weight_tracking(size: f32, weight: u16) -> f32 {
     let w = a.1 + (b.1 - a.1) * ((weight as f32 - a.0) / (b.0 - a.0)).clamp(0.0, 1.0);
     // SF stops tightening heavy text at 20pt+ (see `tracking_em`), so the gap widens there.
     let big = if size >= 20.0 { 0.007 * ((weight as f32 - 400.0) / 200.0).clamp(0.0, 1.0) } else { 0.0 };
-    w + big
+    // Medium (500) is heavier in SF than the 400..600 interpolation says: measured on the Expo template's 14pt text.
+    let medium = if (450..=550).contains(&weight) { 0.02 } else { 0.0 };
+    w + big + medium
 }
 
 /// Inter tracking at accessibility sizes (> 40pt), where it is drawn at `INTER_BIG_SCALE`.
@@ -142,6 +154,7 @@ pub struct Fonts {
     cache: SwashCache,
     sf: bool,
     inter: bool,
+    has_mono: bool,
     measured: HashMap<(String, u32, u16, u32), (f64, f64)>,
 }
 
@@ -179,7 +192,8 @@ impl Fonts {
             db.load_font_data(INTER.to_vec());
         }
         let sys = FontSystem::new_with_locale_and_db("en-US".into(), db);
-        Self { sys, cache: SwashCache::new(), sf, inter, measured: HashMap::new() }
+        let has_mono = sys.db().faces().any(|f| f.families.iter().any(|(n, _)| n == MONO_FAMILY));
+        Self { sys, cache: SwashCache::new(), sf, inter, has_mono, measured: HashMap::new() }
     }
 
     /// True when Apple's SF Pro is in use.
@@ -197,42 +211,98 @@ impl Fonts {
         self.inter
     }
 
+    fn mono_family(&self) -> Family<'static> {
+        if self.has_mono { Family::Name(MONO_FAMILY) } else { Family::Monospace }
+    }
+
+    /// Family, tracking (em) and weight of one face. `sf_tracking` is SF's tracking for this face;
+    /// `big` selects Inter's accessibility-size fit (see `INTER_BIG_SCALE`).
+    fn face(&self, mono: bool, pt: f32, size_px: f32, weight: u16, sf_tracking: f32, big: bool) -> (Family<'static>, f32, u16) {
+        let wght = if big { (weight as i32 + INTER_BIG_WEIGHT).clamp(100, 900) as u16 } else { weight };
+        if mono {
+            (self.mono_family(), 0.0, wght)
+        } else if self.sf {
+            (Family::Name(SF_FAMILY), sf_tracking, wght)
+        } else {
+            (Family::Name(INTER_FAMILY), if big { inter_ax_tracking(pt, weight) } else { inter_tracking_em(size_px, weight) }, wght)
+        }
+    }
+
+    /// Shaped text; with a line cap (`f.lines`) that the text exceeds, the last allowed line is cut
+    /// to whole glyphs followed by `…` (tail truncation, like iOS).
     fn buffer(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span]) -> Buffer {
+        let b = self.build(text, f, width, spans);
+        let (Some(n), Some(_)) = (f.lines, width) else { return b };
+        if b.layout_runs().count() <= n {
+            return b;
+        }
+        let Some(run) = b.layout_runs().nth(n - 1) else { return b };
+        let Some(first) = run.glyphs.first() else { return b };
+        // The last allowed line starts here.
+        let start: usize = text.split('\n').take(run.line_i).map(|p| p.len() + 1).sum::<usize>() + first.start;
+        let rest = text[start..].split('\n').next().unwrap_or("");
+        // Like TextKit: a single line fills to the last character that fits, but with several lines the last
+        // one keeps its word-wrapped fragment (`is cut…`), cut only further when the ellipsis does not fit.
+        let frag_end = run.glyphs.last().map_or(0, |g| g.end).saturating_sub(first.start);
+        let rest = if n > 1 && rest.is_char_boundary(frag_end) { &rest[..frag_end] } else { rest };
+        let limit = width.unwrap_or(f32::MAX);
+        let one = FontSpec { align: TextAlign::Leading, ..*f };
+        let bounds: Vec<usize> = rest.char_indices().map(|(i, _)| i).chain([rest.len()]).collect();
+        let (mut lo, mut hi) = (0, bounds.len() - 1);
+        while lo < hi {
+            let mid = (lo + hi).div_ceil(2);
+            let probe = self.build(&format!("{}\u{2026}", rest[..bounds[mid]].trim_end()), &one, None, &[]);
+            if probe.layout_runs().map(|r| r.line_w).fold(0.0, f32::max) <= limit {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        let mut head = text[..start + bounds[lo]].trim_end();
+        if n > 1 && bounds[lo] < rest.len() {
+            // Multi-line: cut back to a word boundary.
+            head = head.rsplit_once(' ').map_or(head, |(h, _)| h.trim_end());
+        }
+        // The ellipsis takes the style of the last kept run (like iOS).
+        let (mut at, mut cut) = (0, Vec::<Span>::new());
+        for sp in spans {
+            if at >= head.len() {
+                break;
+            }
+            let take = (head.len() - at).min(sp.text.len());
+            cut.push(Span { text: sp.text[..take].to_string(), ..sp.clone() });
+            at += sp.text.len();
+        }
+        if let Some(last) = cut.last_mut() {
+            last.text.push('\u{2026}');
+        }
+        self.build(&format!("{head}\u{2026}"), f, width, &cut)
+    }
+
+    fn build(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span]) -> Buffer {
         // Inter's glyphs are ~8% larger than SF's at the same size; at accessibility sizes that is a lot
         // of ink, so the fallback draws them slightly smaller (tracking is fitted for it).
         let big = !self.sf && f.pt > 40.0;
         let size = if big { f.size * INTER_BIG_SCALE } else { f.size };
         let mut b = Buffer::new(&mut self.sys, Metrics::new(size, f.pitch));
         b.set_size(width, None);
-        let (family, tracking) = if self.sf {
-            (Family::Name(SF_FAMILY), f.tracking)
-        } else {
-            (Family::Name(INTER_FAMILY), if big { inter_ax_tracking(f.pt, f.weight) } else { inter_tracking_em(f.size, f.weight) })
-        };
-        let wght = if big { (f.weight as i32 + INTER_BIG_WEIGHT).clamp(100, 900) as u16 } else { f.weight };
+        let (family, tracking, wght) = self.face(f.mono, f.pt, f.size, f.weight, f.tracking, big);
         let attrs = Attrs::new().family(family).weight(Weight(wght)).letter_spacing(tracking);
-        if spans.is_empty() {
-            b.set_text(text, &attrs, Shaping::Advanced, None);
-        } else {
-            let (sf, fam) = (self.sf, family);
+        if !spans.is_empty() {
+            let sf = self.sf;
             let runs = spans.iter().enumerate().map(|(i, s)| {
                 let k = s.pt / f.pt;
                 let size_px = f.size * k;
                 let big = !sf && s.pt > 40.0;
-                let tracking = if sf {
-                    tracking_em(s.pt, s.weight)
-                } else if big {
-                    inter_ax_tracking(s.pt, s.weight)
-                } else {
-                    inter_tracking_em(size_px, s.weight)
-                };
-                let wght = if big { (s.weight as i32 + INTER_BIG_WEIGHT).clamp(100, 900) as u16 } else { s.weight };
-                let m = Metrics::new(if big { size_px * INTER_BIG_SCALE } else { size_px }, f.pitch * k);
+                let (fam, tracking, wght) = self.face(f.mono || s.mono, s.pt, size_px, s.weight, tracking_em(s.pt, s.weight), big);
+                let m = Metrics::new(if big { size_px * INTER_BIG_SCALE } else { size_px }, if f.fixed_pitch { f.pitch } else { f.pitch * k });
                 let c = Color::rgba((s.color.r * 255.0).round() as u8, (s.color.g * 255.0).round() as u8, (s.color.b * 255.0).round() as u8, (s.color.a * 255.0).round() as u8);
                 let a = Attrs::new().family(fam).weight(Weight(wght)).letter_spacing(tracking).metrics(m).color(c).metadata(i);
                 (s.text.as_str(), if s.italic { a.style(Style::Italic) } else { a })
             });
             b.set_rich_text(runs, &attrs, Shaping::Advanced, None);
+        } else {
+            b.set_text(text, &attrs, Shaping::Advanced, None);
         }
         let align = match f.align {
             TextAlign::Leading => None,
@@ -249,7 +319,8 @@ impl Fonts {
     /// Size of `text`, wrapping at `width` when given.
     pub fn measure(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span]) -> (f64, f64) {
         let key = (text.to_string(), f.size.to_bits(), f.weight, width.map_or(u32::MAX, f32::to_bits));
-        if spans.is_empty() {
+        let plain = spans.is_empty() && f.lines.is_none();
+        if plain {
             if let Some(r) = self.measured.get(&key) {
                 return *r;
             }
@@ -261,7 +332,7 @@ impl Fonts {
             lines += 1;
         }
         let r = (w as f64, (f.line_height + (lines.max(1) - 1) as f32 * f.pitch) as f64);
-        if spans.is_empty() {
+        if plain {
             self.measured.insert(key, r);
         }
         r
@@ -325,5 +396,40 @@ impl Fonts {
             }
         }
         lines
+    }
+}
+
+#[cfg(test)]
+mod span_tests {
+    use super::*;
+
+    /// Runs scale their line pitch with their size unless the paragraph fixes it.
+    #[test]
+    fn run_pitch_rule() {
+        let mut f = Fonts::new();
+        let red = crate::scene::Color::rgba(1.0, 0.0, 0.0, 1.0);
+        let run = |pt| Span { text: "Wrapped text of two sizes that must wrap onto several lines".into(), pt, weight: 400, color: red, italic: false, underline: false, strike: false, mono: false };
+        let spec = FontSpec::new(20.0, 24.0, 400, TextAlign::Leading);
+        let h = |f: &mut Fonts, fixed| {
+            let s = FontSpec { fixed_pitch: fixed, ..spec };
+            let b = f.buffer("Wrapped text of two sizes that must wrap onto several lines", &s, Some(60.0), &[run(10.0)]);
+            b.layout_runs().map(|r| r.line_y).fold(0.0f32, f32::max)
+        };
+        assert!(h(&mut f, false) < h(&mut f, true), "scaled runs pack tighter than a fixed pitch");
+    }
+
+    /// A single full-text run (with a line cap) shapes with the same per-size tracking as plain text.
+    #[test]
+    fn span_path_matches_plain_widths() {
+        let mut f = Fonts::new();
+        let t = "Plain red blue bold green text.";
+        for size in [15.0f32, 17.0] {
+            let spec = FontSpec::new(size, size * 1.2, 400, TextAlign::Leading);
+            let plain = f.measure(t, &spec, None, &[]).0;
+            let run = Span { text: t.into(), pt: size, weight: 400, color: crate::scene::Color::rgba(1.0, 0.0, 0.0, 1.0), italic: false, underline: false, strike: false, mono: false };
+            let capped = FontSpec { lines: Some(3), ..spec };
+            let spanned = f.measure(t, &capped, Some(10000.0), &[run]).0;
+            assert!((spanned - plain).abs() < 0.01, "{size}: spans {spanned} vs plain {plain}");
+        }
     }
 }

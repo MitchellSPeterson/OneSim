@@ -4,22 +4,37 @@
 //! `"prebuilt": true` is passed or `app_path` is an executable file that is not `*.swift`.
 //! `simcore-fake-guest` (a bin of this crate) is such an executable.
 
+mod events;
+mod rpc;
 mod session;
+mod ws;
 
 use base64::Engine;
 use serde::Serialize;
 use serde_json::{json, Value};
 use simcore_protocol::*;
-use simcore_render::{build_scene, render_png, Fonts, Scene, SceneParams};
+use simcore_render::{build_scene, render_png, Fonts, Role, Scene, SceneParams};
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
+use std::time::{Duration, Instant};
 
+pub use events::EventLog;
+pub use rpc::Server;
 pub use session::{device, simcore_home, Device, State, DEVICES};
+pub use ws::serve_ws;
 use session::Session;
 
 fn err(code: ErrorCode, msg: impl Into<String>) -> ApiError {
     ApiError::new(code, msg)
 }
+
+/// React Native: how long the guest must be quiet before a snapshot, and the most a snapshot waits.
+const QUIET: Duration = Duration::from_millis(150);
+const SETTLE_MAX: Duration = Duration::from_millis(2500);
+/// React Native: when trees keep arriving but the layout no longer changes (an endless animation, e.g. a
+/// rotating logo), a snapshot stops waiting after this long; startup waits `STARTUP_MAX` (splash, first layout).
+const ANIM_MAX: Duration = Duration::from_millis(500);
+const STARTUP_MAX: Duration = Duration::from_millis(2500);
 
 pub struct Host {
     sessions: HashMap<String, Session>,
@@ -40,6 +55,7 @@ pub const COMMANDS: &[&str] = &[
     "create_session",
     "start_session",
     "stop_session",
+    "reload_session",
     "get_session_status",
     "set_viewport",
     "set_appearance",
@@ -56,18 +72,31 @@ impl Host {
         Self { sessions: HashMap::new(), next_id: 1, fonts: None, greeted: false }
     }
 
-    fn get(&mut self, id: &str) -> Result<&mut Session, ApiError> {
+    pub(crate) fn get(&mut self, id: &str) -> Result<&mut Session, ApiError> {
         self.sessions.get_mut(id).ok_or_else(|| err(ErrorCode::NotFound, format!("unknown session {id}")))
     }
 
     pub fn create_session(&mut self, p: CreateSessionParams) -> Result<String, ApiError> {
-        if p.framework != "swiftui" {
-            return Err(err(ErrorCode::Unsupported, format!("framework {:?} (only \"swiftui\")", p.framework)));
+        let id = format!("s{}", self.next_id);
+        self.next_id += 1;
+        self.create_session_as(id, p)
+    }
+
+    /// `create_session` with a caller-chosen id (the v2 server owns the id space).
+    pub(crate) fn create_session_as(&mut self, id: String, mut p: CreateSessionParams) -> Result<String, ApiError> {
+        if p.framework == "expo" {
+            p.framework = "react-native".into();
+        }
+        if !matches!(p.framework.as_str(), "swiftui" | "react-native") {
+            return Err(err(
+                ErrorCode::Unsupported,
+                format!("framework {:?} (\"swiftui\", \"react-native\")", p.framework),
+            ));
         }
         if p.platform != "ios" {
             return Err(err(ErrorCode::Unsupported, format!("platform {:?} (only \"ios\")", p.platform)));
         }
-        if !std::path::Path::new(&p.app_path).exists() {
+        if p.framework == "swiftui" && !std::path::Path::new(&p.app_path).exists() {
             return Err(err(ErrorCode::BadRequest, format!("app_path {:?} does not exist", p.app_path)));
         }
         if let Some(d) = &p.device {
@@ -76,9 +105,8 @@ impl Host {
                 return Err(err(ErrorCode::Unsupported, format!("device {d:?} (known: {})", known.join(", "))));
             }
         }
-        let id = format!("s{}", self.next_id);
-        self.next_id += 1;
-        self.sessions.insert(id.clone(), Session::new(id.clone(), p));
+        let log = EventLog::new(id.clone());
+        self.sessions.insert(id.clone(), Session::new(id.clone(), p, log));
         Ok(id)
     }
 
@@ -86,7 +114,17 @@ impl Host {
     pub fn start_session(&mut self, id: &str) -> Result<(), ApiError> {
         let s = self.get(id)?;
         log::info!("starting session {id}");
-        s.start()
+        s.start()?;
+        if self.get(id)?.is_rn() {
+            // First layout pass: FlatList and friends render the rest once they know their frames.
+            let _ = self.scene_within(id, STARTUP_MAX);
+        }
+        Ok(())
+    }
+
+    /// The session's event log (v2 API).
+    pub fn events(&mut self, id: &str) -> Result<std::sync::Arc<EventLog>, ApiError> {
+        Ok(self.get(id)?.log())
     }
 
     pub fn stop_session(&mut self, id: &str) -> Result<(), ApiError> {
@@ -136,7 +174,69 @@ impl Host {
         Ok(())
     }
 
+    /// Scene of the current tree. React Native sessions first settle: the guest's trees, layout
+    /// frames, focus requests and `scroll_to` replies are exchanged until nothing changes.
     fn scene(&mut self, id: &str) -> Result<(Scene, u64, f64), ApiError> {
+        self.scene_within(id, ANIM_MAX)
+    }
+
+    /// `scene`, where an animation that keeps trees coming (layout unchanged) is waited on for `anim` at most.
+    fn scene_within(&mut self, id: &str, anim: Duration) -> Result<(Scene, u64, f64), ApiError> {
+        // A paused guest cannot answer: serve the last frame as is.
+        if !self.get(id)?.is_rn() || self.get(id)?.state() == State::Paused {
+            return self.build(id);
+        }
+        let (start, deadline) = (Instant::now(), Instant::now() + SETTLE_MAX.max(anim));
+        loop {
+            self.get(id)?.wait_quiet(QUIET, anim);
+            let generation = self.get(id)?.generation();
+            let out = self.build(id)?;
+            let acted = self.rn_apply_requests(id, &out.0);
+            let s = self.get(id)?;
+            let sent = s.sync_layout(&out.0);
+            let animating = !acted && !sent && start.elapsed() >= anim;
+            if (!acted && !sent && s.generation() == generation) || animating || Instant::now() > deadline {
+                return Ok(out);
+            }
+        }
+    }
+
+    /// Apply the guest's `focus_request` / `scroll_to` messages and drop focus on a vanished field.
+    /// Returns whether the interaction state changed (the scene must be rebuilt).
+    fn rn_apply_requests(&mut self, id: &str, scene: &Scene) -> bool {
+        let Some(s) = self.sessions.get_mut(id) else { return false };
+        let before = s.inter.focus.clone();
+        let field = |tag: &str| scene.nodes.iter().find(|n| n.id == tag && n.field.is_some());
+        if before.as_deref().is_some_and(|f| field(f).is_none()) {
+            s.inter.focus = None;
+        }
+        let mut changed = s.inter.focus != before;
+        for r in s.take_requests() {
+            match r {
+                GuestMessage::FocusRequest { tag } => {
+                    let new = tag.map(|t| t.to_string()).and_then(|t| field(&t).map(|n| (t, n.value.clone().unwrap_or_default())));
+                    let old = s.inter.focus.clone();
+                    if old.as_ref() != new.as_ref().map(|n| &n.0) {
+                        s.inter.shift = new.as_ref().is_some_and(|n| simcore_render::autocap(&n.1));
+                        s.inter.focus = new.map(|n| n.0);
+                        let _ = s.sync_focus(old);
+                    }
+                }
+                GuestMessage::ScrollTo { tag, x, y } => {
+                    let Some(n) = scene.nodes.iter().find(|n| n.id == tag.to_string() && n.scroll.is_some()) else { continue };
+                    let max = n.scroll.map_or((0.0, 0.0), |i| i.max);
+                    let off = (x.resolve(max.0).clamp(0.0, max.0), y.resolve(max.1).clamp(0.0, max.1));
+                    s.inter.scroll.insert(n.id.clone(), off);
+                    let _ = s.send_scroll(n, ScrollPhase::End, off);
+                }
+                _ => {}
+            }
+            changed = true;
+        }
+        changed
+    }
+
+    fn build(&mut self, id: &str) -> Result<(Scene, u64, f64), ApiError> {
         let s = self.sessions.get(id).ok_or_else(|| err(ErrorCode::NotFound, format!("unknown session {id}")))?;
         let (version, root) = s
             .tree()
@@ -159,6 +259,9 @@ impl Host {
         for name in &scene.unsupported_symbols {
             s.report_once("host", format!("unsupported_symbol: no system symbol {name:?} on this host; drew a placeholder"));
         }
+        for note in &scene.notes {
+            s.report_once("host", note.clone());
+        }
         Ok((scene, version, s.scale))
     }
 
@@ -168,11 +271,121 @@ impl Host {
     pub fn pointer(&mut self, id: &str, ev: PointerEvent) -> Result<(Option<String>, bool), ApiError> {
         self.get(id)?.require_running()?;
         let (scene, version, _) = self.scene(id)?;
+        if self.get(id)?.is_rn() {
+            return self.rn_pointer(id, &scene, version, ev);
+        }
         let s = self.get(id)?;
         s.inter.version = version;
         let effect = s.inter.pointer(&scene, ev);
         let out = (s.inter.hit.clone(), s.inter.acted);
         s.send_effect(effect)?;
+        Ok(out)
+    }
+
+    /// React Native pointer input: scrolls become `scroll` events, the software keyboard is the
+    /// interaction state machine's, everything else is a touch (and a tap on a text input focuses it).
+    fn rn_pointer(&mut self, id: &str, scene: &Scene, version: u64, ev: PointerEvent) -> Result<(Option<String>, bool), ApiError> {
+        let s = self.get(id)?;
+        s.inter.version = version;
+        if ev.kind == PointerKind::Scroll {
+            let effect = s.inter.pointer(scene, ev);
+            let out = (s.inter.hit.clone(), false);
+            if effect == simcore_render::Effect::Redraw {
+                let n = scene.nodes.iter().find(|n| Some(&n.id) == out.0.as_ref());
+                let new = out.0.as_ref().and_then(|h| s.inter.scroll.get(h)).copied();
+                if let (Some(n), Some(new)) = (n, new) {
+                    let old = n.scroll.map_or(new, |i| i.offset);
+                    s.send_scroll(n, ScrollPhase::Begin, old)?;
+                    s.send_scroll(n, ScrollPhase::Scroll, new)?;
+                    s.send_scroll(n, ScrollPhase::End, new)?;
+                }
+            }
+            self.scene(id)?; // settle: FlatList renders the rows the scroll revealed
+            return Ok(out);
+        }
+        let on_keyboard = scene.nodes.iter().any(|n| n.kind == "keyboard" && n.bounds.contains(ev.x, ev.y));
+        let hit = scene.hit_test(ev.x, ev.y).map(|i| &scene.nodes[i]);
+        // Native chrome: a stack header's back pill (`<stack>#back`) and tab bar items (`<tabs>#tab-<key>`).
+        if let Some(n) = hit {
+            let (tag, key) = n.id.split_once('#').map_or((n.id.as_str(), ""), |(t, k)| (t, k));
+            let msg = match (tag.parse::<u64>(), key) {
+                (Ok(tag), "back") => Some(HostMessage::NativeBack { tag }),
+                (Ok(tag), k) if k.starts_with("tab-") && !k.contains('#') => Some(HostMessage::SelectTab { tag, key: k[4..].to_string() }),
+                _ => None,
+            };
+            if let Some(msg) = msg {
+                let out = (Some(n.id.clone()), ev.kind != PointerKind::Down);
+                if ev.kind != PointerKind::Down {
+                    s.send_and_settle(&msg)?;
+                    let _ = self.scene(id);
+                }
+                return Ok(out);
+            }
+        }
+        if on_keyboard {
+            let before = s.inter.focus.clone();
+            let returned = ev.kind != PointerKind::Down
+                && hit.is_some_and(|n| n.role == Role::Key && n.label.as_deref() == Some("return"));
+            let effect = s.inter.pointer(scene, ev);
+            let out = (s.inter.hit.clone(), s.inter.acted);
+            s.send_effect(effect)?;
+            match before {
+                Some(b) if returned => s.submit(&b)?,
+                b => s.sync_focus(b)?,
+            }
+            self.scene(id)?;
+            return Ok(out);
+        }
+        self.rn_touch(id, scene, ev)
+    }
+
+    /// React Native touches: down = `start` on the deepest tag, up = `end` on the same tag, click = both.
+    /// After `end` wait for the next tree, but a tap that changes nothing is fine.
+    fn rn_touch(&mut self, id: &str, scene: &Scene, ev: PointerEvent) -> Result<(Option<String>, bool), ApiError> {
+        let s = self.get(id)?;
+        let hit = scene.hit_test(ev.x, ev.y).map(|i| &scene.nodes[i]);
+        let touch = |phase, n: &simcore_render::Node| HostMessage::Touch {
+            phase,
+            tag: n.tag.unwrap_or(0),
+            x: ev.x,
+            y: ev.y,
+            lx: ev.x - n.bounds.x,
+            ly: ev.y - n.bounds.y,
+            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64() * 1000.0),
+        };
+        let mut target = hit;
+        match ev.kind {
+            PointerKind::Down => {
+                s.touch = hit.and_then(|n| n.tag);
+                if let Some(n) = hit {
+                    s.send(&touch(TouchPhase::Start, n))?;
+                }
+            }
+            PointerKind::Up => {
+                target = s.touch.take().and_then(|t| scene.nodes.iter().find(|n| n.tag == Some(t))).or(hit);
+                if let Some(n) = target {
+                    s.send_and_settle(&touch(TouchPhase::End, n))?;
+                }
+            }
+            _ => {
+                if let Some(n) = hit {
+                    s.send(&touch(TouchPhase::Start, n))?;
+                    s.send_and_settle(&touch(TouchPhase::End, n))?;
+                }
+            }
+        }
+        // A tap on a text input focuses it (RN never blurs on a tap elsewhere; `Keyboard.dismiss` does).
+        let s = self.get(id)?;
+        if let Some(field) = hit.filter(|n| ev.kind != PointerKind::Down && n.field.is_some()) {
+            let before = s.inter.focus.clone();
+            if before.as_deref() != Some(field.id.as_str()) {
+                s.inter.shift = field.value.as_deref().is_some_and(simcore_render::autocap);
+                s.inter.focus = Some(field.id.clone());
+                s.sync_focus(before)?;
+            }
+        }
+        let out = (target.map(|n| n.id.clone()), ev.kind != PointerKind::Down && target.is_some());
+        let _ = self.scene(id); // settle and push the new layout
         Ok(out)
     }
 
@@ -188,17 +401,93 @@ impl Host {
         let (scene, version, _) = self.scene(id)?;
         let s = self.get(id)?;
         s.inter.version = version;
+        let before = s.inter.focus.clone();
         let effect = s.inter.keyboard(&scene, ev).map_err(|m| err(ErrorCode::InvalidState, m))?;
-        s.send_effect(effect)
+        if let (true, simcore_render::Effect::TextInput { text, .. }) = (s.is_rn(), &effect) {
+            s.inter.shift = simcore_render::autocap(text); // typed text drops (or raises) shift like the real keyboard
+        }
+        s.send_effect(effect)?;
+        if s.is_rn() {
+            // `enter` dropped the focus: that is a return press (submit, blur unless multiline).
+            match before {
+                Some(b) if s.inter.focus.is_none() => s.submit(&b)?,
+                b => s.sync_focus(b)?,
+            }
+            self.scene(id)?;
+        }
+        Ok(())
     }
 
     /// PNG bytes plus pixel size.
     pub fn screenshot(&mut self, id: &str) -> Result<(u32, u32, Vec<u8>), ApiError> {
-        let (scene, _, scale) = self.scene(id)?;
+        self.screenshot_sized(id, None, None, None).map(|(w, h, png, _)| (w, h, png))
+    }
+
+    /// Screenshot at a different resolution: `scale` = device pixels per point, or a target `width` /
+    /// `height` in pixels (aspect kept; both = the largest size that fits). Also returns the tree version.
+    pub fn screenshot_sized(
+        &mut self,
+        id: &str,
+        scale: Option<f64>,
+        width: Option<u32>,
+        height: Option<u32>,
+    ) -> Result<(u32, u32, Vec<u8>, u64), ApiError> {
+        let (scene, version, dev_scale) = self.scene(id)?;
+        let fit = |px: u32, pt: f64| f64::from(px) / pt;
+        let scale = match (width, height) {
+            (Some(w), Some(h)) => fit(w, scene.size.0).min(fit(h, scene.size.1)),
+            (Some(w), None) => fit(w, scene.size.0),
+            (None, Some(h)) => fit(h, scene.size.1),
+            (None, None) => scale.unwrap_or(dev_scale),
+        };
+        let px = |v: f64| (v * scale).round().max(1.0) as u32;
+        if !scale.is_finite() || scale <= 0.0 || px(scene.size.0).max(px(scene.size.1)) > 8192 {
+            return Err(err(ErrorCode::BadRequest, "screenshot size must be between 1 and 8192 pixels"));
+        }
         let fonts = self.fonts.get_or_insert_with(Fonts::new);
         let png = render_png(&scene, fonts, scale).map_err(|e| err(ErrorCode::RuntimeError, e))?;
-        let px = |v: f64| (v * scale).round().max(1.0) as u32;
-        Ok((px(scene.size.0), px(scene.size.1), png))
+        Ok((px(scene.size.0), px(scene.size.1), png, version))
+    }
+
+    /// Switch the device profile: viewport, scale and chrome follow; the guest gets the new dimensions.
+    pub fn set_device(&mut self, id: &str, name: &str) -> Result<(), ApiError> {
+        let dev = *device(name).ok_or_else(|| err(ErrorCode::Unsupported, format!("device {name:?}")))?;
+        let s = self.get(id)?;
+        s.device = dev;
+        s.viewport = dev.viewport;
+        s.scale = dev.scale;
+        s.params.device = Some(dev.name.to_string());
+        Self::push_env(s)
+    }
+
+    /// Hide the software keyboard by blurring the focused field.
+    pub fn hide_keyboard(&mut self, id: &str) -> Result<(), ApiError> {
+        let s = self.get(id)?;
+        s.require_running()?;
+        let before = s.inter.focus.take();
+        if s.is_rn() {
+            s.sync_focus(before)?;
+            self.scene(id)?;
+        }
+        Ok(())
+    }
+
+    /// React Native native-module inventory reported by the guest (empty until it has booted).
+    pub fn modules(&mut self, id: &str) -> Result<Value, ApiError> {
+        let s = self.get(id)?;
+        if !s.is_rn() {
+            return Err(err(ErrorCode::Unsupported, "native modules exist only in react-native sessions"));
+        }
+        Ok(s.modules().unwrap_or_else(|| json!([])))
+    }
+
+    pub fn simulate(&mut self, id: &str, module: String, state: Value) -> Result<(), ApiError> {
+        let s = self.get(id)?;
+        if !s.is_rn() {
+            return Err(err(ErrorCode::Unsupported, "native modules exist only in react-native sessions"));
+        }
+        s.require_running()?;
+        s.send(&HostMessage::Simulate { module, state })
     }
 
     pub fn inspect(&mut self, id: &str) -> Result<(u64, UiNode), ApiError> {
@@ -247,7 +536,7 @@ impl Host {
         }
         match method {
             "get_capabilities" => ok(json!({
-                "frameworks": ["swiftui"], "platforms": ["ios"], "commands": COMMANDS, "headless": true,
+                "frameworks": ["swiftui", "react-native"], "platforms": ["ios"], "commands": COMMANDS, "headless": true,
                 "devices": DEVICES.iter().map(|d| d.name).collect::<Vec<_>>(),
                 "pointer_events": ["down", "up", "click", "scroll"],
                 "keyboard": {"events": ["text", "key"], "keys": ["backspace", "enter"]},
@@ -266,6 +555,11 @@ impl Host {
                 let a: SessionIdParams = p(params)?;
                 self.stop_session(&a.session_id)?;
                 ok(json!({"state": "stopped"}))
+            }
+            "reload_session" => {
+                let a: SessionIdParams = p(params)?;
+                self.get(&a.session_id)?.reload()?;
+                ok(json!({"state": self.state(&a.session_id)?.as_str()}))
             }
             "get_session_status" => self.status(&p::<SessionIdParams>(params)?.session_id),
             "set_viewport" => {

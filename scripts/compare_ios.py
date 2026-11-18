@@ -11,10 +11,16 @@ from PIL import Image, ImageChops, ImageDraw
 
 FALLBACK = os.environ.get("SIMCORE_FALLBACK") == "1"
 MAX_DIFF = float(os.environ.get("SIMCORE_MAX_DIFF", "3.5" if FALLBACK else "2.0"))
-# Temporary fallback-only exception: Inter at AX5 sizes bottoms out at ~4.9% without SF kerning
-# tables (docs/ios-comparison.md, Known gaps). Remove once that gap is closed.
-STATE_MAX = {"typography-scrolled": 5.0, "typography-scrolled-dark": 5.0} if FALLBACK and "SIMCORE_MAX_DIFF" not in os.environ else {}
 ios_dir, sc_dir, out = map(Path, sys.argv[1:4])
+# Maintainer-approved per-state limits, keyed "<fixture dir>/<state>". Keep this list short and justified.
+# - typography-scrolled(-dark), fallback only (temporary): Inter at AX5 sizes bottoms out at ~4.9% without
+#   SF kerning tables (docs/ios-comparison.md, Known gaps). Remove once that gap is closed.
+# - rn-showcase-ios/text, system fonts only: 19 dense lines; positions match within 1-2 px, the rest is
+#   glyph rasterization.
+STATE_MAX = {} if "SIMCORE_MAX_DIFF" in os.environ else (
+    {"showcase-ios/typography-scrolled": 5.0, "showcase-ios/typography-scrolled-dark": 5.0} if FALLBACK
+    else {"rn-showcase-ios/text": 2.5})
+limit = lambda name: STATE_MAX.get(f"{ios_dir.name}/{name}", MAX_DIFF)
 rows = []
 for ios_png in sorted(ios_dir.glob("*.png")):
     sc_png = sc_dir / ios_png.name
@@ -36,9 +42,9 @@ for ios_png in sorted(ios_dir.glob("*.png")):
     sheet.resize((w * 3 // 3, (h + 60) // 3)).save(out / f"cmp-{ios_png.stem}.png")
     rows.append((ios_png.stem, differing, mean))
 print(f"{'state':<18}{'pixels >10% off':>16}{'mean abs diff':>15}  result (< {MAX_DIFF}% to pass{', fallback mode' if FALLBACK else ''})")
-failed = [name for name, d, _ in rows if d >= STATE_MAX.get(name, MAX_DIFF)]
+failed = [name for name, d, _ in rows if d >= limit(name)]
 for name, d, m in rows:
-    print(f"{name:<18}{d:>15.2f}%{m:>15.1f}  {'FAIL' if name in failed else 'pass'}{f' (< {STATE_MAX[name]}%)' if name in STATE_MAX else ''}")
+    print(f"{name:<18}{d:>15.2f}%{m:>15.1f}  {'FAIL' if name in failed else 'pass'}{f' (< {limit(name)}%)' if limit(name) != MAX_DIFF else ''}")
 if not rows:
     sys.exit("no states compared")
 print(f"{len(rows) - len(failed)}/{len(rows)} states pass")
