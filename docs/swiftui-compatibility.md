@@ -43,13 +43,14 @@ An `environment` message stores appearance/viewport and re-sends a tree.
 | Modifiers | `padding()`, `padding(_:)`, `padding(_ edges:, _ length:)`, `frame(width:height:alignment:)`, `frame(minWidth:maxWidth:minHeight:maxHeight:alignment:)` (`.infinity` -> `"inf"`), `foregroundColor`, `background(_ view)`, `cornerRadius`, `opacity` |
 | State | `@State` (+ `$x` -> `Binding`), `Binding(get:set:)`, `.constant`, `Binding` dynamic-member (`$item.done`) and collection subscript (`$store.items[i]`) |
 | Objects | `ObservableObject` (`objectWillChange` is a stub), `@Published` (any set/mutation marks dirty), `@StateObject` (slot in the state registry, autoclosure runs once), `@ObservedObject` (+ `$obj.prop` -> `Binding`) |
-| Environment | `@Environment(\.colorScheme)`, `EnvironmentValues.colorScheme`, `ColorScheme`; follows `SIMCORE_APPEARANCE` and `environment` messages |
-| Navigation | `NavigationStack { }`, `NavigationLink(_:destination:)`, `NavigationLink(destination:label:)`, `navigationTitle`, `navigationBarTitleDisplayMode` |
-| Containers | `List`, `Section(_:content:)`, `Section(content:)`, `ForEach` (Range<Int>, `id:` key path, Identifiable), `ScrollView(_ axes:)`, `Divider` |
+| Environment | `@Environment(\.colorScheme)`, `EnvironmentValues.colorScheme`, `ColorScheme`; follows `SIMCORE_APPEARANCE` and `environment` messages. `@Environment(\.dismiss)` (`DismissAction`, pops the enclosing `NavigationStack`), `@Environment(\.dynamicTypeSize)` (`DynamicTypeSize`, from `SIMCORE_DYNAMIC_TYPE` at launch, default `.large`). `@EnvironmentObject` + `.environmentObject(_:)` |
+| Navigation | `NavigationStack { }`, `NavigationLink(_:destination:)`, `NavigationLink(destination:label:)`, `navigationTitle`, `navigationBarTitleDisplayMode`, `NavigationLink(_:value:)`, `NavigationLink(value:label:)`, `.navigationDestination(for:destination:)`, `NavigationStack(path:)` (`Binding<NavigationPath>` or `Binding<[T]>`), `NavigationPath` (`append`, `removeLast`, `count`, `isEmpty`) |
+| Containers | `Group`, `List`, `List(data, rowContent:)` / `List(data, id:, rowContent:)` (Identifiable, key path, `Range<Int>`), `Section(_:content:)`, `Section(content:)`, `ForEach` (Range<Int>, `id:` key path, Identifiable), `ScrollView(_ axes:)`, `Divider` |
 | Controls | `TextField(_:text:)`, `Toggle(_:isOn:)`, `Stepper(_:value:in:step:)` (Strideable), `.buttonStyle(.automatic/.plain/.bordered/.borderedProminent)`, `.disabled(_:)` |
 | Shapes/styles | `Shape`, `Rectangle`, `Circle`, `Capsule`, `RoundedRectangle(cornerRadius:)`, `.fill(_:)`, `.stroke(_:lineWidth:)`, `ShapeStyle` (`Color`, `.primary/.secondary/.tertiary`), `foregroundStyle`, `Color.opacity(_:)` |
 | More modifiers | `font` (`Font` text styles, `.system(size:weight:)`), `fontWeight`, `bold`, `strikethrough`, `multilineTextAlignment`, `overlay` (both forms), `shadow` |
 
+| Lifecycle | `.onAppear { }`, `.onDisappear { }` |
 | Liquid Glass (iOS 26) | `Glass` (`.regular .clear .identity`, `.tint(_:)`, `.interactive(_:)`), `.glassEffect()`, `.glassEffect(_:in:)` with `Shape` static members `.circle .capsule .ellipse .rect .rect(cornerRadius:)`, `Ellipse`, `GlassEffectContainer(spacing:content:)` (pass-through), `.buttonStyle(.glass)`, `.buttonStyle(.glassProminent)`. Emitted per docs/protocol.md F. |
 | SF Symbols | `Image(systemName:)`, `.resizable()`, `.scaledToFit()`, `.scaledToFill()`, `.aspectRatio(contentMode:)`, `.imageScale(_:)`, `Label(_:systemImage:)`, `Label(title:icon:)`, `Font.weight(_:)` / `Font.bold()` on any `Font` |
 
@@ -70,8 +71,11 @@ so `@State` persists while a screen is on the stack (hidden screens' slots are k
   `renderingMode`, `symbolRenderingMode`, `symbolVariant`, `Image(uiImage:)`. `aspectRatio` applies only to images (other views ignore it);
   `scaledToFill` crops to the proposed size. A `Label` inside a list row forces its icon to `imageScale(.large)`.
 - Liquid Glass: `GlassEffectContainer` does not merge/morph shapes, `glassEffectID`/`glassEffectUnion`/`glassEffectTransition` are missing, `interactive` has no visual effect, `Ellipse` as a plain shape view draws as a capsule, and a non-square `.circle` is a capsule.
-- Dynamic Type is a host setting (`--dynamic-type`) that scales text styles only; `@Environment(\.dynamicTypeSize)` is not exposed yet.
-- Not implemented: `Group`, `List(data)`, `NavigationStack(path:)`, `navigationDestination`, `onAppear`, animations, custom `Shape.path(in:)`,
+- Dynamic Type is a host setting (`--dynamic-type`) that scales text styles only; `@Environment(\.dynamicTypeSize)` is read once from `SIMCORE_DYNAMIC_TYPE` at launch (the `environment` callback does not carry later changes).
+- `Group` is transparent: a modifier applied to a multi-child `Group` wraps the children in a vstack instead of applying to each.
+- Value navigation: destinations registered by `navigationDestination` are remembered per stack (only the top screen is evaluated, so a stack that starts with a non-empty `path` has no destinations until its root has been evaluated once); a value with no destination pushes a blank screen. Destination-style `NavigationLink`s are not tracked in a path-bound stack.
+- `onAppear`/`onDisappear` fire per structural path after the evaluation pass (a screen covered by a push disappears, and appears again on pop); if they dirty state the root is re-evaluated, at most 8 times, before the tree is sent. `@EnvironmentObject`/`@Environment` are snapshotted when a view's `body` runs.
+- Not implemented: animations, custom `Shape.path(in:)`,
   `Text` concatenation, `.environment(_:_:)`; `Color.opacity` on semantic colors is ignored.
 - `@State` only inside `View`s (not `App`); the `WindowGroup` content closure runs once.
 - Structural identity is positional (`if`/`else` branches share a path; state is distinguished by view type).

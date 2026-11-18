@@ -1,7 +1,7 @@
-import json, subprocess, sys
+import json, os, subprocess, sys
 
-def spawn(exe):
-    return subprocess.Popen([exe], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+def spawn(exe, env=None):
+    return subprocess.Popen([exe], env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
 
 def send(p, **m):
     p.stdin.write(json.dumps(m) + "\n"); p.stdin.flush()
@@ -176,5 +176,54 @@ for i in range(300):
 growth = rss(p) - base
 print(f"showcase: ok, RSS growth over 250 push/pop cycles: {growth} KB")
 assert growth < 4096, f"RSS grew {growth} KB"
+finish(p)
+
+# --- dataflow: value navigation, environment objects, lifecycle, dismiss, Group, List(data)
+p = spawn(sys.argv[4])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+navs = lambda t: [m for m in walk(t["root"]) if m.get("kind") == "navigation"]
+home = lambda t: navs(t)[0]
+tx = lambda t: alltexts(home(t))
+assert home(t)["title"] == "Dataflow" and "back" not in home(t)
+for s in ["User: ada", "Appeared: 1", "Disappeared: 0", "Path: 0", "Type size: large", "Group A", "Group B"]:
+    assert s in tx(t), (s, tx(t))  # onAppear fired exactly once (first pass + one re-eval)
+links = home(t)["content"]["sections"][1]["rows"]
+assert len(links) == 5 and [alltexts(l)[0] for l in links[:3]] == ["Alpha", "Number 2", "Lists"], links  # Group flattened into the list
+# value link -> destination(for:), env object on the pushed screen, root onDisappear
+t = act(p, t, button(t, "Alpha")["action"])
+assert home(t)["title"] == "Item Alpha" and home(t)["back"]["label"] == "Dataflow", home(t)
+for s in ["Item: Alpha", "User: ada", "Counts: 1/1", "Depth: 1"]: assert s in tx(t), (s, tx(t))
+t = act(p, t, button(t, "Rename")["action"])
+assert "User: grace" in tx(t) and "Counts: 1/1" in tx(t), tx(t)  # mutation re-renders; no spurious lifecycle
+t = act(p, t, button(t, "Dismiss")["action"])  # @Environment(\.dismiss)
+for s in ["User: grace", "Appeared: 2", "Disappeared: 1", "Path: 0"]: assert s in tx(t), (s, tx(t))
+# Int value, then a nested push, then back pops one at a time
+t = act(p, t, button(t, "Number 2")["action"])
+assert home(t)["title"] == "Number 2" and "Depth: 1" in tx(t), tx(t)
+t = act(p, t, button(t, "Nested")["action"])
+assert home(t)["title"] == "Item Nested" and "Depth: 2" in tx(t) and home(t)["back"]["label"] == "Number 2", tx(t)
+t = act(p, t, home(t)["back"]["action"]); assert home(t)["title"] == "Number 2" and "Depth: 1" in tx(t)
+t = act(p, t, home(t)["back"]["action"])
+for s in ["Path: 0", "Appeared: 3", "Disappeared: 2"]: assert s in tx(t), (s, tx(t))
+# Enum value + List(data) in all three forms
+t = act(p, t, button(t, "Lists")["action"]); assert home(t)["title"] == "Lists"
+lists = [m for m in walk(home(t)) if m.get("kind") == "list"]
+assert [[alltexts(r)[0] for s in l["sections"] for r in s["rows"]] for l in lists] == [
+    ["Person Ada", "Person Grace"], ["Key x", "Key y"], ["Range 0", "Range 1", "Range 2"]], lists
+t = act(p, t, home(t)["back"]["action"])
+# [T] path binding
+typed = lambda t: navs(t)[1]
+assert typed(t)["title"] == "Typed" and "Typed depth: 0" in alltexts(typed(t))
+t = act(p, t, button(t, "Seven")["action"])
+assert typed(t)["title"] == "Typed 7" and "Typed 7 depth 1" in alltexts(typed(t)) and typed(t)["back"]["label"] == "Typed"
+assert home(t)["title"] == "Dataflow"  # the other stack is untouched
+t = act(p, t, typed(t)["back"]["action"])
+assert typed(t)["title"] == "Typed" and "Typed depth: 0" in alltexts(typed(t))
+finish(p)
+# dynamicTypeSize follows the launch environment
+p = spawn(sys.argv[4], {**os.environ, "SIMCORE_DYNAMIC_TYPE": "accessibility2"})
+assert recv(p)["type"] == "hello"
+assert "Type size: accessibility2" in tx(recv(p))
 finish(p)
 print("PASS")
