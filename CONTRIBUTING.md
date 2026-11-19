@@ -62,3 +62,4 @@ Fix the rendering when a state fails. Use `SIMCORE_MAX_DIFF` only for local inve
 
 1. For a new iOS UI element, capture the state on [iOS 27.2 with iPhone 18 Pro](tests/fixtures/ios27/README.md) and [iOS 26.5 with iPhone 17 Pro](tests/fixtures/showcase-ios/README.md). Add a matching `shot` line to [`scripts/compare-ios.sh`](scripts/compare-ios.sh).
 2. For a new Compose component, capture the state on the [Android 17 Pixel 10a emulator](tests/fixtures/compose-android/README.md) using [`capture.sh`](tests/fixtures/compose-android/capture.sh). Add a matching `shot` line to [`scripts/compare-android.sh`](scripts/compare-android.sh).
+3. For a React Native Android component, use the [Expo Android capture guide](tests/fixtures/expo-android/README.md) and add a matching `shot` line to [`scripts/compare-expo-android.sh`](scripts/compare-expo-android.sh).

@@ -28,6 +28,13 @@ fn err(code: ErrorCode, msg: impl Into<String>) -> ApiError {
     ApiError::new(code, msg)
 }
 
+fn check_device_platform(dev: &Device, platform: &str) -> Result<(), ApiError> {
+    if dev.android != (platform == "android") {
+        return Err(err(ErrorCode::Unsupported, format!("device {:?} does not support platform {platform:?}", dev.name)));
+    }
+    Ok(())
+}
+
 /// React Native: how long the guest must be quiet before a snapshot, and the most a snapshot waits.
 const QUIET: Duration = Duration::from_millis(150);
 const SETTLE_MAX: Duration = Duration::from_millis(2500);
@@ -106,20 +113,21 @@ impl Host {
         // Compose runs on Android only; `platform` defaults to "ios" on the wire, so it is implied here.
         if p.framework == "compose" {
             p.platform = "android".into();
-            p.device.get_or_insert_with(|| simcore_render::DEFAULT_ANDROID_DEVICE.into());
-        } else if p.platform != "ios" {
-            return Err(err(ErrorCode::Unsupported, format!("platform {:?} for {} (only \"ios\")", p.platform, p.framework)));
         }
-        if let Some(d) = p.device.as_deref().and_then(device) {
-            if d.android != (p.platform == "android") {
-                return Err(err(ErrorCode::Unsupported, format!("device {:?} is not a{} device", d.name, if d.android { "n iOS" } else { "n Android" })));
-            }
+        match (p.framework.as_str(), p.platform.as_str()) {
+            (_, "ios") | ("compose" | "react-native", "android") => {}
+            _ => return Err(err(ErrorCode::Unsupported, format!("platform {:?} for {}", p.platform, p.framework))),
+        }
+        if p.platform == "android" {
+            p.device.get_or_insert_with(|| simcore_render::DEFAULT_ANDROID_DEVICE.into());
         }
         if matches!(p.framework.as_str(), "swiftui" | "compose") && !std::path::Path::new(&p.app_path).exists() {
             return Err(err(ErrorCode::BadRequest, format!("app_path {:?} does not exist", p.app_path)));
         }
         if let Some(d) = &p.device {
-            if device(d).is_none() {
+            if let Some(dev) = device(d) {
+                check_device_platform(dev, &p.platform)?;
+            } else {
                 let known: Vec<&str> = DEVICES.iter().map(|d| d.name).collect();
                 return Err(err(ErrorCode::Unsupported, format!("device {d:?} (known: {})", known.join(", "))));
             }
@@ -160,7 +168,7 @@ impl Host {
         Ok(json!({
             "session_id": s.id, "state": s.state().as_str(), "framework": s.params.framework,
             "platform": s.params.platform, "app_path": s.params.app_path, "viewport": s.viewport,
-            "device": s.device.name, "os_version": s.ios.name(), "safe_area": {"top": s.device.safe_top, "bottom": s.device.safe_bottom},
+            "device": s.device.name, "os_version": s.os_version(), "safe_area": {"top": s.device.safe_top, "bottom": s.device.safe_bottom},
             "focus": s.inter.focus, "island": s.device.island.map(|(x, y, w, h)| json!({"x": x, "y": y, "width": w, "height": h})),
             "scale": s.scale, "appearance": s.appearance, "tree_version": s.tree().map(|t| t.0),
         }))
@@ -512,6 +520,7 @@ impl Host {
     pub fn set_device(&mut self, id: &str, name: &str) -> Result<(), ApiError> {
         let dev = *device(name).ok_or_else(|| err(ErrorCode::Unsupported, format!("device {name:?}")))?;
         let s = self.get(id)?;
+        check_device_platform(&dev, &s.params.platform)?;
         s.device = dev;
         s.viewport = dev.viewport;
         s.scale = dev.scale;

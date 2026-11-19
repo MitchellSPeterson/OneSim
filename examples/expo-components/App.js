@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { FlatList, Image, Keyboard, Modal, NativeModules, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Image, Keyboard, Modal, NativeModules, Platform, Pressable, ScrollView, Switch, Text, TextInput, View, useWindowDimensions } from 'react-native';
 
 const NET_IMG = 'http://127.0.0.1:8097/net.png';
 export default function App() {
@@ -19,8 +19,11 @@ export default function App() {
   const [l2, setL2] = useState('');
   const [shown, setShown] = useState('no');
   const [kb, setKb] = useState('');
+  const [x, setX] = useState(-1);
   const ref = useRef(null);
   const sref = useRef(null);
+  const href = useRef(null);
+  const { width, height, scale } = useWindowDimensions();
   useEffect(() => {
     const base = new URL(NativeModules.SourceCode.getConstants().scriptURL).origin;
     fetch(base + '/status').then((r) => r.text()).then(setNet, (e) => setNet('ERR ' + e.message));
@@ -74,6 +77,16 @@ export default function App() {
         renderItem={({ item }) => <Text>{'item' + item}</Text>}
         onLayout={(e) => setFl(e.nativeEvent.layout.width + 'x' + e.nativeEvent.layout.height)}
         onScroll={(e) => setFy(e.nativeEvent.contentOffset.y)} scrollEventThrottle={16} />
+      {Platform.OS === 'android' && <>
+        <Text>{`platform:${Platform.OS} ${Platform.Version} ${Platform.constants.Model}`}</Text>
+        <Text>{`dimensions:${width}x${height}@${scale}`}</Text>
+        <Text>{`x:${x}`}</Text>
+        <ActivityIndicator />
+        <Pressable onPress={() => href.current?.scrollTo({ x: 60, animated: false })}><Text>Jump horizontal</Text></Pressable>
+        <ScrollView ref={href} horizontal style={{ height: 40 }} onScroll={(e) => setX(e.nativeEvent.contentOffset.x)} scrollEventThrottle={16}>
+          <View style={{ width: 1000 }} />
+        </ScrollView>
+      </>}
     </View>
   );
 }

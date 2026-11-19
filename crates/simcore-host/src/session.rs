@@ -239,6 +239,10 @@ impl Session {
         self.params.framework == "react-native"
     }
 
+    pub fn os_version(&self) -> &'static str {
+        if self.device.android { "17" } else { self.ios.name() }
+    }
+
     /// Jetpack Compose on Android (protocol section K).
     pub fn is_compose(&self) -> bool {
         self.params.framework == "compose"
@@ -318,8 +322,7 @@ impl Session {
             // No build step: node runs the Expo/Metro bundle (frameworks/react-native/guest/host.js).
             let mut c = Command::new("node");
             c.arg(simcore_home().join("frameworks/react-native/guest/host.js"))
-                .env("SIMCORE_METRO_URL", self.params.metro_url.as_deref().unwrap_or("http://localhost:8081"))
-                .env("SIMCORE_SCALE", self.scale.to_string());
+                .env("SIMCORE_METRO_URL", self.params.metro_url.as_deref().unwrap_or("http://localhost:8081"));
             c
         } else if is_prebuilt(&self.params) {
             Command::new(&self.params.app_path)
@@ -399,15 +402,19 @@ impl Session {
 
     fn spawn(&mut self, mut cmd: Command) -> Result<(), ApiError> {
         let what = cmd.get_program().to_string_lossy().into_owned();
+        if self.device.android {
+            cmd.env_remove("SIMCORE_OS_BUILD");
+        } else {
+            cmd.env("SIMCORE_OS_BUILD", self.ios.build());
+        }
         let mut child = cmd
             .env("SIMCORE_SESSION_ID", &self.id)
             .env("SIMCORE_VIEWPORT", format!("{}x{}", self.viewport.width, self.viewport.height))
             .env("SIMCORE_DYNAMIC_TYPE", self.dynamic_type.name())
-            .env("SIMCORE_OS_VERSION", self.ios.name())
+            .env("SIMCORE_OS_VERSION", self.os_version())
             .env("SIMCORE_DEVICE", self.device.name)
-            .env("SIMCORE_OS_BUILD", self.ios.build())
             .env("SIMCORE_APPEARANCE", if self.appearance == Appearance::Dark { "dark" } else { "light" })
-            .env("SIMCORE_PLATFORM", if self.device.android { "android" } else { "ios" })
+            .env("SIMCORE_PLATFORM", &self.params.platform)
             .env("SIMCORE_SCALE", self.scale.to_string())
             .env("SIMCORE_INSETS", format!("{},{}", self.device.safe_top, self.device.safe_bottom))
             .stdin(Stdio::piped())

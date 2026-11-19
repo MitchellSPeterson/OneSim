@@ -38,7 +38,7 @@ Add `Icon` with Material Symbols, `TextField`, `LazyColumn` and scrolling, `Aler
 
 ### Longer term
 
-The roadmap also includes Expo on Android, a React Native engine using Hermes, a Wasmtime execution backend, and binary wire encoding.
+The roadmap also includes expanding the Expo Android preview, a React Native engine using Hermes, a Wasmtime execution backend, and binary wire encoding.
 
 ## Apple frameworks beyond SwiftUI
 

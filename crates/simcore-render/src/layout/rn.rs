@@ -5,7 +5,7 @@
 
 use super::swiftui::{add_chrome, rn_nav_bar, rn_nav_height, rn_tab_bar, switch_style, NavBack, SceneParams, TabBar, TabBarItem, KNOB, SWITCH, TAB_BAR_INSET};
 use crate::scene::{Color, Glyph, ImageRun, Node, Rect, Role, Scene, ScrollInfo, TextRun};
-use crate::text::{FontSpec, Fonts, Span, TextAlign};
+use crate::text::{android_glyph_size, FontSpec, Fonts, Span, TextAlign};
 use serde_json::Value;
 use simcore_protocol::{Appearance, IosVersion, ViewKind, ViewNode};
 use std::collections::BTreeSet;
@@ -193,6 +193,7 @@ struct Cx<'a, 'f> {
     notes: BTreeSet<String>,
     scale: f64,
     dark: bool,
+    android: bool,
     fonts: &'f mut Fonts,
     /// Visible `RCTModalHostView`s: laid out against the viewport and painted last.
     modals: Vec<Item<'a>>,
@@ -401,7 +402,8 @@ impl<'a> Cx<'a, '_> {
 
     fn line_h(&self, size: f32) -> f32 {
         let s = self.scale as f32;
-        (size * 1.1934 * s).ceil() / s
+        let ratio = if self.android { 1.17 } else { 1.1934 };
+        (size * ratio * s).ceil() / s
     }
 
     /// Text of a paragraph subtree; `RCTVirtualText` spans that restyle color, weight, size or family become spans
@@ -456,7 +458,12 @@ impl<'a> Cx<'a, '_> {
             Some("right") => TextAlign::Trailing,
             _ => TextAlign::Leading,
         };
-        let mut spec = FontSpec::new(size, self.line_h(size), weight(p), align);
+        let glyph_size = if self.android { android_glyph_size(size, self.scale as f32) } else { size };
+        let mut spec = FontSpec::new(glyph_size, self.line_h(size), weight(p), align);
+        if self.android {
+            spec.android = true;
+            spec.tracking = num(p, "letterSpacing").map_or(0.0, |spacing| spacing as f32 / size);
+        }
         spec.mono = p.get("fontFamily").and_then(Value::as_str).is_some_and(|f| f.contains("mono"));
         spec.pitch = spec.line_height; // RN lines are one font line height apart (SwiftUI's 22/17 leading does not apply)
         // A nested span's lineHeight replaces the paragraph's for the lines it sits on; applied to the whole paragraph (ponytail).
@@ -468,19 +475,20 @@ impl<'a> Cx<'a, '_> {
         let color = self.color(p.get("color")).unwrap_or(Color::rgba(0.0, 0.0, 0.0, 1.0));
         let spans = runs(&text, &spans, &spec, color);
         let strike = p.get("textDecorationLine").and_then(Value::as_str).is_some_and(|d| d.contains("line-through"));
-        Text { text, spec, color, strike, field: false, single: false, fixed: None, spans, explicit_lh: num(p, "lineHeight").is_some() }
+        Text { text, spec, color, strike, field: false, single: false, fixed: None, spans, explicit_lh: !self.android && num(p, "lineHeight").is_some() }
     }
 
     fn build(&mut self, node: &'a ViewNode) -> Option<Item<'a>> {
         let ViewKind::Rn { component, props, children } = &node.kind else { return None };
-        let input = matches!(component.as_str(), "RCTSinglelineTextInputView" | "RCTMultilineTextInputView");
+        let input = is_text_input(component);
         match component.as_str() {
             "RCTRawText" | "RCTVirtualText" => return None,
             "RootView" | "RCTView" | "RCTScrollView" | "RCTScrollContentView" | "RCTImageView" | "RCTText" | "RCTSwitch"
             | "RCTModalHostView" | "RNSScreenStack" | "RNSScreen" | "RNSScreenContentWrapper" | "RNSTabsHostIOS"
             | "RNSTabsScreenIOS" | "RNCSafeAreaProvider" | "RNCSafeAreaView" | "RNSSafeAreaView"
             | "ViewManagerAdapter_ExpoImage" | "ViewManagerAdapter_SymbolModule" | "RNGestureHandlerButton" | "RNGestureHandlerRootView"
-            | "ActivityIndicatorView" | "PullToRefreshView" | "SafeAreaView" | "ViewManagerAdapter_ExpoLinearGradient" | "ViewManagerAdapter_ExpoBlur_ExpoBlurView" => {}
+            | "ActivityIndicatorView" | "PullToRefreshView" | "SafeAreaView" | "ViewManagerAdapter_ExpoLinearGradient" | "ViewManagerAdapter_ExpoBlur_ExpoBlurView"
+            | "AndroidSwitch" | "AndroidProgressBar" | "AndroidHorizontalScrollView" | "AndroidHorizontalScrollContentView" | "AndroidSwipeRefreshLayout" => {}
             // Drawn by the host from the screen's header props.
             "RNSScreenStackHeaderConfig" | "RNSScreenStackHeaderSubview" => return None,
             c if c.starts_with("ViewManagerAdapter_ExpoGlassEffect_") => {}
@@ -497,6 +505,13 @@ impl<'a> Cx<'a, '_> {
         if component == "RCTScrollContentView" && props.get("width").is_none() {
             // Yoga sizes a vertical scroll view's content to the scroll view's width.
             st.size.width = percent(1.0);
+        }
+        if component == "AndroidTextInput" {
+            for (side, specific) in [(&mut st.padding.top, "paddingTop"), (&mut st.padding.bottom, "paddingBottom")] {
+                if props.get(specific).or_else(|| props.get("paddingVertical")).or_else(|| props.get("padding")).is_none() {
+                    *side = length(8.0);
+                }
+            }
         }
         if matches!(component.as_str(), "RNCSafeAreaView" | "RNSSafeAreaView") {
             self.safe_padding(props, &mut st);
@@ -521,11 +536,11 @@ impl<'a> Cx<'a, '_> {
             } else {
                 value.to_string()
             };
-            (t.field, t.single) = (true, component == "RCTSinglelineTextInputView");
+            (t.field, t.single) = (true, component != "RCTMultilineTextInputView" && props.get("multiline").and_then(Value::as_bool) != Some(true));
             let id = self.tree.new_leaf_with_context(st, t).ok()?;
             return Some(Item::new(node, props, id, vec![]));
         }
-        if component == "RCTSwitch" {
+        if matches!(component.as_str(), "RCTSwitch" | "AndroidSwitch") {
             let t = Text {
                 text: String::new(),
                 spec: FontSpec::new(14.0, 17.0, 400, TextAlign::Leading),
@@ -533,7 +548,7 @@ impl<'a> Cx<'a, '_> {
                 strike: false,
                 field: false,
                 single: false,
-                fixed: Some((SWITCH.0 as f32, SWITCH.1 as f32)),
+                fixed: Some(if component == "AndroidSwitch" { (38.0, 24.0) } else { (SWITCH.0 as f32, SWITCH.1 as f32) }),
                 spans: vec![],
                 explicit_lh: false,
             };
@@ -653,6 +668,10 @@ impl<'a> Cx<'a, '_> {
     }
 }
 
+fn is_text_input(component: &str) -> bool {
+    matches!(component, "RCTSinglelineTextInputView" | "RCTMultilineTextInputView" | "AndroidTextInput")
+}
+
 pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
     let (layers, root): (&[simcore_protocol::Layer], &ViewNode) = match &root.kind {
         ViewKind::Presentation { content, layers } => (layers, content),
@@ -660,7 +679,9 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     };
     let (w, h) = params.viewport;
     let dark = params.appearance == Appearance::Dark;
-    let mut cx = Cx { tree: TaffyTree::new(), notes: BTreeSet::new(), scale: params.scale.max(1.0), dark, fonts, modals: vec![], insets: insets(h), inset_top: 0.0, rot: 0.0, stack: None, parent_row: false, span_lh: 0.0, safe: vec![] };
+    let android = params.device.android;
+    let insets = if android { (params.device.safe_top, params.device.safe_bottom) } else { insets(h) };
+    let mut cx = Cx { tree: TaffyTree::new(), notes: BTreeSet::new(), scale: params.scale.max(1.0), dark, android, fonts, modals: vec![], insets, inset_top: 0.0, rot: 0.0, stack: None, parent_row: false, span_lh: 0.0, safe: vec![] };
     cx.tree.disable_rounding();
     let bg = if dark { 0.0 } else { 1.0 };
     let mut screen = Node::new("root", "screen");
@@ -681,8 +702,20 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         }
     }
     super::swiftui::rn_alerts(params, cx.fonts, layers, &mut nodes);
-    // RN does not avoid the keyboard: it just covers the bottom of the screen.
-    if params.chrome.keyboard && nodes.iter().any(|n| n.field.is_some() && Some(n.id.as_str()) == params.focus) {
+    if android {
+        if let ViewKind::Rn { props, .. } = &root.kind {
+            if params.status_bar && props.get("__simcoreStatusBarHidden").and_then(Value::as_bool) != Some(true) {
+                let light_icons = match props.get("__simcoreStatusBarStyle").and_then(Value::as_str) {
+                    Some("light-content") => true,
+                    Some("dark-content") => false,
+                    _ => dark,
+                };
+                crate::chrome::android_status_bar(&mut nodes, params, cx.fonts, light_icons);
+            }
+        }
+        crate::chrome::android_nav_handle(&mut nodes, params, dark);
+    // With no KeyboardAvoidingView, the iOS keyboard covers the screen's bottom.
+    } else if params.chrome.keyboard && nodes.iter().any(|n| n.field.is_some() && Some(n.id.as_str()) == params.focus) {
         let kb_h = crate::look::keyboard_height(params.device, params.ios);
         crate::chrome::keyboard(&mut nodes, w, h, kb_h, dark, params.chrome.shift, params.device,
             crate::look::look(params.ios));
@@ -699,7 +732,9 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         bar.inspect = false;
         nodes.push(bar);
     }
-    add_chrome(&mut nodes, params, cx.fonts);
+    if !android {
+        add_chrome(&mut nodes, params, cx.fonts);
+    }
     Scene {
         size: params.viewport,
         appearance: params.appearance,
@@ -751,13 +786,14 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
     let all = cx.color(p.get("borderColor")).unwrap_or(black);
     let side = ["Top", "Right", "Bottom", "Left"].map(|e| cx.color(p.get(format!("border{e}Color"))).unwrap_or(all));
     n.radius = corner_radius(p);
-    if matches!(p.get("overflow").and_then(Value::as_str), Some("hidden" | "scroll")) || component == "RCTScrollView" {
+    let scroll_view = matches!(component.as_str(), "RCTScrollView" | "AndroidHorizontalScrollView");
+    if matches!(p.get("overflow").and_then(Value::as_str), Some("hidden" | "scroll")) || scroll_view {
         n.clip_radius = Some(n.radius);
     }
     let (mut ox, mut oy) = (x, y);
-    if component == "RCTScrollView" {
+    if scroll_view {
         n.kind = "scroll";
-        let vertical = p.get("horizontal").and_then(Value::as_bool) != Some(true);
+        let vertical = component != "AndroidHorizontalScrollView" && p.get("horizontal").and_then(Value::as_bool) != Some(true);
         let content = it.kids.iter().find(|k| rn_component(k.node) != "PullToRefreshView").and_then(|k| cx.tree.layout(k.id).ok()).map_or((0.0, 0.0), |c| (c.size.width as f64, c.size.height as f64));
         // A refreshing `RefreshControl` keeps its band open above the content (UIRefreshControl's extra top inset).
         let refreshing = it.kids.iter().any(|k| rn_component(k.node) == "PullToRefreshView" && k.props.get("refreshing").and_then(Value::as_bool) == Some(true));
@@ -834,6 +870,12 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
             n.radius = h.min(w) / 2.0;
         }
     }
+    if component == "AndroidProgressBar" {
+        if p.get("animating").and_then(Value::as_bool) != Some(false) {
+            n.glyph = Some((Glyph::AndroidSpinner, cx.color(p.get("color")).unwrap_or(ANDROID_ACCENT)));
+        }
+        n.kind = "spinner";
+    }
     if component == "ActivityIndicatorView" {
         // `hidesWhenStopped` (default on): a stopped indicator draws nothing. ponytail: a static frame (spokes at rest).
         let stopped = p.get("animating").and_then(Value::as_bool) == Some(false);
@@ -907,9 +949,20 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
         knob.parent = Some(me);
         knob.opacity = n.opacity;
         extras.push(knob);
+    } else if component == "AndroidSwitch" {
+        extras = android_switch(cx, &mut n, p, a11y, me);
     }
-    if matches!(component.as_str(), "RCTSinglelineTextInputView" | "RCTMultilineTextInputView") {
+    if is_text_input(component) {
         extras = text_field(cx, &mut n, it, me, &l, params);
+        if component == "AndroidTextInput" && p.get("underlineColorAndroid").and_then(Value::as_i64) != Some(0) {
+            let mut line = Node::new(format!("{}#underline", it.node.id), "border");
+            line.bounds = Rect { x, y: y + h - 3.0, w, h: if n.focused { 2.0 } else { 1.0 } };
+            line.fill = cx.color(p.get("underlineColorAndroid")).or(Some(if n.focused { ANDROID_ACCENT } else { Color::rgba(0.5, 0.5, 0.5, 1.0) }));
+            line.parent = Some(me);
+            line.inspect = false;
+            line.opacity = n.opacity;
+            extras.push(line);
+        }
     }
     if let Some(t) = ctx.filter(|_| component == "RCTText") {
         n.kind = "text";
@@ -920,7 +973,7 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
         // A lineHeight below the font's own line height puts the glyphs higher in the line box than centering
         // (UIKit's maximumLineHeight drops the surplus ascent; fitted to the iOS 26.5 "Welcome to Expo" title: 0.55 x surplus).
         let nat = cx.line_h(t.spec.size) as f64;
-        let lift = if num(p, "lineHeight").is_some_and(|l| l > 0.0 && l < nat) { -(nat - t.spec.line_height as f64) * 0.55 } else { 0.0 };
+        let lift = if !cx.android && num(p, "lineHeight").is_some_and(|l| l > 0.0 && l < nat) { -(nat - t.spec.line_height as f64) * 0.55 } else { 0.0 };
         let (ix, iy) = ((b.left + pd.left) as f64, (b.top + pd.top) as f64 + lift);
         let (iw, ih) = (w - ix - (b.right + pd.right) as f64, h - iy - (b.bottom + pd.bottom) as f64);
         if (ix, iy, iw, ih) == (0.0, 0.0, w, h) {
@@ -979,6 +1032,24 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
     for k in &it.kids {
         paint(cx, k, (ox, oy), me, eff, params, out);
     }
+    if component == "AndroidSwipeRefreshLayout" && p.get("refreshing").and_then(Value::as_bool) == Some(true) {
+        let mut spinner = Node::new(format!("{}#progress", it.node.id), "spinner");
+        let spinner_y = y + 24.0 + num(p, "progressViewOffset").unwrap_or(0.0);
+        spinner.bounds = Rect { x: x + (w - 40.0) / 2.0, y: spinner_y, w: 40.0, h: 40.0 };
+        spinner.parent = Some(me);
+        spinner.inspect = false;
+        spinner.radius = 20.0;
+        spinner.opacity = eff;
+        spinner.fill = cx.color(p.get("progressBackgroundColor")).or(Some(Color::rgba(1.0, 1.0, 1.0, 1.0)));
+        out.push(spinner);
+        let mut arc = Node::new(format!("{}#arc", it.node.id), "refresh_arc");
+        arc.bounds = Rect { x: x + (w - 24.0) / 2.0, y: spinner_y + 8.0, w: 24.0, h: 24.0 };
+        arc.parent = Some(me);
+        arc.inspect = false;
+        arc.opacity = eff;
+        arc.glyph = Some((Glyph::AndroidSpinner, cx.color(p.get("colors").and_then(|colors| colors.get(0))).unwrap_or(ANDROID_ACCENT)));
+        out.push(arc);
+    }
     (cx.inset_top, cx.rot) = (saved_inset, saved_rot);
     if let Some(hd) = &it.header {
         let back = hd.back.clone().map(|label| NavBack { action: hd.stack.parse().ok(), label, pill: true });
@@ -1002,6 +1073,7 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
 
 /// Height of a refreshing `RefreshControl`'s band above the content, its spinner box and default tint (iOS 26.5).
 const REFRESH_H: f64 = 181.0 / 3.0;
+const ANDROID_ACCENT: Color = Color::rgba(0.0, 0.59, 0.53, 1.0);
 const REFRESH_SPINNER: f64 = 28.0;
 /// (light, dark): the leading spoke's colour.
 const REFRESH_TINT: (Color, Color) = (Color { r: 174.0 / 255.0, g: 174.0 / 255.0, b: 175.0 / 255.0, a: 1.0 }, Color { r: 73.0 / 255.0, g: 73.0 / 255.0, b: 79.0 / 255.0, a: 1.0 });
@@ -1055,6 +1127,40 @@ fn image_dest(p: &Value, (bw, bh): (f64, f64), (iw, ih): (f64, f64), scale: f64)
 }
 
 /// A text input: node fields, the text run (placeholder when empty) and the caret. Returns the child nodes.
+fn android_switch(cx: &mut Cx<'_, '_>, n: &mut Node, p: &Value, label: Option<String>, parent: usize) -> Vec<Node> {
+    let on = p.get("on").and_then(Value::as_bool) == Some(true);
+    let cy = n.bounds.y + n.bounds.h / 2.0;
+    let x = n.bounds.x + (n.bounds.w - 36.0) / 2.0;
+    n.kind = "switch";
+    n.role = Role::Toggle;
+    n.value = Some(if on { "on" } else { "off" }.into());
+    n.label = label;
+    n.disabled = p.get("enabled").and_then(Value::as_bool) == Some(false);
+
+    let mut track = Node::new(format!("{}#track", n.id), "switch_track");
+    track.bounds = Rect { x, y: cy - 7.0, w: 36.0, h: 14.0 };
+    track.radius = 7.0;
+    track.fill = cx.color(p.get("trackTintColor")).or(Some(if on {
+        Color { a: 0.5, ..ANDROID_ACCENT }
+    } else {
+        Color::rgba(0.5, 0.5, 0.5, 0.55)
+    }));
+    let opacity = n.opacity * if n.disabled { 0.5 } else { 1.0 };
+    track.parent = Some(parent);
+    track.inspect = false;
+    track.opacity = opacity;
+
+    let mut thumb = Node::new(format!("{}#knob", n.id), "switch_knob");
+    thumb.bounds = Rect { x: x + if on { 17.0 } else { -1.0 }, y: cy - 10.0, w: 20.0, h: 20.0 };
+    thumb.radius = 10.0;
+    thumb.fill = cx.color(p.get("thumbTintColor")).or(Some(if on { ANDROID_ACCENT } else { Color::rgba(0.95, 0.95, 0.95, 1.0) }));
+    thumb.shadow = Some(crate::Shadow { color: Color::rgba(0.0, 0.0, 0.0, 0.22), radius: 1.0, dx: 0.0, dy: 1.0 });
+    thumb.parent = Some(parent);
+    thumb.inspect = false;
+    thumb.opacity = opacity;
+    vec![track, thumb]
+}
+
 fn text_field(cx: &mut Cx, n: &mut Node, it: &Item, me: usize, l: &taffy::Layout, params: &SceneParams) -> Vec<Node> {
     let p = it.props;
     let Some(t) = cx.tree.get_node_context(it.id).cloned() else { return vec![] };
