@@ -170,7 +170,8 @@ jobs:
         run: |
           swift --version
           cargo run -q -p onesim-cli -- run examples/swiftui-counter --root-view CounterView \
-            --click Increment --inspect | tee counter.json | grep -q '"Count: 1"' || { cat counter.json; exit 1; }
+            --click Increment --inspect > counter.json
+          grep -q '"Count: 1"' counter.json || { cat counter.json; exit 1; }
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -178,7 +179,8 @@ jobs:
       - name: End-to-end Jetpack Compose counter
         run: |
           cargo run -q -p onesim-cli -- run examples/compose-counter \
-            --click Increment --click Increment --click Decrement --inspect | grep -q '"Count: 1"'
+            --click Increment --click Increment --click Decrement --inspect > compose.json
+          grep -q '"Count: 1"' compose.json || { cat compose.json; exit 1; }
       - uses: actions/setup-node@v4
         with:
           node-version: 22
