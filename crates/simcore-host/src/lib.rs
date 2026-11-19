@@ -206,7 +206,10 @@ impl Host {
             let sent = s.sync_layout(&out.0);
             let animating = !acted && !sent && start.elapsed() >= anim;
             let done = !acted && !sent && s.generation() == generation;
-            if done || animating || !settle || Instant::now() > deadline {
+            // Live: no waiting, but a host-side change (`scroll_to`, focus) still needs one rebuild,
+            // since the guest may never send a tree for it.
+            let live_done = !settle && !acted;
+            if done || animating || live_done || Instant::now() > deadline {
                 return Ok(out);
             }
         }
