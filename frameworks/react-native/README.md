@@ -28,6 +28,15 @@ report focus, editing, and submit events. The on-screen Android keyboard and nat
 dialogs remain open. The default Expo Router template requires the Android
 `ExpoRouter` native module, which is still pending.
 
+## Expo UI
+
+`examples/expo-ui` runs the same `@expo/ui` screen through SwiftUI on iOS and
+Compose on Android. It covers intrinsic host sizing, layouts, buttons, switches,
+text editing, sliders and a React Native button inside a native scroll view.
+The example runs in Expo Go or with `onesim expo`. After installing its npm
+dependencies, run `scripts/compare-expo-ui.sh 27.2`, `26.5` or `android` to
+check the screenshots and React state changes.
+
 ## Decisions
 
 - **Engine: Node (V8) in a separate process, not Hermes yet.** PRD §4.3 allows an external

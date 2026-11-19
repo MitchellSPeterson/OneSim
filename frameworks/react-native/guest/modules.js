@@ -304,6 +304,7 @@ module.exports = function createRegistry(rt, h) {
     // ---- Expo view modules drawn by the host (layout/rn.rs); props whitelisted in host.js EXPO_VIEWS ----
     { name: 'ExpoLinearGradient', package: 'expo-linear-gradient', kind: 'expo', status: 'implemented', constants: { ViewPrototypes: {} } },
     { name: 'ExpoBlur', package: 'expo-blur', kind: 'expo', status: 'implemented', constants: { ViewPrototypes: {} } },
+    { name: 'ExpoUI', package: '@expo/ui', kind: 'expo', status: 'implemented', constants: () => require('./expo-ui.js').moduleConstants(cfg, rt, SharedObject) },
   ].map((e) => ({ kind: 'turbo', package: e.kind === 'expo' ? undefined : 'react-native', ...e }));
   const byName = new Map(entries.map((e) => [e.name, e]));
 

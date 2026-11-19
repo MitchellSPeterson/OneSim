@@ -104,7 +104,7 @@ writeSummary(`${dir}README.md`, [
   '|---|---|---|',
   ...ios.runtimes.map((r, i) => `| iOS Simulator runtime${i ? '' : ' (default)'} | ${r.runtime} (${r.build}), ${r.device} | Reference screenshots in \`${r.fixtures}\`, look of the renderer (\`--ios ${r.runtime}\`), OS version the Expo guest reports |`),
   `| iOS SDK (Xcode) | ${ios.apiSdk} | SwiftUI API inventory (\`scripts/swiftui-inventory.mjs\`) |`,
-  `| Expo SDK | ${expo.sdk} (React Native ${expo.reactNative}) | Examples, native module contracts |`,
+  `| Expo SDK | ${expo.sdk} (React Native ${expo.reactNative}, Expo UI ${expo.ui}) | Examples, native module contracts |`,
   `| Expo Go | iOS ${expo.expoGo}, Android ${expo.expoGoAndroid} | Expo reference screenshots |`,
   `| Jetpack Compose | ${Object.entries(V.compose).map(([l, v]) => `${l} ${v}`).join(', ')} | Compose API inventory (\`scripts/compose-inventory.mjs\`) |`,
   `| Android | ${V.android.release} (API ${V.android.api}) emulator, ${V.android.device}; Kotlin ${V.android.kotlin} | Expo and Compose device profile, Compose guest compiler (\`frameworks/compose/scripts/toolchain.sh\`) |`,
@@ -117,6 +117,7 @@ for (const ex of readdirSync(root + 'examples')) {
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
   if (deps.expo && bare(deps.expo) !== expo.sdk) drift(`examples/${ex}/package.json`, `expo ${deps.expo}, expected ~${expo.sdk}`);
   if (deps['react-native'] && bare(deps['react-native']) !== expo.reactNative) drift(`examples/${ex}/package.json`, `react-native ${deps['react-native']}, expected ${expo.reactNative}`);
+  if (deps['@expo/ui'] && bare(deps['@expo/ui']) !== expo.ui) drift(`examples/${ex}/package.json`, `@expo/ui ${deps['@expo/ui']}, expected ${expo.ui}`);
 }
 // The Compose guest's toolchain compiles with the pinned Kotlin and runs the pinned Compose runtime.
 const tc = 'frameworks/compose/scripts/toolchain.sh', tcSrc = readFileSync(root + tc, 'utf8');
