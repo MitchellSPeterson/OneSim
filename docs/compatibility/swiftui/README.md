@@ -6,7 +6,7 @@ The area files list every public SwiftUI API available on iOS, with one row per 
 and `EnvironmentValues` property (overloads share a row; nested types and static members such as `.title` or
 `.borderedProminent` are covered by their parent's row). They are generated from Apple's `SwiftUI` and
 `SwiftUICore` interfaces in the iOS SDK listed in the [support matrix](../README.md#versions). **Since** is the iOS version that introduced the API. Pick any ⬜ / 🟠 row to work on: open an
-[API request issue](https://github.com/MitchellSPeterson/SimCore/issues/new?template=api-request.yml) for it
+[API request issue](https://github.com/MitchellSPeterson/OneSim/issues/new?template=api-request.yml) for it
 (or take an existing one), and link the issue in the row's **Issue** column. Exact signatures and behaviour
 details live in [guest.md](guest.md).
 

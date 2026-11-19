@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Check [docs/compatibility](https://github.com/MitchellSPeterson/SimCore/blob/main/docs/compatibility/README.md) first. Once this issue exists, link it in that row's **Issue** column.
+        Check [docs/compatibility](https://github.com/MitchellSPeterson/OneSim/blob/main/docs/compatibility/README.md) first. Once this issue exists, link it in that row's **Issue** column.
   - type: input
     id: package
     attributes:

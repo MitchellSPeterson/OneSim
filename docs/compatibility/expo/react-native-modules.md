@@ -12,7 +12,7 @@ Part of [Expo / React Native API coverage](README.md): status legend, summary an
 | AppState | react-native | `AppState` | 🟠 | ⬜ | | Always `active`; no background/foreground transitions |
 | Settings | react-native | `SettingsManager` | ✅ | — | | iOS only |
 | AccessibilityInfo | react-native | `AccessibilityInfo` | ✅ | ⬜ | | All settings off |
-| Keyboard | react-native | `KeyboardObserver` | ✅ | 🟠 | [#11](https://github.com/MitchellSPeterson/SimCore/issues/11) | `keyboardWill/Did` `Show`/`Hide`/`ChangeFrame` with the host keyboard's frame, `dismiss`, `isVisible`, `metrics`; `duration: 0`. Android emits `keyboardDidShow` and `keyboardDidHide` with a simulated frame. |
+| Keyboard | react-native | `KeyboardObserver` | ✅ | 🟠 | [#11](https://github.com/MitchellSPeterson/OneSim/issues/11) | `keyboardWill/Did` `Show`/`Hide`/`ChangeFrame` with the host keyboard's frame, `dismiss`, `isVisible`, `metrics`; `duration: 0`. Android emits `keyboardDidShow` and `keyboardDidHide` with a simulated frame. |
 | fetch / XMLHttpRequest | react-native | `Networking` | 🟠 | 🟠 | | No cookie jar (`clearCookies` returns false) |
 | Blob / FileReader | react-native | `BlobModule` `FileReaderModule` | 🟠 | ⬜ | | Minimal; `sendOverSocket` unsupported |
 | WebSocket | react-native | `WebSocketModule` | ✅ | ⬜ | | |
@@ -21,7 +21,7 @@ Part of [Expo / React Native API coverage](README.md): status legend, summary an
 | Clipboard (deprecated core) | react-native | `Clipboard` | 🟡 | ⬜ | | `modules.simulate clipboard` |
 | Animated | react-native | | 🟠 | ⬜ | | No native driver: JS-driven, one tree per frame |
 | LayoutAnimation | react-native | | ⛔ | ⬜ | | |
-| Alert | react-native | `AlertManager` | 🟠 | ⬜ | [#7](https://github.com/MitchellSPeterson/SimCore/issues/7) | `Alert.alert` drawn as the iOS 26 alert (SwiftUI `.alert` rendering), button roles, taps run `onPress`; `Alert.prompt` unsupported |
+| Alert | react-native | `AlertManager` | 🟠 | ⬜ | [#7](https://github.com/MitchellSPeterson/OneSim/issues/7) | `Alert.alert` drawn as the iOS 26 alert (SwiftUI `.alert` rendering), button roles, taps run `onPress`; `Alert.prompt` unsupported |
 | ActionSheetIOS | react-native | `ActionSheetManager` | ⛔ | — | | |
 | Share | react-native | `ShareModule` | ⛔ | ⬜ | | |
 | Vibration | react-native | `Vibration` | 🟡 | ⬜ | | Calls emit `module.called`; no haptic output |

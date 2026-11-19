@@ -2,7 +2,7 @@
 
 # Contributing to OneSim
 
-For a missing framework API, check the [coverage table](docs/compatibility/README.md), then open an [API request](https://github.com/MitchellSPeterson/SimCore/issues/new?template=api-request.yml) or pick up the issue linked from that row. Keep the issue link in the coverage row.
+For a missing framework API, check the [coverage table](docs/compatibility/README.md), then open an [API request](https://github.com/MitchellSPeterson/OneSim/issues/new?template=api-request.yml) or pick up the issue linked from that row. Keep the issue link in the coverage row.
 
 ## Run the checks
 

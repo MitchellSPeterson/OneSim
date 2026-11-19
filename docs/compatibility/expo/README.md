@@ -4,7 +4,7 @@
 
 The tables track Expo and React Native support on iOS and Android, with one row per API
 (component, native module or library). Pick any ⬜ / 🟠 / ⛔ row to work on: open an
-[API request issue](https://github.com/MitchellSPeterson/SimCore/issues/new?template=api-request.yml) for it
+[API request issue](https://github.com/MitchellSPeterson/OneSim/issues/new?template=api-request.yml) for it
 (or take an existing one), and link the issue in the row's **Issue** column.
 
 | Status | Meaning | Score |
@@ -18,7 +18,7 @@ The tables track Expo and React Native support on iOS and Android, with one row 
 
 **Android** is in early preview. Run `onesim expo --platform android` to load the Android Metro bundle
 on the Pixel 10a profile. The Android column tracks core controls and native modules.
-The showcase is compared against Pixel 10a emulator captures at the 2% threshold. [Android Expo reference guide](../../../tests/fixtures/expo-android/README.md) · [Android host tracking issue #12](https://github.com/MitchellSPeterson/SimCore/issues/12)
+The showcase is compared against Pixel 10a emulator captures at the 2% threshold. [Android Expo reference guide](../../../tests/fixtures/expo-android/README.md) · [Android host tracking issue #12](https://github.com/MitchellSPeterson/OneSim/issues/12)
 
 ## Coverage
 
