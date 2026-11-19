@@ -1,5 +1,5 @@
 // Page half of web/test/presenter.mjs: drives the real Presenter (web/renderer.js) with a fake runtime that
-// replays fixtures written by simcore-web (NAME.dl = display list, NAME.rgba = CPU pixels of the same frame),
+// replays fixtures written by onesim-web (NAME.dl = display list, NAME.rgba = CPU pixels of the same frame),
 // then reads the visible canvas back and compares it to the CPU pixels.
 // Query options select the initial fixture, renderer, and lifecycle scenario.
 import { Presenter, preferredRenderer } from "/renderer.js";

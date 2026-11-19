@@ -1,7 +1,7 @@
 # rn-router-ios ground-truth fixtures
 
 Expo Router apps in **Expo Go 58** on the iPhone 17 Pro simulator, iOS 26.5 (402 x 874 pt, scale 3, PNGs 1206 x 2622).
-Compared by `scripts/compare-ios.sh` (RN router blocks) against `simcore expo`.
+Compared by `scripts/compare-ios.sh` (RN router blocks) against `onesim expo`.
 - `tabs-*`: `examples/expo-default` (unmodified create-expo-app template: NativeTabs Home / Explore)
 - `stack-*`: `examples/expo-router-stack` (Stack: "Fruits" large-title list, `item/[name]` detail)
 
@@ -14,9 +14,9 @@ Compared by `scripts/compare-ios.sh` (RN router blocks) against `simcore expo`.
    Taps are `agent-device press X Y` in points.
 4. Dark: `agent-device settings appearance dark`, wait 3-5 s, screenshot, then back to light.
 
-## States and SimCore equivalents (`simcore expo --url http://localhost:PORT ...`)
+## States and OneSim equivalents (`onesim expo --url http://localhost:PORT ...`)
 Tabs (default template, light unless noted):
-| state | iOS capture | SimCore |
+| state | iOS capture | OneSim |
 |---|---|---|
 | tabs-home | launch, wait 3 s | (none) |
 | tabs-explore | press Explore tab (244,822) | `--click Explore` (or `--click 244,822`) |
@@ -25,14 +25,14 @@ Tabs (default template, light unless noted):
 | tabs-explore-dark | dark appearance, press Explore (244,822) | `--dark --click Explore` |
 
 Stack:
-| state | iOS capture | SimCore |
+| state | iOS capture | OneSim |
 |---|---|---|
 | stack-list | launch | (none) |
 | stack-detail | press Apple row (200,192) | `--click Apple` (or `--click 200,192`) |
 | stack-back | from detail, press header back button "Fruits" (64,84) | `--click Apple --click Fruits` (or `--click 200,192 --click 64,84`); identical to stack-list (0.00% diff) |
 | stack-detail-dark | dark appearance, press Apple | `--dark --click Apple` |
 
-## Facts SimCore must match (points, from accessibility snapshots and PNGs)
+## Facts OneSim must match (points, from accessibility snapshots and PNGs)
 Tabs (iOS 26 NativeTabs, Liquid Glass):
 - Tab bar is a floating glass capsule, not edge-to-edge: pill x~107..294 (w~188), y~791..852 (h~61); snapshot TabBar frame is 0,791,402x83 (container).
   Items: Home button 111,795 94x54; Explore 197,795 94x54 (tap centers (158,822) and (244,822)).

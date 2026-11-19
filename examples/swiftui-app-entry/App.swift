@@ -22,7 +22,7 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("SimCore").foregroundColor(.blue)
+                Text("OneSim").foregroundColor(.blue)
                 Spacer(minLength: 8)
                 Color.orange.frame(width: 24, height: 24).cornerRadius(12)
             }

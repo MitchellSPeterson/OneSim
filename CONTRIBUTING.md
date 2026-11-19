@@ -1,6 +1,6 @@
-[SimCore](README.md) / [Documentation](docs/README.md)
+[OneSim](README.md) / [Documentation](docs/README.md)
 
-# Contributing to SimCore
+# Contributing to OneSim
 
 For a missing framework API, check the [coverage table](docs/compatibility/README.md), then open an [API request](https://github.com/MitchellSPeterson/SimCore/issues/new?template=api-request.yml) or pick up the issue linked from that row. Keep the issue link in the coverage row.
 
@@ -18,11 +18,20 @@ node scripts/api-coverage.mjs --check
 
 For Expo changes, use the guest checks in the [React Native guide](frameworks/react-native/README.md). For renderer changes, run the pixel comparisons below.
 
+For native GPU changes, run the display-list and rendering tests on a machine with a usable wgpu adapter.
+
+```sh
+cargo test -p onesim-render-gpu
+cargo clippy -p onesim-cli --features window --all-targets -- -D warnings
+```
+
+For WebGPU changes, build the SwiftUI showcase and run `node web/test/presenter.mjs --app`. The presenter test also exercises Canvas 2D fallback. [Browser test setup](docs/web.md#testing)
+
 ## Update the docs with your change
 
 | Change | Update |
 | --- | --- |
-| Protocol | Update the [protocol reference](docs/protocol.md) and [`simcore-protocol`](crates/simcore-protocol) together. Bump `PROTOCOL_VERSION` for a breaking change. |
+| Protocol | Update the [protocol reference](docs/protocol.md) and [`onesim-protocol`](crates/onesim-protocol) together. Bump `PROTOCOL_VERSION` for a breaking change. |
 | SwiftUI API | Update the [coverage row](docs/compatibility/swiftui/README.md) and record signatures and known limits in the [SwiftUI guest reference](docs/compatibility/swiftui/guest.md). |
 | Expo / React Native API | Update the iOS and Android columns in the [coverage row](docs/compatibility/expo/README.md). Add native modules to [`guest/modules.js`](frameworks/react-native/guest/modules.js) with the matching `implemented`, `simulated`, or `unsupported` status. Unsupported modules must report an error. |
 | Jetpack Compose API | Update the [coverage row](docs/compatibility/compose/README.md). |
@@ -47,6 +56,8 @@ Inter’s widths are fitted to SF Pro. The fallback threshold accounts for the r
 - The React Native showcase `text` state has a **< 2.5%** limit in system mode. Dense glyph rasterization accounts for the remaining difference.
 
 Run these checks with Python 3 and Pillow. The Compose comparison also requires Java 17 or later.
+
+The reference comparisons use the CPU renderer. In a shell with a shared `SIMCORE_RENDERER` setting, set it to `cpu` before running the scripts.
 
 ```sh
 scripts/compare-ios.sh

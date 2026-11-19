@@ -1,6 +1,6 @@
-// SimCore in the browser: draws the framebuffer of web/simcore.js's driver to a <canvas> and turns
+// OneSim in the browser: draws the framebuffer of web/onesim.js's driver to a <canvas> and turns
 // DOM events (pointer, wheel, drag, keyboard, resize) into points-space input.
-import { load } from "./simcore.js";
+import { load } from "./onesim.js";
 import { Presenter, preferredRenderer } from "./renderer.js";
 
 // Input listeners sit on the stage, not the canvas: the presenter may swap the canvas element when it
@@ -118,7 +118,7 @@ async function main() {
   });
 
   // Debug/test hooks.
-  window.simcore = {
+  window.onesim = window.simcore = {
     ready: true,
     lastTreeText: () => sim.lastTreeText(),
     inspect: () => sim.inspect(),
@@ -140,7 +140,7 @@ async function main() {
     sim,
   };
   // Which backend is showing and why: mode "gpu" | "cpu", `reason` = why it is CPU when WebGPU was not used.
-  window.simcoreRenderer = {
+  window.onesimRenderer = window.simcoreRenderer = {
     get mode() { return presenter.mode; },
     get reason() { return presenter.reason; },
     get requested() { return presenter.preference; },

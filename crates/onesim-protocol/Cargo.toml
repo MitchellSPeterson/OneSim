@@ -1,0 +1,10 @@
+[package]
+name = "onesim-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OneSim wire types: ViewNode, guest wire and external API (docs/protocol.md)"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true

@@ -46,7 +46,7 @@ form, form-dark, form-menu, form-changed (new 2026-11-18, see "Form"; `home`/`ho
 | Typography text stack | Large Title 16,132 152x40.7; Title y184.7 h33.7; Headline y230.3 h20.3; Body y262.7 h42.3 (2 lines, 340 wide); Caption y317 h14.3; Bold y343.3; System22 y375.7 h26.3; blue text y414; Divider ~y446; centered text 39.5,458.7 323x42.3. VStack spacing 12, padding 16 |
 | Shapes | text/overlay frames only in snapshot (Overlay 170.5,293.8; Shadow card 151.3,380 99.3x20.3; ZStack label 181,489.2); shape geometry read from PNG |
 
-## Visual facts for SimCore (sampled from PNG, RGB)
+## Visual facts for OneSim (sampled from PNG, RGB)
 | thing | light | dark |
 |---|---|---|
 | grouped background | 242,242,247 (#F2F2F7) | 0,0,0 |
@@ -256,7 +256,7 @@ recaptured the same day. Offsets are from `Row N` cell rects (cells are 52pt, Ro
   = title + 1.33); the large title, section headers (Headline semibold) and chevrons (21.7x37.3) grow with Dynamic Type.
 Scroll-edge model (fitted to typography-scrolled at 40pt, Typography at 337pt and AX5 home at 206pt): the measured veil
 ramp holds up to 8pt above the bar's bottom, then rises to 0.95 alpha at the screen top; a blur (sigma 1.5pt) is mixed
-in fully at the top, 0.55 at the bar's bottom, gone 7.75pt below it (`EDGE_*` in `simcore-render/src/glass.rs`).
+in fully at the top, 0.55 at the bar's bottom, gone 7.75pt below it (`EDGE_*` in `onesim-render/src/glass.rs`).
 
 ## Alert and sheet (captured 2026-11-18; Controls second section "Show alert" / "Show sheet")
 Captured on a dedicated iPhone 17 Pro / iOS 26.5 simulator ("SimCore iPhone 17 Pro"); its `home` matched `home.png` (0.01% of px differ by >24). Same procedure as above (build, install, agent-device, `--normalize-status-bar`, retake until island; dark PNGs cannot show the island).
@@ -360,7 +360,7 @@ Same frames as `sheet-nested` (second sheet top y=72, first row 107, "Done" 159)
 States: `form` / `form-dark` (launch state: password "hunter2", flavor Vanilla, size Medium, volume 4, progress 40%),
 `form-menu` (Flavor tapped: menu open), `form-changed` (Chocolate picked, segment Large, slider dragged to the end -> volume 10, progress 100%).
 `home` / `home-dark` were recaptured: rows now run Typography..Form (8 rows, 16,208.33 + 52n, 370x52); Summary header 16,642, its row 16,682.33.
-All light PNGs retaken until the Dynamic Island showed. Renderer constants derived from these are in `crates/simcore-render/src/layout/swiftui.rs` ("Form controls").
+All light PNGs retaken until the Dynamic Island showed. Renderer constants derived from these are in `crates/onesim-render/src/layout/swiftui.rs` ("Form controls").
 
 ### Frames (pt, x,y,w,h; form.json)
 | element | frame |

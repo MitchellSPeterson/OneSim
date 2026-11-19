@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { onCleanup, root, run, sleep, startHost, startMetro } from './lib.mjs';
 
 const port = Number(process.argv[2]) || 8210;
-const dir = mkdtempSync(join(tmpdir(), 'simcore-refresh-'));
+const dir = mkdtempSync(join(tmpdir(), 'onesim-refresh-'));
 onCleanup(() => rmSync(dir, { recursive: true, force: true }));
 for (const f of ['App.js', 'app.json', 'index.js', 'package.json']) cpSync(join(root, 'examples/expo-counter', f), join(dir, f));
 symlinkSync(join(root, 'examples/expo-counter/node_modules'), join(dir, 'node_modules'));

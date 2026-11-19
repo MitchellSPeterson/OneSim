@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Render the example apps on SimCore in the same states as the iOS reference screenshots
-# and build side-by-side comparisons (iOS | SimCore | diff) in target/compare/ios<version>/.
+# Render the example apps on OneSim in the same states as the iOS reference screenshots
+# and build side-by-side comparisons (iOS | OneSim | diff) in target/compare/ios<version>/.
 # Requires Python 3 with Pillow (dev-only).
-# SIMCORE_FALLBACK=1 forces the bundled Inter + Phosphor fallbacks (inherited by every `simcore run`,
+# SIMCORE_FALLBACK=1 forces the bundled Inter + Phosphor fallbacks (inherited by every `onesim run`,
 # whose host process does the rendering); the capabilities line below shows what is actually in use.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-cargo build -q -p simcore-cli
-printf '{"id":1,"method":"hello","params":{"protocol_version":1}}\n{"id":2,"method":"get_capabilities"}\n' | ./target/debug/simcore serve 2>/dev/null \
+cargo build -q -p onesim-cli
+printf '{"id":1,"method":"hello","params":{"protocol_version":1}}\n{"id":2,"method":"get_capabilities"}\n' | ./target/debug/onesim serve 2>/dev/null \
   | python3 -c 'import json,sys; c=json.loads(sys.stdin.readlines()[1])["result"]; print("fonts:", c["fonts"], "| symbols:", c["symbols"], "| SIMCORE_FALLBACK=" + "'"${SIMCORE_FALLBACK:-}"'")'
 # Build each guest once. Every shot still starts a fresh process with its own device and appearance.
 guests=$(mktemp -d)
@@ -37,10 +37,10 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     *) echo "unknown iOS $ios"; exit 2 ;;
   esac
   base=(--ios "$ios" --device "$dev")
-  out=target/compare/ios$ios; mkdir -p "$out/simcore"
+  out=target/compare/ios$ios; mkdir -p "$out/onesim"
   echo "==== iOS $ios ($dev, $fx)"
   export SIMCORE_COMPARE_IOS=$ios
-  shot() { local name=$1; shift; ./target/debug/simcore run "$app" "${base[@]}" "$@" --screenshot "$out/simcore/$name.png" >/dev/null; }
+  shot() { local name=$1; shift; ./target/debug/onesim run "$app" "${base[@]}" "$@" --screenshot "$out/onesim/$name.png" >/dev/null; }
   shot home
   shot typography       --click Typography
   shot shapes           --click Shapes
@@ -78,26 +78,26 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
   shot form-dark    --dark --click Form
   shot form-menu    --click Form --click Flavor
   shot form-changed --click Form --click Flavor --click Chocolate --click Large --drag 170,552,300,0
-  python3 scripts/compare_ios.py $fx/showcase-ios "$out/simcore" "$out" || rc=1
+  python3 scripts/compare_ios.py $fx/showcase-ios "$out/onesim" "$out" || rc=1
   # SwiftUI TabView: tests/fixtures/swiftui-tabs-ios (see its README). Tab items by point: Home 115,822, Counter 201,822, Settings 287,822.
-  tout=$out/swiftui-tabs; mkdir -p "$tout/simcore"
-  tshot() { local name=$1; shift; ./target/debug/simcore run "$tabs" "${base[@]}" "$@" --screenshot "$tout/simcore/$name.png" >/dev/null; }
+  tout=$out/swiftui-tabs; mkdir -p "$tout/onesim"
+  tshot() { local name=$1; shift; ./target/debug/onesim run "$tabs" "${base[@]}" "$@" --screenshot "$tout/onesim/$name.png" >/dev/null; }
   tshot tabs-home
   tshot tabs-home-dark     --dark
   tshot tabs-second        --click 201,822 --click Increment
   tshot tabs-pushed        --click Apple
   tshot tabs-settings-dark --dark --click 287,822
   echo "== SwiftUI TabView (swiftui-tabs, iOS $ios)"
-  python3 scripts/compare_ios.py $fx/swiftui-tabs-ios "$tout/simcore" "$tout" || rc=1
+  python3 scripts/compare_ios.py $fx/swiftui-tabs-ios "$tout/onesim" "$tout" || rc=1
   # React Native / Expo showcase: tests/fixtures/rn-showcase-ios (see its README). Needs node + `npm install` in the example.
   rn=examples/expo-showcase
   if [ -d "$rn/node_modules" ] && command -v npx >/dev/null; then
-    rnout=$out/rn; mkdir -p "$rnout/simcore"
+    rnout=$out/rn; mkdir -p "$rnout/onesim"
     port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
     (cd "$rn" && CI=1 exec npx expo start --port "$port" >"../../$rnout/metro.log" 2>&1) &
     metro=$!
     for _ in $(seq 60); do curl -sf "http://localhost:$port/status" >/dev/null 2>&1 && break; sleep 1; done
-    rnshot() { local name=$1; shift; ./target/debug/simcore expo --url "http://localhost:$port" "${base[@]}" "$@" --screenshot "$rnout/simcore/$name.png" >/dev/null || echo "simcore expo failed: $name"; }
+    rnshot() { local name=$1; shift; ./target/debug/onesim expo --url "http://localhost:$port" "${base[@]}" "$@" --screenshot "$rnout/onesim/$name.png" >/dev/null || echo "onesim expo failed: $name"; }
     rnshot home
     rnshot layout           --click Layout
     rnshot text             --click Text
@@ -117,7 +117,7 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     rnshot refresh-pulled      --click Refresh --scroll 200,300,0,-150
     rnshot refresh-pulled-dark --dark --click Refresh --scroll 200,300,0,-150
     echo "== React Native (expo-showcase, iOS $ios)"
-    python3 scripts/compare_ios.py $fx/rn-showcase-ios "$rnout/simcore" "$rnout" || rc=1
+    python3 scripts/compare_ios.py $fx/rn-showcase-ios "$rnout/onesim" "$rnout" || rc=1
     stop_metro
   else
     echo "== skipping React Native comparison (run npm install in $rn, needs node)"
@@ -126,16 +126,16 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
   rr_group() { # app-dir label; states are produced by the rr_states_* function named by $3
     local app=$1 label=$2 o=$out/$2
     if ! { [ -d "$app/node_modules" ] && command -v npx >/dev/null; }; then echo "== skipping $label comparison (run npm install in $app, needs node)"; return; fi
-    rm -rf "$o"; mkdir -p "$o/simcore"
+    rm -rf "$o"; mkdir -p "$o/onesim"
     local pt; pt=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
     (cd "$app" && CI=1 exec npx expo start --port "$pt" >"../../$o/metro.log" 2>&1) &
     local m=$!
     for _ in $(seq 60); do curl -sf "http://localhost:$pt/status" >/dev/null 2>&1 && break; sleep 1; done
-    rrshot() { local n=$1; shift; ./target/debug/simcore expo --url "http://localhost:$pt" "${base[@]}" "$@" --screenshot "$o/simcore/$n.png" >/dev/null || echo "simcore expo failed: $n"; }
+    rrshot() { local n=$1; shift; ./target/debug/onesim expo --url "http://localhost:$pt" "${base[@]}" "$@" --screenshot "$o/onesim/$n.png" >/dev/null || echo "onesim expo failed: $n"; }
     "$3"
     pkill -P $m 2>/dev/null; kill $m 2>/dev/null
     echo "== Expo Router ($label, iOS $ios)"
-    python3 scripts/compare_ios.py $fx/rn-router-ios "$o/simcore" "$o" || rc=1
+    python3 scripts/compare_ios.py $fx/rn-router-ios "$o/onesim" "$o" || rc=1
   }
   rr_states_tabs() {
     rrshot tabs-home
@@ -155,10 +155,10 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
   # Per-device chrome: tests/fixtures/devices/<slug>/{home,keyboard-shift}.png (see its README).
   for d in $fx/devices/*/; do
     [ -d "$d" ] || continue
-    slug=$(basename "$d"); dd="$out/devices/$slug"; mkdir -p "$dd/simcore"
-    ./target/debug/simcore run "$app" --ios "$ios" --device "$slug" --screenshot "$dd/simcore/home.png" >/dev/null
-    ./target/debug/simcore run "$app" --ios "$ios" --device "$slug" --click Todos --click "New todo" --screenshot "$dd/simcore/keyboard-shift.png" >/dev/null
-    echo "== $slug (iOS $ios)"; python3 scripts/compare_ios.py "$d" "$dd/simcore" "$dd" || rc=1
+    slug=$(basename "$d"); dd="$out/devices/$slug"; mkdir -p "$dd/onesim"
+    ./target/debug/onesim run "$app" --ios "$ios" --device "$slug" --screenshot "$dd/onesim/home.png" >/dev/null
+    ./target/debug/onesim run "$app" --ios "$ios" --device "$slug" --click Todos --click "New todo" --screenshot "$dd/onesim/keyboard-shift.png" >/dev/null
+    echo "== $slug (iOS $ios)"; python3 scripts/compare_ios.py "$d" "$dd/onesim" "$dd" || rc=1
   done
 done
 exit $rc

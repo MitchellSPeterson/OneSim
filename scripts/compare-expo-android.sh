@@ -12,8 +12,8 @@ if [ ! -f "$fixtures/home.png" ]; then
   exit 1
 fi
 
-mkdir -p "$out/simcore"
-cargo build -q -p simcore-cli
+mkdir -p "$out/onesim"
+cargo build -q -p onesim-cli
 if [ -z "$metro_url" ]; then
   if [ ! -d "$app/node_modules" ]; then
     echo "Run npm ci in $app before comparing Android Expo." >&2
@@ -35,7 +35,7 @@ shot() {
   local name=$1
   shift
   test -f "$fixtures/$name.png" || { echo "Missing $fixtures/$name.png" >&2; return 1; }
-  ./target/debug/simcore expo --platform android --url "$metro_url" "$@" --screenshot "$out/simcore/$name.png" >/dev/null
+  ./target/debug/onesim expo --platform android --url "$metro_url" "$@" --screenshot "$out/onesim/$name.png" >/dev/null
 }
 
 shot home
@@ -45,4 +45,4 @@ shot controls-changed --click Controls --click Increment --click Alpha
 shot scroll-scrolled --click Scroll --click Jump
 shot image --click Image
 shot visuals --click Visuals
-python3 scripts/compare_ios.py "$fixtures" "$out/simcore" "$out"
+python3 scripts/compare_ios.py "$fixtures" "$out/onesim" "$out"

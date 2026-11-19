@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Usage: build-web.sh <app_path> [root_view]
-# Builds a SwiftUI app + SimCore's SwiftUI module + the Rust renderer into ONE Wasm module and
-# assembles a static site in target/web/ (index.html, main.js, simcore.js, renderer.js, app.wasm, gpu/ = the WebGPU
-# presenter built from crates/simcore-web-gpu). See docs/web.md.
+# Builds a SwiftUI app + OneSim's SwiftUI module + the Rust renderer into ONE Wasm module and
+# assembles a static site in target/web/ (index.html, main.js, onesim.js, renderer.js, app.wasm, gpu/ = the WebGPU
+# presenter built from crates/onesim-web-gpu). See docs/web.md.
 set -euo pipefail
 [ $# -ge 1 ] || { echo "usage: $0 <app_path> [root_view]" >&2; exit 2; }
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -49,11 +49,11 @@ run() { "$@" >>"$LOG" 2>&1 || { echo "build failed: $*" >&2; cat "$LOG" >&2; exi
 SW=(-swift-version 5 -target wasm32-unknown-wasip1 -sdk "$SDK/WASI.sdk"
     -resource-dir "$SDK/swift.xctoolchain/usr/lib/swift_static" -static-stdlib)
 
-# 2b. GPU presenter (optional at runtime): simcore-web-gpu for wasm32-unknown-unknown + wasm-bindgen glue.
-#     The wasm-bindgen CLI must match the `wasm-bindgen` crate version pinned in crates/simcore-web-gpu/Cargo.toml.
+# 2b. GPU presenter (optional at runtime): onesim-web-gpu for wasm32-unknown-unknown + wasm-bindgen glue.
+#     The wasm-bindgen CLI must match the `wasm-bindgen` crate version pinned in crates/onesim-web-gpu/Cargo.toml.
 GPU_TARGET=wasm32-unknown-unknown
 rustup target list --installed 2>/dev/null | grep -qx "$GPU_TARGET" || die "missing Rust target; run: rustup target add $GPU_TARGET"
-WB_CRATE="$(sed -n 's/^wasm-bindgen = "=\(.*\)"/\1/p' "$ROOT/crates/simcore-web-gpu/Cargo.toml")"
+WB_CRATE="$(sed -n 's/^wasm-bindgen = "=\(.*\)"/\1/p' "$ROOT/crates/onesim-web-gpu/Cargo.toml")"
 command -v wasm-bindgen >/dev/null || die "wasm-bindgen CLI not found; run: cargo install wasm-bindgen-cli --version $WB_CRATE --locked"
 WB_CLI="$(wasm-bindgen --version | awk '{print $2}')"
 [ "$WB_CLI" = "$WB_CRATE" ] || die "wasm-bindgen CLI $WB_CLI != crate $WB_CRATE; run: cargo install wasm-bindgen-cli --version $WB_CRATE --locked --force"
@@ -61,29 +61,29 @@ WB_CLI="$(wasm-bindgen --version | awk '{print $2}')"
 # 3. Rust renderer + in-process runtime (staticlib); bundled Inter + Phosphor only. Speed-optimized
 #    with Wasm SIMD: a 3x frame drops from ~13 ms (opt-level s, scalar) to ~5 ms for +2.5% size.
 #    simd128 needs Chrome 91 / Firefox 89 / Safari 16.4.
-echo "rust: simcore-web ($RUST_TARGET)"
+echo "rust: onesim-web ($RUST_TARGET)"
 CARGO_PROFILE_RELEASE_OPT_LEVEL=3 CARGO_PROFILE_RELEASE_LTO=true CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
   CARGO_PROFILE_RELEASE_PANIC=abort CARGO_TARGET_WASM32_WASIP1_RUSTFLAGS="-C target-feature=+simd128" \
-  run cargo build -p simcore-web --release --target "$RUST_TARGET" --manifest-path "$ROOT/Cargo.toml"
-LIB="$TARGET/$RUST_TARGET/release/libsimcore_web.a"
+  run cargo build -p onesim-web --release --target "$RUST_TARGET" --manifest-path "$ROOT/Cargo.toml"
+LIB="$TARGET/$RUST_TARGET/release/libonesim_web.a"
 
-echo "rust: simcore-web-gpu ($GPU_TARGET)"
+echo "rust: onesim-web-gpu ($GPU_TARGET)"
 mkdir -p "$OUT/gpu"
 CARGO_PROFILE_RELEASE_OPT_LEVEL=s CARGO_PROFILE_RELEASE_LTO=true CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
-  run cargo build -p simcore-web-gpu --release --target "$GPU_TARGET" --manifest-path "$ROOT/Cargo.toml"
-run wasm-bindgen --target web --no-typescript --out-dir "$OUT/gpu" --out-name simcore_web_gpu \
-  "$TARGET/$GPU_TARGET/release/simcore_web_gpu.wasm"
+  run cargo build -p onesim-web-gpu --release --target "$GPU_TARGET" --manifest-path "$ROOT/Cargo.toml"
+run wasm-bindgen --target web --no-typescript --out-dir "$OUT/gpu" --out-name onesim_web_gpu \
+  "$TARGET/$GPU_TARGET/release/onesim_web_gpu.wasm"
 if command -v wasm-opt >/dev/null; then
-  wasm-opt -Oz --all-features "$OUT/gpu/simcore_web_gpu_bg.wasm" -o "$OUT/gpu/opt.wasm" >>"$LOG" 2>&1 \
-    && mv "$OUT/gpu/opt.wasm" "$OUT/gpu/simcore_web_gpu_bg.wasm" || rm -f "$OUT/gpu/opt.wasm"
+  wasm-opt -Oz --all-features "$OUT/gpu/onesim_web_gpu_bg.wasm" -o "$OUT/gpu/opt.wasm" >>"$LOG" 2>&1 \
+    && mv "$OUT/gpu/opt.wasm" "$OUT/gpu/onesim_web_gpu_bg.wasm" || rm -f "$OUT/gpu/opt.wasm"
 fi
 
 # 4. SwiftUI module for Wasm (no Foundation).
-if [ ! -f "$CACHE/SwiftUI.o" ] || [ -n "$(find "$FW" "$ROOT/crates/simcore-runtime/include" -type f -newer "$CACHE/SwiftUI.o" | head -1)" ]; then
+if [ ! -f "$CACHE/SwiftUI.o" ] || [ -n "$(find "$FW" "$ROOT/crates/onesim-runtime/include" -type f -newer "$CACHE/SwiftUI.o" | head -1)" ]; then
   echo "swift: SwiftUI module"
   run "$SWIFTC" "${SW[@]}" -parse-as-library -module-name SwiftUI -Osize -wmo \
     -emit-module -emit-module-path "$CACHE/SwiftUI.swiftmodule" -emit-object -o "$CACHE/SwiftUI.o" \
-    -I "$FW/SimCoreBridge" "$FW"/SwiftUI/*.swift
+    -I "$FW/OneSimBridge" "$FW"/SwiftUI/*.swift
 fi
 
 # 5. App sources (same @main / root-view rules as build-swift-app.sh).
@@ -93,7 +93,7 @@ EXTRA=(); PAL=()
 if ! grep -qs '^[[:space:]]*@main' "${SRCS[@]}" && ! printf '%s\n' "${SRCS[@]}" | grep -q '/main\.swift$'; then
   [ -n "$ROOT_VIEW" ] || die "no @main in sources and no root_view given"
   GEN="$CACHE/gen-$$"; mkdir -p "$GEN"
-  printf 'import SwiftUI\n_simcoreRun(%s())\n' "$ROOT_VIEW" > "$GEN/main.swift"
+  printf 'import SwiftUI\n_onesimRun(%s())\n' "$ROOT_VIEW" > "$GEN/main.swift"
   EXTRA=("$GEN/main.swift")
 elif grep -qs '^[[:space:]]*@main' "${SRCS[@]}"; then PAL=(-parse-as-library); fi
 
@@ -104,7 +104,7 @@ EXPORTS=(simcore_web_init simcore_web_set_ios simcore_web_set_dark simcore_web_s
          simcore_web_inspect simcore_web_find simcore_web_fb_ptr simcore_web_fb_len simcore_web_fb_width
          simcore_web_fb_height simcore_web_tree_ptr simcore_web_tree_len simcore_web_set_output simcore_web_dl_ptr simcore_web_dl_len)
 XL=(); for e in "${EXPORTS[@]}"; do XL+=(-Xlinker "--export=$e"); done
-run "$SWIFTC" "${SW[@]}" -Osize ${PAL[@]+"${PAL[@]}"} -module-name SimCoreApp -I "$CACHE" -I "$FW/SimCoreBridge" \
+run "$SWIFTC" "${SW[@]}" -Osize ${PAL[@]+"${PAL[@]}"} -module-name OneSimApp -I "$CACHE" -I "$FW/OneSimBridge" \
   "${SRCS[@]}" ${EXTRA[@]+"${EXTRA[@]}"} "$CACHE/SwiftUI.o" "$LIB" \
   -Xclang-linker -mexec-model=reactor \
   -Xclang-linker "-resource-dir=$SDK/swift.xctoolchain/usr/lib/swift_static/clang" \
@@ -123,5 +123,5 @@ if command -v wasm-opt >/dev/null; then
 else
   echo "note: wasm-opt not found (brew install binaryen) - skipping size optimization"
 fi
-cp "$ROOT/web/index.html" "$ROOT/web/main.js" "$ROOT/web/simcore.js" "$ROOT/web/renderer.js" "$OUT/"
-echo "built $OUT ($(wc -c < "$OUT/app.wasm" | tr -d ' ') bytes app.wasm, $(wc -c < "$OUT/gpu/simcore_web_gpu_bg.wasm" | tr -d ' ') bytes gpu)"
+cp "$ROOT/web/index.html" "$ROOT/web/main.js" "$ROOT/web/onesim.js" "$ROOT/web/renderer.js" "$OUT/"
+echo "built $OUT ($(wc -c < "$OUT/app.wasm" | tr -d ' ') bytes app.wasm, $(wc -c < "$OUT/gpu/onesim_web_gpu_bg.wasm" | tr -d ' ') bytes gpu)"

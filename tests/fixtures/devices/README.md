@@ -1,6 +1,6 @@
 # devices ground-truth fixtures
 
-Per-device chrome references for `DEVICES` in `crates/simcore-render/src/device.rs`, compared by `scripts/compare-ios.sh`
+Per-device chrome references for `DEVICES` in `crates/onesim-render/src/device.rs`, compared by `scripts/compare-ios.sh`
 (`home` and `keyboard-shift` of `examples/swiftui-showcase`, rendered with `--device <slug>`; same < 2% / < 3.5% fallback gates).
 
 Captured on iOS 26.5 simulators via agent-device, one simulator booted at a time: `screenshot --pixel-density 3 --normalize-status-bar`

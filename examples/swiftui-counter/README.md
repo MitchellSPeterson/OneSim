@@ -1,6 +1,6 @@
 # swiftui-counter
 
-The PRD counter. `CounterView.swift` is plain SwiftUI source; `import SwiftUI` resolves to SimCore's module.
+The PRD counter. `CounterView.swift` is plain SwiftUI source; `import SwiftUI` resolves to OneSim's module.
 
 ```sh
 scripts/build-swift-app.sh examples/swiftui-counter/CounterView.swift out/counter CounterView

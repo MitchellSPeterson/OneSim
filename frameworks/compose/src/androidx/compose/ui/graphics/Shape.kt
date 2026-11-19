@@ -2,7 +2,7 @@ package androidx.compose.ui.graphics
 
 import androidx.compose.runtime.Immutable
 
-/** An outline. SimCore shapes describe themselves for the wire (protocol section K). */
+/** An outline. OneSim shapes describe themselves for the wire (protocol section K). */
 @Immutable
 interface Shape {
     /** Wire JSON (`{"corners":[...]}` / `{"percent":[...]}`), or null for a rectangle. */

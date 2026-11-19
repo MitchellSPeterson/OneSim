@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Browser test of the GPU-first presenter (web/renderer.js + target/web/gpu), Node >= 22, no dependencies.
 // Needs Chrome/Chromium (CHROME=/path, default macOS Google Chrome) and a built GPU module:
-//   cargo build -p simcore-web-gpu --target wasm32-unknown-unknown --release && wasm-bindgen --target web --no-typescript \
-//     --out-dir target/web/gpu --out-name simcore_web_gpu target/wasm32-unknown-unknown/release/simcore_web_gpu.wasm
-// (scripts/build-web.sh does this too). It writes fixtures with `cargo test -p simcore-web`, serves them with the
+//   cargo build -p onesim-web-gpu --target wasm32-unknown-unknown --release && wasm-bindgen --target web --no-typescript \
+//     --out-dir target/web/gpu --out-name onesim_web_gpu target/wasm32-unknown-unknown/release/onesim_web_gpu.wasm
+// (scripts/build-web.sh does this too). It writes fixtures with `cargo test -p onesim-web`, serves them with the
 // page from web/test/, drives headless Chrome over CDP and checks:
 //   gpu       WebGPU renders a showcase frame, non-blank, close to the CPU pixels (needs a WebGPU adapter; SKIP otherwise)
 //   cpu       ?renderer=cpu          -> CPU, same pixels as the runtime's
@@ -31,24 +31,24 @@ if (testApp && !existsSync(join(appDir, "app.wasm"))) {
   console.error(`missing ${appDir}/app.wasm: build examples/swiftui-showcase first`);
   process.exit(2);
 }
-if (!existsSync(join(gpuDir, "simcore_web_gpu_bg.wasm"))) { console.error(`missing ${gpuDir}: build the GPU module first (see header)`); process.exit(2); }
+if (!existsSync(join(gpuDir, "onesim_web_gpu_bg.wasm"))) { console.error(`missing ${gpuDir}: build the GPU module first (see header)`); process.exit(2); }
 
-const fx = mkdtempSync(join(tmpdir(), "simcore-fx-"));
-execFileSync("cargo", ["test", "-q", "-p", "simcore-web", "write_browser_fixtures"], { cwd: root, env: { ...process.env, SIMCORE_WEB_FIXTURE_DIR: fx }, stdio: "inherit" });
+const fx = mkdtempSync(join(tmpdir(), "onesim-fx-"));
+execFileSync("cargo", ["test", "-q", "-p", "onesim-web", "write_browser_fixtures"], { cwd: root, env: { ...process.env, SIMCORE_WEB_FIXTURE_DIR: fx }, stdio: "inherit" });
 
 const types = { ".js": "text/javascript", ".mjs": "text/javascript", ".html": "text/html", ".wasm": "application/wasm", ".json": "application/json" };
 const server = createServer((req, res) => {
   const p = new URL(req.url, "http://x").pathname;
   const file = p.startsWith("/fx/") ? join(fx, p.slice(4)) : p.startsWith("/gpu/") ? join(gpuDir, p.slice(5))
     : p.startsWith("/app/") ? join(appDir, p.slice(5))
-    : ["/renderer.js", "/simcore.js"].includes(p) ? join(root, "web", p) : join(root, "web/test", p);
+    : ["/renderer.js", "/onesim.js"].includes(p) ? join(root, "web", p) : join(root, "web/test", p);
   if (!existsSync(file) || !statSync(file).isFile()) { res.writeHead(404).end(); return; }
   res.writeHead(200, { "content-type": types[extname(file)] ?? "application/octet-stream" }).end(readFileSync(file));
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${server.address().port}`;
 
-const profile = mkdtempSync(join(tmpdir(), "simcore-chrome-"));
+const profile = mkdtempSync(join(tmpdir(), "onesim-chrome-"));
 const proc = spawn(chrome, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--enable-unsafe-webgpu",
   "--enable-features=Vulkan,WebGPU", "--ignore-gpu-blocklist", "--window-size=500,900", "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
 const wsUrl = await new Promise((ok, no) => {
@@ -101,12 +101,12 @@ const trackDevice = `
 `;
 async function probeApp() {
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  while (!window.simcore?.ready) {
+  while (!window.onesim?.ready) {
     const error = document.getElementById("err")?.textContent;
     if (error) throw new Error(error);
     await sleep(25);
   }
-  const s = window.simcore, r = window.simcoreRenderer;
+  const s = window.onesim, r = window.onesimRenderer;
   const mode = r.mode, initialFrames = r.frames;
   const size = () => [r.canvas.width, r.canvas.height].join("x");
   const initialSize = size();

@@ -1,4 +1,4 @@
-// react-native-gesture-handler in the SimCore guest (issue #10). Driven by frameworks/react-native/guest/run-gestures.mjs.
+// react-native-gesture-handler in the OneSim guest (issue #10). Driven by frameworks/react-native/guest/run-gestures.mjs.
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView, PanGestureHandler, Pressable, RectButton, State, TapGestureHandler } from 'react-native-gesture-handler';

@@ -1,5 +1,5 @@
 'use strict';
-// expo-file-system for the SimCore guest: the real file system, confined to the session sandbox.
+// expo-file-system for the OneSim guest: the real file system, confined to the session sandbox.
 //   FileSystem        = the SDK 54+ object API (File / Directory / file handles; ios/FileSystemModule.swift)
 //   ExponentFileSystem = the legacy `expo-file-system/legacy` string API (core methods only)
 // Only <dataDir>/{Documents,Caches,Bundle} resolve (Bundle is read-only); any other path is "Missing permission", as on iOS.

@@ -133,7 +133,7 @@ const androidRelease = V.android.release.replace('Android ', '');
 for (const want of [`const ANDROID_API_LEVEL = ${V.android.api};`, `const ANDROID_RELEASE = '${androidRelease}';`]) {
   if (!guestSrc.includes(want)) drift(guest, `expected \`${want}\``);
 }
-for (const [file, re] of [['crates/simcore-protocol/src/wire.rs', (r) => `Self::Ios${r.runtime.split('.')[0]} => "${r.build}"`]]) {
+for (const [file, re] of [['crates/onesim-protocol/src/wire.rs', (r) => `Self::Ios${r.runtime.split('.')[0]} => "${r.build}"`]]) {
   const src = readFileSync(root + file, 'utf8');
   for (const r of ios.runtimes) if (!src.includes(re(r))) drift(file, `expected \`${re(r)}\``);
 }
@@ -160,7 +160,7 @@ for (const r of ios.runtimes) {
 // Cross-check iOS registry modules and Android-only names against their coverage rows.
 const stub = new Proxy(() => ({}), { get: (t, p) => (p === 'modules' ? { WorkletsModule() {}, ReanimatedModule() {} } : stub) });
 const createRegistry = createRequire(import.meta.url)(root + 'frameworks/react-native/guest/modules.js');
-const dataDir = mkdtempSync(join(tmpdir(), 'simcore-coverage-')); // the file-system / secure-store modules need a sandbox dir
+const dataDir = mkdtempSync(join(tmpdir(), 'onesim-coverage-')); // the file-system / secure-store modules need a sandbox dir
 const registry = (platform) => createRegistry(stub, new Proxy({
   expo: { NativeModule: class {}, SharedObject: class {} },
   cfg: { dataDir, platform },

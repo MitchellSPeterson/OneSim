@@ -1,5 +1,5 @@
 'use strict';
-// react-native-worklets + react-native-reanimated: the native side, for the SimCore guest.
+// react-native-worklets + react-native-reanimated: the native side, for the OneSim guest.
 //
 // Real device: two JS runtimes (React Native, UI) on two threads; "Serializables" are immutable C++ trees that are
 // materialised into whichever runtime reads them; the UI runtime is driven by the display link.
@@ -124,8 +124,8 @@ module.exports = function createWorklets(rt, { node, log, sendError, unsupported
   const proxyFor = (cur) => {
     const p = {
       loadUnpackersWithCode(...a) { for (let i = 0; i < a.length; i += 3) vm.runInContext(a[i], ctx, { filename: a[i + 1] || 'unpacker' })(); },
-      loadUnpackersWithBytecode() { throw new Error('[Worklets] Hermes bytecode unpackers are not supported by the SimCore guest.'); },
-      createSerializableImport() { throw new Error('[Worklets] Bundle mode (createSerializableImport) is not supported by the SimCore guest.'); },
+      loadUnpackersWithBytecode() { throw new Error('[Worklets] Hermes bytecode unpackers are not supported by the OneSim guest.'); },
+      createSerializableImport() { throw new Error('[Worklets] Bundle mode (createSerializableImport) is not supported by the OneSim guest.'); },
       createSerializableString: scalar, createSerializableNumber: scalar, createSerializableBigInt: scalar,
       createSerializableBoolean: (b) => (b ? T : F), createSerializableUndefined: () => U, createSerializableNull: () => N,
       createSerializableTurboModuleLike: (props) => obj(props),
@@ -158,7 +158,7 @@ module.exports = function createWorklets(rt, { node, log, sendError, unsupported
         worklets.v.forEach((w, i) => pushUI(() => des(w, ui)(...des(args.v[i], ui))));
       },
       runOnUISync(w) { drainUI(); return des(des(w, ui)(), cur); },
-      createWorkletRuntime() { unsupported('Worklets', 'createWorkletRuntime (worker runtimes)'); throw new Error('[Worklets] Worker runtimes are not supported by the SimCore guest.'); },
+      createWorkletRuntime() { unsupported('Worklets', 'createWorkletRuntime (worker runtimes)'); throw new Error('[Worklets] Worker runtimes are not supported by the OneSim guest.'); },
       scheduleOnRuntime: (r, w) => p.scheduleOnRuntimeWithId(realmOf(r).id, w),
       scheduleOnRuntimeWithId(id, w) { const r = realmOf(id); const run = () => des(w, r)(); if (r.id === UI) pushUI(run); else onRN(run); },
       runOnRuntimeSync: (r, w) => p.runOnRuntimeSyncWithId(realmOf(r).id, w),

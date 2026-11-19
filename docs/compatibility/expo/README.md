@@ -12,11 +12,11 @@ The tables track Expo and React Native support on iOS and Android, with one row 
 | ✅ | Implemented: behaves as on a device | 1 |
 | 🟡 | Simulated: works, backed by state the host controls (`modules.simulate`, session viewport, appearance) | 1 |
 | 🟠 | Partial: works, with known gaps listed in Notes | ½ |
-| ⛔ | Unsupported: calls print `SimCore: X is not supported` and throw/reject (never fake success) | 0 |
+| ⛔ | Unsupported: calls print `OneSim: X is not supported` and throw/reject (never fake success) | 0 |
 | ⬜ | Planned: not started | 0 |
 | — | Not applicable on this platform (left out of the percentage) | |
 
-**Android** is in early preview. Run `simcore expo --platform android` to load the Android Metro bundle
+**Android** is in early preview. Run `onesim expo --platform android` to load the Android Metro bundle
 on the Pixel 10a profile. The Android column tracks core controls and native modules.
 The showcase is compared against Pixel 10a emulator captures at the 2% threshold. [Android Expo reference guide](../../../tests/fixtures/expo-android/README.md) · [Android host tracking issue #12](https://github.com/MitchellSPeterson/SimCore/issues/12)
 
@@ -40,6 +40,6 @@ the guest registry (`frameworks/react-native/guest/modules.js`) has no row in th
 - Implementing a native module: add or update its entry in `frameworks/react-native/guest/modules.js`
   (status `implemented` / `simulated` / `unsupported`), put its name in backticks in the row's **Native**
   column, set the status, and run `node scripts/api-coverage.mjs`.
-- Implementing a native view: render it in the host (`crates/simcore-render/src/layout/rn.rs`), add a
+- Implementing a native view: render it in the host (`crates/onesim-render/src/layout/rn.rs`), add a
   reference state and `shot` line for the target platform's pixel-diff gate, and list its component name.
 - Missing an API that is not listed: add a ⬜ row to the matching area file, open an issue, and link it.

@@ -12,7 +12,7 @@ import androidx.compose.ui.jsonNum
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.wire
-import simcore.compose.Guest
+import onesim.compose.Guest
 
 internal fun Color.wire() = "[${jsonNum(red)},${jsonNum(green)},${jsonNum(blue)},${jsonNum(alpha)}]"
 

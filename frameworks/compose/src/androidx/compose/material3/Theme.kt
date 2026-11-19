@@ -164,7 +164,7 @@ fun ProvideTextStyle(value: TextStyle, content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalTextStyle provides merged, content = content)
 }
 
-/** Dynamic color needs a wallpaper; SimCore returns the baseline scheme. */
+/** Dynamic color needs a wallpaper; OneSim returns the baseline scheme. */
 // ponytail: dynamic color is the baseline purple scheme, not wallpaper-derived.
 fun dynamicLightColorScheme(context: Any?): ColorScheme = lightColorScheme()
 fun dynamicDarkColorScheme(context: Any?): ColorScheme = darkColorScheme()

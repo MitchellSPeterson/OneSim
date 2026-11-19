@@ -14,7 +14,7 @@ details live in [guest.md](guest.md).
 |---|---|---|
 | ✅ | Implemented: behaves as on a device | 1 |
 | 🟠 | Partial: works, with known gaps listed in Notes | ½ |
-| ⬜ | Planned: not started (using it fails to compile against SimCore's `SwiftUI` module) | 0 |
+| ⬜ | Planned: not started (using it fails to compile against OneSim's `SwiftUI` module) | 0 |
 
 SwiftUI is iOS only here (Android: not applicable). Most apps use a small slice of these APIs, so the
 percentage understates how many real apps run; the Views, View modifiers and Property wrappers sections
@@ -48,7 +48,7 @@ Refresh with `node scripts/api-coverage.mjs`; CI runs it with `--check`.
   [guest.md](guest.md), set the row's status (and Notes for 🟠), and run
   `node scripts/api-coverage.mjs`.
 - New SDK: `node scripts/swiftui-inventory.mjs` (macOS with Xcode) regenerates the tables from the installed iOS
-  SDK. It keeps every existing row's status, issue and notes, adds new APIs (✅ when SimCore's module declares the
+  SDK. It keeps every existing row's status, issue and notes, adds new APIs (✅ when OneSim's module declares the
   name, else ⬜), and warns about ⬜ rows the module now declares. Then run `node scripts/api-coverage.mjs`.
 - New UI: add an iOS reference state and `shot` line for the pixel-diff gate (see CONTRIBUTING.md).
 - An API from another module that SwiftUI apps rely on: add it to [outside-swiftui.md](outside-swiftui.md).

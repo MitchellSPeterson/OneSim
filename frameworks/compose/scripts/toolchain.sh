@@ -16,7 +16,7 @@ DIR="${SIMCORE_COMPOSE_TOOLCHAIN:-$HOME/.cache/simcore/compose}"
 mkdir -p "$DIR/jars"
 
 if [ ! -x "$DIR/kotlinc-$KOTLIN/bin/kotlinc" ]; then
-  echo "simcore: downloading Kotlin $KOTLIN" >&2
+  echo "onesim: downloading Kotlin $KOTLIN" >&2
   tmp="$(mktemp -d)"
   curl -fsSL -o "$tmp/kotlinc.zip" \
     "https://github.com/JetBrains/kotlin/releases/download/v$KOTLIN/kotlin-compiler-$KOTLIN.zip"
@@ -32,7 +32,7 @@ fetch() { # repo group artifact version
   local repo=$1 group=$2 artifact=$3 version=$4
   local out="$DIR/jars/$artifact-$version.jar"
   [ -s "$out" ] && return 0
-  echo "simcore: downloading $group:$artifact:$version" >&2
+  echo "onesim: downloading $group:$artifact:$version" >&2
   curl -fsSL -o "$out.part" "$repo/${group//.//}/$artifact/$version/$artifact-$version.jar"
   mv "$out.part" "$out"
 }
