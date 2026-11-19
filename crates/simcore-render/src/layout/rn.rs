@@ -467,9 +467,6 @@ impl<'a> Cx<'a, '_> {
         spec.fixed_pitch = self.span_lh > 0.0 || num(p, "lineHeight").is_some_and(|l| l > 0.0);
         let color = self.color(p.get("color")).unwrap_or(Color::rgba(0.0, 0.0, 0.0, 1.0));
         let spans = runs(&text, &spans, &spec, color);
-        // Yoga measures these paragraphs in points. Keep Inter's tracking fit constant when rasterizing
-        // so that word wrapping, line caps and the width of styled runs agree with layout.
-        spec.inter_point_tracking = spec.lines.is_some() || spec.fixed_pitch || spans.len() > 1;
         let strike = p.get("textDecorationLine").and_then(Value::as_str).is_some_and(|d| d.contains("line-through"));
         Text { text, spec, color, strike, field: false, single: false, fixed: None, spans, explicit_lh: num(p, "lineHeight").is_some() }
     }
@@ -914,7 +911,7 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
         n.kind = "text";
         n.role = Role::Text;
         n.label = Some(t.text.clone());
-        let run = TextRun { text: t.text, font: t.spec, color: t.color, strike: t.strike, offset_x: 0.0, spans: t.spans };
+        let mut run = TextRun { text: t.text, font: t.spec, color: t.color, strike: t.strike, offset_x: 0.0, spans: t.spans };
         let (b, pd) = (l.border, l.padding);
         // A lineHeight below the font's own line height puts the glyphs higher in the line box than centering
         // (UIKit's maximumLineHeight drops the surplus ascent; fitted to the iOS 26.5 "Welcome to Expo" title: 0.55 x surplus).
@@ -922,6 +919,16 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
         let lift = if num(p, "lineHeight").is_some_and(|l| l > 0.0 && l < nat) { -(nat - t.spec.line_height as f64) * 0.55 } else { 0.0 };
         let (ix, iy) = ((b.left + pd.left) as f64, (b.top + pd.top) as f64 + lift);
         let (iw, ih) = (w - ix - (b.right + pd.right) as f64, h - iy - (b.bottom + pd.bottom) as f64);
+        // Yoga measures paragraphs in points. Match those advances for line caps, soft wrapping in
+        // plain fixed-pitch paragraphs, and rich text with its natural pitch.
+        let font = &mut run.font;
+        font.inter_point_tracking = font.lines.is_some()
+            || if font.fixed_pitch {
+                let hard_lines = run.text.matches('\n').count() + 1;
+                run.spans.is_empty() && ih >= f64::from(font.line_height) + f64::from(font.pitch) * hard_lines as f64
+            } else {
+                run.spans.len() > 1
+            };
         if (ix, iy, iw, ih) == (0.0, 0.0, w, h) {
             n.text = Some(run);
             out.push(n);
