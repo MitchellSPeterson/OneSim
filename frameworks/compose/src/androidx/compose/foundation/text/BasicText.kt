@@ -11,7 +11,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
-import simcore.compose.Primitive
+import onesim.compose.Primitive
 
 /** Text primitive (protocol section K). Font size defaults to 14 sp, color to black, as in Compose. */
 @Composable

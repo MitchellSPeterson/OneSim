@@ -1,8 +1,8 @@
-[SimCore](../README.md) / [Documentation](README.md)
+[OneSim](../README.md) / [Documentation](README.md)
 
-# SimCore vs iOS Simulator
+# OneSim vs iOS Simulator
 
-SimCore runs the same example sources as the iOS Simulator. The comparison script counts pixels whose difference luminance exceeds 24/255. Each state must be **under 2%** with Apple fonts and symbols, or **under 3.5%** with bundled Inter and Phosphor, subject to the [documented per-state exceptions](../CONTRIBUTING.md#visual-fidelity-rule).
+OneSim runs the same example sources as the iOS Simulator. The comparison script counts pixels whose difference luminance exceeds 24/255. Each state must be **under 2%** with Apple fonts and symbols, or **under 3.5%** with bundled Inter and Phosphor, subject to the [documented per-state exceptions](../CONTRIBUTING.md#visual-fidelity-rule).
 
 [iOS 27.2 results](#ios-272) · [iOS 26.5 results](#ios-265) · [Comparison gallery](#comparison-gallery) · [Known gaps](#known-gaps)
 
@@ -155,9 +155,9 @@ All 33 showcase states in this measurement pass the system gate. The fallback me
 
 ## Comparison gallery
 
-Each sheet shows the iOS 26.5 Simulator capture, the SimCore render, and the pixel diff, in that order.
+Each sheet shows the iOS 26.5 Simulator capture, the OneSim render, and the pixel diff, in that order.
 
-![Liquid Glass on the iOS Simulator and in SimCore, followed by the pixel diff](ios-comparison/cmp-glass.png)
+![Liquid Glass on the iOS Simulator and in OneSim, followed by the pixel diff](ios-comparison/cmp-glass.png)
 
 <details>
 <summary>More Liquid Glass states</summary>
@@ -218,8 +218,8 @@ Each sheet shows the iOS 26.5 Simulator capture, the SimCore render, and the pix
 
 ## Liquid Glass and Dynamic Type
 
-- **Glass is a backdrop effect** (`crates/simcore-render/src/glass.rs`): snapshot -> Gaussian blur (3pt) -> rim lens -> color transform (light `0.43 * raw + 0.575 * 255`, dark `0.57 * raw + 18`, clear `raw + 24`) -> tint -> 1px rim + soft shadow. Parameters and the fit are in docs/protocol.md F. The back button uses it too (it replaced the flat circle + shadow).
-- **Scroll-edge effect:** content scrolled under the bars is veiled toward the background (0.42 at the bar, decaying to 0 by 32pt below it); no blur. The scrolled fixtures are captured at Dynamic Type AX5, so SimCore renders them with `--dynamic-type accessibility5` and `--scroll 200,500,0,40` (offset 40pt, positive = later content).
+- **Glass is a backdrop effect** (`crates/onesim-render/src/glass.rs`): snapshot -> Gaussian blur (3pt) -> rim lens -> color transform (light `0.43 * raw + 0.575 * 255`, dark `0.57 * raw + 18`, clear `raw + 24`) -> tint -> 1px rim + soft shadow. Parameters and the fit are in docs/protocol.md F. The back button uses it too (it replaced the flat circle + shadow).
+- **Scroll-edge effect:** content scrolled under the bars is veiled toward the background (0.42 at the bar, decaying to 0 by 32pt below it); no blur. The scrolled fixtures are captured at Dynamic Type AX5, so OneSim renders them with `--dynamic-type accessibility5` and `--scroll 200,500,0,40` (offset 40pt, positive = later content).
 - **Dynamic Type** resolves text styles from Apple's size table (docs/protocol.md F). The scrolled fixtures say "accessibility-extra-extra-extra-large": that is AX5 (large title 60pt, body 53pt), which the frames confirm.
 - The keyboard panel is not glass in the fixtures, so it is unchanged.
 
@@ -239,7 +239,7 @@ Each sheet shows the iOS 26.5 Simulator capture, the SimCore render, and the pix
 
 ## Fallback mode (non-macOS hosts)
 
-When Apple's fonts and symbols are unavailable, or when forced with `SIMCORE_FALLBACK=1`, SimCore uses bundled open assets:
+When Apple's fonts and symbols are unavailable, or when forced with `SIMCORE_FALLBACK=1`, OneSim uses bundled open assets:
 - **Inter 4.1** (SIL OFL 1.1). Letter spacing is fitted per size so widths and wrapping match SF.
 - **Phosphor Icons 2.1.1** (MIT). 270 SF Symbol names are mapped onto Phosphor's regular, bold and fill styles, sized to SF's layout boxes. Unmapped names draw a placeholder and report `unsupported_symbol`.
 

@@ -1537,6 +1537,77 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
+name = "onesim-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "env_logger",
+ "log",
+ "onesim-host",
+ "onesim-protocol",
+ "onesim-render",
+ "serde_json",
+]
+
+[[package]]
+name = "onesim-host"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "libc",
+ "log",
+ "onesim-protocol",
+ "onesim-render",
+ "serde",
+ "serde_json",
+ "tungstenite",
+]
+
+[[package]]
+name = "onesim-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "onesim-render"
+version = "0.1.0"
+dependencies = [
+ "cosmic-text",
+ "objc2 0.6.5",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "onesim-protocol",
+ "resvg",
+ "serde_json",
+ "softbuffer",
+ "taffy",
+ "tiny-skia",
+ "winit",
+ "zune-jpeg",
+]
+
+[[package]]
+name = "onesim-runtime"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde_json",
+]
+
+[[package]]
+name = "onesim-web"
+version = "0.1.0"
+dependencies = [
+ "onesim-protocol",
+ "onesim-render",
+ "serde_json",
+]
+
+[[package]]
 name = "orbclient"
 version = "0.3.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1977,77 +2048,6 @@ name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
-
-[[package]]
-name = "simcore-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "env_logger",
- "log",
- "serde_json",
- "simcore-host",
- "simcore-protocol",
- "simcore-render",
-]
-
-[[package]]
-name = "simcore-host"
-version = "0.1.0"
-dependencies = [
- "base64",
- "libc",
- "log",
- "serde",
- "serde_json",
- "simcore-protocol",
- "simcore-render",
- "tungstenite",
-]
-
-[[package]]
-name = "simcore-protocol"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "simcore-render"
-version = "0.1.0"
-dependencies = [
- "cosmic-text",
- "objc2 0.6.5",
- "objc2-app-kit 0.3.2",
- "objc2-foundation 0.3.2",
- "resvg",
- "serde_json",
- "simcore-protocol",
- "softbuffer",
- "taffy",
- "tiny-skia",
- "winit",
- "zune-jpeg",
-]
-
-[[package]]
-name = "simcore-runtime"
-version = "0.1.0"
-dependencies = [
- "libc",
- "serde_json",
-]
-
-[[package]]
-name = "simcore-web"
-version = "0.1.0"
-dependencies = [
- "serde_json",
- "simcore-protocol",
- "simcore-render",
-]
 
 [[package]]
 name = "simd-adler32"

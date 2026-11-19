@@ -14,7 +14,7 @@ pkg=dev.simcore.reference
 (cd frameworks/compose/reference-app && echo "sdk.dir=${ANDROID_HOME:-$HOME/Library/Android/sdk}" > local.properties && ${GRADLE:-gradle} -q assembleDebug)
 "$ADB" install -r frameworks/compose/reference-app/app/build/outputs/apk/debug/app-debug.apk >/dev/null
 
-# Normalize the status bar to match SimCore: 9:41, full wifi (no "no internet" mark), full battery, no notifications.
+# Normalize the status bar to match OneSim: 9:41, full wifi (no "no internet" mark), full battery, no notifications.
 "$ADB" shell settings put global sysui_demo_allowed 1
 demo() { "$ADB" shell am broadcast -a com.android.systemui.demo -e command "$@" >/dev/null; }
 demo enter

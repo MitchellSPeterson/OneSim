@@ -1,5 +1,5 @@
 'use strict';
-// react-native-gesture-handler (v3): the native side, for the SimCore guest.
+// react-native-gesture-handler (v3): the native side, for the OneSim guest.
 //
 // On iOS, RNGH attaches UIGestureRecognizers to views and reports their state machine to JS. Here the guest recognizes
 // gestures itself from the host's `touch` messages (one finger): every handler on the touched view's ancestor chain

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SimCore React Native guest. Runs an unmodified Metro bundle in a bare vm context (like Hermes: ES
+// OneSim React Native guest. Runs an unmodified Metro bundle in a bare vm context (like Hermes: ES
 // builtins only), implements the *native* side RN's JS expects (bridgeless/new-arch: Fabric UIManager,
 // TurboModules, timers, callable modules) and streams the host view tree as JSON lines on stdout.
 // stdout is protocol-only. Wire contract: JSON lines, see run-standalone.mjs for a client. Root surface tag = 1 (iOS uses 1, 11, ...).
@@ -110,12 +110,12 @@ const cfg = {
 }
 
 const sendEvent = (name, detail) => send({ type: 'event', name, detail: detail || {} });
-const sendError = (message) => { log('SimCore error:', message); send({ type: 'error', message: String(message) }); };
+const sendError = (message) => { log('OneSim error:', message); send({ type: 'error', message: String(message) }); };
 const reportedModules = new Set();
-// Diagnostic for functionality SimCore does not provide: stderr every time, `error` + `module.unsupported` once per module+method.
+// Diagnostic for functionality OneSim does not provide: stderr every time, `error` + `module.unsupported` once per module+method.
 // Returns the Error callers throw / reject with (message = first diagnostic line).
 function unsupported(mod, method, pkg) {
-  const first = `SimCore: ${mod} is not supported.`, text = `${first}\n\nModule: ${pkg || mod}\nMethod: ${method}`;
+  const first = `OneSim: ${mod} is not supported.`, text = `${first}\n\nModule: ${pkg || mod}\nMethod: ${method}`;
   log(text);
   if (env.SIMCORE_DEBUG) log(new Error().stack);
   if (!reportedModules.has(`${mod}.${method}`)) {
@@ -127,7 +127,7 @@ function unsupported(mod, method, pkg) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Image cache: $TMPDIR/simcore-images/<sha1(uri)>.<ext>. Shared by RCTImageView and ImageLoader.
+// Image cache: $TMPDIR/onesim-images/<sha1(uri)>.<ext>. Shared by RCTImageView and ImageLoader.
 // ---------------------------------------------------------------------------------------------
 const imageCache = new Map(); // uri -> Promise<{path,width,height}> (pixels)
 const imageDone = new Map(); // uri -> info, once loaded (queryCache)
@@ -166,7 +166,7 @@ function loadImage(uri, headers) {
     p = readUri(uri, headers).then((buf) => {
       const i = imageInfo(buf);
       if (!i) throw new Error(`not a PNG/JPEG/GIF/WebP image: ${uri.slice(0, 120)}`);
-      const dir = path.join(os.tmpdir(), 'simcore-images');
+      const dir = path.join(os.tmpdir(), 'onesim-images');
       fs.mkdirSync(dir, { recursive: true });
       const file = path.join(dir, `${crypto.createHash('sha1').update(uri).digest('hex')}.${i.ext}`);
       fs.writeFileSync(file, buf);
@@ -472,7 +472,7 @@ class Runtime {
   // Host -> guest `native_back`: the user popped the top screen with the back button or the swipe-back gesture.
   nativeBack(tag) {
     const st = this.nav.stacks.get(tag);
-    if (!st || st.list.length < 2) return log(`SimCore: native_back for ${st ? 'a root screen' : 'unknown stack'} ${tag}`);
+    if (!st || st.list.length < 2) return log(`OneSim: native_back for ${st ? 'a root screen' : 'unknown stack'} ${tag}`);
     const top = st.list[st.list.length - 1], revealed = st.list[st.list.length - 2], t = this.nodes.get(top);
     if (t && t.props.preventNativeDismiss) return this.ev(top, 'topNativeDismissCancelled', { dismissCount: 1 });
     st.dismissed.add(top); st.list = st.list.slice(0, -1); st.top = revealed;
@@ -504,9 +504,9 @@ class Runtime {
   // Host -> guest `select_tab`: the user tapped a tab bar item. `key` is the screenKey, `index` the position among the tabs.
   selectTab(m) {
     const host = this.nodes.get(m.tag), st = this.nav.tabs.get(m.tag);
-    if (!host || !st) return log(`SimCore: select_tab for unknown tab host ${m.tag}`);
+    if (!host || !st) return log(`OneSim: select_tab for unknown tab host ${m.tag}`);
     const screens = this.collect(host, ['RNSTabsScreenIOS']), target = m.key != null ? screens.find((s) => s.props.screenKey === m.key) : screens[m.index];
-    if (!target) return log(`SimCore: select_tab: no tab ${m.key ?? m.index}`);
+    if (!target) return log(`OneSim: select_tab: no tab ${m.key ?? m.index}`);
     const key = target.props.screenKey, ev = (type, p) => this.ev(m.tag, type, { selectedScreenKey: st.key, provenance: st.provenance, ...p });
     if (target.props.preventNativeSelection && key !== st.key) return ev('topTabSelectionPrevented', { preventedScreenKey: key });
     const prev = st.key;
@@ -534,7 +534,7 @@ class Runtime {
       case '__fetchHead': case '__fetchChunk': case '__fetchEnd': case '__fetchError': this.guard(fetchEvent)(m); break;
       case 'touch': {
         const n = this.nodes.get(m.tag);
-        if (!n) return log(`SimCore: touch for unknown tag ${m.tag}`);
+        if (!n) return log(`OneSim: touch for unknown tag ${m.tag}`);
         const ts = m.timestamp ?? Date.now();
         if (this.gestures.onTouch(m)) break; // a gesture handler owns the touch (RN's responder got topTouchCancel)
         const touch = { identifier: 0, target: m.tag, pageX: m.x, pageY: m.y, locationX: m.lx ?? 0, locationY: m.ly ?? 0, timestamp: ts, force: 0 };
@@ -554,7 +554,7 @@ class Runtime {
       case 'simulate': if (this.registry) this.registry.simulate(m.module, m.state, m.replay); else this.simQueue.push(m); break; // before boot: applied once the registry exists
       case 'action': { // an alert button: drop the alert, then run Alert.alert's callback with the button key
         const i = this.alerts.findIndex((a) => a.keys.has(m.id));
-        if (i < 0) return log(`SimCore: action ${m.id} matches no alert`);
+        if (i < 0) return log(`OneSim: action ${m.id} matches no alert`);
         const [a] = this.alerts.splice(i, 1);
         this.scheduleEmit();
         this.guard(a.cb)(+a.keys.get(m.id));
@@ -567,7 +567,7 @@ class Runtime {
       case 'keyboard': this.keyboard(m.height); break;
       case 'text_input': { // `version` is ignored: the guest owns the text
         const n = this.nodes.get(m.field);
-        if (!n || !TEXT_INPUTS.has(n.viewName)) return log(`SimCore: text_input for unknown field ${m.field}`);
+        if (!n || !TEXT_INPUTS.has(n.viewName)) return log(`OneSim: text_input for unknown field ${m.field}`);
         const st = this.input(n), text = String(m.text ?? '');
         st.text = text; st.eventCount++;
         this.dispatch(n, 'topChange', { text, eventCount: st.eventCount, target: m.field }, 2);
@@ -631,7 +631,7 @@ class Runtime {
     this.dispatch(n, 'topBlur', { target: tag }, 2);
   }
   // KeyboardObserver: the iOS keyboard notifications for the keyboard the host shows (height > 0) or hides (0).
-  // duration 0: SimCore renders settled states, so KeyboardAvoidingView jumps to its final layout (no LayoutAnimation).
+  // duration 0: OneSim renders settled states, so KeyboardAvoidingView jumps to its final layout (no LayoutAnimation).
   keyboard(height) {
     const { width, height: H } = this.window, from = this.kbFrame;
     const to = height > 0 ? { screenX: 0, screenY: H - height, width, height } : null;
@@ -726,7 +726,7 @@ class Runtime {
   // Full reload (DevSettings.reload, expo reloadAppAsync, React Refresh bail-out): main thread swaps the worker.
   reload(reason) {
     if (this.dead) return;
-    log('SimCore: reload:', reason || '');
+    log('OneSim: reload:', reason || '');
     send({ type: '__reload', reason: String(reason || '') });
   }
 
@@ -754,7 +754,7 @@ class Runtime {
       if (d.blob) return { body: this.blobBuffer(d.blob) };
       if (d.uri) return { body: await readUri(d.uri) };
       if (d.formData) {
-        const boundary = `----SimCoreFormBoundary${node.randomUUID().replace(/-/g, '')}`, chunks = [];
+        const boundary = `----OneSimFormBoundary${node.randomUUID().replace(/-/g, '')}`, chunks = [];
         for (const part of d.formData) {
           const hs = Object.entries(part.headers || {}).map(([k, v]) => `${k}: ${v}\r\n`).join('');
           chunks.push(node.Buffer.from(`--${boundary}\r\n${hs}\r\n`), part.uri ? await readUri(part.uri) : node.Buffer.from(String(part.string ?? '')), node.Buffer.from('\r\n'));
@@ -940,7 +940,7 @@ class Runtime {
       RN$Bridgeless: true,
       RN$registerCallableModule: (name, f) => this.callable.set(name, f),
       nativeFabricUIManager: (this.fabric = this.makeFabric()),
-      // Native views the SimCore host knows (react-native-screens, safe-area-context, expo views); RN's own optional views
+      // Native views the OneSim host knows (react-native-screens, safe-area-context, expo views); RN's own optional views
       // (DebuggingOverlay, VirtualView, ...) stay absent so RN falls back. Legacy view managers show up in UIManager constants.
       __nativeComponentRegistry__hasComponent: (n) => isNativeView(n),
       RN$LegacyInterop_UIManager_getConstants: () => Object.fromEntries([...NATIVE_VIEWS].map((n) => [n, {}])),
@@ -991,7 +991,7 @@ class Runtime {
       });
       ref.addListener('state', changed);
       this.navCheck = changed; // the container's first 'state' event can precede our listener: poll after commits until one event is out
-    } catch (e) { if (env.SIMCORE_DEBUG) log('SimCore: navigation watch failed:', e && e.stack); }
+    } catch (e) { if (env.SIMCORE_DEBUG) log('OneSim: navigation watch failed:', e && e.stack); }
   }
 
   setupHmr() {
@@ -1047,7 +1047,7 @@ async function mainFetch(w, m, fetching) {
 // Main thread: protocol I/O + worker supervisor.
 function mainThread() {
   let worker = null, base = 0, last = 0, generation = -1;
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'simcore-session-'));
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onesim-session-'));
   process.on('exit', () => fs.rmSync(dataDir, { recursive: true, force: true }));
   const simulated = new Map(); // module -> merged `simulate` state, replayed into every new worker (state survives reloads)
   const out = (m) => process.stdout.write(JSON.stringify(m) + '\n');
@@ -1067,11 +1067,11 @@ function mainThread() {
       if (m.type !== '__ws') return out(m);
       const emit = (event, payload) => w.postMessage({ type: '__wsEvent', event, payload });
       if (m.op === 'connect') {
-        if (env.SIMCORE_DEBUG) process.stderr.write(`SimCore: ws connect ${m.url}\n`);
+        if (env.SIMCORE_DEBUG) process.stderr.write(`OneSim: ws connect ${m.url}\n`);
         const ws = new WebSocket(m.url, m.protocols || undefined);
         ws.binaryType = 'arraybuffer';
         sockets.set(m.id, ws);
-        ws.onopen = () => { if (env.SIMCORE_DEBUG) process.stderr.write('SimCore: ws open\n'); emit('websocketOpen', { id: m.id }); };
+        ws.onopen = () => { if (env.SIMCORE_DEBUG) process.stderr.write('OneSim: ws open\n'); emit('websocketOpen', { id: m.id }); };
         ws.onmessage = (ev) => emit('websocketMessage', { id: m.id, type: typeof ev.data === 'string' ? 'text' : 'binary', data: typeof ev.data === 'string' ? ev.data : Buffer.from(ev.data).toString('base64') });
         ws.onerror = () => emit('websocketFailed', { id: m.id, message: 'WebSocket error' });
         ws.onclose = (ev) => { sockets.delete(m.id); emit('websocketClosed', { id: m.id, code: ev.code, reason: ev.reason }); };

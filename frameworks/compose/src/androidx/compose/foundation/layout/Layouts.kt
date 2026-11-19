@@ -9,7 +9,7 @@ import androidx.compose.ui.jsonNum
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.wire
-import simcore.compose.Primitive
+import onesim.compose.Primitive
 
 /** Main-axis placement (protocol section K `arrangement`). */
 @Immutable

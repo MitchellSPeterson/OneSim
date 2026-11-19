@@ -15,14 +15,14 @@ jobs:
       - run: cargo build --workspace
       - name: Compatibility docs (coverage summaries, guest module registry, pinned versions)
         run: node scripts/api-coverage.mjs --check
-      - run: cargo build -p simcore-render --examples --features window
+      - run: cargo build -p onesim-render --examples --features window
       - run: cargo test --workspace
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - name: SwiftUI wire test (build, 1100 actions, memory, isolation of stdout)
         run: frameworks/swiftui/Tests/wire_test.sh
       - name: End-to-end headless counter
         run: |
-          cargo run -q -p simcore-cli -- run examples/swiftui-counter --root-view CounterView \
+          cargo run -q -p onesim-cli -- run examples/swiftui-counter --root-view CounterView \
             --click Increment --inspect | grep -q '"Count: 1"'
       - uses: actions/setup-java@v4
         with:
@@ -30,22 +30,22 @@ jobs:
           java-version: '17'
       - name: End-to-end Jetpack Compose counter (Kotlin guest, real Compose runtime)
         run: |
-          cargo run -q -p simcore-cli -- run examples/compose-counter \
+          cargo run -q -p onesim-cli -- run examples/compose-counter \
             --click Increment --click Increment --click Decrement --inspect | grep -q '"Count: 1"'
       - name: Install Pillow for screenshot comparisons
         run: python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
       - name: Android pixel-diff gate, Compose vs the Android 17 emulator (every state < 2%)
         run: scripts/compare-android.sh
       - name: Render showcase fixtures (light + dark PNGs)
-        run: cargo run -q -p simcore-render --example showcase -- --out target/showcase-render
+        run: cargo run -q -p onesim-render --example showcase -- --out target/showcase-render
       - uses: actions/upload-artifact@v4
         with:
           name: showcase-render
           path: target/showcase-render
       - name: Navigation, text input and scroll through the fake guest
         run: |
-          ln -sf "$PWD/target/debug/simcore-fake-guest" target/debug/fake-nav-guest
-          cargo run -q -p simcore-cli -- run target/debug/fake-nav-guest \
+          ln -sf "$PWD/target/debug/onesim-fake-guest" target/debug/fake-nav-guest
+          cargo run -q -p onesim-cli -- run target/debug/fake-nav-guest \
             --click Todos --click "New todo" --type "Buy milk" --key backspace --click Add --inspect \
             --screenshot target/showcase-render/ci-todos.png | grep -q '"Buy mil"'
       - name: iOS pixel-diff gate (every state < 2%)

@@ -9,7 +9,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.wire
-import simcore.compose.Guest
+import onesim.compose.Guest
 
 private fun n(d: Dp) = jsonNum(d.value)
 

@@ -1,26 +1,26 @@
 # SwiftUI guest: build, evaluation model and limits
 
-SimCore ships its own Swift module named `SwiftUI` (`frameworks/swiftui/Sources/SwiftUI`). User code is unmodified.
+OneSim ships its own Swift module named `SwiftUI` (`frameworks/swiftui/Sources/SwiftUI`). User code is unmodified.
 
 ## How `import SwiftUI` is redirected
 
 `scripts/build-swift-app.sh` compiles our module to `target/swiftui-cache/SwiftUI.{swiftmodule,o}` and builds the app with:
 
 ```
-swiftc -swift-version 5 -O [-parse-as-library] -module-name SimCoreApp \
-  -I target/swiftui-cache -I frameworks/swiftui/Sources/SimCoreBridge \
-  <app sources> [generated main.swift] target/swiftui-cache/SwiftUI.o target/release/libsimcore_runtime.a -o <exe>
+swiftc -swift-version 5 -O [-parse-as-library] -module-name OneSimApp \
+  -I target/swiftui-cache -I frameworks/swiftui/Sources/OneSimBridge \
+  <app sources> [generated main.swift] target/swiftui-cache/SwiftUI.o target/release/libonesim_runtime.a -o <exe>
 ```
 
 `-I` directories are searched before the SDK's frameworks, so our module wins; Apple's SwiftUI.framework is never loaded or linked
-(`otool -L` shows only Foundation/CoreFoundation/libSystem/Swift runtime; `wire_test.sh` asserts this). `SimCoreBridge` is a Clang
-module exposing `crates/simcore-runtime/include/simcore_runtime.h`. The SwiftUI module is cached; it is rebuilt when any file under
+(`otool -L` shows only Foundation/CoreFoundation/libSystem/Swift runtime; `wire_test.sh` asserts this). `OneSimBridge` is a Clang
+module exposing `crates/onesim-runtime/include/simcore_runtime.h`. The SwiftUI module is cached; it is rebuilt when any file under
 `frameworks/swiftui/Sources` or the runtime header is newer than `SwiftUI.o`.
 
 ## Entry mechanisms
 
 - `@main struct X: App { var body: some Scene { WindowGroup { RootView() } } }` - `App.main()` launches the first `WindowGroup`.
-- No `@main`: pass `root_view` (3rd script arg); a `main.swift` calling `_simcoreRun(RootView())` is generated.
+- No `@main`: pass `root_view` (3rd script arg); a `main.swift` calling `_onesimRun(RootView())` is generated.
 - A user-supplied `main.swift` is used as is.
 
 ## Evaluation model

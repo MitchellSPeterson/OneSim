@@ -23,7 +23,7 @@ public struct WindowGroup<Content: View>: Scene, _Launchable {
     let content: Content
     public init(@ViewBuilder content: () -> Content) { self.content = content() }
     public init(_ title: String, @ViewBuilder content: () -> Content) { self.content = content() }
-    func _launch() -> _Done { _simcoreRun(content) }
+    func _launch() -> _Done { _onesimRun(content) }
 }
 
 public protocol App {

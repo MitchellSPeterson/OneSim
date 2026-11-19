@@ -1,6 +1,6 @@
 # devices (iOS 27.2) ground-truth fixtures
 
-Per-device chrome references for `DEVICES` in `crates/simcore-render/src/device.rs` on iOS 27.2 (`home` and `keyboard-shift`
+Per-device chrome references for `DEVICES` in `crates/onesim-render/src/device.rs` on iOS 27.2 (`home` and `keyboard-shift`
 of `examples/swiftui-showcase`, rendered with `--ios 27.2 --device <slug>`). Captured like `../../devices/README.md`,
 one simulator per device; all iOS 27 keyboards were captured with the "I / The / I'm" suggestions.
 

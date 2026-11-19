@@ -1,9 +1,9 @@
-<h1 align="center">SimCore</h1>
+<h1 align="center">OneSim</h1>
 
 <p align="center">
-  <strong>A headless preview runtime for mobile UI</strong><br>
-  Run SwiftUI, Expo / React Native, and Jetpack Compose apps from source.<br>
-  Drive interactions, inspect the UI tree, and capture PNGs on a CPU.
+  <strong>Run, inspect, and automate mobile UI</strong><br>
+  One runtime for SwiftUI, Expo / React Native, and Jetpack Compose.<br>
+  Preview SwiftUI in a browser or drive apps headlessly from the CLI and session API.
 </p>
 
 <p align="center">
@@ -22,9 +22,9 @@
 <p align="center">
   <a href="docs/ios-comparison.md#comparison-gallery"><picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/ios-comparison/cmp-glass-dark.png">
-    <img src="docs/ios-comparison/cmp-glass.png" width="680" alt="Liquid Glass rendered by the iOS Simulator and SimCore, with a pixel diff on the right">
+    <img src="docs/ios-comparison/cmp-glass.png" width="680" alt="Liquid Glass rendered by the iOS Simulator and OneSim, with a pixel diff on the right">
   </picture></a><br>
-  <sub>Liquid Glass in the iOS 26.5 Simulator and SimCore, followed by the pixel diff.</sub>
+  <sub>Liquid Glass in the iOS 26.5 Simulator and OneSim, followed by the pixel diff.</sub>
 </p>
 
 ## Quick start
@@ -32,16 +32,16 @@
 On macOS with Rust stable and the Swift toolchain from Xcode or Command Line Tools, clone the repository and run the counter.
 
 ```sh
-git clone https://github.com/MitchellSPeterson/SimCore.git
-cd SimCore
-cargo run -p simcore-cli -- run \
+git clone https://github.com/MitchellSPeterson/SimCore.git OneSim
+cd OneSim
+cargo run -p onesim-cli -- run \
   examples/swiftui-counter \
   --root-view CounterView \
   --click Increment \
   --screenshot counter.png --inspect
 ```
 
-SimCore compiles the SwiftUI example, taps **Increment**, and saves `counter.png`. The printed UI tree contains `Count: 1`. This runs without an iOS Simulator, Chromium, or a GPU.
+OneSim compiles the SwiftUI example, taps **Increment**, and saves `counter.png`. The printed UI tree contains `Count: 1`. This runs without an iOS Simulator, Chromium, or a GPU.
 
 For Expo, Compose, browser builds, and CLI input options, see the [getting-started guide](docs/getting-started.md).
 
@@ -53,11 +53,11 @@ For Expo, Compose, browser builds, and CLI input options, see the [getting-start
 | [Expo / React Native](docs/compatibility/expo/README.md) | iOS preview | Metro bundles with Fabric, Fast Refresh, Expo Router, and simulated device modules. Android support is planned. |
 | [Jetpack Compose](docs/compatibility/compose/README.md) | Android 17 preview | The AndroidX Compose runtime with Material 3 controls and layouts on a Pixel 10a profile. |
 
-SimCore runs each framework’s supported UI code in a guest process and renders it on a shared Rust host. SwiftUI can also run in the browser, where the app and renderer compile to a single WebAssembly module. [Architecture](docs/architecture.md) · [Browser guide](docs/web.md)
+OneSim runs each framework’s supported UI code in a guest process and renders it on a shared Rust host. SwiftUI can also run in the browser, where the app and renderer compile to a single WebAssembly module. [Architecture](docs/architecture.md) · [Browser guide](docs/web.md)
 
 ## Visual fidelity
 
-SimCore tests its renderer against screenshots from the iOS Simulator and Android emulator. The comparison scripts check each state on the two supported iOS versions and on Android 17. See the [iOS results and known gaps](docs/ios-comparison.md) and the [Android reference fixtures](tests/fixtures/compose-android/README.md).
+OneSim tests its renderer against screenshots from the iOS Simulator and Android emulator. The comparison scripts check each state on the two supported iOS versions and on Android 17. See the [iOS results and known gaps](docs/ios-comparison.md) and the [Android reference fixtures](tests/fixtures/compose-android/README.md).
 
 ## Documentation
 
@@ -73,4 +73,4 @@ Start with the [contributor guide](CONTRIBUTING.md). For a missing API, check th
 
 ## License
 
-SimCore is [MIT-licensed](LICENSE). The bundled fonts and icons retain their [own licenses](docs/architecture.md#fonts-and-symbols).
+OneSim is [MIT-licensed](LICENSE). The bundled fonts and icons retain their [own licenses](docs/architecture.md#fonts-and-symbols).

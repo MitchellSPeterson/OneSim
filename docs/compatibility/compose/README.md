@@ -2,8 +2,8 @@
 
 # Jetpack Compose API coverage
 
-Which Jetpack Compose (Kotlin) APIs SimCore can run, for Android apps written natively rather than with Expo.
-**Preview:** a JVM guest runs the real Compose runtime with SimCore's own UI libraries
+Which Jetpack Compose (Kotlin) APIs OneSim can run, for Android apps written natively rather than with Expo.
+**Preview:** a JVM guest runs the real Compose runtime with OneSim's own UI libraries
 ([frameworks/compose](../../../frameworks/compose/README.md)); rows are marked as they land. The area files list every
 public API of the Compose libraries an app typically uses: one row per composable, `Modifier` extension, other
 top-level function and top-level type (overloads share a row; members such as `ButtonDefaults.shape` are
@@ -41,7 +41,7 @@ Refresh with `node scripts/api-coverage.mjs`; CI runs it with `--check`.
 
 ## How Android support works
 
-Apps compile unchanged against SimCore's reimplementation of `androidx.compose.ui` / `foundation` / `material3` with the
+Apps compile unchanged against OneSim's reimplementation of `androidx.compose.ui` / `foundation` / `material3` with the
 real `androidx.compose.runtime`, run as a guest process and send layout primitives plus Modifier chains to the host
 (protocol section K), which lays them out with Compose's measure/place rules in whole device pixels. Rendering is
 checked against a real APK of the same examples on the Android 17 emulator (`scripts/compare-android.sh`, every state

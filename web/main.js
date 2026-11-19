@@ -1,6 +1,6 @@
-// SimCore in the browser: draws the framebuffer of web/simcore.js's driver to a <canvas> and turns
+// OneSim in the browser: draws the framebuffer of web/onesim.js's driver to a <canvas> and turns
 // DOM events (pointer, wheel, drag, keyboard, resize) into points-space input.
-import { load } from "./simcore.js";
+import { load } from "./onesim.js";
 
 const canvas = document.getElementById("screen");
 const ctx = canvas.getContext("2d");
@@ -116,7 +116,7 @@ async function main() {
   });
 
   // Debug/test hooks.
-  window.simcore = {
+  window.onesim = window.simcore = {
     ready: true,
     lastTreeText: () => sim.lastTreeText(),
     inspect: () => sim.inspect(),

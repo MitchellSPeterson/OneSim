@@ -1,4 +1,4 @@
-// SimCore native-module registry: ONE table of every native module the guest provides.
+// OneSim native-module registry: ONE table of every native module the guest provides.
 // The TurboModule proxy (`__turboModuleProxy`, `NativeModules`) and `globalThis.expo.modules` are generated from it, and
 // `{"type":"modules"}` lists it.
 //   entry = { name, package?, kind: 'turbo'|'expo', status: 'implemented'|'simulated'|'unsupported', constants?, methods: {name: impl} | () => {...},
@@ -77,7 +77,7 @@ module.exports = function createRegistry(rt, h) {
     localauth: (s) => { sim.localauth = { success: s.success !== false, error: s.error }; }, // next authenticateAsync result
     permissions: (s) => {
       for (const [k, v] of Object.entries(s)) {
-        if (['granted', 'denied', 'undetermined'].includes(v)) sim.perms[k] = v; else log(`SimCore: simulate permissions: bad status ${JSON.stringify(v)} for ${k}`);
+        if (['granted', 'denied', 'undetermined'].includes(v)) sim.perms[k] = v; else log(`OneSim: simulate permissions: bad status ${JSON.stringify(v)} for ${k}`);
       }
     },
   };
@@ -92,8 +92,8 @@ module.exports = function createRegistry(rt, h) {
     { name: 'I18nManager', status: 'implemented', constants: { isRTL: false, doLeftAndRightSwapInRTL: true, localeIdentifier: 'en_US' }, methods: { allowRTL: noop, forceRTL: noop, swapLeftAndRightInRTL: noop } },
     // Host chrome (status bar) is the Rust host's job; calls are accepted and logged, not rendered.
     { name: 'StatusBarManager', status: 'implemented', constants: { HEIGHT: 54, DEFAULT_BACKGROUND_COLOR: 0, STYLE: 'default' },
-      methods: { ...listener, getHeight: (cb) => cb({ height: 54 }), setStyle: (s) => log('SimCore: StatusBar.setStyle', s), setHidden: noop, setNetworkActivityIndicatorVisible: noop } },
-    { name: 'ExceptionsManager', status: 'implemented', methods: { reportException, reportFatalException: (m, s) => reportException({ message: m, stack: s }), reportSoftException: (m) => log('SimCore soft exception:', m), updateExceptionMessage: noop, dismissRedbox: noop } },
+      methods: { ...listener, getHeight: (cb) => cb({ height: 54 }), setStyle: (s) => log('OneSim: StatusBar.setStyle', s), setHidden: noop, setNetworkActivityIndicatorVisible: noop } },
+    { name: 'ExceptionsManager', status: 'implemented', methods: { reportException, reportFatalException: (m, s) => reportException({ message: m, stack: s }), reportSoftException: (m) => log('OneSim soft exception:', m), updateExceptionMessage: noop, dismissRedbox: noop } },
     { name: 'AppState', status: 'implemented', constants: { initialAppState: 'active' }, methods: { getCurrentAppState: (cb) => cb({ app_state: 'active' }), ...listener } },
     { name: 'SettingsManager', status: 'implemented', constants: { settings: { AppleLocale: 'en_US', AppleLanguages: ['en'] } }, methods: { setValues: noop, deleteValues: noop } },
     { name: 'AccessibilityInfo', status: 'implemented', constants: {}, methods: {
@@ -178,7 +178,7 @@ module.exports = function createRegistry(rt, h) {
     { name: 'ExpoFontLoader', package: 'expo-font', kind: 'expo', status: 'implemented', methods: { getLoadedFonts: () => [], isLoaded: () => false, loadAsync: async (name) => { unsupported('ExpoFontLoader', `loadAsync(${name})`, 'expo-font'); } } },
     // Screen-awake is a no-op in a simulator surface; accepted, not rendered.
     { name: 'ExpoKeepAwake', package: 'expo-keep-awake', kind: 'expo', status: 'implemented', methods: { activate: async () => {}, deactivate: async () => {}, isActivated: async () => false } },
-    // expo-splash-screen: the native launch screen is not part of the SimCore surface, so hiding it has nothing to do.
+    // expo-splash-screen: the native launch screen is not part of the OneSim surface, so hiding it has nothing to do.
     { name: 'ExpoSplashScreen', package: 'expo-splash-screen', kind: 'expo', status: 'implemented', methods: { setOptions: () => {}, hide: () => {}, hideAsync: async () => {}, preventAutoHideAsync: async () => true, internalPreventAutoHideAsync: async () => {}, internalMaybeHideAsync: async () => {} } },
     // expo-system-ui: the root view's background colour is a prop of the tree's root node (processed colour int, like any view).
     { name: 'ExpoSystemUI', package: 'expo-system-ui', kind: 'expo', status: 'implemented', methods: {
@@ -201,9 +201,9 @@ module.exports = function createRegistry(rt, h) {
     // expo-constants: the manifest is the same one Metro hands a real Expo client; expo-asset uses it to build dev-server asset URLs.
     { name: 'ExponentConstants', package: 'expo-constants', kind: 'expo', status: 'implemented',
       constants: () => ({ manifest: rt.manifest, experienceUrl: rt.manifest ? `exp://${new URL(rt.scriptURL).host}` : null,
-        appOwnership: null, executionEnvironment: 'bare', sessionId: cfg.session || 'simcore', installationId: 'simcore', statusBarHeight: 54,
+        appOwnership: null, executionEnvironment: 'bare', sessionId: cfg.session || 'onesim', installationId: 'simcore', statusBarHeight: 54,
         systemFonts: [], isDevice: false, deviceName: 'iPhone', expoVersion: null, platform: { ios: { model: 'iPhone', systemVersion: OS_VERSION } } }),
-      methods: { getWebViewUserAgentAsync: async () => `Mozilla/5.0 (iPhone; CPU iPhone OS ${OS_VERSION.replace('.', '_')} like Mac OS X) SimCore` } },
+      methods: { getWebViewUserAgentAsync: async () => `Mozilla/5.0 (iPhone; CPU iPhone OS ${OS_VERSION.replace('.', '_')} like Mac OS X) OneSim` } },
 
     // ---- simulated expo modules (host control through `simulate`) ----
     { name: 'ExpoClipboard', package: 'expo-clipboard', kind: 'expo', status: 'simulated', strict: true, events: ['onClipboardChanged'], constants: { isPasteButtonAvailable: false },
@@ -248,7 +248,7 @@ module.exports = function createRegistry(rt, h) {
       make: () => { const no = (m) => () => Promise.reject(unsupported('ExpoCryptoAES', m, 'expo-crypto')); const cls = (n, ...ms) => { const c = class extends SharedObject {}; for (const m of ms) c[m] = no(`${n}.${m}`); return c; };
         return { EncryptionKey: cls('EncryptionKey', 'generate', 'import'), SealedData: cls('SealedData', 'fromParts', 'fromCombined'), encryptAsync: no('encryptAsync'), decryptAsync: no('decryptAsync') }; } },
     { name: 'ExpoApplication', package: 'expo-application', kind: 'expo', status: 'simulated',
-      constants: () => { const c = (rt.manifest && rt.manifest.extra && rt.manifest.extra.expoClient) || {}; return { applicationName: c.name || 'SimCore App', applicationId: (c.ios && c.ios.bundleIdentifier) || 'host.exp.Exponent', nativeApplicationVersion: c.version || '1.0.0', nativeBuildVersion: (c.ios && c.ios.buildNumber) || '1' }; },
+      constants: () => { const c = (rt.manifest && rt.manifest.extra && rt.manifest.extra.expoClient) || {}; return { applicationName: c.name || 'OneSim App', applicationId: (c.ios && c.ios.bundleIdentifier) || 'host.exp.Exponent', nativeApplicationVersion: c.version || '1.0.0', nativeBuildVersion: (c.ios && c.ios.buildNumber) || '1' }; },
       methods: { getIosIdForVendorAsync: async () => '00000000-0000-4000-8000-000000000001', getInstallationTimeAsync: async () => fs.statSync(cfg.dataDir).birthtimeMs, getLastUpdateTimeAsync: async () => fs.statSync(cfg.dataDir).birthtimeMs } },
     { name: 'ExpoNetwork', package: 'expo-network', kind: 'expo', status: 'simulated', events: ['onNetworkStateChanged'],
       methods: { getNetworkStateAsync: async () => ({ type: 'WIFI', isConnected: true, isInternetReachable: true }), getIpAddressAsync: async () => '192.168.1.2', isAirplaneModeEnabledAsync: async () => false } },
@@ -311,7 +311,7 @@ module.exports = function createRegistry(rt, h) {
       get(name) {
         const e = byName.get(name);
         if (e && e.kind === 'turbo') return instance(e);
-        if (!ABSENT.has(name) && !missed.has(`t:${name}`)) log(`SimCore: TurboModule "${name}" is not available (null, as on a binary without it)`);
+        if (!ABSENT.has(name) && !missed.has(`t:${name}`)) log(`OneSim: TurboModule "${name}" is not available (null, as on a binary without it)`);
         missed.add(`t:${name}`);
         return null;
       },
@@ -321,7 +321,7 @@ module.exports = function createRegistry(rt, h) {
       get: (t, name) => {
         if (typeof name === 'symbol') return undefined;
         const e = byName.get(name);
-        if (!e || e.kind !== 'expo') { if (!missed.has(`e:${name}`)) log(`SimCore: expo module "${name}" is not available`); missed.add(`e:${name}`); return undefined; }
+        if (!e || e.kind !== 'expo') { if (!missed.has(`e:${name}`)) log(`OneSim: expo module "${name}" is not available`); missed.add(`e:${name}`); return undefined; }
         return instance(e);
       },
     }),
@@ -332,7 +332,7 @@ module.exports = function createRegistry(rt, h) {
     })),
     simulate(module, state, replay) {
       const f = simulators[String(module).toLowerCase()];
-      if (f) f(state || {}, replay); else log(`SimCore: simulate: no simulated module "${module}" (have: ${Object.keys(simulators).join(', ')})`);
+      if (f) f(state || {}, replay); else log(`OneSim: simulate: no simulated module "${module}" (have: ${Object.keys(simulators).join(', ')})`);
     },
   };
 };

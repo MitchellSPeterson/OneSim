@@ -12,7 +12,7 @@ The tables track Expo and React Native support on iOS and Android, with one row 
 | ✅ | Implemented: behaves as on a device | 1 |
 | 🟡 | Simulated: works, backed by state the host controls (`modules.simulate`, session viewport, appearance) | 1 |
 | 🟠 | Partial: works, with known gaps listed in Notes | ½ |
-| ⛔ | Unsupported: calls print `SimCore: X is not supported` and throw/reject (never fake success) | 0 |
+| ⛔ | Unsupported: calls print `OneSim: X is not supported` and throw/reject (never fake success) | 0 |
 | ⬜ | Planned: not started | 0 |
 | — | Not applicable on this platform (left out of the percentage) | |
 
@@ -41,6 +41,6 @@ the guest registry (`frameworks/react-native/guest/modules.js`) has no row in th
 - Implementing a native module: add or update its entry in `frameworks/react-native/guest/modules.js`
   (status `implemented` / `simulated` / `unsupported`), put its name in backticks in the row's **Native**
   column, set the status, and run `node scripts/api-coverage.mjs`.
-- Implementing a native view: render it in the host (`crates/simcore-render/src/layout/rn.rs`), add an iOS
+- Implementing a native view: render it in the host (`crates/onesim-render/src/layout/rn.rs`), add an iOS
   reference state and `shot` line for the pixel-diff gate (see CONTRIBUTING.md), and list its component name.
 - Missing an API that is not listed: add a ⬜ row to the matching area file, open an issue, and link it.

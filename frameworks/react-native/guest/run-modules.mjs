@@ -61,9 +61,9 @@ run(async () => {
 
   const n1 = h.events.length, e1 = h.errors.length;
   h.tap('Camera');
-  await h.until(() => /Output: error: SimCore: ExpoCamera is not supported\./.test(h.text), 'Camera error in the UI');
+  await h.until(() => /Output: error: OneSim: ExpoCamera is not supported\./.test(h.text), 'Camera error in the UI');
   ok('camera: UI shows ' + out());
-  const diag = 'SimCore: ExpoCamera is not supported.\n\nModule: expo-camera\nMethod: requestCameraPermissionsAsync';
+  const diag = 'OneSim: ExpoCamera is not supported.\n\nModule: expo-camera\nMethod: requestCameraPermissionsAsync';
   if (!h.stderr.includes(diag)) throw new Error('stderr lacks the diagnostic:\n' + h.stderr.slice(-800));
   const un = h.events.slice(n1).filter((e) => e.name === 'module.unsupported');
   if (un.length !== 1 || JSON.stringify(un[0].detail) !== JSON.stringify({ module: 'ExpoCamera', method: 'requestCameraPermissionsAsync', package: 'expo-camera' })) throw new Error('module.unsupported: ' + JSON.stringify(un));
@@ -92,7 +92,7 @@ run(async () => {
   const n2 = h.events.length;
   await press('Vibrate', /vibrated/);
   if (!h.events.slice(n2).some((e) => e.name === 'module.called' && e.detail.module === 'Vibration' && e.detail.method === 'vibrate')) throw new Error('no module.called for Vibration.vibrate');
-  await press('Landscape', /error: SimCore: ExpoScreenOrientation is not supported\./, 'landscape lock rejects, portrait lock resolved');
+  await press('Landscape', /error: OneSim: ExpoScreenOrientation is not supported\./, 'landscape lock rejects, portrait lock resolved');
   const e2 = h.errors.length;
   await press('Store item', /stored/);
   await press('Read item', /item \{"a":\{"b":1,"c":2\}\} keys k/, 'async-storage mergeItem deep-merges');

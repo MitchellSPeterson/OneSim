@@ -3,7 +3,7 @@
 Real Jetpack Compose (material3 1.4.0, compose-bom 2026.09.00) running `examples/compose-counter` and
 `examples/compose-showcase` unmodified, built as one APK by `frameworks/compose/reference-app` and captured on the
 Android 17 (API 37) Pixel 10a emulator through agent-device (T3 device tools). `scripts/compare-android.sh` renders the
-same states on SimCore and requires every state to differ in < 2% of pixels (`scripts/compare_ios.py`).
+same states on OneSim and requires every state to differ in < 2% of pixels (`scripts/compare_ios.py`).
 
 - Screen 1080 x 2424 px, density 2.625 (420 dpi) -> 411.43 x 923.43 dp. Status bar inset 142 px, navigation bar 63 px.
 - Status bar normalized with SystemUI demo mode: clock 09:41, wifi level 4 (`fully`, no "no internet" mark), battery

@@ -3,7 +3,7 @@ import WASILibc
 #else
 import Foundation
 #endif
-internal import SimCoreBridge
+internal import OneSimBridge
 
 public protocol View {
     associatedtype Body: View
@@ -230,18 +230,18 @@ func _pool(_ f: () -> Void) {
 
 #if os(WASI)
 /// Entry point on WASI (reactor): registers the app and returns. The first render happens when
-/// simcore-web pushes the environment (simcore_web_init); the browser is the event loop.
-public func _simcoreRun<V: View>(_ root: V) {
+/// onesim-web pushes the environment (simcore_web_init); the browser is the event loop.
+public func _onesimRun<V: View>(_ root: V) {
     let rt = _Runtime.shared
     rt.render = { _eval(root, "0") }
-    _simcoreRegisterCallbacks()
+    _onesimRegisterCallbacks()
 }
 #else
 /// Entry point used by `App.main()` and generated mains. Never returns.
-public func _simcoreRun<V: View>(_ root: V) -> Never {
+public func _onesimRun<V: View>(_ root: V) -> Never {
     let rt = _Runtime.shared
     if simcore_runtime_init() != 0 {
-        FileHandle.standardError.write(Data("simcore init failed: \(simcore_last_error().map { String(cString: $0) } ?? "?")\n".utf8))
+        FileHandle.standardError.write(Data("onesim init failed: \(simcore_last_error().map { String(cString: $0) } ?? "?")\n".utf8))
         exit(1)
     }
     let env = ProcessInfo.processInfo.environment
@@ -251,13 +251,13 @@ public func _simcoreRun<V: View>(_ root: V) -> Never {
     }
     if let d = env["SIMCORE_DYNAMIC_TYPE"], let s = DynamicTypeSize.allCases.first(where: { "\($0)" == d }) { rt.dynamicType = s }
     rt.render = { _eval(root, "0") }
-    _simcoreRegisterCallbacks()
+    _onesimRegisterCallbacks()
     rt.submitTree()
     exit(simcore_runtime_run())
 }
 #endif
 
-func _simcoreRegisterCallbacks() {
+func _onesimRegisterCallbacks() {
     simcore_runtime_set_callbacks(nil, { _, id in
         let rt = _Runtime.shared
         _pool { rt.actions[id]?() }

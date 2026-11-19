@@ -1,13 +1,13 @@
-[SimCore](../README.md) / [Documentation](README.md)
+[OneSim](../README.md) / [Documentation](README.md)
 
 # JSON-RPC API v2
 
-The API lets test runners, DemoKit, and other clients control a SimCore session over WebSocket. The [TypeScript SDK](../sdk/typescript/README.md) wraps this API. Both transports share the same host. For JSON lines over stdin and stdout, see the [v1 stdio API](protocol.md#a-external-api-client--host).
+The API lets test runners, DemoKit, and other clients control a OneSim session over WebSocket. The [TypeScript SDK](../sdk/typescript/README.md) wraps this API. Both transports share the same host. For JSON lines over stdin and stdout, see the [v1 stdio API](protocol.md#a-external-api-client--host).
 
 Start the WebSocket server from a checkout.
 
 ```sh
-cargo run -p simcore-cli -- serve --listen 127.0.0.1:3030
+cargo run -p onesim-cli -- serve --listen 127.0.0.1:3030
 ```
 
 Connect to `ws://127.0.0.1:3030/`. Each text frame carries one JSON-RPC 2.0 object. Clients share the host’s sessions, and the server sends events as JSON-RPC notifications.
@@ -21,7 +21,7 @@ First call on a connection MUST be `initialize`:
 
 ```json
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2.0","client":{"name":"demokit","version":"1.0"}}}
-→ {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2.0","server":{"name":"simcore","version":"0.2.0"},
+→ {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2.0","server":{"name":"onesim","version":"0.2.0"},
    "capabilities":{"frameworks":["swiftui","react-native"],"platforms":["ios"],"methods":[...],"events":[...],
                    "devices":[...names],"screenshotFormats":["png"],"fonts":"apple"|"fallback","symbols":"..."}}}
 ```
@@ -32,8 +32,8 @@ Any other method before `initialize` → error `invalid_state`.
 ## Errors
 
 JSON-RPC errors use `code` -32602 (invalid params), -32601 (method not found), -32700 (parse),
--32600 (invalid request), or -32000 (SimCore error). `error.data.code` always carries the
-SimCore code: `bad_request`, `not_found`, `invalid_state`, `unsupported`, `build_failed`,
+-32600 (invalid request), or -32000 (OneSim error). `error.data.code` always carries the
+OneSim code: `bad_request`, `not_found`, `invalid_state`, `unsupported`, `build_failed`,
 `runtime_error`, `timeout`, `protocol_version`, `method_not_found`. `error.data` may add
 `sessionId` and `details`.
 
@@ -120,7 +120,7 @@ All input params also carry `"sessionId"`.
 Unsupported calls print a diagnostic on the guest's stderr, e.g.
 
 ```
-SimCore: ExpoCamera is not supported.
+OneSim: ExpoCamera is not supported.
 
 Module: expo-camera
 Method: requestCameraPermissionsAsync

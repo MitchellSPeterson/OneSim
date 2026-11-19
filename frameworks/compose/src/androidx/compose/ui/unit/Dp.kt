@@ -2,7 +2,7 @@ package androidx.compose.ui.unit
 
 import androidx.compose.runtime.Immutable
 
-/** Density-independent pixels; SimCore's scene points. */
+/** Density-independent pixels; OneSim's scene points. */
 @Immutable
 @JvmInline
 value class Dp(val value: Float) : Comparable<Dp> {

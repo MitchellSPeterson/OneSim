@@ -1,16 +1,16 @@
-// What DemoKit would do through SimCore's public API only. Run: node demo.ts
+// What DemoKit would do through OneSim's public API only. Run: node demo.ts
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { SimCoreClient, type UiNode } from "../../sdk/typescript/src/index.ts";
+import { OneSimClient, type UiNode } from "../../sdk/typescript/src/index.ts";
 
 const out = process.env.OUT_DIR ?? process.cwd();
-const simcore = new SimCoreClient({ url: process.env.SIMCORE_URL ?? "http://localhost:3030" });
+const onesim = new OneSimClient({ url: process.env.SIMCORE_URL ?? "http://localhost:3030" });
 const texts = (n: UiNode): string[] => [n.text ?? "", ...n.children.flatMap(texts)];
 const counter = async (s: { tree(): Promise<{ root: UiNode }> }) => texts((await s.tree()).root).join("").match(/Count:\s*(\d+)/)?.[1];
 const save = async (s: { screenshot(): Promise<{ png: Uint8Array }> }, file: string) =>
   writeFileSync(join(out, file), (await s.screenshot()).png);
 
-const session = await simcore.createSession({
+const session = await onesim.createSession({
   framework: "expo",
   device: "iPhone 17 Pro",
   metroUrl: process.env.METRO_URL ?? "http://localhost:8081",
@@ -36,5 +36,5 @@ try {
   console.log(`wrote before.png after.png dark.png to ${out}`);
 } finally {
   await session.destroy();
-  await simcore.close();
+  await onesim.close();
 }

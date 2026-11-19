@@ -1,15 +1,15 @@
-[SimCore](../README.md) / Documentation
+[OneSim](../README.md) / Documentation
 
-# SimCore documentation
+# OneSim documentation
 
-SimCore runs mobile UI code in a headless runtime. Use the CLI to capture screenshots and inspect views, or use the session API to drive an app from your own tools.
+OneSim runs SwiftUI, Expo / React Native, and Jetpack Compose UI code. Preview SwiftUI in a browser, capture screenshots and inspect views from the headless CLI, or drive interactions from your own tools through the session API.
 
 | I want to… | Start here |
 | --- | --- |
 | Run an example, send input, and save a PNG | [Getting started](getting-started.md) |
 | Preview SwiftUI in a browser tab | [Browser guide](web.md) |
-| Check whether SimCore supports an API | [Compatibility and supported versions](compatibility/README.md) |
-| Compare SimCore’s output with iOS or Android | [iOS comparison results](ios-comparison.md) · [Android reference fixtures](../tests/fixtures/compose-android/README.md) |
+| Check whether OneSim supports an API | [Compatibility and supported versions](compatibility/README.md) |
+| Compare OneSim’s output with iOS or Android | [iOS comparison results](ios-comparison.md) · [Android reference fixtures](../tests/fixtures/compose-android/README.md) |
 | Drive sessions from a test runner or another tool | [JSON-RPC API](api.md) · [TypeScript SDK](../sdk/typescript/README.md) · [DemoKit integration example](../examples/demokit-integration/README.md) |
 
 ## Frameworks

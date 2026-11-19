@@ -1,9 +1,9 @@
-// Needs a running `simcore serve --listen` and Metro. Env: SIMCORE_URL, METRO_URL.
+// Needs a running `onesim serve --listen` and Metro. Env: SIMCORE_URL, METRO_URL.
 // Kills the client socket mid-stream, keeps tapping, asserts the seq stream has no gaps or duplicates.
 import assert from "node:assert/strict";
-import { SimCoreClient, type SimEvent } from "../src/index.ts";
+import { OneSimClient, type SimEvent } from "../src/index.ts";
 
-const client = new SimCoreClient({ url: process.env.SIMCORE_URL ?? "http://localhost:3030" });
+const client = new OneSimClient({ url: process.env.SIMCORE_URL ?? "http://localhost:3030" });
 const session = await client.createSession({
   framework: "expo",
   device: "iPhone 17 Pro",

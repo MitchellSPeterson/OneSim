@@ -26,7 +26,7 @@ lists only what differs. `scripts/compare-ios.sh` renders every state with `--io
   opened) or with Expo Go in front: opening the `exp://` URL from another app adds a status-bar back-link. Turn the Tools
   button off once (gear -> Tools button).
 
-## What iOS 27 draws differently (implemented in `crates/simcore-render/src/look.rs` and per-release branches)
+## What iOS 27 draws differently (implemented in `crates/onesim-render/src/look.rs` and per-release branches)
 - Inset-grouped lists: row content, headers and separators 20 pt inside the card on every width (26.5: the 16/20 pt margin).
 - Status bar (18 Pro): clock 18 pt centred at x 81; solid green battery with a round nub, chunkier wifi arcs, smaller
   signal dots; island 95 pt wide (x 153.3..248.3). Other devices' status bars moved too (see `devices/`).

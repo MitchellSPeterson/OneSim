@@ -129,7 +129,7 @@ for (const r of ios.runtimes) {
   if (!guestSrc.includes(`'${r.runtime}': '${r.build}'`)) drift(guest, `expected \`'${r.runtime}': '${r.build}'\` in IOS_BUILDS`);
 }
 if (!guestSrc.includes(`: '${ios.runtimes[0].runtime}';`)) drift(guest, `default OS_VERSION should be the newest runtime, ${ios.runtimes[0].runtime}`);
-for (const [file, re] of [['crates/simcore-protocol/src/wire.rs', (r) => `Self::Ios${r.runtime.split('.')[0]} => "${r.build}"`]]) {
+for (const [file, re] of [['crates/onesim-protocol/src/wire.rs', (r) => `Self::Ios${r.runtime.split('.')[0]} => "${r.build}"`]]) {
   const src = readFileSync(root + file, 'utf8');
   for (const r of ios.runtimes) if (!src.includes(re(r))) drift(file, `expected \`${re(r)}\``);
 }
@@ -155,7 +155,7 @@ for (const r of ios.runtimes) {
 // Cross-check: every registry module has a row, and the row's iOS status agrees with the registry.
 const stub = new Proxy(() => ({}), { get: (t, p) => (p === 'modules' ? { WorkletsModule() {}, ReanimatedModule() {} } : stub) });
 const createRegistry = createRequire(import.meta.url)(root + 'frameworks/react-native/guest/modules.js');
-const dataDir = mkdtempSync(join(tmpdir(), 'simcore-coverage-')); // the file-system / secure-store modules need a sandbox dir
+const dataDir = mkdtempSync(join(tmpdir(), 'onesim-coverage-')); // the file-system / secure-store modules need a sandbox dir
 const registry = createRegistry(stub, new Proxy({}, { get: (t, p) => (p === 'expo' ? { NativeModule: class {}, SharedObject: class {} } : p === 'cfg' ? { dataDir } : stub) })).list();
 rmSync(dataDir, { recursive: true, force: true });
 for (const m of registry) {

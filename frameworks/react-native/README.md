@@ -1,12 +1,12 @@
 # React Native / Expo (v0.2, Milestone 0)
 
-SimCore runs a real, unmodified Expo app's JavaScript from Metro. React and React Native's
-own Fabric renderer (bundled in the app) do reconciliation; SimCore implements the *native*
+OneSim runs a real, unmodified Expo app's JavaScript from Metro. React and React Native's
+own Fabric renderer (bundled in the app) do reconciliation; OneSim implements the *native*
 side that RN's JavaScript expects on iOS with the new architecture (bridgeless).
 
 ```
 Metro ──bundle──▶ guest/host.js (Node worker)
-                    RN JS + ReactFabric ──▶ nativeFabricUIManager (shim) ──▶ tree JSON ──▶ simcore-host
+                    RN JS + ReactFabric ──▶ nativeFabricUIManager (shim) ──▶ tree JSON ──▶ onesim-host
                     TurboModules / expo.modules (shims)                       ◀── touch / layout / environment
 ```
 
@@ -14,7 +14,7 @@ Run it:
 
 ```
 cd examples/expo-counter && npm install && CI=1 npx expo start --port 8081 &
-simcore expo --url http://localhost:8081 --screenshot out.png
+onesim expo --url http://localhost:8081 --screenshot out.png
 node frameworks/react-native/guest/run-standalone.mjs   # guest-only check: tap increments the counter
 node frameworks/react-native/guest/run-components.mjs   # core components (TextInput, scroll, Image, fetch, Switch, Modal) against examples/expo-components
 ```
@@ -29,11 +29,11 @@ node frameworks/react-native/guest/run-components.mjs   # core components (TextI
 - **Fabric host interface, not the legacy bridge.** `nativeFabricUIManager` is a small,
   stable surface (create/clone/append/completeRoot/registerEventHandler/measure). React owns
   identity and lifecycle; the guest forwards host nodes keyed by `reactTag`.
-- **Layout in Rust (`simcore-render/src/layout/rn.rs`, taffy)**, with Yoga defaults set per
+- **Layout in Rust (`onesim-render/src/layout/rn.rs`, taffy)**, with Yoga defaults set per
   node, so headless, native and WASM render paths share it.
 - **The bundle runs in a plain worker global**, not `node:vm`: RN's lazy global polyfills
   break inside a vm context. Reload = new worker.
-- **Unsupported native modules fail loudly**: `SimCore: <Module> is not supported (method: m)`
+- **Unsupported native modules fail loudly**: `OneSim: <Module> is not supported (method: m)`
   on stderr plus one `error` message per module. Nothing reports fake success.
 
 Wire contract: `docs/protocol.md` §H.

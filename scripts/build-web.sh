@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage: build-web.sh <app_path> [root_view]
-# Builds a SwiftUI app + SimCore's SwiftUI module + the Rust renderer into ONE Wasm module and
-# assembles a static site in target/web/ (index.html, main.js, simcore.js, app.wasm). See docs/web.md.
+# Builds a SwiftUI app + OneSim's SwiftUI module + the Rust renderer into ONE Wasm module and
+# assembles a static site in target/web/ (index.html, main.js, onesim.js, app.wasm). See docs/web.md.
 set -euo pipefail
 [ $# -ge 1 ] || { echo "usage: $0 <app_path> [root_view]" >&2; exit 2; }
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -51,18 +51,18 @@ SW=(-swift-version 5 -target wasm32-unknown-wasip1 -sdk "$SDK/WASI.sdk"
 # 3. Rust renderer + in-process runtime (staticlib); bundled Inter + Phosphor only. Speed-optimized
 #    with Wasm SIMD: a 3x frame drops from ~13 ms (opt-level s, scalar) to ~5 ms for +2.5% size.
 #    simd128 needs Chrome 91 / Firefox 89 / Safari 16.4.
-echo "rust: simcore-web ($RUST_TARGET)"
+echo "rust: onesim-web ($RUST_TARGET)"
 CARGO_PROFILE_RELEASE_OPT_LEVEL=3 CARGO_PROFILE_RELEASE_LTO=true CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
   CARGO_PROFILE_RELEASE_PANIC=abort CARGO_TARGET_WASM32_WASIP1_RUSTFLAGS="-C target-feature=+simd128" \
-  run cargo build -p simcore-web --release --target "$RUST_TARGET" --manifest-path "$ROOT/Cargo.toml"
-LIB="$TARGET/$RUST_TARGET/release/libsimcore_web.a"
+  run cargo build -p onesim-web --release --target "$RUST_TARGET" --manifest-path "$ROOT/Cargo.toml"
+LIB="$TARGET/$RUST_TARGET/release/libonesim_web.a"
 
 # 4. SwiftUI module for Wasm (no Foundation).
-if [ ! -f "$CACHE/SwiftUI.o" ] || [ -n "$(find "$FW" "$ROOT/crates/simcore-runtime/include" -type f -newer "$CACHE/SwiftUI.o" | head -1)" ]; then
+if [ ! -f "$CACHE/SwiftUI.o" ] || [ -n "$(find "$FW" "$ROOT/crates/onesim-runtime/include" -type f -newer "$CACHE/SwiftUI.o" | head -1)" ]; then
   echo "swift: SwiftUI module"
   run "$SWIFTC" "${SW[@]}" -parse-as-library -module-name SwiftUI -Osize -wmo \
     -emit-module -emit-module-path "$CACHE/SwiftUI.swiftmodule" -emit-object -o "$CACHE/SwiftUI.o" \
-    -I "$FW/SimCoreBridge" "$FW"/SwiftUI/*.swift
+    -I "$FW/OneSimBridge" "$FW"/SwiftUI/*.swift
 fi
 
 # 5. App sources (same @main / root-view rules as build-swift-app.sh).
@@ -72,7 +72,7 @@ EXTRA=(); PAL=()
 if ! grep -qs '^[[:space:]]*@main' "${SRCS[@]}" && ! printf '%s\n' "${SRCS[@]}" | grep -q '/main\.swift$'; then
   [ -n "$ROOT_VIEW" ] || die "no @main in sources and no root_view given"
   GEN="$CACHE/gen-$$"; mkdir -p "$GEN"
-  printf 'import SwiftUI\n_simcoreRun(%s())\n' "$ROOT_VIEW" > "$GEN/main.swift"
+  printf 'import SwiftUI\n_onesimRun(%s())\n' "$ROOT_VIEW" > "$GEN/main.swift"
   EXTRA=("$GEN/main.swift")
 elif grep -qs '^[[:space:]]*@main' "${SRCS[@]}"; then PAL=(-parse-as-library); fi
 
@@ -83,7 +83,7 @@ EXPORTS=(simcore_web_init simcore_web_set_dark simcore_web_set_dynamic_type simc
          simcore_web_inspect simcore_web_find simcore_web_fb_ptr simcore_web_fb_len simcore_web_fb_width
          simcore_web_fb_height simcore_web_tree_ptr simcore_web_tree_len)
 XL=(); for e in "${EXPORTS[@]}"; do XL+=(-Xlinker "--export=$e"); done
-run "$SWIFTC" "${SW[@]}" -Osize ${PAL[@]+"${PAL[@]}"} -module-name SimCoreApp -I "$CACHE" -I "$FW/SimCoreBridge" \
+run "$SWIFTC" "${SW[@]}" -Osize ${PAL[@]+"${PAL[@]}"} -module-name OneSimApp -I "$CACHE" -I "$FW/OneSimBridge" \
   "${SRCS[@]}" ${EXTRA[@]+"${EXTRA[@]}"} "$CACHE/SwiftUI.o" "$LIB" \
   -Xclang-linker -mexec-model=reactor \
   -Xclang-linker "-resource-dir=$SDK/swift.xctoolchain/usr/lib/swift_static/clang" \
@@ -102,5 +102,5 @@ if command -v wasm-opt >/dev/null; then
 else
   echo "note: wasm-opt not found (brew install binaryen) - skipping size optimization"
 fi
-cp "$ROOT/web/index.html" "$ROOT/web/main.js" "$ROOT/web/simcore.js" "$OUT/"
+cp "$ROOT/web/index.html" "$ROOT/web/main.js" "$ROOT/web/onesim.js" "$OUT/"
 echo "built $OUT ($(wc -c < "$OUT/app.wasm" | tr -d ' ') bytes app.wasm)"

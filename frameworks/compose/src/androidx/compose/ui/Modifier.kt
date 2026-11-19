@@ -4,7 +4,7 @@ import androidx.compose.runtime.Stable
 
 /**
  * An ordered chain of modifier elements; the first element is the outermost (protocol section K).
- * SimCore elements are wire entries the host lays out, not node delegates.
+ * OneSim elements are wire entries the host lays out, not node delegates.
  */
 @Stable
 interface Modifier {

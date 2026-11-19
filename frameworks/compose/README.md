@@ -4,8 +4,8 @@ Runs unmodified Jetpack Compose apps (an Activity calling `setContent { }`, or a
 headlessly as Android, with no emulator, Gradle or Android SDK.
 
 ```sh
-cargo run -p simcore-cli -- run examples/compose-counter --click Increment --screenshot counter.png
-cargo run -p simcore-cli -- run path/to/ui --root-view Greeting    # a @Composable fun with no parameters
+cargo run -p onesim-cli -- run examples/compose-counter --click Increment --screenshot counter.png
+cargo run -p onesim-cli -- run path/to/ui --root-view Greeting    # a @Composable fun with no parameters
 ```
 
 ## How it works
@@ -18,11 +18,11 @@ cargo run -p simcore-cli -- run path/to/ui --root-view Greeting    # a @Composab
   `activity-compose`, `android.os.Bundle`, `android.util.Log`) is reimplemented in `src/`. Material components are
   built out of a few layout primitives (`Box`, `Column`, `Row`, `Text`) and a Modifier chain, as in AndroidX.
 - **Build** (`scripts/build-app.sh`): compiles `src/` once (cached by content hash in `target/compose/`), then the
-  app's `.kt` files, and writes a launcher that runs `simcore.compose.Guest <Activity>` on the JVM.
-- **Guest** (`src/simcore/compose/Guest.kt`): instantiates the Activity, runs `onCreate`, composes with a
+  app's `.kt` files, and writes a launcher that runs `onesim.compose.Guest <Activity>` on the JVM.
+- **Guest** (`src/onesim/compose/Guest.kt`): instantiates the Activity, runs `onCreate`, composes with a
   `LayoutApplier`, and speaks protocol sections B and K over stdin/stdout: a `tree` after every change, `action`
   for taps, `environment` for dark mode (`isSystemInDarkTheme()`).
-- **Host** (`crates/simcore-render/src/layout/compose.rs`): Compose's constraint-based measure/place
+- **Host** (`crates/onesim-render/src/layout/compose.rs`): Compose's constraint-based measure/place
   (padding, size, fill, wrap, weights, arrangements, alignment, `minimumInteractiveComponentSize`), drawing,
   hit testing, the Android status bar and gesture handle. Text is Roboto (bundled, OFL).
 

@@ -1,4 +1,4 @@
-"""Side-by-side iOS (or Android, for *-android fixture dirs) vs SimCore comparison. Usage: compare_ios.py IOS_DIR SIMCORE_DIR OUT_DIR
+"""Side-by-side iOS (or Android, for *-android fixture dirs) vs OneSim comparison. Usage: compare_ios.py IOS_DIR ONESIM_DIR OUT_DIR
 
 Pass rule: every state must have < MAX_DIFF % of its pixels off by more than ~10%
 (luminance of the per-pixel RGB difference > 24 of 255). MAX_DIFF is 2% with Apple's
@@ -44,7 +44,7 @@ for ios_png in sorted(ios_dir.glob("*.png")):
     heat = Image.merge("RGB", (diff.point(lambda v: min(255, v * 3)), diff.point(lambda v: 0), diff.point(lambda v: 0)))
     w, h = a.size
     sheet = Image.new("RGB", (w * 3, h + 60), "white")
-    for i, (img, label) in enumerate([(a, REF_LABEL), (b, "SimCore"), (heat, f"diff {differing:.1f}%")]):
+    for i, (img, label) in enumerate([(a, REF_LABEL), (b, "OneSim"), (heat, f"diff {differing:.1f}%")]):
         sheet.paste(img, (i * w, 60))
         ImageDraw.Draw(sheet).text((i * w + 20, 15), label, fill="black", font_size=36)
     sheet.resize((w * 3 // 3, (h + 60) // 3)).save(out / f"cmp-{ios_png.stem}.png")

@@ -1,6 +1,6 @@
-[SimCore](README.md) / [Documentation](docs/README.md)
+[OneSim](README.md) / [Documentation](docs/README.md)
 
-# Contributing to SimCore
+# Contributing to OneSim
 
 For a missing framework API, check the [coverage table](docs/compatibility/README.md), then open an [API request](https://github.com/MitchellSPeterson/SimCore/issues/new?template=api-request.yml) or pick up the issue linked from that row. Keep the issue link in the coverage row.
 
@@ -22,7 +22,7 @@ For Expo changes, use the guest checks in the [React Native guide](frameworks/re
 
 | Change | Update |
 | --- | --- |
-| Protocol | Update the [protocol reference](docs/protocol.md) and [`simcore-protocol`](crates/simcore-protocol) together. Bump `PROTOCOL_VERSION` for a breaking change. |
+| Protocol | Update the [protocol reference](docs/protocol.md) and [`onesim-protocol`](crates/onesim-protocol) together. Bump `PROTOCOL_VERSION` for a breaking change. |
 | SwiftUI API | Update the [coverage row](docs/compatibility/swiftui/README.md) and record signatures and known limits in the [SwiftUI guest reference](docs/compatibility/swiftui/guest.md). |
 | Expo / React Native API | Update the iOS and Android columns in the [coverage row](docs/compatibility/expo/README.md). Add native modules to [`guest/modules.js`](frameworks/react-native/guest/modules.js) with the matching `implemented`, `simulated`, or `unsupported` status. Unsupported modules must report an error. |
 | Jetpack Compose API | Update the [coverage row](docs/compatibility/compose/README.md). |
