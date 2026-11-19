@@ -1,0 +1,13 @@
+[package]
+name = "simcore-render-gpu"
+description = "wgpu + Vello renderer backend for SimCore scenes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+simcore-render = { path = "../simcore-render" }
+vello = "=0.12.0"
+pollster = "0.4"
+log = "0.4"

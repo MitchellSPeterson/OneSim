@@ -8,6 +8,7 @@ pub mod layout {
     pub mod rn;
     pub mod swiftui;
 }
+pub mod backend;
 mod chrome;
 mod device;
 pub mod glass;
@@ -19,6 +20,7 @@ mod symbols;
 mod symbols_map;
 mod text;
 
+pub use backend::{BackendKind, BackendPref, CpuRenderer, Diagnostics, Frame, FrameTimings, RenderError, Renderer};
 pub use raster::{render, render_png};
 pub use symbols::{capability as symbols_capability, SymbolMask, SymbolMetrics, SymbolSpec};
 pub use chrome::{autocap, ChromeParams};
