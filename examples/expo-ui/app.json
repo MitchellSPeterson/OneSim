@@ -1,0 +1,9 @@
+{
+  "expo": {
+    "name": "OneSim Expo UI",
+    "slug": "onesim-expo-ui",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light"
+  }
+}

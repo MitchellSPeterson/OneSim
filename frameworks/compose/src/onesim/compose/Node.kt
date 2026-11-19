@@ -13,15 +13,23 @@ class LayoutNode(val component: String) {
     /** Props as JSON fragments (`"key":value`, comma-joined), without the modifier. */
     var props: String = ""
     var modifier: Modifier = Modifier
+    var onInput: ((String) -> Unit)? = null
     val children = mutableListOf<LayoutNode>()
 
     /** Wire JSON of this subtree; clickables are registered in [actions]. */
-    fun toJson(id: String, actions: MutableMap<Long, () -> Unit>, out: StringBuilder) {
+    fun toJson(id: String, actions: MutableMap<Long, () -> Unit>, inputs: MutableMap<Long, (String) -> Unit>, out: StringBuilder) {
         out.append("""{"kind":"compose","id":""").append(jsonString(id))
         out.append(""","component":"""").append(component).append("""","props":{""")
         var first = true
         if (props.isNotEmpty()) {
             out.append(props)
+            first = false
+        }
+        onInput?.let { handler ->
+            val field = inputs.size + 1L
+            inputs[field] = handler
+            if (!first) out.append(',')
+            out.append("\"field\":").append(field)
             first = false
         }
         val mods = modifier.foldIn(mutableListOf<String>()) { acc, e ->
@@ -46,7 +54,7 @@ class LayoutNode(val component: String) {
             out.append(""","children":[""")
             children.forEachIndexed { i, c ->
                 if (i > 0) out.append(',')
-                c.toJson("$id/$i", actions, out)
+                c.toJson("$id/$i", actions, inputs, out)
             }
             out.append(']')
         }
@@ -77,11 +85,23 @@ class LayoutApplier(root: LayoutNode) : AbstractApplier<LayoutNode>(root) {
 /** Emit a layout primitive. `props` is a comma-joined list of JSON members. */
 @Composable
 fun Primitive(component: String, modifier: Modifier, props: String, content: @Composable () -> Unit = {}) {
+    InputPrimitive(component, modifier, props, null, content)
+}
+
+@Composable
+fun InputPrimitive(
+    component: String,
+    modifier: Modifier,
+    props: String,
+    onInput: ((String) -> Unit)?,
+    content: @Composable () -> Unit = {},
+) {
     ComposeNode<LayoutNode, LayoutApplier>(
         factory = { LayoutNode(component) },
         update = {
             set(modifier) { this.modifier = it }
             set(props) { this.props = it }
+            set(onInput) { this.onInput = it }
         },
         content = content,
     )

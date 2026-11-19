@@ -325,6 +325,17 @@ System chrome uses the same effect:
 
 ## H. v1 additions: React Native / Expo (additive)
 
+An Expo UI host is an RN node with component `ViewManagerAdapter_ExpoUI_HostView`
+and one child, a SwiftUI or Compose subtree. The host measures the subtree
+within Fabric's constraints and uses its size on axes selected by
+`matchContentsHorizontal` and `matchContentsVertical`. The layout message
+includes the measured content frame at `<host tag>#content` for
+`onLayoutContent`. Native control actions use their Fabric tags as action IDs.
+The embedded subtree may itself contain an RN node with component
+`ViewManagerAdapter_ExpoUI_RNHostView`. That node retains its Fabric children,
+including their tags and layout frames. Native text fields and sliders use their
+Fabric tags with `text_input`. Slider positions are sent as decimal strings.
+
 Guest: `node frameworks/react-native/guest/host.js` (see `frameworks/react-native/README.md`).
 It loads the app bundle from Metro and runs React Native's own Fabric renderer; no build step.
 
@@ -552,6 +563,11 @@ JS-driven push/pop needs no message. The guest spaces appear events by 350 ms
 - Host: the content is placed like a root view with a bottom safe-area inset of 83 pt (scrollers and navigation stacks run under the bar, other content is centred above it), then the iOS 26 floating Liquid Glass tab bar shared with Expo Router native tabs (section H, milestone 3): a capsule 20 pt above the bottom, 94 x 54 pt items at an 86 pt pitch, the selected one on a gray capsule with an accent `<symbol>.fill`, `badge` as a red 18 pt capsule at the icon's top right. Items are buttons `<tabview>#tab-<i>` labelled with the title.
 
 ## K. v1 additions: Jetpack Compose on Android (additive, protocol version stays 1)
+
+Compose `TextField` and `Slider` nodes may carry a numeric `props.field`.
+The guest registers that field with the current tree version and receives
+`text_input` with the new string or a decimal slider value. A `scroll`
+modifier takes a boolean axis (`true` is vertical).
 
 Guest: a JVM process running the app's Kotlin code compiled with the Kotlin Compose compiler plugin against the
 **real** `androidx.compose.runtime` (composition, snapshots, recomposition) and OneSim's own reimplementation of

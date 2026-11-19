@@ -74,7 +74,8 @@ CARGO_PROFILE_RELEASE_OPT_LEVEL=s CARGO_PROFILE_RELEASE_LTO=true CARGO_PROFILE_R
 run wasm-bindgen --target web --no-typescript --out-dir "$OUT/gpu" --out-name onesim_web_gpu \
   "$TARGET/$GPU_TARGET/release/onesim_web_gpu.wasm"
 if command -v wasm-opt >/dev/null; then
-  wasm-opt -Oz --all-features "$OUT/gpu/onesim_web_gpu_bg.wasm" -o "$OUT/gpu/opt.wasm" >>"$LOG" 2>&1 \
+  # Binaryen 132+ can emit compact imports under --all-features. Chrome still gates them behind a flag.
+  wasm-opt -Oz --all-features --disable-compact-imports "$OUT/gpu/onesim_web_gpu_bg.wasm" -o "$OUT/gpu/opt.wasm" >>"$LOG" 2>&1 \
     && mv "$OUT/gpu/opt.wasm" "$OUT/gpu/onesim_web_gpu_bg.wasm" || rm -f "$OUT/gpu/opt.wasm"
 fi
 

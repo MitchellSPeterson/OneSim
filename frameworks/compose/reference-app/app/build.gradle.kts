@@ -12,7 +12,11 @@ android {
         targetSdk = 36
     }
     // Compile the OneSim examples unmodified.
-    sourceSets["main"].kotlin.directories += listOf("../../../../examples/compose-counter", "../../../../examples/compose-showcase")
+    sourceSets["main"].kotlin.directories += listOf(
+        "../../../../examples/compose-counter",
+        "../../../../examples/compose-showcase",
+        "../../../../examples/compose-input",
+    )
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
 

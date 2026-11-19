@@ -35,5 +35,8 @@ Pixel-checked against the real thing: `scripts/compare-android.sh` renders the e
 a real APK of the same sources (`reference-app/`, material3 1.4.0) on the Android 17 emulator
 (`tests/fixtures/compose-android`); every state must differ in < 2% of pixels, like iOS.
 
-Not yet: `Icon`/`Image`, text fields, lazy lists and scrolling, navigation, dialogs, animations, ripples,
+`BasicTextField` and Material 3 `TextField` accept string edits from the host keyboard. Material 3
+`Slider` supports a value range and discrete steps, with input from clicks and drags.
+
+Not yet: `Icon`/`Image`, lazy lists and scrolling, navigation, dialogs, animations, ripples,
 `AnnotatedString`, custom fonts, resources (`R.string`, `painterResource`), `ViewModel`.

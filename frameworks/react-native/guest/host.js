@@ -13,6 +13,7 @@ const readline = require('node:readline');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const expoUI = require('./expo-ui.js');
 const { Worker, isMainThread, parentPort, workerData } = require('node:worker_threads');
 
 Error.stackTraceLimit = 60;
@@ -34,6 +35,7 @@ const EXPO_VIEWS = {
   ExpoGlassEffect_GlassContainer: { events: [], props: ['spacing'] },
   ExpoLinearGradient: { events: [], props: ['colors', 'startPoint', 'endPoint', 'locations', 'borderRadii'] },
   ExpoBlur_ExpoBlurView: { events: [], props: ['tint', 'intensity'] },
+  ...Object.fromEntries(Object.entries(expoUI.views).map(([view, config]) => ['ExpoUI_' + view, config])),
 };
 function expoViewConfig(key) {
   const v = EXPO_VIEWS[key];
@@ -382,6 +384,13 @@ class Runtime {
           props[k] = v;
         }
         if (TEXT_INPUTS.has(n.viewName)) props.__simcoreText = this.input(n).text;
+        else if (expoUI.isField(n.viewName)) {
+          props.__simcoreText = this.expoFieldText(n);
+          if (props.autoFocus && !this.shown.has(n.reactTag)) {
+            this.shown.add(n.reactTag);
+            after.push(() => this.requestFocus(n.reactTag));
+          }
+        }
         else if (n.viewName === 'RCTImageView' || n.viewName === EXPO_IMAGE) this.imageProps(n, props, after);
         else if (n.viewName === 'RNSTabsScreenIOS') this.tabIcons(n, props);
         else if (n.viewName === 'ModalHostView') {
@@ -391,7 +400,9 @@ class Runtime {
         // RN's Fabric name is ModalHostView; the wire contract says RCTModalHostView
         const children = n.children.flatMap((c) => ser(c, n.reactTag));
         if (props.display === 'contents') return children; // no box of its own (RNGH detectors): children join the parent's layout
-        return { kind: 'rn', id: String(n.reactTag), component: n.viewName === 'ModalHostView' ? 'RCTModalHostView' : n.viewName, props, children };
+        const view = { kind: 'rn', id: String(n.reactTag), component: n.viewName === 'ModalHostView' ? 'RCTModalHostView' : n.viewName, props, children };
+        if (n.viewName === expoUI.HOST) view.children = [expoUI.nativeTree(view, cfg.platform === 'android', this.appearance)];
+        return view;
       };
       const root = { kind: 'rn', id: String(ROOT_TAG), component: 'RootView', props: this.rootProps, children: this.rootChildren.flatMap((c) => ser(c, ROOT_TAG)) };
       if (env.SIMCORE_DEBUG) log('emit tree', version + 1);
@@ -407,7 +418,17 @@ class Runtime {
   fireLayouts() {
     for (const [tag, f] of Object.entries(this.frames)) {
       const n = this.nodes.get(+tag);
-      if (!n || !n.props.onLayout || !this.parents.has(+tag)) continue;
+      if (!n || !this.parents.has(+tag)) continue;
+      if (n.viewName === expoUI.HOST && this.frames[tag + '#content']) {
+        const [width, height] = (this.frames[tag + '#content'] ?? f).slice(2);
+        const key = [width, height].join(',');
+        const contentKey = tag + '#content';
+        if (this.lastLaidOut[contentKey] !== key) {
+          this.lastLaidOut[contentKey] = key;
+          this.dispatch(n, 'topLayoutContent', { width, height });
+        }
+      }
+      if (!n.props.onLayout) continue;
       const key = f.join(',');
       if (this.lastLaidOut[tag] === key) continue;
       this.lastLaidOut[tag] = key;
@@ -563,6 +584,8 @@ class Runtime {
       }
       case 'simulate': if (this.registry) this.registry.simulate(m.module, m.state, m.replay); else this.simQueue.push(m); break; // before boot: applied once the registry exists
       case 'action': { // an alert button: drop the alert, then run Alert.alert's callback with the button key
+        const n = this.parents.has(m.id) && this.nodes.get(m.id);
+        if (n && expoUI.viewName(n.viewName) && expoUI.action(n, cfg.platform, (event, payload) => this.dispatch(n, event, payload, 2))) break;
         const i = this.alerts.findIndex((a) => a.keys.has(m.id));
         if (i < 0) return log(`OneSim: action ${m.id} matches no alert`);
         const [a] = this.alerts.splice(i, 1);
@@ -577,6 +600,28 @@ class Runtime {
       case 'keyboard': this.keyboard(m.height); break;
       case 'text_input': { // `version` is ignored: the guest owns the text
         const n = this.nodes.get(m.field);
+        if (n && expoUI.isField(n.viewName)) {
+          const max = n.props.maxLength;
+          const text = Number.isInteger(max) && max >= 0 ? m.text.slice(0, max) : m.text;
+          this.expoFieldState(n)?.setValue({ value: text });
+          this.input(n).text = text;
+          const selection = { start: text.length, end: text.length };
+          this.expoUIState?.get(n.props.selection)?.setValue({ value: selection });
+          if (cfg.platform === 'android') this.dispatch(n, 'topValueChange', { text, selection }, 2);
+          else this.dispatch(n, 'topTextChange', { value: text }, 2);
+          this.dispatch(n, 'topSelectionChange', selection, 2);
+          this.scheduleEmit();
+          break;
+        }
+        if (n && expoUI.isSlider(n.viewName)) {
+          const { min = 0, max = 1, steps, step } = n.props;
+          const increment = step ?? (steps > 0 ? (max - min) / (steps + 1) : 0);
+          const next = Number(m.text);
+          const value = Math.max(min, Math.min(max, increment > 0 ? min + Math.round((next - min) / increment) * increment : next));
+          if (cfg.platform === 'android') this.dispatch(n, 'topValueChange', { value }, 2);
+          else this.dispatch(n, 'topValueChanged', { value, eventCount: ++this.input(n).eventCount }, 2);
+          break;
+        }
         if (!n || !TEXT_INPUTS.has(n.viewName)) return log(`OneSim: text_input for unknown field ${m.field}`);
         const st = this.input(n), text = String(m.text ?? '');
         st.text = text; st.eventCount++;
@@ -587,6 +632,15 @@ class Runtime {
       }
       case 'submit': {
         const n = this.nodes.get(m.tag);
+        if (n && expoUI.isField(n.viewName)) {
+          if (cfg.platform === 'android') {
+            const type = n.props.keyboardOptions?.imeAction;
+            this.dispatch(n, 'topKeyboardAction', { action: type && type !== 'default' ? type : 'done', value: this.expoFieldText(n) }, 2);
+          } else {
+            this.dispatch(n, 'topGlobalEvent', { onSubmit: {} }, 2);
+          }
+          break;
+        }
         if (!n || !TEXT_INPUTS.has(n.viewName)) return;
         const st = this.input(n);
         this.dispatch(n, 'topSubmitEditing', { text: st.text, eventCount: st.eventCount, target: m.tag }, 2);
@@ -632,17 +686,26 @@ class Runtime {
     if (!st) this.inputs.set(n.reactTag, (st = { text: String(n.props.text ?? n.props.value ?? n.props.defaultValue ?? ''), eventCount: 0 }));
     return st;
   }
+  requestFocus(tag) { send({ type: 'focus_request', tag }); }
+  expoFieldState(n) { return this.expoUIState?.get(cfg.platform === 'android' ? n.props.value : n.props.text); }
+  expoFieldText(n) { return String(this.expoFieldState(n)?.getValue() ?? this.inputs.get(n.reactTag)?.text ?? ''); }
   focus(tag) {
     const n = this.nodes.get(tag);
     if (!n || this.focused === tag) return;
     if (this.focused != null) this.blur(this.focused);
     this.focused = tag;
-    this.dispatch(n, 'topFocus', { target: tag }, 2);
+    if (expoUI.isField(n.viewName)) {
+      this.dispatch(n, cfg.platform === 'android' ? 'topFocusChanged' : 'topFocusChange', { value: true }, 2);
+    } else this.dispatch(n, 'topFocus', { target: tag }, 2);
   }
   blur(tag) {
     const n = this.nodes.get(tag);
     if (!n || this.focused !== tag) return;
     this.focused = null;
+    if (expoUI.isField(n.viewName)) {
+      this.dispatch(n, cfg.platform === 'android' ? 'topFocusChanged' : 'topFocusChange', { value: false }, 2);
+      return;
+    }
     this.dispatch(n, 'topEndEditing', { text: this.input(n).text, target: tag }, 2);
     this.dispatch(n, 'topBlur', { target: tag }, 2);
   }

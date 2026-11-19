@@ -201,6 +201,9 @@ pub fn step(mut o: f64, mut v: f64, max: f64, dt: f64, to: Option<f64>) -> (f64,
 }
 
 impl Interaction {
+    pub fn has_drag_target(&self) -> bool {
+        self.slider_drag.is_some() || self.drag.is_some()
+    }
     /// A finger is on a scroller or one is still moving: layout should show overscroll
     /// (`SceneParams::overscroll`).
     pub fn live(&self) -> bool {

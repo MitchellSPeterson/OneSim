@@ -165,6 +165,9 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
   }
   rr_group examples/expo-default tabs rr_states_tabs
   rr_group examples/expo-router-stack stack rr_states_stack
+  if [ -d examples/expo-ui/node_modules ]; then
+    scripts/compare-expo-ui.sh "$ios" || rc=1
+  fi
   # Per-device chrome: tests/fixtures/devices/<slug>/{home,keyboard-shift}.png (see its README).
   for d in $fx/devices/*/; do
     [ -d "$d" ] || continue
