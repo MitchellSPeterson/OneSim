@@ -239,7 +239,8 @@ pub extern "C" fn simcore_web_set_ios(index: i32) -> i32 {
         s.ios = IosVersion::ALL
             .get(index.max(0) as usize)
             .copied()
-            .unwrap_or_default()
+            .unwrap_or_default();
+        draw(s);
     });
     0
 }
@@ -483,5 +484,18 @@ mod tests {
         assert_eq!(simcore_web_scroll(200.0, 400.0, 0.0, 50.0), 0, "nothing scrollable");
         buf("hi");
         assert_eq!(simcore_web_key(0, 2), -1, "no focus");
+    }
+
+    #[test]
+    fn changing_ios_redraws_the_loaded_scene() {
+        assert_eq!(simcore_web_set_ios(0), 0);
+        assert_eq!(unsafe { simcore_submit_tree(TREE.as_ptr(), TREE.len(), 1) }, 0);
+        let rendered_ios = || with(|s| s.scene.as_ref().unwrap().ios);
+        assert_eq!(rendered_ios(), IosVersion::Ios26);
+        let before = with(|s| s.fb.clone());
+
+        assert_eq!(simcore_web_set_ios(1), 0);
+        assert_eq!(rendered_ios(), IosVersion::Ios27);
+        assert!(with(|s| s.fb != before), "framebuffer should redraw with the new iOS look");
     }
 }
