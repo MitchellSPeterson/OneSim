@@ -50,7 +50,7 @@ For Expo, Compose, browser builds, and CLI input options, see the [getting-start
 | Framework | Target | What you can run |
 | --- | --- | --- |
 | [SwiftUI](docs/compatibility/swiftui/README.md) | iOS 27.2 and 26.5, WebAssembly | Navigation, tabs, forms, sheets, Dynamic Type, SF Symbols, and Liquid Glass. |
-| [Expo / React Native](docs/compatibility/expo/README.md) | iOS preview | Metro bundles with Fabric, Fast Refresh, Expo Router, and simulated device modules. Android support is planned. |
+| [Expo / React Native](docs/compatibility/expo/README.md) | iOS and Android preview | Metro bundles with Fabric and simulated device modules. Android core components are in early preview. |
 | [Jetpack Compose](docs/compatibility/compose/README.md) | Android 17 preview | The AndroidX Compose runtime with Material 3 controls and layouts on a Pixel 10a profile. |
 
 SimCore runs each framework’s supported UI code in a guest process and renders it on a shared Rust host. SwiftUI can also run in the browser, where the app and renderer compile to a single WebAssembly module. [Architecture](docs/architecture.md) · [Browser guide](docs/web.md)

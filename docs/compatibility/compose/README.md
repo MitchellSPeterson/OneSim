@@ -45,8 +45,7 @@ Apps compile unchanged against SimCore's reimplementation of `androidx.compose.u
 real `androidx.compose.runtime`, run as a guest process and send layout primitives plus Modifier chains to the host
 (protocol section K), which lays them out with Compose's measure/place rules in whole device pixels. Rendering is
 checked against a real APK of the same examples on the Android 17 emulator (`scripts/compare-android.sh`, every state
-< 2% of pixels). The Expo / React Native Android column ([expo/](../expo/README.md)) will
-share the Android host work (device profile, status bar, Roboto).
+< 2% of pixels). Expo shares the device profile, system bars, and Roboto with Compose. [Expo Android preview](../expo/README.md)
 
 ## Adding or changing a row
 

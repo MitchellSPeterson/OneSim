@@ -16,6 +16,8 @@ const UNSUP = 'unsupported';
 const IOS_BUILDS = { '27.2': '24B8117', '26.5': '23F77' };
 const OS_VERSION = IOS_BUILDS[process.env.SIMCORE_OS_VERSION] ? process.env.SIMCORE_OS_VERSION : '27.2';
 const OS_BUILD = IOS_BUILDS[OS_VERSION];
+const ANDROID_API_LEVEL = 37;
+const ANDROID_RELEASE = '17';
 // expo-device identity of the simulated phone (SIMCORE_DEVICE profile slug): [model id, year class]; others report a generic model.
 const MODELS = { 'iphone-18-pro': ['iPhone19,2', 2026], 'iphone-18-pro-max': ['iPhone19,3', 2026], 'iphone-duo': ['iPhone19,4', 2026], 'iphone-17-pro': ['iPhone18,1', 2025], 'iphone-17-pro-max': ['iPhone18,2', 2025], 'iphone-17': ['iPhone18,3', 2025], 'iphone-air': ['iPhone18,4', 2025], 'iphone-17e': ['iPhone18,5', 2026] };
 const DEVICE = process.env.SIMCORE_DEVICE || 'iphone-18-pro';
@@ -27,6 +29,9 @@ const ABSENT = new Set(['NativeAnimatedModule', 'NativeAnimatedTurboModule', 'Na
 
 module.exports = function createRegistry(rt, h) {
   const { node, log, sendError, sendEvent, unsupported, cfg, ver, insetsFor, loadImage, imageDone, expo: { NativeModule, SharedObject } } = h;
+  const android = cfg.platform === 'android';
+  const androidVersion = android ? (process.env.SIMCORE_OS_VERSION || ANDROID_RELEASE) : null;
+  const androidModel = 'Pixel 10a';
   const noop = () => {};
   let alertSeq = 0;
   const listener = { addListener: noop, removeListeners: noop };
@@ -84,15 +89,29 @@ module.exports = function createRegistry(rt, h) {
 
   const entries = [
     // ---- React Native core (TurboModules) ----
-    { name: 'PlatformConstants', status: 'implemented', constants: () => ({ isTesting: false, isDisableAnimations: false, reactNativeVersion: { major: +ver[1], minor: +ver[2], patch: +ver[3] }, forceTouchAvailable: false, osVersion: OS_VERSION, systemName: 'iOS', interfaceIdiom: 'phone' }) },
+    { name: 'PlatformConstants', status: 'implemented', constants: () => ({
+      isTesting: false, isDisableAnimations: false, reactNativeVersion: { major: +ver[1], minor: +ver[2], patch: +ver[3] },
+      ...(android
+        ? { Version: ANDROID_API_LEVEL, Release: androidVersion, Model: androidModel, Brand: 'google', Manufacturer: 'Google', Serial: 'unknown', Fingerprint: 'unknown', uiMode: 'normal' }
+        : { forceTouchAvailable: false, osVersion: OS_VERSION, systemName: 'iOS', interfaceIdiom: 'phone' }),
+    }) },
     // DeviceInfo.Dimensions feeds RN's Dimensions / useWindowDimensions (session viewport); host `environment` updates it.
     { name: 'DeviceInfo', status: 'simulated', constants: () => ({ Dimensions: rt.dimensions() }) },
     { name: 'Appearance', status: 'simulated', methods: { getColorScheme: () => rt.appearance, ...listener }, events: ['appearanceChanged'] },
     { name: 'SourceCode', status: 'implemented', constants: () => ({ scriptURL: rt.scriptURL }) },
     { name: 'I18nManager', status: 'implemented', constants: { isRTL: false, doLeftAndRightSwapInRTL: true, localeIdentifier: 'en_US' }, methods: { allowRTL: noop, forceRTL: noop, swapLeftAndRightInRTL: noop } },
-    // Host chrome (status bar) is the Rust host's job; calls are accepted and logged, not rendered.
-    { name: 'StatusBarManager', status: 'implemented', constants: { HEIGHT: 54, DEFAULT_BACKGROUND_COLOR: 0, STYLE: 'default' },
-      methods: { ...listener, getHeight: (cb) => cb({ height: 54 }), setStyle: (s) => log('SimCore: StatusBar.setStyle', s), setHidden: noop, setNetworkActivityIndicatorVisible: noop } },
+    { name: 'StatusBarManager', status: 'implemented', constants: () => ({ HEIGHT: android ? cfg.androidInsets.top : 54, DEFAULT_BACKGROUND_COLOR: 0, STYLE: 'default' }),
+      methods: { ...listener, getHeight: (cb) => cb({ height: 54 }),
+        setStyle: (s) => {
+          if (!android) return log('SimCore: StatusBar.setStyle', s);
+          rt.rootProps.__simcoreStatusBarStyle = s;
+          rt.scheduleEmit();
+        },
+        setHidden: (hidden) => {
+          if (!android) return;
+          rt.rootProps.__simcoreStatusBarHidden = hidden;
+          rt.scheduleEmit();
+        }, setNetworkActivityIndicatorVisible: noop } },
     { name: 'ExceptionsManager', status: 'implemented', methods: { reportException, reportFatalException: (m, s) => reportException({ message: m, stack: s }), reportSoftException: (m) => log('SimCore soft exception:', m), updateExceptionMessage: noop, dismissRedbox: noop } },
     { name: 'AppState', status: 'implemented', constants: { initialAppState: 'active' }, methods: { getCurrentAppState: (cb) => cb({ app_state: 'active' }), ...listener } },
     { name: 'SettingsManager', status: 'implemented', constants: { settings: { AppleLocale: 'en_US', AppleLanguages: ['en'] } }, methods: { setValues: noop, deleteValues: noop } },
@@ -120,13 +139,15 @@ module.exports = function createRegistry(rt, h) {
     { name: 'NativeMicrotasksCxx', status: 'implemented', methods: { queueMicrotask: (f) => node.queueMicrotask(rt.guard(f)) } },
     // Sizes are pixels (scale 1), like iOS for an unscaled image.
     { name: 'ImageLoader', status: 'implemented', methods: {
-      getSize: (uri) => loadImage(uri).then((i) => [i.width, i.height]),
+      getSize: (uri) => loadImage(uri).then((i) => android ? { width: i.width, height: i.height } : [i.width, i.height]),
       getSizeWithHeaders: (uri, headers) => loadImage(uri, headers).then((i) => ({ width: i.width, height: i.height })),
       prefetchImage: (uri) => loadImage(uri).then(() => true, () => false),
       prefetchImageWithMetadata: (uri) => loadImage(uri).then(() => true, () => false),
       queryCache: (uris) => Promise.resolve(Object.fromEntries(uris.filter((u) => imageDone.has(u)).map((u) => [u, 'disk']))),
       abortRequest: noop } },
     { name: 'LinkingManager', status: 'implemented', async: true, methods: { getInitialURL: () => Promise.resolve(null), canOpenURL: () => Promise.resolve(false), openURL: UNSUP, openSettings: UNSUP, ...listener } },
+    ...(android ? [{ name: 'IntentAndroid', status: 'implemented', async: true,
+      methods: { getInitialURL: async () => null, canOpenURL: async () => false, openURL: UNSUP, openSettings: UNSUP, sendIntent: UNSUP } }] : []),
     // JS defaults apply for every flag when the native getter returns undefined.
     { name: 'NativeReactNativeFeatureFlagsCxx', status: 'implemented', make: () => new Proxy({}, { get: (t, p) => (typeof p === 'string' ? () => undefined : undefined) }) },
     // Portrait insets by viewport height (62/34 on the 402x874 iPhone 17 Pro); the Rust host owns the real chrome.
@@ -185,8 +206,11 @@ module.exports = function createRegistry(rt, h) {
       setBackgroundColorAsync: async (c) => { if (c == null) delete rt.rootProps.backgroundColor; else rt.rootProps.backgroundColor = c; rt.scheduleEmit(); },
       getBackgroundColorAsync: async () => (rt.rootProps.backgroundColor == null ? null : '#' + (rt.rootProps.backgroundColor >>> 0).toString(16).padStart(8, '0').replace(/^(..)(......)$/, '$2$1')) } },
     { name: 'ExpoDevice', package: 'expo-device', kind: 'expo', status: 'simulated',
-      constants: { isDevice: false, brand: 'Apple', manufacturer: 'Apple', modelId: MODEL_ID, modelName: MODEL_NAME, deviceYearClass: YEAR_CLASS, totalMemory: 12 * 1024 ** 3,
-        osName: 'iOS', osVersion: OS_VERSION, osBuildId: OS_BUILD, osInternalBuildId: OS_BUILD, deviceName: 'iPhone', deviceType: 1, supportedCpuArchitectures: ['arm64e', 'arm64'] },
+      constants: android
+        ? { isDevice: false, brand: 'google', manufacturer: 'Google', modelId: null, modelName: androidModel, deviceYearClass: 2026, totalMemory: 8 * 1024 ** 3,
+          osName: 'Android', osVersion: androidVersion, platformApiLevel: ANDROID_API_LEVEL, osBuildId: null, osInternalBuildId: null, deviceName: androidModel, deviceType: 1, supportedCpuArchitectures: ['arm64-v8a'] }
+        : { isDevice: false, brand: 'Apple', manufacturer: 'Apple', modelId: MODEL_ID, modelName: MODEL_NAME, deviceYearClass: YEAR_CLASS, totalMemory: 12 * 1024 ** 3,
+          osName: 'iOS', osVersion: OS_VERSION, osBuildId: OS_BUILD, osInternalBuildId: OS_BUILD, deviceName: 'iPhone', deviceType: 1, supportedCpuArchitectures: ['arm64e', 'arm64'] },
       methods: { getDeviceTypeAsync: async () => 1, getUptimeAsync: async () => node.performance.now(), isRootedExperimentalAsync: async () => false } },
     // expo-linking: no launch URL, so Expo Router falls back to the scheme root and lands on `index`. Opening URLs is unsupported.
     { name: 'ExpoLinking', package: 'expo-linking', kind: 'expo', status: 'implemented', methods: { getLinkingURL: () => null, clearInitialURL: () => {} } },
@@ -201,9 +225,12 @@ module.exports = function createRegistry(rt, h) {
     // expo-constants: the manifest is the same one Metro hands a real Expo client; expo-asset uses it to build dev-server asset URLs.
     { name: 'ExponentConstants', package: 'expo-constants', kind: 'expo', status: 'implemented',
       constants: () => ({ manifest: rt.manifest, experienceUrl: rt.manifest ? `exp://${new URL(rt.scriptURL).host}` : null,
-        appOwnership: null, executionEnvironment: 'bare', sessionId: cfg.session || 'simcore', installationId: 'simcore', statusBarHeight: 54,
-        systemFonts: [], isDevice: false, deviceName: 'iPhone', expoVersion: null, platform: { ios: { model: 'iPhone', systemVersion: OS_VERSION } } }),
-      methods: { getWebViewUserAgentAsync: async () => `Mozilla/5.0 (iPhone; CPU iPhone OS ${OS_VERSION.replace('.', '_')} like Mac OS X) SimCore` } },
+        appOwnership: null, executionEnvironment: 'bare', sessionId: cfg.session || 'simcore', installationId: 'simcore',
+        statusBarHeight: android ? cfg.androidInsets.top : 54, systemFonts: [], isDevice: false, deviceName: android ? androidModel : 'iPhone',
+        expoVersion: null, platform: android ? { android: { versionCode: null } } : { ios: { model: 'iPhone', systemVersion: OS_VERSION } } }),
+      methods: { getWebViewUserAgentAsync: async () => android
+        ? `Mozilla/5.0 (Linux; Android ${androidVersion}; ${androidModel}) SimCore`
+        : `Mozilla/5.0 (iPhone; CPU iPhone OS ${OS_VERSION.replace('.', '_')} like Mac OS X) SimCore` } },
 
     // ---- simulated expo modules (host control through `simulate`) ----
     { name: 'ExpoClipboard', package: 'expo-clipboard', kind: 'expo', status: 'simulated', strict: true, events: ['onClipboardChanged'], constants: { isPasteButtonAvailable: false },

@@ -119,6 +119,8 @@ pub enum Glyph {
     Spinner,
     /// Large activity indicator / refresh control: thicker spokes.
     SpinnerLarge,
+    /// Android circular activity indicator in a settled frame.
+    AndroidSpinner,
 }
 
 /// An SF Symbol painted as an alpha mask in `color`, `size` points, centred in the node's bounds

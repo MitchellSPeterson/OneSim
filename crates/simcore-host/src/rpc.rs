@@ -118,6 +118,7 @@ struct Pt {
 #[serde(rename_all = "camelCase")]
 struct CreateP {
     framework: String,
+    platform: Option<String>,
     device: Option<String>,
     appearance: Option<Appearance>,
     dynamic_type_size: Option<DynamicTypeSize>,
@@ -169,7 +170,7 @@ impl Entry {
         let s = h.get(&self.id)?;
         let v = json!({
             "sessionId": self.id, "framework": s.params.framework, "platform": s.params.platform,
-            "device": display_name(s.device.name), "osVersion": s.ios.name(), "viewport": s.viewport, "scale": s.scale,
+            "device": display_name(s.device.name), "osVersion": s.os_version(), "viewport": s.viewport, "scale": s.scale,
             "appearance": s.appearance, "status": s.state().as_str(), "treeVersion": s.tree_version().unwrap_or(0),
             "metroUrl": s.params.metro_url, "appPath": (!s.params.app_path.is_empty()).then_some(&s.params.app_path),
         });
@@ -235,7 +236,7 @@ impl Server {
     fn create(&self, p: CreateP) -> R {
         let params = CreateSessionParams {
             framework: p.framework,
-            platform: "ios".into(),
+            platform: p.platform.unwrap_or_else(|| "ios".into()),
             app_path: p.app_path.unwrap_or_default(),
             root_view: p.root_view,
             viewport: p.viewport,

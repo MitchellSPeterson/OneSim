@@ -44,13 +44,15 @@ stream. Ids are strings (`"s1"`).
 
 | method | params | result |
 |---|---|---|
-| `session.create` | `{"framework":"expo"\|"react-native"\|"swiftui","device"?:"iPhone 18 Pro"\|"iphone-18-pro","osVersion"?:"27.2"\|"26.5","appearance"?,"dynamicTypeSize"?,"metroUrl"?,"appPath"?,"rootView"?,"viewport"?:{width,height},"scale"?,"load"?:false}` | `{"sessionId","status":"created"}`; with `"load": true` it also loads (like `runtime.load`) and returns `"status":"running"` |
+| `session.create` | `{"framework":"expo"\|"react-native"\|"swiftui"\|"compose","platform"?:"ios"\|"android","device"?,"osVersion"?:"27.2"\|"26.5","appearance"?,"dynamicTypeSize"?,"metroUrl"?,"appPath"?,"rootView"?,"viewport"?:{width,height},"scale"?,"load"?:false}` | `{"sessionId","status":"created"}`; with `"load": true` it also loads (like `runtime.load`) and returns `"status":"running"` |
 | `session.list` | – | `{"sessions":[SessionInfo]}` |
 | `session.get` | `{"sessionId"}` | `SessionInfo` |
 | `session.destroy` | `{"sessionId"}` | `{}` (stops if running, frees the id) |
 
 `SessionInfo`: `{"sessionId","framework","platform","device","viewport":{width,height},"scale","appearance","status","treeVersion","metroUrl"?,"appPath"?}`.
-Device names accept the display name (`"iPhone 18 Pro"`) or the profile slug (`"iphone-18-pro"`); the default is the iPhone 18 Pro. `osVersion` picks the simulated iOS release (look of the renderer, version the guest reports): `"27.2"` (default) or `"26.5"`; `session.get` reports it.
+Expo uses iOS by default. Pass `"platform": "android"` for Expo on Android. SwiftUI targets iOS and Compose targets Android.
+Device names accept a display name or profile slug. The defaults are `iphone-18-pro` on iOS and `pixel-10a` on Android.
+`osVersion` selects iOS `"27.2"` or `"26.5"`, with `"27.2"` as the default. For Android, `session.get` reports `"17"`.
 
 ## Runtime lifecycle
 

@@ -52,9 +52,10 @@ Run these checks with Python 3 and Pillow. The Compose comparison also requires 
 scripts/compare-ios.sh
 SIMCORE_FALLBACK=1 scripts/compare-ios.sh
 scripts/compare-android.sh
+scripts/compare-expo-android.sh
 ```
 
-The iOS commands run both releases by default. Set `SIMCORE_IOS=27.2` to check one release locally. Install the Expo example dependencies to include the React Native and Expo Router screenshots. See the [iOS comparison results](docs/ios-comparison.md) for examples and known gaps.
+The iOS commands run both releases by default. Set `SIMCORE_IOS=27.2` to check one release locally. Install the Expo example dependencies to include the React Native and Expo Router screenshots. The Android Expo command requires `npm ci` in `examples/expo-showcase`. See the [iOS comparison results](docs/ios-comparison.md) for examples and known gaps.
 
 Fix the rendering when a state fails. Use `SIMCORE_MAX_DIFF` only for local investigation. Keep the checked-in thresholds and states.
 
@@ -62,3 +63,4 @@ Fix the rendering when a state fails. Use `SIMCORE_MAX_DIFF` only for local inve
 
 1. For a new iOS UI element, capture the state on [iOS 27.2 with iPhone 18 Pro](tests/fixtures/ios27/README.md) and [iOS 26.5 with iPhone 17 Pro](tests/fixtures/showcase-ios/README.md). Add a matching `shot` line to [`scripts/compare-ios.sh`](scripts/compare-ios.sh).
 2. For a new Compose component, capture the state on the [Android 17 Pixel 10a emulator](tests/fixtures/compose-android/README.md) using [`capture.sh`](tests/fixtures/compose-android/capture.sh). Add a matching `shot` line to [`scripts/compare-android.sh`](scripts/compare-android.sh).
+3. For a React Native Android component, use the [Expo Android capture guide](tests/fixtures/expo-android/README.md) and add a matching `shot` line to [`scripts/compare-expo-android.sh`](scripts/compare-expo-android.sh).

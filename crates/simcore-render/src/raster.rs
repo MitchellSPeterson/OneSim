@@ -397,6 +397,16 @@ fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: 
                 pm.fill_path(&p, &paint(c, 1.0), FillRule::Winding, xf, mask);
             }
         }
+        Glyph::AndroidSpinner => {
+            let size = w.min(h);
+            let width = size / 10.0;
+            let radius = (size - width) / 2.0;
+            let points: Vec<_> = (0..=24)
+                .map(|i| (270.0 * i as f32 / 24.0).to_radians())
+                .map(|a| (cx + radius * a.sin(), cy - radius * a.cos()))
+                .collect();
+            stroke_pts(pm, &points, c, width, xf, mask);
+        }
         Glyph::Spinner | Glyph::SpinnerLarge => {
             // 8 rounded spokes, the leading one opaque, the rest fading (the indicator at rest).
             let s = w.min(h);
