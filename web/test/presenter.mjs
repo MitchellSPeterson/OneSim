@@ -10,6 +10,9 @@
 //   nogpu     navigator.gpu undefined -> CPU, reason says so
 //   badlist   GPU render throws       -> falls back to CPU, canvas replaced, frame still correct
 //   oldwasm   runtime without display-list output -> CPU
+//   noadapter adapter request returns null -> CPU with the same pixels
+//   resize    several GPU canvas backing sizes and DPRs
+//   lost      destroy the WebGPU device -> CPU with the latest runtime state
 import { spawn, execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, existsSync, statSync } from "node:fs";
@@ -75,6 +78,19 @@ async function run(query, { preload = "" } = {}) {
 let failed = 0;
 const check = (ok, msg) => { if (!ok) { failed++; console.error(`  FAIL ${msg}`); } };
 const show = (n, r) => console.log(`${n}: mode=${r.mode} diff=${r.diffPct.toFixed(3)}% nonblank=${r.nonBlankPct.toFixed(1)}% size=${r.size} swapped=${r.canvasSwapped}${r.reason ? ` reason="${r.reason}"` : ""}${r.info ? ` adapter="${r.info.adapter}/${r.info.backend}"` : ""}`);
+const trackDevice = `
+  const requestAdapter = navigator.gpu.requestAdapter.bind(navigator.gpu);
+  navigator.gpu.requestAdapter = async (...options) => {
+    const adapter = await requestAdapter(...options);
+    if (!adapter) return adapter;
+    const requestDevice = adapter.requestDevice.bind(adapter);
+    adapter.requestDevice = async (...options) => {
+      window.__testDevice = await requestDevice(...options);
+      return window.__testDevice;
+    };
+    return adapter;
+  };
+`;
 const cpuOk = (r) => { check(r.mode === "cpu" && r.output === 0, "mode is cpu"); check(r.diffPct === 0, `CPU pixels exact (diff ${r.diffPct})`); check(r.nonBlankPct > 5, "not blank"); check(r.canvasConnected, "canvas attached"); };
 
 try {
@@ -86,13 +102,29 @@ try {
     for (const f of ["controls", "home-tabbar"]) { const r = await run(`renderer=auto&fixture=${f}`); show(`gpu ${f}`, r); check(r.mode === "gpu" && r.diffPct < 2.5 && r.nonBlankPct > 5, `${f} on GPU (${r.reason})`); }
     const bad = await run("renderer=gpu&fixture=home&fail=render");
     show("badlist", bad); cpuOk(bad); check(bad.canvasSwapped && /render failed/.test(bad.reason), "render error swaps canvas and reports why");
+    check(bad.frames === 1, "render error presents CPU pixels once");
+    const resized = await run("renderer=gpu&fixture=home&scenario=resize");
+    show("resize", resized);
+    const [large, small, largeAgain, smallAgain] = resized.sizes;
+    check(resized.mode === "gpu" && resized.frames === 4 && resized.diffPct < 2.5, "GPU pixels survive repeated resize");
+    check(small.join("x") === "640x1136" && large.join("x") === largeAgain.join("x") && small.join("x") === smallAgain.join("x"), "canvas follows changing fixture size");
+    const lost = await run("renderer=gpu&fixture=home&scenario=loss", { preload: trackDevice });
+    show("lost", lost); cpuOk(lost);
+    check(lost.canvasSwapped && /device lost/i.test(lost.reason) && lost.fixture === "controls" && lost.frames === 3, "device loss redraws the latest runtime state");
   } else {
-    console.log(`SKIP gpu: no WebGPU in this Chrome (${gpu.reason})`);
-    cpuOk(gpu); // still must be a correct CPU frame, not blank
+    const unavailable = /navigator\.gpu missing|no WebGPU adapter|canvas WebGPU context.*(unsupported|not supported)/i.test(gpu.reason);
+    if (unavailable) console.log(`SKIP gpu: ${gpu.reason}`);
+    else { show("gpu", gpu); check(false, "GPU initialization failed unexpectedly"); }
+    cpuOk(gpu);
   }
   const cpu = await run("renderer=cpu&fixture=home"); show("cpu", cpu); cpuOk(cpu); check(!cpu.canvasSwapped, "no canvas swap when GPU never tried");
   const nogpu = await run("fixture=home", { preload: "Object.defineProperty(navigator, 'gpu', { value: undefined, configurable: true });" });
   show("nogpu", nogpu); cpuOk(nogpu); check(/navigator\.gpu/.test(nogpu.reason), "reason mentions navigator.gpu");
+  if (!/navigator\.gpu missing/.test(gpu.reason)) {
+    const noadapter = await run("fixture=home", { preload: "if (navigator.gpu) navigator.gpu.requestAdapter = async () => null;" });
+    show("noadapter", noadapter); cpuOk(noadapter);
+    check(/no WebGPU adapter|canvas WebGPU context/.test(noadapter.reason), "unavailable WebGPU reports why");
+  }
   const old = await run("fixture=home&old=1"); show("oldwasm", old); cpuOk(old); check(/display-list/.test(old.reason) || old.reason.includes("GPU"), "old runtime reason");
 } finally {
   proc.kill(); server.close(); ws.close();

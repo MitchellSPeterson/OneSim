@@ -201,6 +201,10 @@ impl Gpu {
 impl Gpu {
     fn present(&mut self, dl: &DisplayList) -> Result<(), RenderError> {
         let (w, h) = (dl.width, dl.height);
+        let max = self.exec.device().limits().max_texture_dimension_2d;
+        if w == 0 || h == 0 || w > max || h > max {
+            return Err(RenderError::Unsupported(format!("frame {w}x{h} is outside the WebGPU texture range 1..={max}")));
+        }
         if (self.config.width, self.config.height) != (w, h) {
             self.config.width = w;
             self.config.height = h;

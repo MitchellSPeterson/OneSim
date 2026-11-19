@@ -540,8 +540,13 @@ mod tests {
         let tabs = r#"[{"title":"Home","systemImage":"house","action":1},{"title":"Counter","action":2},{"title":"Settings","systemImage":"gearshape","badge":"3","action":3}]"#;
         let mut trees: Vec<(String, String)> = SHOWCASE.iter().map(|(n, t)| (n.to_string(), t.to_string())).collect();
         trees.push(("home-tabbar".into(), format!(r#"{{"kind":"tabview","id":"tabs","selected":0,"tabs":{tabs},"content":{}}}"#, SHOWCASE[0].1)));
+        trees.push(("home-compact".into(), SHOWCASE[0].1.into()));
         let mut manifest = vec![];
         for (version, (name, tree)) in trees.iter().enumerate() {
+            if name == "home-compact" {
+                simcore_web_set_viewport(320.0, 568.0);
+                simcore_web_set_scale(2.0);
+            }
             let v = version as u64 + 1;
             for out in [0, 1] {
                 with(|s| s.version = Some(v - 1));

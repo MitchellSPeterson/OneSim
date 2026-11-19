@@ -44,7 +44,10 @@ export class Presenter {
       this.sim.setOutput(1);
       this.mode = "gpu";
       this.#report("gpu", "");
-      this.watch = setInterval(() => { if (this.gpu?.lost()) this.fallback(`GPU device lost: ${this.gpu.error()}`); }, 1000);
+      this.watch = setInterval(() => {
+        const failure = this.#gpuFailure();
+        if (failure) this.fallback(failure);
+      }, 1000);
     } catch (e) {
       this.fallback(`GPU init failed: ${e?.message ?? e}`);
     }
@@ -56,11 +59,12 @@ export class Presenter {
       try {
         const dl = this.sim.displayList();
         this.gpu.render(dl);
-        if (this.gpu.lost()) throw new Error(`GPU device lost: ${this.gpu.error()}`);
+        const failure = this.#gpuFailure();
+        if (failure) return this.fallback(failure);
         this.frames++;
         return;
       } catch (e) {
-        this.fallback(`GPU render failed: ${e?.message ?? e}`);
+        return this.fallback(`GPU render failed: ${e?.message ?? e}`);
       }
     }
     this.#presentCpu();
@@ -76,6 +80,13 @@ export class Presenter {
     this.mode = "cpu";
     this.#report("cpu", reason);
     if (this.sim.width) this.#presentCpu();
+  }
+
+  #gpuFailure() {
+    if (!this.gpu) return "";
+    if (this.gpu.lost()) return `GPU device lost: ${this.gpu.error()}`;
+    const error = this.gpu.error();
+    return error ? `GPU device error: ${error}` : "";
   }
 
   #presentCpu() {
