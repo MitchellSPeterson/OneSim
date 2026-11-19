@@ -475,7 +475,7 @@ impl Host {
         }
         s.send_effect(effect)?;
         if s.is_rn() {
-            // `enter` dropped the focus: that is a return press (submit, blur unless multiline).
+            // `enter` dropped the focus: that is a return press. The field decides whether to blur.
             match before {
                 Some(b) if s.inter.focus.is_none() => s.submit(&b)?,
                 b => s.sync_focus(b)?,

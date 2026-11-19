@@ -159,12 +159,16 @@ impl Drop for Session {
     }
 }
 
-fn is_multiline(n: &ViewNode, id: &str) -> bool {
+fn submit_keeps_focus(n: &ViewNode, id: &str) -> bool {
     match &n.kind {
-        simcore_protocol::ViewKind::Rn { component, children, .. } => {
-            (n.id == id && component == "RCTMultilineTextInputView") || children.iter().any(|c| is_multiline(c, id))
-        }
-        simcore_protocol::ViewKind::Presentation { content, .. } => is_multiline(content, id),
+        simcore_protocol::ViewKind::Rn { component, props, .. } if n.id == id => match props.get("submitBehavior").and_then(Value::as_str) {
+            Some("submit" | "newline") => true,
+            Some("blurAndSubmit") => false,
+            _ => component == "RCTMultilineTextInputView"
+                || (component == "AndroidTextInput" && props.get("multiline").and_then(Value::as_bool) == Some(true)),
+        },
+        simcore_protocol::ViewKind::Rn { children, .. } => children.iter().any(|c| submit_keeps_focus(c, id)),
+        simcore_protocol::ViewKind::Presentation { content, .. } => submit_keeps_focus(content, id),
         _ => false,
     }
 }
@@ -564,12 +568,12 @@ impl Session {
     }
 
     /// React Native: return pressed while `before` was focused (the interaction state already
-    /// dropped the focus). Sends `submit`, then blur unless the input is multiline.
+    /// dropped the focus). Sends `submit` and follows the field's submit behavior.
     pub fn submit(&mut self, before: &str) -> Result<(), ApiError> {
         let Ok(tag) = before.parse::<u64>() else { return Ok(()) };
+        let keeps_focus = self.shared.lock().tree.as_ref().is_some_and(|(_, root)| submit_keeps_focus(root, before));
         self.send(&HostMessage::Submit { tag })?;
-        let multiline = self.tree().is_some_and(|(_, t)| is_multiline(&t, before));
-        if multiline {
+        if keeps_focus {
             self.inter.focus = Some(before.to_string());
             Ok(())
         } else {

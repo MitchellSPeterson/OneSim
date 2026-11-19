@@ -185,7 +185,7 @@ pub enum HostMessage {
     Blur { tag: u64 },
     /// React Native: the software keyboard appeared (`height` points, from the screen bottom) or hid (`0`).
     Keyboard { height: f64 },
-    /// React Native: return pressed in the text input `tag`.
+    /// React Native: return in text input `tag`. Focus follows its `submitBehavior` and multiline setting.
     Submit { tag: u64 },
     /// React Native scroll gesture on `tag`: `x`/`y` content offset, sizes in points.
     Scroll {

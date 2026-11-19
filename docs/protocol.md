@@ -405,8 +405,9 @@ its existing focus + software-keyboard machinery.
   {screenX, screenY, width, height}, duration: 0, easing: "keyboard", isEventFromThisApp: true}`
   (window coordinates; hidden frame = `screenY` at the window bottom). `duration: 0` because the
   host renders settled states (`KeyboardAvoidingView` skips LayoutAnimation).
-- Host → guest `{"type":"submit","tag"}` on return → `topSubmitEditing` `{text}`; then blur
-  unless `multiline`.
+- Host → guest `{"type":"submit","tag"}` on return → `topSubmitEditing` `{text}`.
+  `submitBehavior: "submit"` retains focus and `"blurAndSubmit"` blurs. With no explicit behavior,
+  single-line inputs blur and multiline inputs retain focus.
 - Guest → host `{"type":"focus_request","tag":<u64>|null}` when JS calls the `focus` / `blur`
   commands (null = blur); host focuses/unfocuses that field and shows/hides the keyboard.
   `setTextAndSelection` / `setNativeProps({text})` update the guest's text and re-emit.
