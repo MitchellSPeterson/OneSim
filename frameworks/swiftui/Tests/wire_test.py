@@ -447,6 +447,13 @@ t = touch(k, "move", 9016, (100, 220), (300, 220)); assert txt(t, "Pinch ").star
 t = touch(k, "move", 9032, (200, 170), (200, 270)); assert txt(t, "Pinch ").startswith("Pinch 100 turn 90"), txt(t, "Pinch ")
 t = touch(k, "end", 9048, (200, 170), (200, 270)); assert txt(t, "Pinch ") == "Pinch 100 turn 90 done", txt(t, "Pinch ")
 
+import math
+k = gkeys(t, "Pinch ")  # past 180 degrees the rotation keeps counting
+touch(k, "start", 9100, (150, 220), (250, 220))
+for i in range(1, 7):
+    a = math.radians(45 * i); t = touch(k, "move", 9100 + 16 * i, (200 - 50 * math.cos(a), 220 - 50 * math.sin(a)), (200 + 50 * math.cos(a), 220 + 50 * math.sin(a)))
+assert txt(t, "Pinch ").startswith("Pinch 100 turn 270"), txt(t, "Pinch ")
+touch(k, "end", 9300, (200, 270), (200, 170))
 k = gkeys(t, "Seq ")
 t = touch(k, "start", 10000, (120, 210)); assert txt(t, "Seq ") == "Seq pressing", txt(t, "Seq ")
 t = touch(k, "move", 10400, (120, 210)); assert txt(t, "Seq ") == "Seq dragging 0", txt(t, "Seq ")
@@ -477,6 +484,8 @@ only = gview(t, "Only ")
 assert len(gkeys(t, "Only ")) == 1 and not any(m.get("kind") == "button" for m in walk(only)), "including: .gesture drops subview gestures and taps"
 t = taps(gkeys(t, "Only "), 20000); assert txt(t, "Only ") == "Only p", txt(t, "Only ")
 assert not any("gesture" in x for m in walk(t["root"]) if "Hidden 0" in alltexts(m) for x in m.get("modifiers", [])), "isEnabled: false"
+t = taps(gkeys(t, "Either "), 21000); assert txt(t, "Either ") == "Either 1", "only the chosen branch runs: " + txt(t, "Either ")
+assert not any("gesture" in x for m in walk(t["root"]) if "Off 0" in alltexts(m) for x in m.get("modifiers", [])), "disabled views take no gestures"
 t = touch(["stale#g0"], "start", 17000, (1, 1)); t = touch(["stale#g0"], "end", 17050, (1, 1))  # unknown keys: no-op
 finish(p)
 print("PASS")

@@ -28,6 +28,8 @@ struct GestureLab: View {
     @State private var combo = ""
     @State private var only = ""
     @State private var hidden = 0
+    @State private var either = ""
+    @State private var off = 0
 
     var body: some View {
         VStack {
@@ -99,6 +101,11 @@ struct GestureLab: View {
             .gesture(TapGesture().onEnded { only += "p" }, including: .gesture)
             Text("Hidden \(hidden)")
                 .gesture(TapGesture().onEnded { hidden += 1 }, isEnabled: false)
+            Text("Either \(either)")
+                .gesture(TapGesture().onEnded { either += "1" }.exclusively(before: TapGesture().onEnded { either += "2" }))
+            Text("Off \(off)")
+                .gesture(TapGesture().onEnded { off += 1 })
+                .disabled(true)
             }
         }
     }

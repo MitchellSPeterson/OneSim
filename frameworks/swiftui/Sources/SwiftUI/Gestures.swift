@@ -285,7 +285,8 @@ struct _TwoFingers {
 final class _TwoFingerR: _GestureRecognizer<_TwoFingers> {
     /// Activates once the scale changes by this much (`rotation` false) or the angle by this many radians.
     let threshold: Double, rotation: Bool
-    var d0: CGFloat = 0, a0 = 0.0, last: (Double, CGFloat, Double)?
+    /// Starting finger distance, last finger angle, and the turn so far (accumulated per event, so it counts past 180°).
+    var d0: CGFloat = 0, lastAngle = 0.0, turned = 0.0, last: (Double, CGFloat, Double)?
     override var pans: Bool { true }
     init(threshold: Double, rotation: Bool) { self.threshold = threshold; self.rotation = rotation }
 
@@ -298,7 +299,7 @@ final class _TwoFingerR: _GestureRecognizer<_TwoFingers> {
         let (a, b) = (t.points[0], t.points[1])
         let d = _distance(a, b), ang = atan2(Double(b.y - a.y), Double(b.x - a.x))
         if d0 == 0 {
-            d0 = max(d, 1); a0 = ang
+            d0 = max(d, 1); lastAngle = ang; turned = 0
             let c = CGPoint(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2)
             var v = _TwoFingers(time: t.time)
             v.startLocation = t.local(c, .local)
@@ -309,9 +310,12 @@ final class _TwoFingerR: _GestureRecognizer<_TwoFingers> {
             if t.phase != .end { return }
         }
         var v = value ?? _TwoFingers()
-        var da = ang - a0
-        while da > .pi { da -= 2 * .pi }
-        while da < -.pi { da += 2 * .pi }
+        var step = ang - lastAngle
+        while step > .pi { step -= 2 * .pi }
+        while step < -.pi { step += 2 * .pi }
+        lastAngle = ang
+        turned += step
+        let da = turned
         let s = d / d0
         if let (lt, ls, la) = last, t.time > lt {
             let dt = (t.time - lt) / 1000
@@ -467,13 +471,18 @@ final class _ExclusiveR<A: Gesture, B: Gesture>: _GestureRecognizer<ExclusiveGes
     override var pans: Bool { a.pans || b.pans }
     init(_ a: _GestureRecognizer<A.Value>, _ b: _GestureRecognizer<B.Value>) { self.a = a; self.b = b }
     override func _feed(_ t: _Touch, _ q: _Queue) {
-        if chosen != 0 { b.feed(t, q) }
-        if chosen != 1 { a.feed(t, q) }
+        // Each branch queues apart, so a branch that loses on this very event drops its callbacks (resets still run).
+        let (qa, qb) = (_Queue(), _Queue())
+        if chosen != 0 { b.feed(t, qb) }
+        if chosen != 1 { a.feed(t, qa) }
         if chosen == nil {
             // The first has priority: it wins once it commits; the second wins when it commits first, or the first fails.
-            if a.status == .active || a.status == .ended { chosen = 0; b.cancel(q) }
-            else if b.status == .active || b.status == .ended || a.status == .failed { chosen = 1; a.cancel(q) }
+            if a.status == .active || a.status == .ended { chosen = 0; b.cancel(qb) }
+            else if b.status == .active || b.status == .ended || a.status == .failed { chosen = 1; a.cancel(qa) }
         }
+        if chosen != 1 { q.actions += qa.actions }
+        if chosen != 0 { q.actions += qb.actions }
+        q.resets += qa.resets + qb.resets
         switch chosen {
         case 0: status = a.status; if let v = a.value { value = .first(v) }; changed = a.changed
         case 1: status = b.status; if let v = b.value { value = .second(v) }; changed = b.changed
@@ -773,7 +782,7 @@ struct _GestureView<Content: View, G: Gesture>: View, _Flattenable {
         if !mask.contains(.subviews) { rt.gesturesOff = true }
         let nodes = _modTargets(content, path)
         rt.gesturesOff = off
-        guard !off && mask.contains(.gesture) else { return nodes }
+        guard !off && !rt.disabled && mask.contains(.gesture) else { return nodes }
         let g = gesture
         return _attachGesture(nodes, path, kind) { g._recognizer($0) }
     }
