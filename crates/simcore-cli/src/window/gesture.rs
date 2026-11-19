@@ -10,8 +10,8 @@ pub enum Out {
     /// The press moved past the threshold: the drag began at `from` (the press point) and is now at `to`.
     DragStart { from: (f64, f64), to: (f64, f64) },
     DragMove(f64, f64),
-    /// The drag ended at this point; `from` is where it began (React Native gets the whole gesture at once).
-    DragEnd { from: (f64, f64), to: (f64, f64) },
+    /// The drag ended at this point.
+    DragEnd(f64, f64),
 }
 
 #[derive(Debug, Default)]
@@ -24,7 +24,7 @@ enum State {
     #[default]
     Idle,
     Pressed((f64, f64)),
-    Dragging((f64, f64)),
+    Dragging,
 }
 
 impl Gesture {
@@ -35,10 +35,10 @@ impl Gesture {
     pub fn moved(&mut self, p: (f64, f64)) -> Out {
         match self.state {
             State::Pressed(from) if (p.0 - from.0).hypot(p.1 - from.1) >= DRAG_THRESHOLD => {
-                self.state = State::Dragging(from);
+                self.state = State::Dragging;
                 Out::DragStart { from, to: p }
             }
-            State::Dragging(_) => Out::DragMove(p.0, p.1),
+            State::Dragging => Out::DragMove(p.0, p.1),
             _ => Out::None,
         }
     }
@@ -46,7 +46,7 @@ impl Gesture {
     pub fn release(&mut self, p: (f64, f64)) -> Out {
         match std::mem::take(&mut self.state) {
             State::Pressed(_) => Out::Click(p.0, p.1),
-            State::Dragging(from) => Out::DragEnd { from, to: p },
+            State::Dragging => Out::DragEnd(p.0, p.1),
             State::Idle => Out::None,
         }
     }
@@ -72,7 +72,7 @@ mod tests {
         g.press((10.0, 10.0));
         assert_eq!(g.moved((10.0, 30.0)), Out::DragStart { from: (10.0, 10.0), to: (10.0, 30.0) });
         assert_eq!(g.moved((10.0, 50.0)), Out::DragMove(10.0, 50.0));
-        assert_eq!(g.release((10.0, 60.0)), Out::DragEnd { from: (10.0, 10.0), to: (10.0, 60.0) });
+        assert_eq!(g.release((10.0, 60.0)), Out::DragEnd(10.0, 60.0));
     }
 
     #[test]

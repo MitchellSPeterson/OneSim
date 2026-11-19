@@ -45,6 +45,10 @@ pub struct Host {
     greeted: bool,
 }
 
+fn rn_touch_message(phase: TouchPhase, n: &simcore_render::Node, x: f64, y: f64, timestamp: f64) -> HostMessage {
+    HostMessage::Touch { phase, tag: n.tag.unwrap_or(0), x, y, lx: x - n.bounds.x, ly: y - n.bounds.y, timestamp }
+}
+
 impl Default for Host {
     fn default() -> Self {
         Self::new()
@@ -403,16 +407,7 @@ impl Host {
         let s = self.get(id)?;
         let hit = scene.hit_test(ev.x, ev.y).map(|i| &scene.nodes[i]);
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64() * 1000.0);
-        let touch_at = |phase, n: &simcore_render::Node, x: f64, y: f64, timestamp: f64| HostMessage::Touch {
-            phase,
-            tag: n.tag.unwrap_or(0),
-            x,
-            y,
-            lx: x - n.bounds.x,
-            ly: y - n.bounds.y,
-            timestamp,
-        };
-        let touch = |phase, n: &simcore_render::Node| touch_at(phase, n, ev.x, ev.y, now);
+        let touch = |phase, n: &simcore_render::Node| rn_touch_message(phase, n, ev.x, ev.y, now);
         let mut target = hit;
         match ev.kind {
             PointerKind::Drag => {
@@ -421,10 +416,10 @@ impl Host {
                     s.send(&touch(TouchPhase::Start, n))?;
                     for i in 1..=STEPS {
                         let f = f64::from(i) / f64::from(STEPS);
-                        s.send(&touch_at(TouchPhase::Move, n, ev.x + ev.dx * f, ev.y + ev.dy * f, now + 16.0 * f64::from(i)))?;
+                        s.send(&rn_touch_message(TouchPhase::Move, n, ev.x + ev.dx * f, ev.y + ev.dy * f, now + 16.0 * f64::from(i)))?;
                     }
                     let end = now + 16.0 * f64::from(STEPS + 1);
-                    s.send_and_settle(&touch_at(TouchPhase::End, n, ev.x + ev.dx, ev.y + ev.dy, end))?;
+                    s.send_and_settle(&rn_touch_message(TouchPhase::End, n, ev.x + ev.dx, ev.y + ev.dy, end))?;
                 }
             }
             PointerKind::Down => {
@@ -478,14 +473,27 @@ impl Host {
 
     /// One phase of a live finger drag (`t_ms` is the event time): the content follows the finger and carries on
     /// with its release velocity (see [`Host::tick`]); sheets follow too. Returns whether the scene changed.
-    /// Not for React Native, where a drag is a touch gesture (`PointerKind::Drag`).
+    /// React Native receives each phase on the same Fabric target and supplies its own gesture behavior.
     pub fn drag(&mut self, id: &str, phase: simcore_render::DragPhase, x: f64, y: f64, t_ms: f64) -> Result<bool, ApiError> {
+        use simcore_render::DragPhase;
         self.get(id)?.require_running()?;
-        if self.get(id)?.is_rn() {
-            return Err(err(ErrorCode::Unsupported, "live drags are not available in react-native sessions"));
-        }
         let (scene, version, _) = self.scene(id)?;
         let s = self.get(id)?;
+        if s.is_rn() {
+            let (phase, tag) = match phase {
+                DragPhase::Begin => {
+                    s.touch = scene.hit_test(x, y).and_then(|i| scene.nodes[i].tag);
+                    (TouchPhase::Start, s.touch)
+                }
+                DragPhase::Move => (TouchPhase::Move, s.touch),
+                DragPhase::End => (TouchPhase::End, s.touch.take()),
+            };
+            if let Some(n) = tag.and_then(|tag| scene.nodes.iter().find(|n| n.tag == Some(tag))) {
+                s.send(&rn_touch_message(phase, n, x, y, t_ms))?;
+            }
+            // Later trees arrive through render.updated, so the live caller never waits for a commit.
+            return Ok(false);
+        }
         s.inter.version = version;
         let effect = s.inter.drag(&scene, phase, x, y, t_ms);
         let changed = effect != simcore_render::Effect::None;

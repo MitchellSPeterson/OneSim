@@ -39,7 +39,7 @@ const HIDDEN_POLL: Duration = Duration::from_millis(250);
 
 pub struct Config {
     pub pref: BackendPref,
-    /// React Native: drags are touch gestures delivered on release; there is no live finger tracking.
+    /// React Native: the guest owns gesture physics and commits asynchronously.
     pub rn: bool,
     pub title: String,
     pub stats: bool,
@@ -278,7 +278,7 @@ impl App {
         match self.timed(|h, id| h.drag(id, phase, p.0, p.1, t)) {
             Ok(_) => {
                 self.sched.invalidate(Reason::Input);
-                if phase == DragPhase::End {
+                if phase == DragPhase::End && !self.cfg.rn {
                     self.sched.set_animating(true); // momentum / bounce: the first tick says whether there is any
                     self.last_tick = Instant::now();
                 }
@@ -310,10 +310,7 @@ impl App {
                 self.flush_input();
                 match self.gesture.release(p) {
                     Out::Click(x, y) => self.pointer(PointerEvent::new(PointerKind::Click, x, y)),
-                    Out::DragEnd { from, to } if self.cfg.rn => {
-                        self.pointer(PointerEvent { kind: PointerKind::Drag, x: from.0, y: from.1, dx: to.0 - from.0, dy: to.1 - from.1 })
-                    }
-                    Out::DragEnd { to, .. } => self.drag(DragPhase::End, to),
+                    Out::DragEnd(x, y) => self.drag(DragPhase::End, (x, y)),
                     _ => {}
                 }
             }
@@ -327,12 +324,12 @@ impl App {
         }
         let p = self.points();
         match self.gesture.moved(p) {
-            Out::DragStart { from, to } if !self.cfg.rn => {
+            Out::DragStart { from, to } => {
                 self.drag(DragPhase::Begin, from);
                 self.pending_drag = Some(to);
                 self.sched.invalidate(Reason::Input);
             }
-            Out::DragMove(x, y) if !self.cfg.rn => {
+            Out::DragMove(x, y) => {
                 self.pending_drag = Some((x, y));
                 self.sched.invalidate(Reason::Input);
             }
@@ -429,7 +426,6 @@ impl App {
                 Step::Wait(d) => self.script_wait = Some(now + d),
                 Step::Click(x, y) => self.pointer(PointerEvent::new(PointerKind::Click, x, y)),
                 Step::Scroll(x, y, dx, dy) => self.pointer(PointerEvent { kind: PointerKind::Scroll, x, y, dx, dy }),
-                Step::Drag(x, y, dx, dy) if self.cfg.rn => self.pointer(PointerEvent { kind: PointerKind::Drag, x, y, dx, dy }),
                 Step::Drag(x, y, dx, dy) => {
                     let t0 = self.now_ms();
                     self.drag_at(DragPhase::Begin, (x, y), t0);
@@ -439,6 +435,7 @@ impl App {
                     }
                     self.drag_at(DragPhase::End, (x + dx, y + dy), t0 + 16.0 * 7.0);
                 }
+                Step::DragPhase(phase, x, y) => self.drag(phase, (x, y)),
                 Step::Type(t) => self.key_event(KeyboardEvent::Text { text: t }),
                 Step::Key(k) => self.key_event(KeyboardEvent::Key { key: k }),
                 Step::Toggle => self.toggle_renderer(),
@@ -459,6 +456,9 @@ impl App {
     fn redraw(&mut self) {
         let Some(win) = self.window.clone() else { return };
         let started = Instant::now();
+        if self.hidden.is_some_and(|until| started < until) {
+            return;
+        }
         let os_initiated = !self.sched.wants_frame();
         self.flush_input();
         if self.sched.animating() {
@@ -614,6 +614,7 @@ impl ApplicationHandler<UserEvent> for App {
             WindowEvent::Occluded(o) => {
                 self.occluded = o;
                 if !o {
+                    self.hidden = None;
                     self.sched.invalidate(Reason::Resize);
                 }
             }
@@ -634,15 +635,16 @@ impl ApplicationHandler<UserEvent> for App {
         let mut flow = ControlFlow::Wait;
         if let Some(t) = self.hidden {
             if now >= t {
-                self.hidden = Some(now + HIDDEN_POLL);
+                self.hidden = None;
                 self.sched.invalidate(Reason::Renderer);
+            } else {
+                flow = ControlFlow::WaitUntil(t);
             }
-            flow = ControlFlow::WaitUntil(self.hidden.unwrap_or(t));
         }
         if let Some(t) = self.run_script(el, now) {
             flow = earlier(flow, t);
         }
-        if !self.occluded && self.presenter.is_some() {
+        if !self.occluded && self.hidden.is_none() && self.presenter.is_some() {
             match self.sched.poll(now) {
                 Poll::Draw => {
                     if let Some(w) = &self.window {

@@ -6,6 +6,7 @@
 //! `type:TEXT`, `key:backspace|enter`, `toggle` (Cmd+R), `dark` (Cmd+D), `snap:PATH` (PNG of the window as
 //! presented), `quit`. Points are device points, like the headless `--click` steps.
 
+use simcore_render::DragPhase;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -15,6 +16,7 @@ pub enum Step {
     Click(f64, f64),
     Scroll(f64, f64, f64, f64),
     Drag(f64, f64, f64, f64),
+    DragPhase(DragPhase, f64, f64),
     Type(String),
     Key(String),
     Toggle,
@@ -39,6 +41,9 @@ pub fn parse(src: &str) -> Result<Vec<Step>, String> {
                 "click" => nums::<2>(arg).map(|[x, y]| Step::Click(x, y))?,
                 "scroll" => nums::<4>(arg).map(|[x, y, dx, dy]| Step::Scroll(x, y, dx, dy))?,
                 "drag" => nums::<4>(arg).map(|[x, y, dx, dy]| Step::Drag(x, y, dx, dy))?,
+                "drag-begin" => nums::<2>(arg).map(|[x, y]| Step::DragPhase(DragPhase::Begin, x, y))?,
+                "drag-move" => nums::<2>(arg).map(|[x, y]| Step::DragPhase(DragPhase::Move, x, y))?,
+                "drag-end" => nums::<2>(arg).map(|[x, y]| Step::DragPhase(DragPhase::End, x, y))?,
                 "type" => Step::Type(arg.to_string()),
                 "key" => Step::Key(arg.to_string()),
                 "toggle" => Step::Toggle,
@@ -63,6 +68,14 @@ mod tests {
         assert_eq!(got[1], Step::Click(10.0, 20.0));
         assert_eq!(got[4], Step::Type("hi there".into()));
         assert_eq!(got[8], Step::Snap("/tmp/a.png".into()));
+    }
+
+    #[test]
+    fn parses_separate_drag_phases() {
+        assert_eq!(
+            parse("drag-begin:10,20;drag-move:30,40;drag-end:50,60").unwrap(),
+            vec![Step::DragPhase(DragPhase::Begin, 10.0, 20.0), Step::DragPhase(DragPhase::Move, 30.0, 40.0), Step::DragPhase(DragPhase::End, 50.0, 60.0)]
+        );
     }
 
     #[test]
