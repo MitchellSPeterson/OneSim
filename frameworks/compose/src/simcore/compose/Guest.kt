@@ -59,10 +59,11 @@ object Guest {
         val sb = StringBuilder()
         root.toJson("root", acts, sb)
         val tree = sb.toString()
+        // Callbacks can change while their wire IDs stay the same.
+        actions = acts
         if (!force && tree == lastTree) return
         lastTree = tree
         version++
-        actions = acts
         send("""{"type":"tree","version":$version,"root":$tree}""")
     }
 

@@ -268,9 +268,14 @@ impl Cx<'_> {
         }
         if let Some(a) = m.get("wrapContent") {
             let (bh, bv) = pair(a);
-            let inner = next(self, c.loose());
+            let inner = next(self, C {
+                min_w: if bh.is_some() { 0.0 } else { c.min_w },
+                min_h: if bv.is_some() { 0.0 } else { c.min_h },
+                ..c
+            });
             let (w, h) = (inner.w.max(c.min_w), inner.h.max(c.min_h));
-            let (x, y) = (self.bias(w, inner.w, bh.unwrap_or(0.0)), self.bias(h, inner.h, bv.unwrap_or(0.0)));
+            let x = bh.map_or(0.0, |bias| self.bias(w, inner.w, bias));
+            let y = bv.map_or(0.0, |bias| self.bias(h, inner.h, bias));
             return Laid { id, w, h, deco: Deco::None, kids: vec![(x, y, inner)] };
         }
         if let Some(min) = self.opx(f(m, "minInteractive")) {
@@ -709,6 +714,23 @@ mod tests {
         let l = lay(b, C { min_w: 0.0, max_w: 400.0, min_h: 0.0, max_h: 800.0 });
         assert_eq!((l.w, l.h), (58.0, 40.0));
         assert_eq!((l.kids[0].0, l.kids[0].1), (19.0, 15.0));
+    }
+
+    #[test]
+    fn wrap_content_preserves_constraints_on_the_other_axis() {
+        let constraints = C { min_w: 200.0, max_w: 200.0, min_h: 100.0, max_h: 100.0 };
+        let child = sized("child", 50.0, 10.0);
+        let column = json!({"kind":"compose","id":"column","component":"Column",
+            "props":{"modifier":[{"wrapContent":[1.0,null]}]},"children":[child]});
+        let column = lay(column, constraints);
+        let (x, y, inner) = &column.kids[0];
+        assert_eq!((*x, *y, inner.w, inner.h), (150.0, 0.0, 50.0, 100.0));
+
+        let row = json!({"kind":"compose","id":"row","component":"Row",
+            "props":{"modifier":[{"wrapContent":[null,1.0]}]},"children":[child]});
+        let row = lay(row, constraints);
+        let (x, y, inner) = &row.kids[0];
+        assert_eq!((*x, *y, inner.w, inner.h), (0.0, 90.0, 200.0, 10.0));
     }
 
     #[test]
