@@ -152,14 +152,20 @@ impl Shape {
     }
 }
 
-/// Copy the pixels around `shape` (padded by the blur radius and lens reach).
-pub fn snapshot(pm: &Pixmap, shape: Shape, scale: f32, p: &Params) -> Snapshot {
+/// Page rectangle `(x, y, w, h)` (device px) that [`snapshot`] copies for `shape` on a `pw` x `ph` canvas:
+/// the shape padded by the blur radius and lens reach, clipped to the canvas.
+pub fn snapshot_rect(shape: Shape, scale: f32, p: &Params, pw: u32, ph: u32) -> (i32, i32, usize, usize) {
     let pad = (p.sigma * scale * 3.0 + p.lens_d * scale + 2.0).ceil() as i32;
     let x0 = ((shape.x.floor() as i32) - pad).max(0);
     let y0 = ((shape.y.floor() as i32) - pad).max(0);
-    let x1 = (((shape.x + shape.w).ceil() as i32) + pad).min(pm.width() as i32);
-    let y1 = (((shape.y + shape.h).ceil() as i32) + pad).min(pm.height() as i32);
-    let (w, h) = ((x1 - x0).max(1) as usize, (y1 - y0).max(1) as usize);
+    let x1 = (((shape.x + shape.w).ceil() as i32) + pad).min(pw as i32);
+    let y1 = (((shape.y + shape.h).ceil() as i32) + pad).min(ph as i32);
+    (x0, y0, (x1 - x0).max(1) as usize, (y1 - y0).max(1) as usize)
+}
+
+/// Copy the pixels around `shape` (padded by the blur radius and lens reach).
+pub fn snapshot(pm: &Pixmap, shape: Shape, scale: f32, p: &Params) -> Snapshot {
+    let (x0, y0, w, h) = snapshot_rect(shape, scale, p, pm.width(), pm.height());
     let mut rgb = [vec![0f32; w * h], vec![0f32; w * h], vec![0f32; w * h]];
     // Mirror a page coordinate into [lo, hi) (flat materials see only their own backdrop).
     let fold = |v: i32, lo: f32, hi: f32| {
@@ -185,17 +191,21 @@ pub fn snapshot(pm: &Pixmap, shape: Shape, scale: f32, p: &Params) -> Snapshot {
     Snapshot { x0, y0, w, h, rgb }
 }
 
-/// Gaussian blur approximated by three box blurs (Kovesi's widths), edges replicated. Constant cost
-/// per pixel whatever the sigma; within a few levels of the exact kernel on backdrops, far below
-/// what the pixel-diff rule counts (24/255).
-fn box_blur3(plane: &mut [f32], w: usize, h: usize, sigma: f32) {
+/// Radii of the three box blurs (Kovesi's widths) that approximate a gaussian of `sigma` pixels.
+pub fn box_radii(sigma: f32) -> [usize; 3] {
     let wi = (12.0 * sigma * sigma / 3.0 + 1.0).sqrt();
     let wl = (wi.floor() as usize).max(1);
     let wl = if wl.is_multiple_of(2) { wl - 1 } else { wl };
     let m = ((12.0 * sigma * sigma - 3.0 * (wl * wl) as f32 - 12.0 * wl as f32 - 9.0) / (-4.0 * wl as f32 - 4.0)).round() as usize;
-    let radii: [usize; 3] = std::array::from_fn(|i| if i < m { wl / 2 } else { wl / 2 + 1 });
+    std::array::from_fn(|i| if i < m { wl / 2 } else { wl / 2 + 1 })
+}
+
+/// Gaussian blur approximated by three box blurs (Kovesi's widths), edges replicated. Constant cost
+/// per pixel whatever the sigma; within a few levels of the exact kernel on backdrops, far below
+/// what the pixel-diff rule counts (24/255).
+fn box_blur3(plane: &mut [f32], w: usize, h: usize, sigma: f32) {
     let mut tmp = vec![0f32; plane.len()];
-    for r in radii {
+    for r in box_radii(sigma) {
         for (src, dst) in plane.chunks_exact(w).zip(tmp.chunks_exact_mut(w)) {
             box_line(src, dst, r);
         }
@@ -346,7 +356,7 @@ fn veil(rel: f32) -> f32 {
 // at EDGE_BLUR_TOP at the top, EDGE_BLUR_BAR at the bar's bottom, fading out EDGE_BLUR_TAIL below it.
 const EDGE_TOP_ALPHA: f32 = 0.95;
 const EDGE_KNEE: f32 = 8.0;
-const EDGE_SIGMA: f32 = 1.5;
+pub const EDGE_SIGMA: f32 = 1.5;
 const EDGE_BLUR_TOP: f32 = 1.0;
 const EDGE_BLUR_BAR: f32 = 0.55;
 const EDGE_BLUR_TAIL: f32 = 7.75;
@@ -374,9 +384,20 @@ fn blur_at(pt: f32, bar: f32) -> f32 {
     }
 }
 
+/// Rows (from the top of the canvas) the scroll edge touches on a `ph`-tall canvas.
+pub fn edge_rows(e: &ScrollEdge, scale: f32, ph: usize) -> usize {
+    (((e.bar + 32.0) * scale).ceil() as usize).min(ph)
+}
+
+/// Per-row scroll-edge terms at device row `y`: `[veil alpha, blur weight, tint (0..1)]`.
+pub fn edge_row(e: &ScrollEdge, y: usize, scale: f32) -> [f32; 3] {
+    let pt = (y as f32 + 0.5) / scale;
+    [veil_at(pt, e.bar), blur_at(pt, e.bar), e.tint * ((e.bar + 12.0 - pt) / 44.0).clamp(0.0, 1.0)]
+}
+
 pub fn draw_edge(pm: &mut Pixmap, e: &ScrollEdge, scale: f32, mask: Option<&Mask>) {
     let (pw, ph) = (pm.width() as usize, pm.height() as usize);
-    let rows = (((e.bar + 32.0) * scale).ceil() as usize).min(ph);
+    let rows = edge_rows(e, scale, ph);
     let col = [e.color.r * 255.0, e.color.g * 255.0, e.color.b * 255.0];
     // Blurred copy of the band, computed at ~1 px per point (it is soft anyway) and sampled back up.
     let f = (scale.round() as usize).max(1);
@@ -414,9 +435,7 @@ pub fn draw_edge(pm: &mut Pixmap, e: &ScrollEdge, scale: f32, mask: Option<&Mask
     let mask_data = mask.map(|m| m.data());
     let data = pm.data_mut();
     for y in 0..rows {
-        let pt = (y as f32 + 0.5) / scale;
-        let a = veil_at(pt, e.bar);
-        let bwt = blur_at(pt, e.bar);
+        let [a, bwt, t] = edge_row(e, y, scale);
         if bwt > 0.0 {
             let sy = ((y as f32 + 0.5) / f as f32 - 0.5).clamp(0.0, bh as f32 - 1.0);
             let (yi, fy) = (sy.floor() as usize, sy - sy.floor());
@@ -427,8 +446,7 @@ pub fn draw_edge(pm: &mut Pixmap, e: &ScrollEdge, scale: f32, mask: Option<&Mask
                 }
             }
         }
-        // Tint: full above bar-32, gone by bar+12.
-        let t = e.tint * ((e.bar + 12.0 - pt) / 44.0).clamp(0.0, 1.0);
+        // Tint (full above bar-32, gone by bar+12) comes from `edge_row`.
         let px = |d: f32, c: usize, m: f32| {
             let v = mix(d, col[c], a) - t * 255.0;
             mix(d, v.clamp(0.0, 255.0), m)

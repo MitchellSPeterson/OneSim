@@ -568,6 +568,28 @@ pub fn clip_radius(n: &crate::scene::Node, s: f32, pw: u32, ph: u32) -> Option<f
     n.clip_radius.filter(|_| !covers)
 }
 
+/// The clip rounded rects (device px `[x, y, w, h, radius]`, outermost first) that apply to node `idx`: its ancestors'
+/// clips, exactly those [`apply_backdrop`] intersects into its mask.
+pub fn clip_chain(scene: &Scene, idx: usize, scale: f64) -> Vec<[f32; 5]> {
+    let s = scale as f32;
+    let (pw, ph) = ((scene.size.0 * scale).round().max(1.0) as u32, (scene.size.1 * scale).round().max(1.0) as u32);
+    let mut chain = vec![];
+    let mut at = scene.nodes[idx].parent;
+    while let Some(i) = at {
+        let n = &scene.nodes[i];
+        if let Some(r) = clip_radius(n, s, pw, ph) {
+            let b = n.bounds;
+            let (w, h) = (b.w as f32 * s, b.h as f32 * s);
+            if rrect(b.x as f32, b.y as f32, b.w as f32, b.h as f32, r as f32).is_some() {
+                chain.push([b.x as f32 * s, b.y as f32 * s, w, h, (r as f32 * s).min(w / 2.0).min(h / 2.0).max(0.0)]);
+            }
+        }
+        at = n.parent;
+    }
+    chain.reverse();
+    chain
+}
+
 /// True when `n` paints by reading or blending against what is already in the frame (Liquid Glass, scroll edge),
 /// so a GPU backend must composite it on the CPU.
 pub fn needs_backdrop(n: &crate::scene::Node) -> bool {

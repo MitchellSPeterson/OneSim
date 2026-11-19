@@ -4,8 +4,13 @@
 //! `Rgba8Unorm` storage texture and read back once per frame. Text, icon glyphs and SF Symbols are
 //! drawn by the CPU rasterizer's own code into small cached "sprites" and composited at integer
 //! device pixels, so they match the CPU reference exactly. Liquid Glass and scroll-edge effects read
-//! the backdrop, which Vello cannot: the frame is split there, the part painted so far is read back,
-//! the CPU composites that node, and the next Vello pass starts from the result.
+//! the backdrop, which Vello cannot: the frame is split there. Each segment is rendered by Vello into the
+//! target, copied into an accumulation texture, composited by compute passes (see [`glass`]), and the next
+//! segment starts by drawing the accumulation texture (registered with Vello) as a full-frame image. Only the
+//! final frame is read back. Where a node or the device cannot do this, that node takes the old path:
+//! read back, `apply_backdrop` on the CPU, upload.
+
+mod glass;
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -22,6 +27,7 @@ use vello::peniko::{
     color::AlphaColor, Blob, Color, Extend, Fill, Gradient, ImageAlphaType,InterpolationAlphaSpace, ImageBrush, ImageData, ImageFormat, ImageQuality,
 };
 use vello::wgpu;
+use glass::{GlassGpu, Surfaces};
 use vello::{AaConfig, AaSupport, RenderParams, RendererOptions};
 
 /// Frames a cached sprite or bitmap may go unused before it is dropped.
@@ -44,6 +50,13 @@ struct Target {
     h: u32,
     tex: wgpu::Texture,
     view: wgpu::TextureView,
+}
+
+/// Everything painted so far in the frame (straight alpha), registered with Vello to start the next segment.
+struct Acc {
+    tex: wgpu::Texture,
+    view: wgpu::TextureView,
+    img: ImageData,
 }
 
 struct Staging {
@@ -81,6 +94,14 @@ pub struct GpuRenderer {
     adapter: String,
     errors: Arc<Mutex<Errors>>,
     target: Option<Target>,
+    acc: Option<Acc>,
+    /// Bumped whenever `target` / `acc` are re-created.
+    gen: u64,
+    /// GPU glass pipelines, or `None` (reason in `glass_note`).
+    glass: Option<GlassGpu>,
+    glass_note: String,
+    /// Backdrop nodes composited on the GPU / on the CPU so far.
+    backdrops: (u64, u64),
     staging: Option<Staging>,
     sprites: HashMap<u64, CachedSprite>,
     bitmaps: HashMap<usize, CachedBitmap>,
@@ -118,6 +139,14 @@ impl GpuRenderer {
             RendererOptions { use_cpu: false, antialiasing_support: AaSupport::area_only(), num_init_threads: None, pipeline_cache: None },
         )
         .map_err(|e| format!("Vello init ({name}): {e}"))?;
+        let (glass, glass_note) = if std::env::var("SIMCORE_GPU_GLASS").is_ok_and(|v| v == "cpu") {
+            (None, "disabled by SIMCORE_GPU_GLASS=cpu".to_string())
+        } else {
+            match GlassGpu::new(&device) {
+                Ok(g) => (Some(g), String::new()),
+                Err(e) => (None, e),
+            }
+        };
         Ok(Self {
             device,
             queue,
@@ -133,6 +162,11 @@ impl GpuRenderer {
             adapter: name,
             errors,
             target: None,
+            acc: None,
+            gen: 0,
+            glass,
+            glass_note,
+            backdrops: (0, 0),
             staging: None,
             sprites: HashMap::new(),
             bitmaps: HashMap::new(),
@@ -148,6 +182,18 @@ impl GpuRenderer {
     fn begin_scene(&mut self) {
         self.scene.reset();
         self.scene.draw_image(&ImageBrush::new(self.anchor.clone()).with_quality(ImageQuality::Low), Affine::IDENTITY);
+    }
+
+    /// Route every backdrop node through the CPU path (read back, `apply_backdrop`, upload). Also selectable with
+    /// `SIMCORE_GPU_GLASS=cpu` at creation.
+    pub fn disable_gpu_glass(&mut self, reason: &str) {
+        self.glass = None;
+        self.glass_note = reason.to_string();
+    }
+
+    /// Backdrop nodes (glass, scroll edge) composited so far on the GPU and on the CPU fallback path.
+    pub fn backdrop_counts(&self) -> (u64, u64) {
+        self.backdrops
     }
 
     /// Cached sprites and bitmaps currently held (bounded by [`CACHE_MAX_ENTRIES`]).
@@ -184,24 +230,35 @@ impl GpuRenderer {
         if self.target.as_ref().is_some_and(|t| (t.w, t.h) == (w, h)) {
             return;
         }
-        let tex = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("simcore-target"),
+        let desc = |label, usage| wgpu::TextureDescriptor {
+            label: Some(label),
             size: wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC,
+            usage,
             view_formats: &[],
-        });
+        };
+        let tex = self.device.create_texture(&desc("simcore-target", wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST));
         let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
         self.target = Some(Target { w, h, tex, view });
+        if let Some(old) = self.acc.take() {
+            self.vello.unregister_texture(old.img);
+        }
+        let tex = self.device.create_texture(&desc("simcore-accumulation", wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST));
+        let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+        let img = self.vello.register_texture(tex.clone());
+        self.acc = Some(Acc { tex, view, img });
+        self.gen += 1;
     }
 
-    /// Render the current Vello scene and read it back as a premultiplied pixmap.
-    fn render_pass(&mut self, w: u32, h: u32, t: &mut FrameTimings) -> Result<Pixmap, RenderError> {
-        let t0 = Instant::now();
+    /// Render the current Vello scene into the target. `acc_in_scene`: the scene draws the accumulation texture.
+    fn render_vello(&mut self, w: u32, h: u32, acc_in_scene: bool) -> Result<(), RenderError> {
         self.ensure_target(w, h);
+        if let (true, Some(acc)) = (acc_in_scene, self.acc.as_ref()) {
+            self.vello.mark_override_image_dirty(&acc.img);
+        }
         let target = self.target.as_ref().ok_or_else(|| RenderError::Other("no target".into()))?;
         self.vello
             .render_to_texture(
@@ -212,6 +269,28 @@ impl GpuRenderer {
                 &RenderParams { base_color: Color::TRANSPARENT, width: w, height: h, antialiasing_method: AaConfig::Area },
             )
             .map_err(|e| self.map_error(format!("Vello render: {e}")))?;
+        // The target now holds the whole frame: make it the accumulation.
+        if let (Some(t), Some(a)) = (self.target.as_ref(), self.acc.as_ref()) {
+            let mut enc = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("simcore-accumulate") });
+            enc.copy_texture_to_texture(t.tex.as_image_copy(), a.tex.as_image_copy(), wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 });
+            self.queue.submit([enc.finish()]);
+        }
+        Ok(())
+    }
+
+    /// Nothing painted yet: both textures start transparent.
+    fn clear_frame(&mut self) {
+        if let (Some(t), Some(a)) = (self.target.as_ref(), self.acc.as_ref()) {
+            let mut enc = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("simcore-clear") });
+            enc.clear_texture(&t.tex, &wgpu::ImageSubresourceRange::default());
+            enc.clear_texture(&a.tex, &wgpu::ImageSubresourceRange::default());
+            self.queue.submit([enc.finish()]);
+        }
+    }
+
+    /// Read the target back as a premultiplied pixmap.
+    fn readback(&mut self, w: u32, h: u32, t: &mut FrameTimings) -> Result<Pixmap, RenderError> {
+        let t0 = Instant::now();
         let bpr = (w * 4).div_ceil(256) * 256;
         let size = bpr as u64 * h as u64;
         if self.staging.as_ref().is_none_or(|s| s.size != size) {
@@ -288,6 +367,29 @@ impl GpuRenderer {
             Err(e) => e,
             Ok(()) => RenderError::Other(msg),
         }
+    }
+
+    /// Composite backdrop node `idx` on the CPU: read the frame back, `apply_backdrop`, upload to target and accumulation.
+    fn backdrop_on_cpu(&mut self, scene: &Scene, idx: usize, scale: f64, w: u32, h: u32, t: &mut FrameTimings) -> Result<(), RenderError> {
+        let mut pm = self.readback(w, h, t)?;
+        apply_backdrop(&mut pm, scene, idx, scale);
+        // The pixmap is premultiplied, the textures hold straight alpha.
+        let mut data = pm.take();
+        for px in data.as_chunks_mut::<4>().0 {
+            let a = px[3] as u32;
+            if a != 0 && a != 255 {
+                for c in &mut px[..3] {
+                    *c = ((*c as u32 * 255 + a / 2) / a).min(255) as u8;
+                }
+            }
+        }
+        let size = wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 };
+        let layout = wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(w * 4), rows_per_image: Some(h) };
+        if let (Some(tg), Some(a)) = (self.target.as_ref(), self.acc.as_ref()) {
+            self.queue.write_texture(tg.tex.as_image_copy(), &data, layout, size);
+            self.queue.write_texture(a.tex.as_image_copy(), &data, layout, size);
+        }
+        Ok(())
     }
 
     fn bitmap(&mut self, px: &Arc<Pixmap>) -> ImageData {
@@ -390,10 +492,11 @@ impl Renderer for GpuRenderer {
         let sf = scale as f32;
         let nodes = &scene.nodes;
 
-        // Backdrop of the current Vello pass: everything painted before the last CPU-composited node.
-        let mut bg: Option<Pixmap> = None;
-        // Anything drawn in the current pass besides the backdrop image.
-        let mut dirty = false;
+        // `rendered`: the target holds the frame so far (and equals the accumulation texture, apart from `dirty`
+        // drawing). `dirty`: the Vello scene holds drawing not yet rendered. `acc_in_scene`: the scene starts by
+        // drawing the accumulation texture.
+        let (mut rendered, mut dirty, mut acc_in_scene) = (false, false, false);
+        self.ensure_target(pw, ph);
         self.begin_scene();
         let mut clips = Clips::default();
         // Clipping ancestors of each node (outermost first).
@@ -417,25 +520,47 @@ impl Renderer for GpuRenderer {
             let backdrop = needs_backdrop(n);
             if backdrop {
                 clips.close(&mut self.scene);
-                let t0 = Instant::now();
-                let mut pm = if dirty {
-                    self.render_pass(pw, ph, &mut timings)?
+                if dirty {
+                    self.render_vello(pw, ph, acc_in_scene)?;
+                    rendered = true;
+                    dirty = false;
+                } else if !rendered {
+                    self.clear_frame();
+                    rendered = true;
+                }
+                let on_gpu = match (self.glass.as_mut(), self.acc.as_ref(), self.target.as_ref()) {
+                    (Some(glass), Some(acc), Some(target)) if GlassGpu::supports(scene, i, scale) => {
+                        let fr = Surfaces {
+                            device: &self.device,
+                            queue: &self.queue,
+                            acc: &acc.tex,
+                            acc_view: &acc.view,
+                            target: &target.tex,
+                            target_view: &target.view,
+                            gen: self.gen,
+                            size: (pw, ph),
+                        };
+                        match glass.encode(&fr, scene, i, scale) {
+                            Ok(()) => true,
+                            Err(e) => {
+                                log::warn!("GPU glass unavailable for node {}: {e}", n.id);
+                                false
+                            }
+                        }
+                    }
+                    _ => false,
+                };
+                if on_gpu {
+                    self.backdrops.0 += 1;
                 } else {
-                    bg.take().or_else(|| Pixmap::new(pw, ph)).ok_or_else(|| RenderError::Other("pixmap size".into()))?
-                };
-                apply_backdrop(&mut pm, scene, i, scale);
-                timings.encode += t0.elapsed();
+                    self.backdrops.1 += 1;
+                    self.backdrop_on_cpu(scene, i, scale, pw, ph, &mut timings)?;
+                }
                 self.begin_scene();
-                let img = ImageData {
-                    data: Blob::from(pm.data().to_vec()),
-                    format: ImageFormat::Rgba8,
-                    alpha_type: ImageAlphaType::AlphaPremultiplied,
-                    width: pw,
-                    height: ph,
-                };
-                self.scene.draw_image(&ImageBrush::new(img).with_quality(ImageQuality::Low), Affine::IDENTITY);
-                bg = Some(pm);
-                dirty = false;
+                if let Some(acc) = &self.acc {
+                    self.scene.draw_image(&ImageBrush::new(acc.img.clone()).with_quality(ImageQuality::Low), Affine::IDENTITY);
+                    acc_in_scene = true;
+                }
             }
             clips.sync(&mut self.scene, nodes, &chain, s);
 
@@ -493,14 +618,18 @@ impl Renderer for GpuRenderer {
         }
         clips.close(&mut self.scene);
 
-        let pm = if dirty {
-            self.render_pass(pw, ph, &mut timings)?
+        if dirty {
+            self.render_vello(pw, ph, acc_in_scene)?;
+            rendered = true;
+        }
+        let pm = if rendered {
+            self.readback(pw, ph, &mut timings)?
         } else {
-            bg.take().or_else(|| Pixmap::new(pw, ph)).ok_or_else(|| RenderError::Other("pixmap size".into()))?
+            Pixmap::new(pw, ph).ok_or_else(|| RenderError::Other("pixmap size".into()))?
         };
         self.evict();
         self.check_errors()?;
-        // Backdrop compositing on the CPU is counted as encode time.
+        // Everything but the final wait and readback (scene encoding, Vello and glass submission) counts as encode.
         let wall = t_all.elapsed();
         timings.encode = wall.saturating_sub(timings.gpu + timings.readback).max(Duration::ZERO);
         self.last = timings;
@@ -513,7 +642,11 @@ impl Renderer for GpuRenderer {
             backend: BackendKind::Gpu.to_string(),
             adapter: self.adapter.clone(),
             limitations: vec![
-                "liquid glass and scroll-edge effects: CPU composite via readback (frame is split at each such node)".into(),
+                if self.glass.is_some() {
+                    "liquid glass and scroll-edge effects: GPU compute passes on an accumulation texture (single readback); nodes combining scroll edge with glass or a shadow, or with more than 4 ancestor clips, use the CPU path".to_string()
+                } else {
+                    format!("liquid glass and scroll-edge effects: CPU composite via readback ({})", self.glass_note)
+                },
                 "text, icon glyphs, SF Symbols, underline/strike: drawn by the CPU rasterizer into cached sprites".into(),
                 "vector anti-aliasing, shadow blur and gradients differ from the CPU reference by small per-channel amounts (not byte-identical)".into(),
             ],

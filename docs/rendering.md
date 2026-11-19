@@ -6,7 +6,7 @@ Layout, hit testing and input are backend independent: the host builds one `Scen
 | backend | what | availability |
 |---|---|---|
 | `cpu` | tiny-skia + cosmic-text, the deterministic reference (all pixel-diff gates use it) | always |
-| `gpu` | wgpu + Vello (`crates/simcore-render-gpu`), render to texture and read back | `--features gpu` and a usable adapter |
+| `gpu` | wgpu + Vello (`crates/simcore-render-gpu`), render to texture and read back once per frame; Liquid Glass and scroll edges run as compute passes on an accumulation texture (`SIMCORE_GPU_GLASS=cpu` forces the CPU backdrop path) | `--features gpu` and a usable adapter |
 
 ## Selecting
 
