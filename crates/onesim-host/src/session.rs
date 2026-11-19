@@ -180,19 +180,28 @@ const SIGCONT: i32 = libc::SIGCONT;
 #[cfg(not(unix))]
 const SIGSTOP: i32 = 0;
 #[cfg(not(unix))]
-const SIGCONT: i32 = 0;
+const SIGCONT: i32 = 1;
 
-/// Send a stop/continue signal to the guest child (unix only; a no-op elsewhere, `pause` refuses first).
+#[cfg(windows)]
+#[link(name = "ntdll")]
+extern "system" {
+    fn NtSuspendProcess(process: std::os::windows::io::RawHandle) -> i32;
+    fn NtResumeProcess(process: std::os::windows::io::RawHandle) -> i32;
+}
+
+/// Stop or continue the guest child: kill(2) on unix, NtSuspendProcess/NtResumeProcess on Windows.
+// ponytail: Windows suspends the direct child only; a Compose `.cmd` launcher's java keeps running.
 fn signal(c: &Child, sig: i32) -> bool {
     #[cfg(unix)]
     {
         // SAFETY: plain kill(2) on a pid we spawned and still own (not yet waited).
         unsafe { libc::kill(c.id() as i32, sig) == 0 }
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     {
-        let _ = (c, sig);
-        false
+        use std::os::windows::io::AsRawHandle;
+        // SAFETY: the handle belongs to a child we spawned and still own (not yet waited).
+        unsafe { (if sig == SIGSTOP { NtSuspendProcess } else { NtResumeProcess })(c.as_raw_handle()) >= 0 }
     }
 }
 
@@ -687,11 +696,8 @@ impl Session {
         Ok(())
     }
 
-    /// Suspend the guest process (SIGSTOP). Input and reload are refused until `resume`.
+    /// Suspend the guest process (SIGSTOP, or NtSuspendProcess on Windows). Input and reload are refused until `resume`.
     pub fn pause(&mut self) -> Result<(), ApiError> {
-        if cfg!(not(unix)) {
-            return Err(err(ErrorCode::Unsupported, "runtime.pause needs a unix host"));
-        }
         self.require_running()?;
         let c = self.child.as_ref().ok_or_else(|| err(ErrorCode::InvalidState, "guest not running"))?;
         if !signal(c, SIGSTOP) {
@@ -703,9 +709,6 @@ impl Session {
     }
 
     pub fn resume(&mut self) -> Result<(), ApiError> {
-        if cfg!(not(unix)) {
-            return Err(err(ErrorCode::Unsupported, "runtime.resume needs a unix host"));
-        }
         if self.state != State::Paused {
             return Err(err(ErrorCode::InvalidState, format!("session {} is {}", self.id, self.state().as_str())));
         }
