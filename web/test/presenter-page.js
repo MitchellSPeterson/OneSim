@@ -14,7 +14,7 @@ async function load(name) {
 }
 let fixture = await load(name);
 const scenario = q.get("scenario");
-const next = scenario === "resize" ? await load("home-compact") : scenario === "loss" ? await load("controls") : null;
+const next = scenario === "resize" ? await load("home-compact") : ["loss", "error"].includes(scenario) ? await load("controls") : null;
 
 const sim = {
   supportsDisplayList: q.get("old") !== "1", output: 0, width: 402, height: 874,
@@ -39,10 +39,11 @@ if (scenario === "resize") {
     sizes.push([p.canvas.width, p.canvas.height]);
   }
 }
-if (scenario === "loss") {
+if (scenario === "loss" || scenario === "error") {
   fixture = next;
   p.present();
-  window.__testDevice.destroy();
+  if (scenario === "loss") window.__testDevice.destroy();
+  else window.__testDevice.createBuffer({ size: 8, usage: 0 });
   const deadline = Date.now() + 4000;
   while (p.mode === "gpu" && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 25));

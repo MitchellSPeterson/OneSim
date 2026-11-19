@@ -161,8 +161,11 @@ try {
     const lost = await run("renderer=gpu&fixture=home&scenario=loss", { preload: trackDevice });
     show("lost", lost); cpuOk(lost);
     check(lost.canvasSwapped && /device lost/i.test(lost.reason) && lost.fixture === "controls" && lost.frames === 3, "device loss redraws the latest runtime state");
+    const error = await run("renderer=gpu&fixture=home&scenario=error", { preload: trackDevice });
+    show("device-error", error); cpuOk(error);
+    check(error.canvasSwapped && /device error/i.test(error.reason) && error.frames === 3, "uncaptured device error switches to CPU");
   } else {
-    const unavailable = /navigator\.gpu missing|no WebGPU adapter|canvas WebGPU context.*(unsupported|not supported)/i.test(gpu.reason);
+    const unavailable = /navigator\.gpu missing|no WebGPU adapter|canvas WebGPU context.*(unsupported|not supported|webgpu not available)/i.test(gpu.reason);
     if (unavailable) console.log(`SKIP gpu: ${gpu.reason}`);
     else { show("gpu", gpu); check(false, "GPU initialization failed unexpectedly"); }
     cpuOk(gpu);
@@ -174,6 +177,16 @@ try {
     const noadapter = await run("fixture=home", { preload: "if (navigator.gpu) navigator.gpu.requestAdapter = async () => null;" });
     show("noadapter", noadapter); cpuOk(noadapter);
     check(/no WebGPU adapter|canvas WebGPU context/.test(noadapter.reason), "unavailable WebGPU reports why");
+  }
+  if (gpu.mode === "gpu") {
+    const noCanvas = await run("fixture=home", { preload: `
+      const getContext = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function (type, ...options) {
+        return type === "webgpu" ? null : getContext.call(this, type, ...options);
+      };
+    ` });
+    show("no-canvas", noCanvas); cpuOk(noCanvas);
+    check(/canvas WebGPU context.*webgpu not available/i.test(noCanvas.reason), "missing canvas WebGPU context reports why");
   }
   const old = await run("fixture=home&old=1"); show("oldwasm", old); cpuOk(old); check(/display-list/.test(old.reason) || old.reason.includes("GPU"), "old runtime reason");
   if (testApp) {
