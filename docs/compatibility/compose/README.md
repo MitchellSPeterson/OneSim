@@ -1,3 +1,5 @@
+[Documentation](../../README.md) / [API compatibility](../README.md)
+
 # Jetpack Compose API coverage
 
 Which Jetpack Compose (Kotlin) APIs SimCore can run, for Android apps written natively rather than with Expo.

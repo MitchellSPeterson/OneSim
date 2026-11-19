@@ -1,28 +1,14 @@
+[SimCore](../README.md) / [Documentation](README.md)
+
 # SimCore in the browser
 
-The SwiftUI counter runs entirely client-side: **one Wasm module** (Swift app + our `SwiftUI`
-module + `crates/simcore-web`, which embeds `simcore-render`) drawing to a `<canvas>`. A static file
-server is enough.
+Run the SwiftUI counter or showcase in a browser tab. The app, SwiftUI module, and Rust renderer compile to one WebAssembly module that draws to a canvas. The preview responds to taps, drag and wheel scrolling, and text input from the on-screen or physical keyboard.
 
-```
-scripts/build-web.sh examples/swiftui-showcase               # @main App, no root view
-scripts/build-web.sh examples/swiftui-counter CounterView    # or a root view
-                                                             # -> target/web/{index.html,main.js,simcore.js,app.wasm}
-python3 -m http.server 8000 -d target/web                    # open http://localhost:8000/
-```
-Query params: `?device=<name>` (a profile from `DEVICES` in `crates/simcore-render/src/device.rs`, listed by `sim.devices`; default the first, iphone-17-pro), `?width=&height=&scale=` (points / device
-pixels per point; default scale fits the window x `devicePixelRatio`), `?dark=1` (default: the browser's
-colour scheme). The canvas fits the window keeping the aspect ratio and re-renders crisply on resize.
-Page API: `window.simcore.setViewport(w, h)`, `setAppearance('dark'|'light')` (both re-layout and push the
-environment to Swift, as native), `click(label)`, `type(text)`, `key('backspace'|'enter')`, `scroll(x,y,dx,dy)`,
-`inspect()`, `lastTreeText()`.
+## Install the toolchain
 
-## Toolchain (one-time)
+Install a swift.org toolchain and its matching WebAssembly SDK, then add Rust’s `wasm32-wasip1` target. CI uses Swift 6.4.2.
 
-Xcode's Swift cannot target Wasm. You need a swift.org toolchain and the Wasm SDK of the **same
-release**, plus the Rust target. Tested with 6.4.2:
-
-```
+```sh
 curl -LO https://download.swift.org/swift-6.4.2-release/xcode/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE-osx.pkg
 installer -pkg swift-6.4.2-RELEASE-osx.pkg -target CurrentUserHomeDirectory   # -> ~/Library/Developer/Toolchains (or use swiftly)
 PATH=~/Library/Developer/Toolchains/swift-6.4.2-RELEASE.xctoolchain/usr/bin:$PATH \
@@ -31,13 +17,43 @@ swift sdk install https://download.swift.org/swift-6.4.2-release/wasm-sdk/swift-
 rustup target add wasm32-wasip1
 brew install binaryen    # optional: wasm-opt shrinks app.wasm ~25%; skipped (with a note) if absent or if it fails
 ```
-Needs several GB free during the toolchain install. The script finds the toolchain (set
-`SIMCORE_SWIFT_TOOLCHAIN` to override) and the SDK and fails with install hints if either is missing.
+Allow several GB of free space for the toolchain. The build script finds the toolchain and SDK. Set `SIMCORE_SWIFT_TOOLCHAIN` to select a specific toolchain.
+
+## Build and open the preview
+
+From the repository root, build the counter and serve the generated files.
+
+```sh
+scripts/build-web.sh examples/swiftui-counter CounterView
+python3 -m http.server 8000 -d target/web
+```
+
+Open [http://localhost:8000/](http://localhost:8000/) and tap **Increment**. For the showcase, run `scripts/build-web.sh examples/swiftui-showcase`. It uses an `@main App` entry point, so omit the root view argument.
+
+<p align="center">
+  <img src="web/counter-in-browser.png" width="260" alt="The SwiftUI counter running in a browser canvas">
+</p>
+
+The output in `target/web/` contains `index.html`, `main.js`, `simcore.js`, and `app.wasm`. Any static file server can serve these files.
+
+## Configure the viewport
+
+| Query parameter | Effect |
+| --- | --- |
+| `?device=<name>` | Selects a profile. The default is `iphone-18-pro`. Find the available profiles in `window.simcore.sim.devices`. |
+| `?width=402&height=874&scale=3` | Sets width and height in points and scale in pixels per point. By default, scale follows the window size and `devicePixelRatio`. |
+| `?dark=1` | Selects dark mode. The default follows the browser’s color scheme. |
+
+The canvas preserves its aspect ratio and redraws when the window resizes.
+
+## Use the page API
+
+Call `window.simcore.setViewport(w, h)` or `window.simcore.setAppearance('dark'|'light')` to update the layout and Swift environment. To drive the app, call `click(label)`, `type(text)`, `key('backspace'|'enter')`, or `scroll(x,y,dx,dy)` on the same object. Read the UI tree with `inspect()` or `lastTreeText()`.
 
 ## How it works
 
-- **ABI.** `simcore-web` exports the `simcore_runtime_*` C ABI (protocol.md section C) in-process:
-  `submit_tree` parses the ViewNode and renders it to an RGBA framebuffer; `run` returns at once.
+- **ABI.** `simcore-web` exports the [`simcore_runtime_*` C ABI](protocol.md#c-c-abi-cratessimcore-runtime-header-simcore_runtimeh) in-process.
+  `submit_tree` parses the ViewNode and renders it to an RGBA framebuffer. `run` returns at once.
 - **Reactor.** Linked with `-mexec-model=reactor`. JS calls `_initialize`, then
   `simcore_web_init(w, h, scale, dark)`, which runs the Swift entry (`__main_argc_argv`: registers the app and
   *returns*; works for `_simcoreRun(Root())` mains and `@main App`) and then pushes the environment, which
@@ -66,11 +82,13 @@ Needs several GB free during the toolchain install. The script finds the toolcha
 
 ## Testing
 
-```
-node web/test/run.mjs --suite counter|showcase        # assertions on the built target/web/app.wasm (Node >= 20, no deps)
+Use Node.js 20 or later to test the compiled module. Run the suite that matches the example you built.
+
+```sh
+node web/test/run.mjs --suite counter                 # use --suite showcase after building the showcase
 node web/test/run.mjs --click Todos --click "New todo" --type "Buy milk" --screenshot out.png --expect "Buy milk"
                                                       # CLI-style steps: --click LABEL|X,Y --type --key --scroll X,Y,DX,DY --dark --width/--height/--scale --inspect
-scripts/compare-web.sh                                # the 13 showcase states: Node harness vs native `SIMCORE_FALLBACK=1`, each < 2%
+scripts/compare-web.sh                                # compare each showcase state with native fallback, each < 2%
 ```
 CI (`web` job in `.github/workflows/ci.yml`) installs the 6.4.2 toolchain + Wasm SDK (downloads cached),
 builds both examples and runs all of the above.

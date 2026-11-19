@@ -1,26 +1,64 @@
-# Contributing
+[SimCore](README.md) / [Documentation](docs/README.md)
 
-- `cargo build --workspace && cargo test --workspace && cargo clippy --workspace` must pass.
-- Swift side: `frameworks/swiftui/Tests/wire_test.sh` must pass (macOS).
-- Protocol changes: update `docs/protocol.md` and `simcore-protocol` together; breaking changes bump `PROTOCOL_VERSION`.
-- New or changed Expo / React Native API: update its row in `docs/compatibility/expo/` (the area file) (iOS and Android columns, link the issue) and run `node scripts/api-coverage.mjs`. CI runs it with `--check`, which fails when the summary is stale or a module in `frameworks/react-native/guest/modules.js` is missing from the docs or disagrees with its status. Native modules go in that registry with status `implemented` / `simulated` / `unsupported`; never report fake success.
-- New or changed SwiftUI API: update its row in `docs/compatibility/swiftui/` (the area file; signatures and limits go in `guest.md`) and run `node scripts/api-coverage.mjs`.
-- New or changed Jetpack Compose API: update its row in `docs/compatibility/compose/` (the area file) and run `node scripts/api-coverage.mjs`.
-- Missing API: open an [API request](https://github.com/MitchellSPeterson/SimCore/issues/new?template=api-request.yml) issue and link it from the coverage row. Expo guest checks: `node frameworks/react-native/guest/run-*.mjs` (see `frameworks/react-native/README.md`).
-- No crate or abstraction without a real user of it.
+# Contributing to SimCore
+
+For a missing framework API, check the [coverage table](docs/compatibility/README.md), then open an [API request](https://github.com/MitchellSPeterson/SimCore/issues/new?template=api-request.yml) or pick up the issue linked from that row. Keep the issue link in the coverage row.
+
+## Run the checks
+
+From the repository root, run the Rust and Swift checks. The Swift wire test requires macOS and exercises guest messages, memory use, and stdout isolation.
+
+```sh
+cargo build --workspace
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+frameworks/swiftui/Tests/wire_test.sh
+node scripts/api-coverage.mjs --check
+```
+
+For Expo changes, use the guest checks in the [React Native guide](frameworks/react-native/README.md). For renderer changes, run the pixel comparisons below.
+
+## Update the docs with your change
+
+| Change | Update |
+| --- | --- |
+| Protocol | Update the [protocol reference](docs/protocol.md) and [`simcore-protocol`](crates/simcore-protocol) together. Bump `PROTOCOL_VERSION` for a breaking change. |
+| SwiftUI API | Update the [coverage row](docs/compatibility/swiftui/README.md) and record signatures and known limits in the [SwiftUI guest reference](docs/compatibility/swiftui/guest.md). |
+| Expo / React Native API | Update the iOS and Android columns in the [coverage row](docs/compatibility/expo/README.md). Add native modules to [`guest/modules.js`](frameworks/react-native/guest/modules.js) with the matching `implemented`, `simulated`, or `unsupported` status. Unsupported modules must report an error. |
+| Jetpack Compose API | Update the [coverage row](docs/compatibility/compose/README.md). |
+
+Run `node scripts/api-coverage.mjs` after changing a coverage row. The CI check also verifies that every native module in the registry has a coverage row with a matching status.
+
+Add a crate or abstraction when it has a real caller.
 
 ## Visual fidelity rule
 
-UI matched against the iOS Simulator by pixel diff passes only when **every state is under the threshold**. A pixel counts as different when its difference luminance exceeds 24/255.
+A pixel counts as different when its difference luminance exceeds 24/255. Every compared state must stay below its threshold.
 
-| Mode | Fonts / symbols | Threshold |
-|---|---|---|
-| system (macOS) | Apple SF Pro + SF Symbols | **< 2%** |
-| fallback (non-macOS, or `SIMCORE_FALLBACK=1`) | bundled Inter + Phosphor | **< 3.5%** |
+| Mode | Fonts and symbols | Threshold |
+| --- | --- | ---: |
+| iOS system, on macOS | Apple SF Pro and SF Symbols | **< 2%** |
+| iOS fallback, on other hosts or with `SIMCORE_FALLBACK=1` | Bundled Inter and Phosphor | **< 3.5%** |
+| Android | Bundled Roboto | **< 2%** |
 
-The fallback allowance is the measured, untunable glyph-shape gap: Inter's widths are fitted to SF and fallback runs up to ~1.3 pt above system mode.
-- Check: `scripts/compare-ios.sh` and `SIMCORE_FALLBACK=1 scripts/compare-ios.sh`. Each exits non-zero on any failing state, and CI runs both.
-- A new UI element needs an iOS reference state for every supported release, in `tests/fixtures/ios27/showcase-ios/` (iOS 27.2, iPhone 18 Pro) and `tests/fixtures/showcase-ios/` (iOS 26.5, iPhone 17 Pro); see their READMEs for capture steps. Add a matching `shot` line in `scripts/compare-ios.sh`, which renders every state once per release (`SIMCORE_IOS=27.2` limits it to one).
-- Jetpack Compose is matched the same way against the Android 17 Pixel 10a emulator: `scripts/compare-android.sh` (every state < 2%; Roboto is bundled, so there is no fallback mode). A new Compose component gets a state in `tests/fixtures/compose-android/` (captured by its `capture.sh`) and a `shot` line in `scripts/compare-android.sh`.
-- Exceptions (maintainer-approved, `STATE_MAX` in `scripts/compare_ios.py`): `typography-scrolled(-dark)` in fallback mode have a temporary < 5% limit (see docs/ios-comparison.md Known gaps); `rn-showcase-ios/text` in system mode has < 2.5% (dense text; layout matches within 1–2 px, the rest is glyph rasterization).
-- Don't raise the threshold or drop a state to make a change pass; fix the rendering. Use `SIMCORE_MAX_DIFF` only to explore locally.
+Inter’s widths are fitted to SF Pro. The fallback threshold accounts for the remaining difference in glyph shapes. The maintainer-approved exceptions live in `STATE_MAX` in [`scripts/compare_ios.py`](scripts/compare_ios.py).
+
+- The SwiftUI `typography-scrolled` and `typography-scrolled-dark` states have a temporary **< 5%** limit in fallback mode.
+- The React Native showcase `text` state has a **< 2.5%** limit in system mode. Dense glyph rasterization accounts for the remaining difference.
+
+Run these checks with Python 3 and Pillow. The Compose comparison also requires Java 17 or later.
+
+```sh
+scripts/compare-ios.sh
+SIMCORE_FALLBACK=1 scripts/compare-ios.sh
+scripts/compare-android.sh
+```
+
+The iOS commands run both releases by default. Set `SIMCORE_IOS=27.2` to check one release locally. Install the Expo example dependencies to include the React Native and Expo Router screenshots. See the [iOS comparison results](docs/ios-comparison.md) for examples and known gaps.
+
+Fix the rendering when a state fails. Use `SIMCORE_MAX_DIFF` only for local investigation. Keep the checked-in thresholds and states.
+
+## Add a visual reference
+
+1. For a new iOS UI element, capture the state on [iOS 27.2 with iPhone 18 Pro](tests/fixtures/ios27/README.md) and [iOS 26.5 with iPhone 17 Pro](tests/fixtures/showcase-ios/README.md). Add a matching `shot` line to [`scripts/compare-ios.sh`](scripts/compare-ios.sh).
+2. For a new Compose component, capture the state on the [Android 17 Pixel 10a emulator](tests/fixtures/compose-android/README.md) using [`capture.sh`](tests/fixtures/compose-android/capture.sh). Add a matching `shot` line to [`scripts/compare-android.sh`](scripts/compare-android.sh).
