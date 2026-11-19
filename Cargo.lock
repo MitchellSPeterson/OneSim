@@ -2404,6 +2404,7 @@ dependencies = [
  "serde_json",
  "simcore-protocol",
  "simcore-render",
+ "simcore-render-gpu",
  "tungstenite",
 ]
 
@@ -2439,7 +2440,10 @@ version = "0.1.0"
 dependencies = [
  "log",
  "pollster",
+ "serde_json",
+ "simcore-protocol",
  "simcore-render",
+ "tiny-skia",
  "vello",
 ]
 

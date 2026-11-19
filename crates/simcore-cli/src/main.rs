@@ -8,6 +8,9 @@ use simcore_protocol::{
 #[derive(Parser)]
 #[command(name = "simcore", version, about = "Headless SwiftUI preview runtime")]
 struct Cli {
+    /// Screenshot backend: auto (GPU, else CPU), gpu (or fail), cpu; default CPU. Overrides SIMCORE_RENDERER.
+    #[arg(long, global = true, value_name = "auto|gpu|cpu")]
+    renderer: Option<String>,
     #[command(subcommand)]
     cmd: Cmd,
 }
@@ -136,6 +139,13 @@ fn main() -> Result<()> {
         .init();
     let matches = Cli::command().get_matches();
     let cli = Cli::from_arg_matches(&matches)?;
+    if let Some(r) = &cli.renderer {
+        r.parse::<simcore_render::BackendPref>().map_err(anyhow::Error::msg).context("--renderer")?;
+        // Hosts (also the ones the WebSocket server creates per session) read the preference from the
+        // environment; set it once, before any thread exists.
+        std::env::set_var("SIMCORE_RENDERER", r);
+    }
+    let report = cli.renderer.is_some() || std::env::var_os("SIMCORE_RENDERER").is_some();
     match cli.cmd {
         Cmd::Serve { listen: Some(addr) } => {
             let listener = std::net::TcpListener::bind(&addr).with_context(|| format!("listen on {addr}"))?;
@@ -150,7 +160,7 @@ fn main() -> Result<()> {
         }
         Cmd::Run { app_path, root_view, opts } => {
             let framework = if is_kotlin(&app_path) { "compose" } else { "swiftui" };
-            run(&matches, "run", CreateSessionParams { app_path, root_view, ..params(framework) }, opts, None)
+            run(&matches, "run", CreateSessionParams { app_path, root_view, ..params(framework) }, opts, None, report)
         }
         Cmd::Expo { url, appearance, opts, .. } => {
             let appearance = match appearance.as_deref() {
@@ -158,7 +168,7 @@ fn main() -> Result<()> {
                 Some("dark") => Some(Appearance::Dark),
                 Some(a) => bail!("unknown --appearance {a:?} (light, dark)"),
             };
-            run(&matches, "expo", CreateSessionParams { metro_url: url, ..params("react-native") }, opts, appearance)
+            run(&matches, "expo", CreateSessionParams { metro_url: url, ..params("react-native") }, opts, appearance, report)
         }
     }
 }
@@ -192,7 +202,7 @@ fn params(framework: &str) -> CreateSessionParams {
 }
 
 /// Create a session from the shared options, drive it in command-line order, then shut down.
-fn run(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: Opts, appearance: Option<Appearance>) -> Result<()> {
+fn run(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: Opts, appearance: Option<Appearance>, report: bool) -> Result<()> {
     let steps = steps(matches.subcommand_matches(name).expect("subcommand"));
     p.viewport = match (o.width, o.height) {
         (None, None) => None,
@@ -207,7 +217,7 @@ fn run(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: Opts, ap
     p.device = o.device;
     let mut host = Host::new();
     let id = host.create_session(p)?;
-    let result = drive(&mut host, &id, o.screenshot, &steps, o.inspect);
+    let result = drive(&mut host, &id, o.screenshot, &steps, o.inspect, report);
     if result.is_err() {
         for e in host.errors(&id).unwrap_or_default() {
             eprintln!("[{}] {}", e.source, e.message);
@@ -217,7 +227,7 @@ fn run(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: Opts, ap
     result
 }
 
-fn drive(host: &mut Host, id: &str, shot: Option<String>, steps: &[Step], inspect: bool) -> Result<()> {
+fn drive(host: &mut Host, id: &str, shot: Option<String>, steps: &[Step], inspect: bool, report: bool) -> Result<()> {
     host.start_session(id).context("start_session")?;
     for step in steps {
         match step {
@@ -254,6 +264,9 @@ fn drive(host: &mut Host, id: &str, shot: Option<String>, steps: &[Step], inspec
         let (w, h, png) = host.screenshot(id)?;
         std::fs::write(&path, png).with_context(|| format!("writing {path}"))?;
         eprintln!("wrote {path} ({w}x{h})");
+        if report {
+            eprintln!("{}", renderer_line(&host.renderer_diagnostics()?));
+        }
     }
     if inspect {
         println!("{}", serde_json::to_string_pretty(&host.inspect(id)?.1)?);
@@ -261,9 +274,26 @@ fn drive(host: &mut Host, id: &str, shot: Option<String>, steps: &[Step], inspec
     Ok(())
 }
 
+/// `gpu (Apple M1 Pro (Metal))` or `cpu (fallback: <reason>)`.
+fn renderer_line(d: &simcore_render::Diagnostics) -> String {
+    match &d.fallback_reason {
+        Some(r) => format!("renderer: {} (fallback: {r})", d.backend),
+        None => format!("renderer: {} ({})", d.backend, d.adapter),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn renderer_line_formats() {
+        let mut d = simcore_render::Diagnostics { backend: "gpu".into(), adapter: "Apple M1 Pro (Metal)".into(), ..Default::default() };
+        assert_eq!(renderer_line(&d), "renderer: gpu (Apple M1 Pro (Metal))");
+        d.backend = "cpu".into();
+        d.fallback_reason = Some("no adapter".into());
+        assert_eq!(renderer_line(&d), "renderer: cpu (fallback: no adapter)");
+    }
 
     #[test]
     fn steps_keep_command_line_order() {

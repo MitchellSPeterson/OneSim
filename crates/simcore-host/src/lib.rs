@@ -5,6 +5,7 @@
 //! `simcore-fake-guest` (a bin of this crate) is such an executable.
 
 mod events;
+mod renderer;
 mod rpc;
 mod session;
 mod ws;
@@ -13,7 +14,7 @@ use base64::Engine;
 use serde::Serialize;
 use serde_json::{json, Value};
 use simcore_protocol::*;
-use simcore_render::{build_scene, render_png, Fonts, Role, Scene, SceneParams};
+use simcore_render::{build_scene, Fonts, Role, Scene, SceneParams};
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::time::{Duration, Instant};
@@ -40,6 +41,7 @@ pub struct Host {
     sessions: HashMap<String, Session>,
     next_id: u64,
     fonts: Option<Fonts>,
+    renderer: renderer::RendererSlot,
     greeted: bool,
 }
 
@@ -69,7 +71,19 @@ pub const COMMANDS: &[&str] = &[
 
 impl Host {
     pub fn new() -> Self {
-        Self { sessions: HashMap::new(), next_id: 1, fonts: None, greeted: false }
+        Self { sessions: HashMap::new(), next_id: 1, fonts: None, renderer: renderer::RendererSlot::new(), greeted: false }
+    }
+
+    /// Choose the screenshot backend (default: `SIMCORE_RENDERER`, where `auto` means CPU headless).
+    /// Here `Auto` tries the GPU and falls back to CPU, recording why in [`Host::renderer_diagnostics`].
+    pub fn set_renderer(&mut self, pref: simcore_render::BackendPref) {
+        self.renderer.set(pref);
+    }
+
+    /// Active backend, adapter, limitations, fallback reason and last-frame timings. Errors on an invalid
+    /// `SIMCORE_RENDERER` or an unavailable explicit `gpu`.
+    pub fn renderer_diagnostics(&mut self) -> Result<simcore_render::Diagnostics, ApiError> {
+        self.renderer.diagnostics().map_err(|e| err(ErrorCode::RuntimeError, e))
     }
 
     /// React Native live mode for the calls that follow (`Session::settle`); restore `true` afterwards.
@@ -503,7 +517,11 @@ impl Host {
             return Err(err(ErrorCode::BadRequest, "screenshot size must be between 1 and 8192 pixels"));
         }
         let fonts = self.fonts.get_or_insert_with(Fonts::new);
-        let png = render_png(&scene, fonts, scale).map_err(|e| err(ErrorCode::RuntimeError, e))?;
+        let png = self
+            .renderer
+            .capture(&scene, fonts, scale)
+            .and_then(|f| f.encode_png())
+            .map_err(|e| err(ErrorCode::RuntimeError, e))?;
         Ok((px(scene.size.0), px(scene.size.1), png, version))
     }
 

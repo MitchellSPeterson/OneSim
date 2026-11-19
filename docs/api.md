@@ -92,6 +92,7 @@ All input params also carry `"sessionId"`.
 |---|---|---|
 | `render.screenshot` | `{"sessionId","format"?:"png","scale"?:number,"width"?,"height"?}` | `{"format":"png","width","height","data":"<base64>"}`; `width`/`height` resize the image (aspect kept if only one), `scale` overrides device pixels per point |
 | `render.frame` | `{"sessionId"}` | `{"treeVersion","width","height","data"}` (screenshot + tree version, for streaming) |
+| `render.backend` | `{"sessionId","renderer"?:"auto"\|"gpu"\|"cpu"}` | `{"backend":"cpu"\|"gpu","adapter","limitations":[...],"fallbackReason":string\|null,"frames","lastFrameMs":{"encode","gpu","readback"}}`; `renderer` switches this session's screenshot backend first (`auto` = try GPU, else CPU). See [rendering.md](rendering.md) |
 | `render.tree` | `{"sessionId"}` | `{"treeVersion","root": UiNode}` |
 | `render.inspect` | `{"sessionId"}` + `{"element"}` or `{"x","y"}` | `{"node": UiNode (with children), "path":[ids root→node]}` |
 

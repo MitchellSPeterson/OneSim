@@ -21,7 +21,7 @@ mod symbols_map;
 mod text;
 
 pub use backend::{BackendKind, BackendPref, CpuRenderer, Diagnostics, Frame, FrameTimings, RenderError, Renderer};
-pub use raster::{render, render_png};
+pub use raster::{apply_backdrop, clip_radius, needs_backdrop, node_sprite, render, render_png, sprite_key, Sprite, SpriteKey, SpriteLayer};
 pub use symbols::{capability as symbols_capability, SymbolMask, SymbolMetrics, SymbolSpec};
 pub use chrome::{autocap, ChromeParams};
 pub use device::{device, Device, StatusBar, DEFAULT_ANDROID_DEVICE, DEFAULT_DEVICE, DEVICES};
