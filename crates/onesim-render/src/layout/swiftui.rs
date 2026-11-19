@@ -634,6 +634,29 @@ fn lay_radius(l: &Lay) -> f64 {
     }
 }
 
+/// Wrap `inner` in a layout-only node (clip, opacity, shadow, glass) set up by `f`. Out of line, like `gesture_layer`,
+/// so `mods` keeps a small stack frame: deep view trees recurse through it once per modifier.
+#[inline(never)]
+fn layer(id: String, kind: &'static str, inner: Lay, f: impl FnOnce(&mut Node)) -> Lay {
+    let mut n = Node::new(id, kind);
+    f(&mut n);
+    n.inspect = false;
+    Lay::new(inner.size, Some(n), vec![(0.0, 0.0, inner)])
+}
+
+/// Wrap `inner` in a gesture view's layout-only node. Out of line so `mods`, which recurses once per modifier,
+/// keeps a small stack frame.
+#[inline(never)]
+fn gesture_layer(id: String, g: &onesim_protocol::GestureMod, inner: Lay) -> Lay {
+    let mut n = Node::new(id, "gesture");
+    n.gesture = Some(Box::new(g.clone()));
+    n.inspect = false;
+    // Touches land where an `.offset` moved the content, so the gesture frame moves with it.
+    let (dx, dy) = moved_by(&inner);
+    let size = inner.size;
+    Lay::new(size, None, vec![(dx, dy, Lay::new(size, Some(n), vec![(-dx, -dy, inner)]))])
+}
+
 /// How far `.offset` wrappers (node-less, one same-sized child) move `l`'s content.
 fn moved_by(l: &Lay) -> (f64, f64) {
     match l.kids.as_slice() {
@@ -863,25 +886,19 @@ impl Ctx<'_> {
             }
             Modifier::CornerRadius(r) => {
                 let inner = self.mods(v, rest, p, env);
-                let mut n = Node::new(format!("{}#clip{}", v.id, rest.len()), "clip");
-                n.clip_radius = Some(*r);
-                n.inspect = false;
-                Lay::new(inner.size, Some(n), vec![(0.0, 0.0, inner)])
+                layer(format!("{}#clip{}", v.id, rest.len()), "clip", inner, |n| n.clip_radius = Some(*r))
             }
             Modifier::Opacity(o) => {
                 let inner = self.mods(v, rest, p, env);
-                let mut n = Node::new(format!("{}#opacity{}", v.id, rest.len()), "opacity");
-                n.opacity = *o as f32;
-                n.inspect = false;
-                Lay::new(inner.size, Some(n), vec![(0.0, 0.0, inner)])
+                layer(format!("{}#opacity{}", v.id, rest.len()), "opacity", inner, |n| n.opacity = *o as f32)
             }
             Modifier::Shadow(s) => {
                 let inner = self.mods(v, rest, p, env);
-                let mut n = Node::new(format!("{}#shadow{}", v.id, rest.len()), "shadow");
-                n.radius = lay_radius(&inner);
-                n.shadow = Some(Shadow { color: self.color(&s.color), radius: s.radius, dx: s.x, dy: s.y });
-                n.inspect = false;
-                Lay::new(inner.size, Some(n), vec![(0.0, 0.0, inner)])
+                let (radius, shadow) = (lay_radius(&inner), Shadow { color: self.color(&s.color), radius: s.radius, dx: s.x, dy: s.y });
+                layer(format!("{}#shadow{}", v.id, rest.len()), "shadow", inner, |n| {
+                    n.radius = radius;
+                    n.shadow = Some(shadow);
+                })
             }
             Modifier::Font(f) => {
                 let (size, weight) = self.font_size_weight(f);
@@ -904,15 +921,16 @@ impl Ctx<'_> {
             Modifier::NavigationTitle(_) => self.mods(v, rest, p, env),
             Modifier::Glass(g) => {
                 let inner = self.mods(v, rest, p, env);
-                let mut n = Node::new(format!("{}#glass{}", v.id, rest.len()), "glass");
-                n.radius = match (g.shape.shape, g.shape.corner_radius) {
+                let radius = match (g.shape.shape, g.shape.corner_radius) {
                     (GlassShapeKind::Rect, None) => 0.0,
                     (GlassShapeKind::Rect | GlassShapeKind::RoundedRectangle, r) => r.unwrap_or(0.0),
                     _ => PILL,
                 };
-                n.glass = Some(self.glass_spec(g.variant, g.tint.as_ref(), g.interactive));
-                n.inspect = false;
-                Lay::new(inner.size, Some(n), vec![(0.0, 0.0, inner)])
+                let spec = self.glass_spec(g.variant, g.tint.as_ref(), g.interactive);
+                layer(format!("{}#glass{}", v.id, rest.len()), "glass", inner, |n| {
+                    n.radius = radius;
+                    n.glass = Some(spec);
+                })
             }
             // Layout keeps the original place; drawing and hit testing use the moved one.
             Modifier::Offset(o) => {
@@ -921,13 +939,7 @@ impl Ctx<'_> {
             }
             Modifier::Gesture(g) => {
                 let inner = self.mods(v, rest, p, env);
-                let mut n = Node::new(format!("{}#gesture{}", v.id, rest.len()), "gesture");
-                n.gesture = Some(g.clone());
-                n.inspect = false;
-                // Touches land where an `.offset` moved the content, so the gesture frame moves with it.
-                let (dx, dy) = moved_by(&inner);
-                let size = inner.size;
-                Lay::new(size, None, vec![(dx, dy, Lay::new(size, Some(n), vec![(-dx, -dy, inner)]))])
+                gesture_layer(format!("{}#gesture{}", v.id, rest.len()), g, inner)
             }
         }
     }

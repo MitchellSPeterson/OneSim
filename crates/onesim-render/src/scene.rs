@@ -228,8 +228,8 @@ pub struct Node {
     pub caret: Option<f64>,
     pub scroll: Option<ScrollInfo>,
     pub sheet: Option<SheetInfo>,
-    /// SwiftUI gestures on this view (protocol section L).
-    pub gesture: Option<onesim_protocol::GestureMod>,
+    /// SwiftUI gestures on this view (protocol section L). Boxed: nodes live on the stack in deep layout recursion.
+    pub gesture: Option<Box<onesim_protocol::GestureMod>>,
     /// False for layout-only helper nodes (clip/opacity layers); hidden from inspection.
     pub inspect: bool,
 }
