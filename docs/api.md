@@ -1,17 +1,19 @@
-# SimCore API v2 (JSON-RPC)
+[SimCore](../README.md) / [Documentation](README.md)
 
-Framework-independent control API for DemoKit, test runners, agents and other tools. It sits on
-top of the same `simcore-host` `Host` as the v1 JSON-lines API (`docs/protocol.md` §A), which
-keeps working unchanged.
+# JSON-RPC API v2
 
+The API lets test runners, DemoKit, and other clients control a SimCore session over WebSocket. The [TypeScript SDK](../sdk/typescript/README.md) wraps this API. Both transports share the same host. For JSON lines over stdin and stdout, see the [v1 stdio API](protocol.md#a-external-api-client--host).
+
+Start the WebSocket server from a checkout.
+
+```sh
+cargo run -p simcore-cli -- serve --listen 127.0.0.1:3030
 ```
-simcore serve                         # v1 JSON lines on stdin/stdout (unchanged)
-simcore serve --listen 127.0.0.1:3030 # v2 JSON-RPC 2.0 over WebSocket at ws://127.0.0.1:3030/
-```
 
-Transport: WebSocket, one JSON-RPC 2.0 object per text frame (no batches). Many clients may
-connect; they share the host's sessions. The server sends JSON-RPC notifications for events.
-Binds to loopback by default; there is no authentication, so do not expose it publicly.
+Connect to `ws://127.0.0.1:3030/`. Each text frame carries one JSON-RPC 2.0 object. Clients share the host’s sessions, and the server sends events as JSON-RPC notifications.
+
+> [!IMPORTANT]
+> Keep the server bound to loopback. The API has no authentication.
 
 ## Handshake and versioning
 
@@ -42,13 +44,15 @@ stream. Ids are strings (`"s1"`).
 
 | method | params | result |
 |---|---|---|
-| `session.create` | `{"framework":"expo"\|"react-native"\|"swiftui","device"?:"iPhone 17 Pro"\|"iphone-17-pro","appearance"?,"dynamicTypeSize"?,"metroUrl"?,"appPath"?,"rootView"?,"viewport"?:{width,height},"scale"?,"load"?:false}` | `{"sessionId","status":"created"}`; with `"load": true` it also loads (like `runtime.load`) and returns `"status":"running"` |
+| `session.create` | `{"framework":"expo"\|"react-native"\|"swiftui"\|"compose","platform"?:"ios"\|"android","device"?,"osVersion"?:"27.2"\|"26.5","appearance"?,"dynamicTypeSize"?,"metroUrl"?,"appPath"?,"rootView"?,"viewport"?:{width,height},"scale"?,"load"?:false}` | `{"sessionId","status":"created"}`; with `"load": true` it also loads (like `runtime.load`) and returns `"status":"running"` |
 | `session.list` | – | `{"sessions":[SessionInfo]}` |
 | `session.get` | `{"sessionId"}` | `SessionInfo` |
 | `session.destroy` | `{"sessionId"}` | `{}` (stops if running, frees the id) |
 
 `SessionInfo`: `{"sessionId","framework","platform","device","viewport":{width,height},"scale","appearance","status","treeVersion","metroUrl"?,"appPath"?}`.
-Device names accept the display name (`"iPhone 17 Pro"`) or the profile slug (`"iphone-17-pro"`).
+Expo uses iOS by default. Pass `"platform": "android"` for Expo on Android. SwiftUI targets iOS and Compose targets Android.
+Device names accept a display name or profile slug. The defaults are `iphone-18-pro` on iOS and `pixel-10a` on Android.
+`osVersion` selects iOS `"27.2"` or `"26.5"`, with `"27.2"` as the default. For Android, `session.get` reports `"17"`.
 
 ## Runtime lifecycle
 

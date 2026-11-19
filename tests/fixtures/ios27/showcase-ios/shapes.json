@@ -1,0 +1,186 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "enabled": true,
+        "index": 0,
+        "hittable": false,
+        "label": "Showcase",
+        "rect": {
+          "x": 0,
+          "width": 402,
+          "y": 0,
+          "height": 874
+        },
+        "depth": 0,
+        "type": "Application",
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "enabled": true,
+        "index": 1,
+        "parentIndex": 0,
+        "hittable": true,
+        "depth": 1,
+        "rect": {
+          "x": 0,
+          "width": 402,
+          "y": 62,
+          "height": 106
+        },
+        "type": "NavigationBar",
+        "identifier": "Shapes",
+        "ref": "e2",
+        "kind": "navigation-bar"
+      },
+      {
+        "enabled": true,
+        "index": 2,
+        "parentIndex": 1,
+        "hittable": true,
+        "label": "Showcase",
+        "rect": {
+          "x": 16,
+          "width": 44,
+          "y": 62,
+          "height": 44
+        },
+        "depth": 2,
+        "type": "Button",
+        "identifier": "BackButton",
+        "ref": "e3",
+        "kind": "button"
+      },
+      {
+        "enabled": true,
+        "index": 3,
+        "parentIndex": 1,
+        "hittable": true,
+        "label": "Shapes",
+        "rect": {
+          "x": 16,
+          "y": 119.66666666666667,
+          "width": 119,
+          "height": 40.66666666666667
+        },
+        "depth": 2,
+        "type": "StaticText",
+        "ref": "e4",
+        "kind": "text"
+      },
+      {
+        "enabled": true,
+        "index": 4,
+        "parentIndex": 0,
+        "hittable": true,
+        "label": "Overlay",
+        "rect": {
+          "x": 170.5,
+          "y": 293.8333333333333,
+          "width": 61,
+          "height": 20.333333333333314
+        },
+        "depth": 1,
+        "type": "StaticText",
+        "ref": "e5",
+        "kind": "text"
+      },
+      {
+        "enabled": true,
+        "index": 5,
+        "parentIndex": 0,
+        "hittable": true,
+        "label": "Shadow card",
+        "rect": {
+          "x": 151.33333333333334,
+          "y": 380,
+          "width": 99.33333333333334,
+          "height": 20.333333333333314
+        },
+        "depth": 1,
+        "type": "StaticText",
+        "ref": "e6",
+        "kind": "text"
+      },
+      {
+        "enabled": true,
+        "index": 6,
+        "parentIndex": 0,
+        "hittable": true,
+        "label": "ZStack",
+        "rect": {
+          "x": 181,
+          "y": 489.16666666666663,
+          "width": 40,
+          "height": 14.333333333333314
+        },
+        "depth": 1,
+        "type": "StaticText",
+        "ref": "e7",
+        "kind": "text"
+      },
+      {
+        "enabled": true,
+        "index": 7,
+        "parentIndex": 0,
+        "hittable": true,
+        "label": "Toolbar",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "depth": 1,
+        "type": "Toolbar",
+        "identifier": "Toolbar",
+        "ref": "e8",
+        "kind": "toolbar"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.showcase",
+    "appBundleId": "dev.simcore.showcase",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 8,
+      "totalNodeCount": 8,
+      "reasons": []
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "unknown",
+    "snapshotQuality": {
+      "state": "recovered",
+      "backend": "private-ax",
+      "reason": "XCTest-backed snapshot tiers were deferred after recent slow accessibility work on this screen",
+      "reasonCode": "deferred",
+      "timing": {
+        "acquisitionMs": 323.44603538513184,
+        "presentationMs": 0.25904178619384766
+      }
+    },
+    "warnings": [
+      "Detected an overly complex or slow accessibility tree. Fell back to the private-ax snapshot backend. It is OK to continue; use --json to inspect snapshotQuality.reason if you need recovery details.",
+      "Simulator AX snapshot unavailable (circuit-disabled); used XCTest for this app generation."
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 26,
+        "p50Ms": 96,
+        "p95Ms": 6067,
+        "maxMs": 10693,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 26
+        }
+      }
+    },
+    "refsGeneration": 350496
+  }
+}

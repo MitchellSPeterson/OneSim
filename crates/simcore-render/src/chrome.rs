@@ -1,4 +1,4 @@
-//! iOS platform chrome drawn by the host: the software keyboard and the Dynamic Island.
+//! Platform chrome drawn by the host, including the iOS keyboard and Android system bars.
 //!
 //! Geometry and colors are measured from iPhone 17 Pro / iOS 26 simulator screenshots
 //! (`tests/fixtures/showcase-ios`). The keyboard is built as ordinary scene nodes appended after
@@ -8,9 +8,75 @@
 //! prediction engine) and the 123 / emoji / dictation keys are inert (no alternate layers).
 
 use crate::device::Device;
+use crate::look::Look;
+use crate::SceneParams;
 use crate::scene::{Color, Glyph, Node, Rect, Role, TextRun};
-use crate::text::{FontSpec, TextAlign};
+use crate::text::{android_glyph_size, FontSpec, Fonts, TextAlign};
 use tiny_skia::{FillRule, LineCap, LineJoin, Mask, Paint, PathBuilder, Pixmap, Stroke, Transform};
+
+/// Android status bar over the top inset: clock at the start, wifi and battery at the end (black icons on a
+/// light app, white in dark theme: `enableEdgeToEdge`'s default auto contrast). Geometry measured on the
+/// Android 17 Pixel 10a emulator in demo mode (tests/fixtures/compose-android/capture.sh).
+// ponytail: no cellular signal glyph (the emulator reference hides it).
+pub(crate) fn android_status_bar(nodes: &mut Vec<Node>, params: &SceneParams, fonts: &mut Fonts, dark: bool) {
+    let dev = params.device;
+    let top = dev.safe_top;
+    let fg = if dark { Color::rgba(1.0, 1.0, 1.0, 1.0) } else { Color::rgba(0.0, 0.0, 0.0, 1.0) };
+    let mut bar = Node::new("statusbar", "statusbar");
+    bar.bounds = Rect { x: 0.0, y: 0.0, w: params.viewport.0, h: top };
+    bar.parent = Some(0);
+    bar.inspect = false;
+    let p = nodes.len();
+    nodes.push(bar);
+    let mut add = |id: &str, kind: &'static str, bounds: Rect, f: &dyn Fn(&mut Node)| {
+        let mut n = Node::new(id, kind);
+        n.bounds = bounds;
+        n.parent = Some(p);
+        n.inspect = false;
+        f(&mut n);
+        nodes.push(n);
+    };
+
+    let mut spec = FontSpec::new(android_glyph_size(dev.status_bar.font as f32, dev.scale as f32), 20.0, 400, TextAlign::Leading);
+    spec.pitch = 20.0;
+    spec.tracking = 0.0;
+    spec.android = true;
+    let (tw, th) = fonts.measure("9:41", &spec, None, &[]);
+    let (cx0, cy0) = dev.status_bar.time;
+    let run = TextRun { text: "9:41".into(), font: spec, color: fg, strike: false, offset_x: 0.0, spans: vec![] };
+    add("statusbar#time", "text", Rect { x: cx0 - tw / 2.0, y: cy0 - th / 2.0, w: tw.ceil(), h: th }, &|n| n.text = Some(run.clone()));
+
+    // Battery: a horizontal 23.8x12.9 dp pill with a 1.6x6.5 dp terminal nub, right edge at `icons.0`.
+    let (right, _) = dev.status_bar.icons;
+    let cy = cy0 + 0.6;
+    add("statusbar#battery-tip", "battery", Rect { x: right - 1.6, y: cy - 3.25, w: 1.6, h: 6.5 }, &|n| {
+        n.fill = Some(fg);
+        n.radius = 0.6;
+    });
+    let body = Rect { x: right - 1.6 - 1.1 - 23.8, y: cy - 6.45, w: 23.8, h: 12.9 };
+    add("statusbar#battery", "battery", body, &|n| {
+        n.fill = Some(fg);
+        n.radius = 3.2;
+    });
+    add("statusbar#wifi", "wifi", Rect { x: body.x - 6.2 - 16.0, y: cy0 - 5.6, w: 16.0, h: 11.8 }, &|n| n.glyph = Some((Glyph::AndroidWifi, fg)));
+}
+
+/// Gesture navigation handle centred in the bottom inset (60% black on light apps, 92% white on dark).
+pub(crate) fn android_nav_handle(nodes: &mut Vec<Node>, params: &SceneParams, dark: bool) {
+    let (w, h) = params.viewport;
+    let inset = params.device.safe_bottom;
+    if inset <= 0.0 {
+        return;
+    }
+    let mut bar = Node::new("navigation_handle", "navigation_handle");
+    let (bw, bh) = (108.0, 4.0);
+    bar.bounds = Rect { x: (w - bw) / 2.0, y: h - inset / 2.0 - bh / 2.0, w: bw, h: bh };
+    bar.parent = Some(0);
+    bar.radius = bh / 2.0;
+    bar.fill = Some(if dark { Color::rgba(1.0, 1.0, 1.0, 0.92) } else { Color::rgba(0.0, 0.0, 0.0, 0.6) });
+    bar.inspect = false;
+    nodes.push(bar);
+}
 
 /// Chrome inputs for one layout pass.
 #[derive(Debug, Clone, Copy, Default)]
@@ -39,8 +105,18 @@ struct Theme {
     divider: Color,
 }
 
-fn theme(dark: bool) -> Theme {
-    if dark {
+fn theme(dark: bool, look: &Look) -> Theme {
+    if dark && look.kb_dark_27 {
+        // iOS 27 (keyboard-dark.png): lighter panel and keys.
+        Theme {
+            panel: c(32, 32, 32, 1.0),
+            key: c(68, 68, 68, 1.0),
+            label: c(255, 255, 255, 1.0),
+            glyph: c(255, 255, 255, 1.0),
+            suggest: c(172, 172, 172, 1.0),
+            divider: c(56, 56, 58, 1.0),
+        }
+    } else if dark {
         Theme {
             panel: c(23, 23, 23, 1.0),
             key: c(61, 61, 61, 1.0),
@@ -101,8 +177,19 @@ impl Builder<'_> {
 
 /// Append the keyboard (panel, suggestion bar, keys) for a `w` x `h` screen. Returns the top y.
 /// `shift` is the effective shift state; `kb_h` the total keyboard height.
-pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shift: bool, dev: &Device) {
-    let th = theme(dark);
+#[allow(clippy::too_many_arguments)]
+pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shift: bool, dev: &Device, look: &Look) {
+    // Emoji / dictation stay where the device's iOS 26 keyboard puts them when the panel height changes (iOS 27).
+    let kb_shrink = dev.kb_base_h + dev.safe_bottom - kb_h;
+    let th = theme(dark, look);
+    // The word being typed in the focused field (iOS 27 offers it, quoted, as the first suggestion).
+    let word = out
+        .iter()
+        .find(|n| n.focused && n.field.is_some())
+        .and_then(|n| n.value.as_deref())
+        .and_then(|v| v.rsplit(char::is_whitespace).next())
+        .filter(|w| !w.is_empty() && look.typed_word_suggestion)
+        .map(|w| format!("\u{201C}{w}\u{201D}"));
     let top = h - kb_h;
     let mut kb = Node::new("keyboard", "keyboard");
     kb.value = Some(if shift { "shift" } else { "lower" }.to_string());
@@ -112,6 +199,9 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
     out.push(kb);
     let root = out.len() - 1;
     let mut b = Builder { out, th };
+    if dev.wide_keyboard {
+        return wide(&mut b, root, w, top, kb_h, &word, shift, look);
+    }
 
     // Panel: 30pt top corners, ~55pt (device) bottom corners, from two overlapping rounded rects.
     for (id, y, hh, r) in [("top", top, kb_h - 35.0, if dev.home_button { 22.0 } else { 28.0 }), ("bottom", h - 120.0, 120.0, if dev.home_button { 0.0 } else { 55.0 })] {
@@ -124,8 +214,14 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
 
     // Static suggestions (no prediction engine), with hairline dividers.
     let third = w / 3.0;
-    for (i, s) in ["I", "The", "I\u{2019}m"].iter().enumerate() {
-        if dev.suggestions {
+    let words: [&str; 3] = match &word {
+        // ponytail: no prediction engine, so the two completions next to the typed word stay empty.
+        Some(wd) => [wd.as_str(), "", ""],
+        None => ["I", "The", "I\u{2019}m"],
+    };
+    for (i, s) in words.iter().enumerate() {
+        // iOS 27 references were all captured with the suggestion words; iOS 26 only on the 17 Pro.
+        if (dev.suggestions || look.always_suggestions) && !s.is_empty() {
             let mut n = Node::new(format!("keyboard#suggestion-{i}"), "suggestion");
             n.role = Role::Text;
             n.label = Some(s.to_string());
@@ -141,16 +237,17 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
         }
     }
 
-    // Keys. Letters are shown upper-case like iOS 26; the typed case follows shift.
+    // Keys. iOS 26 shows letters upper-case (the typed case follows shift); iOS 27 shows the shift state.
     let (gap, margin) = (6.0, 6.67);
     let (pitch_y, kh) = (dev.key_pitch, if dev.home_button { 41.5 } else { dev.key_pitch - 11.1 });
     let kw = (w - 2.0 * margin - 9.0 * gap) / 10.0;
     let pitch = kw + gap;
     let ys = [0.0, 1.0, 2.0, 3.0].map(|i| top + 52.5 + i * pitch_y);
+    let caps = shift || !look.key_case_follows_shift;
     let row = |chars: &str, y: f64, x0: f64, b: &mut Builder| {
         for (i, ch) in chars.chars().enumerate() {
             let l = ch.to_string();
-            let shown = if shift { l.to_uppercase() } else { l.clone() };
+            let shown = if caps { l.to_uppercase() } else { l.clone() };
             b.key(root, &l, &l, Rect { x: x0 + pitch * i as f64, y, w: kw, h: kh }, None, Some((&shown, 22.0)));
         }
     };
@@ -189,8 +286,185 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
         n.role = Role::Key;
         n.label = Some(id.to_string());
         n.glyph = Some((g, b.th.glyph));
-        b.push(n, root, Rect { x: cx - 22.0, y: ys[3] + kh + 16.0, w: 44.0, h: 44.0 });
+        b.push(n, root, Rect { x: cx - 22.0, y: ys[3] + kh + 16.0 - kb_shrink, w: 44.0, h: 44.0 });
     }
+}
+
+/// Wide (iPad-style) keyboard of the unfolded iPhone Duo (tests/fixtures/ios27/devices/iphone-duo):
+/// a full-width panel, an 801pt key block centred, 79.2pt key pitch, caps inset 2pt / 8pt and 38.5pt tall.
+#[allow(clippy::too_many_arguments)]
+fn wide(
+    b: &mut Builder,
+    root: usize,
+    w: f64,
+    top: f64,
+    kb_h: f64,
+    word: &Option<String>,
+    shift: bool,
+    look: &Look,
+) {
+    for (id, y, hh, r) in [
+        ("top", top, kb_h, 26.0),
+        ("bottom", top + 26.0, kb_h - 26.0, 0.0),
+    ] {
+        let mut n = Node::new(format!("keyboard#panel-{id}"), "panel");
+        n.fill = Some(b.th.panel);
+        n.radius = r;
+        n.inspect = false;
+        b.push(
+            n,
+            root,
+            Rect {
+                x: 0.0,
+                y,
+                w,
+                h: hh,
+            },
+        );
+    }
+    let l = (w - 801.0) / 2.0;
+    // "More" (three dots) left of the suggestions.
+    for i in 0..3 {
+        let mut d = Node::new(format!("keyboard#more-{i}"), "dot");
+        d.fill = Some(c(145, 146, 150, 1.0));
+        d.radius = 1.6;
+        d.inspect = false;
+        b.push(
+            d,
+            root,
+            Rect {
+                x: 32.9 + 8.0 * i as f64,
+                y: top + 22.4,
+                w: 3.2,
+                h: 3.2,
+            },
+        );
+    }
+    let words: [&str; 3] = match word {
+        Some(wd) => [wd.as_str(), "", ""],
+        None => ["I", "The", "I\u{2019}m"],
+    };
+    for (i, s) in words.iter().enumerate() {
+        let x = l + 267.0 * i as f64;
+        if !s.is_empty() {
+            let mut n = Node::new(format!("keyboard#suggestion-{i}"), "suggestion");
+            n.role = Role::Text;
+            n.label = Some(s.to_string());
+            let lh = 17.0 * 1.1934;
+            n.text = Some(text_run(s, 17.0, 400, b.th.suggest));
+            b.push(
+                n,
+                root,
+                Rect {
+                    x,
+                    y: top + 24.8 - lh / 2.0,
+                    w: 267.0,
+                    h: lh,
+                },
+            );
+        }
+        if i > 0 {
+            let mut d = Node::new(format!("keyboard#divider-{i}"), "divider");
+            d.fill = Some(b.th.divider);
+            d.inspect = false;
+            b.push(
+                d,
+                root,
+                Rect {
+                    x: x - 0.75,
+                    y: top + 13.0,
+                    w: 1.0,
+                    h: 23.7,
+                },
+            );
+        }
+    }
+    let caps = shift || !look.key_case_follows_shift;
+    let rows = [49.0, 100.7, 152.7, 204.3].map(|d| top + d);
+    let cap = |fx: f64, fy: f64, fw: f64| Rect {
+        x: fx + 2.0,
+        y: fy + 1.2,
+        w: fw - 10.0,
+        h: 38.5,
+    };
+    let letters = |chars: &str, y: f64, x0: f64, b: &mut Builder| {
+        for (i, ch) in chars.chars().enumerate() {
+            let k = ch.to_string();
+            let shown = if caps { k.to_uppercase() } else { k.clone() };
+            b.key(
+                root,
+                &k,
+                &k,
+                cap(x0 + 79.2 * i as f64, y, 79.0),
+                None,
+                Some((&shown, 25.0)),
+            );
+        }
+    };
+    letters("qwertyuiop", rows[0], l + 8.0, b);
+    letters("asdfghjkl", rows[1], l + 47.7, b);
+    letters("zxcvbnm", rows[2], l + 126.7, b);
+    let sg = if shift {
+        Glyph::ShiftFilled
+    } else {
+        Glyph::Shift
+    };
+    b.key(
+        root,
+        "shift",
+        "shift",
+        cap(l + 8.0, rows[2], 102.7),
+        Some(sg),
+        None,
+    );
+    b.key(
+        root,
+        "delete",
+        "delete",
+        cap(l + 696.3, rows[2], 102.7),
+        Some(Glyph::Backspace),
+        None,
+    );
+    b.key(
+        root,
+        "123",
+        "123",
+        cap(l + 8.0, rows[3], 111.0),
+        None,
+        Some(("123", 17.0)),
+    );
+    b.key(
+        root,
+        "emoji",
+        "emoji",
+        cap(l + 119.0, rows[3], 73.7),
+        Some(Glyph::Emoji),
+        None,
+    );
+    b.key(
+        root,
+        "space",
+        "space",
+        cap(l + 192.7, rows[3], 421.7),
+        None,
+        None,
+    );
+    b.key(
+        root,
+        "dictation",
+        "dictation",
+        cap(l + 614.3, rows[3], 73.7),
+        Some(Glyph::Mic),
+        None,
+    );
+    b.key(
+        root,
+        "return",
+        "return",
+        cap(l + 688.0, rows[3], 111.0),
+        Some(Glyph::Return),
+        None,
+    );
 }
 
 /// The Dynamic Island: a black capsule drawn above everything.

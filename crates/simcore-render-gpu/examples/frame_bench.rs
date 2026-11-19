@@ -25,6 +25,7 @@ fn layout(root: &ViewNode, dev: &Device, fonts: &mut Fonts, scroll: &HashMap<Str
             device: dev,
             scale: dev.scale,
             appearance: Appearance::Light,
+            ios: simcore_protocol::IosVersion::Ios26,
             dynamic_type: Default::default(),
             scroll,
             sheets: &Default::default(),
@@ -75,7 +76,7 @@ fn gradient(dev: &Device) -> Scene {
     let (w, h) = (dev.viewport.width, dev.viewport.height);
     let mut bg = rect("background", 0.0, 0.0, w, h);
     bg.gradient = Some(Gradient { angle: 30.0, stops: vec![Color::rgba(0.94, 0.87, 0.46, 1.0), Color::rgba(0.15, 0.6, 0.8, 1.0)], points: None, locations: None });
-    Scene { size: (w, h), appearance: Appearance::Light, nodes: vec![bg], unsupported_symbols: vec![], notes: vec![] }
+    Scene { size: (w, h), appearance: Appearance::Light, ios: simcore_protocol::IosVersion::Ios26, nodes: vec![bg], unsupported_symbols: vec![], notes: vec![] }
 }
 
 fn glass_stack(dev: &Device, progress: f64) -> Scene {

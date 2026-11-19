@@ -121,7 +121,7 @@ impl Builder {
         let s = scale as f32;
         let sd = scale;
         let (pw, ph) = ((scene.size.0 * scale).round().max(1.0) as u32, (scene.size.1 * scale).round().max(1.0) as u32);
-        let mut dl = DisplayList { width: pw, height: ph, scale: s, dark: scene.appearance == simcore_protocol::Appearance::Dark, ..Default::default() };
+        let mut dl = DisplayList { width: pw, height: ph, scale: s, dark: scene.appearance == simcore_protocol::Appearance::Dark, ios: scene.ios, ..Default::default() };
         let nodes = &scene.nodes;
         // Clipping ancestors of each node (outermost first), and the clips currently open in `dl.ops`.
         let mut chains: Vec<Rc<Vec<usize>>> = Vec::with_capacity(nodes.len());

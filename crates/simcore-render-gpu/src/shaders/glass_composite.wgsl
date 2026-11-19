@@ -11,11 +11,11 @@ struct C {
     f0: vec4<f32>,   // shape x, y, w, h
     f1: vec4<f32>,   // shape r, lens_d, lens_w, rim_w (px)
     f2: vec4<f32>,   // sat, mul, add (0..255), rim_a
-    f3: vec4<f32>,   // rim_dir, opacity, tint alpha (0 = none), 0
-    f4: vec4<f32>,   // tint rgb (0..255)
+    f3: vec4<f32>,   // rim_dir, opacity, tint alpha (0 = none), vertical rim flag
+    f4: vec4<f32>,   // tint rgb (0..255), outline alpha
     f5: vec4<f32>,   // halo rgb (0..255), alpha
     f6: vec4<f32>,   // own shadow rgb (0..255), alpha
-    f7: vec4<f32>,   // edge colour rgb (0..255)
+    f7: vec4<f32>,   // edge colour rgb (0..255), glass outline width (px)
 };
 
 @group(0) @binding(0) var<uniform> c: C;
@@ -102,6 +102,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // Glass.
     if ((flags & 2) != 0) {
         let sh = rr_sdf(px, c.f0.x, c.f0.y, c.f0.z, c.f0.w, c.f1.x);
+        let outline = c.f7.w + 0.5;
+        if (c.f4.w > 0.0 && sh.d > -0.5 && sh.d < outline) {
+            let k = clamp(sh.d + 0.5, 0.0, 1.0) * clamp(outline - sh.d, 0.0, 1.0)
+                * c.f4.w * (0.3 + 0.7 * abs(sh.n.x)) * c.f3.y * m;
+            col = round(col * (1.0 - k));
+        }
         let cov = clamp(0.5 - sh.d, 0.0, 1.0) * c.f3.y * m;
         if (cov > 0.0) {
             let d = max(-sh.d, 0.0);
@@ -117,7 +123,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             }
             let rim_w = c.f1.w;
             if (d < rim_w + 1.0) {
-                let dir = (sh.n.x + sh.n.y) * -0.70710678;
+                let dir = select((sh.n.x + sh.n.y) * -0.70710678, sh.n.y, c.f3.w != 0.0);
                 let k = clamp(1.0 - d / rim_w, 0.0, 1.0) * c.f2.w * (1.0 - c.f3.x + c.f3.x * abs(dir));
                 v = mix(v, vec3<f32>(255.0), k);
             }
@@ -150,6 +156,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         }
         let v = clamp(mix(d, c.f7.rgb, row.x) - vec3<f32>(row.z * 255.0), vec3<f32>(0.0), vec3<f32>(255.0));
         col = mix(d, v, m);
+        col = mix(col, vec3<f32>(select(0.0, 255.0, row.w > 0.0)), abs(row.w) * m);
     }
 
     var rgb = vec3<f32>(0.0);

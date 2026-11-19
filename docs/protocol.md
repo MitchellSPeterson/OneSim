@@ -30,7 +30,7 @@ Mismatched major version → `protocol_version` error.
 | method | params | result |
 |---|---|---|
 | `get_capabilities` | – | `{"frameworks":["swiftui"],"platforms":["ios"],"commands":[...],"headless":true}` |
-| `create_session` | `{"framework":"swiftui","platform":"ios","app_path":"<file or dir>","root_view":"CounterView"?,"viewport":{"width":393,"height":852}?,"scale":2.0?,"appearance":"light"\|"dark"?,"dynamic_type_size":"large"?}` | `{"session_id":"s1"}` |
+| `create_session` | `{"framework":"swiftui","platform":"ios","app_path":"<file or dir>","root_view":"CounterView"?,"viewport":{"width":393,"height":852}?,"scale":2.0?,"appearance":"light"\|"dark"?,"dynamic_type_size":"large"?,"device":"iphone-18-pro"?,"os_version":"27.2"?}` | `{"session_id":"s1"}` |
 | `start_session` | `{"session_id"}` | `{"state":"running"}` (blocks until first tree or failure) |
 | `stop_session` | `{"session_id"}` | `{"state":"stopped"}` |
 | `get_session_status` | `{"session_id"}` | `{"session_id","state","framework","platform","app_path","viewport","scale","appearance","tree_version"}` |
@@ -196,7 +196,7 @@ Text styles and weights follow Apple's iOS Dynamic Type "Large" defaults (body 1
 
 ### Device profile and platform chrome (host)
 
-`create_session` accepts a `"device"` profile name (default `"iphone-17-pro"`: viewport 402×874 pt, scale 3, safe area top 62 / bottom 34). Every iPhone of the iOS 26.5 Simulator is a profile (`iphone-16`, `iphone-air`, `iphone-13-mini`, `iphone-se-3`, ...; the full list is `DEVICES` / `get_capabilities` `devices`); notch models have no `island`, the SE has a home button (classic status bar, no bottom inset, bottom-row keyboard icons). Lists, cards and titles use a 20 pt side margin on screens 414 pt or wider, else 16. Content is laid out inside the safe area. The screen background, a `navigation` bar background and a `list` background extend to the screen edges. The host draws an iOS status bar (time "9:41", battery) in the top inset. `viewport` and `scale` params still override. Profiles (geometry, safe area, island, status bar, keyboard height) live in `DEVICES` in `crates/simcore-render/src/device.rs`, shared with the Wasm build, and are listed by `get_capabilities` `devices`.
+`create_session` accepts a `"device"` profile name (default `"iphone-18-pro"`: viewport 402×874 pt, scale 3, safe area top 62 / bottom 34). Every iPhone of the iOS 26.5 and 27.2 Simulators is a profile (iOS 27 status bar and keyboard height per profile where measured, `Device::ios27`) (`iphone-16`, `iphone-air`, `iphone-13-mini`, `iphone-se-3`, ...; the full list is `DEVICES` / `get_capabilities` `devices`); notch models have no `island`, the SE has a home button (classic status bar, no bottom inset, bottom-row keyboard icons). Lists, cards and titles use a 20 pt side margin on screens 414 pt or wider, else 16. Content is laid out inside the safe area. The screen background, a `navigation` bar background and a `list` background extend to the screen edges. The host draws an iOS status bar (time "9:41", battery) in the top inset. `viewport` and `scale` params still override. Profiles (geometry, safe area, island, status bar, keyboard height) live in `DEVICES` in `crates/simcore-render/src/device.rs`, shared with the Wasm build, and are listed by `get_capabilities` `devices`.
 
 The guest reads `SIMCORE_APPEARANCE` at launch for `@Environment(\.colorScheme)`.
 
@@ -243,7 +243,7 @@ When a `text_field` is focused, the host draws the iOS keyboard for the device p
 
 ### Dynamic Island and shadows
 
-- Device profiles have `"island": {"x","y","width","height"}` (pt); the iPhone 17 Pro has one. The host draws it as a black capsule above everything, matching the iOS Simulator screenshots.
+- Device profiles have `"island": {"x","y","width","height"}` (pt); the iPhone 17 and 18 Pro have one (the 18 Pro's is 95 pt wide). The host draws it as a black capsule above everything, matching the iOS Simulator screenshots.
 - `shadow` is a true Gaussian blur, matching CALayer shadow rendering for SwiftUI's `shadow(radius:)` (radius → blur). It is computed offscreen per node and cached.
 
 ---
@@ -251,6 +251,8 @@ When a `text_field` is focused, the host draws the iOS keyboard for the device p
 ## F. v1 additions: Liquid Glass and Dynamic Type (additive)
 
 ### Dynamic Type
+
+`create_session` accepts `"os_version"` (alias `osVersion`): the simulated iOS release, `"27.2"` (default) or `"26.5"` (`"27"` / `"26"` also parse). It selects the release's look in the host (list row padding, keyboard, Liquid Glass, status bar, scroll edge, alert colors: `crates/simcore-render/src/look.rs` and per-release branches beside the code) and is passed to guests as `SIMCORE_OS_VERSION` / `SIMCORE_OS_BUILD` (React Native reports it as `Platform.Version`, `expo-device` `osVersion`), with the profile slug as `SIMCORE_DEVICE`. `status` reports `os_version`. CLI: `simcore run|expo --ios 26.5`; web: `simcore_web_set_ios(index)` (0 = 26.5, 1 = 27.2). Each release is pinned to the Simulator runtime its references were captured on (`docs/compatibility/versions.json`).
 
 `create_session` accepts `"dynamic_type_size"` (alias `dynamicTypeSize`): `xSmall|small|medium|large|xLarge|xxLarge|xxxLarge|accessibility1..accessibility5` (default `large`). CLI: `simcore run --dynamic-type SIZE`; web: `?dynamicType=SIZE` / `sim.init({dynamicType})` / `sim.setDynamicType(size)`.
 - The host resolves the point size of every text *style* (`.largeTitle` ... `.caption2`, and unstyled text = `.body`) from Apple's Dynamic Type table (iOS, 12 sizes x 11 styles; `TextStyle::size_at`). `.system(size:)` is fixed. Nav bar titles, list headers, symbols and control sizes do not scale in v1.
@@ -326,21 +328,24 @@ It loads the app bundle from Metro and runs React Native's own Fabric renderer; 
 
 ### API
 
-- `create_session` accepts `"framework": "react-native"` (alias `"expo"`) and `"metro_url"`
-  (alias `metroUrl`, default `http://localhost:8081`); `app_path` is not used.
+- `create_session` accepts `"framework": "react-native"` (alias `"expo"`), `"platform": "ios"`
+  (default) or `"android"`, and `"metro_url"` (alias `metroUrl`, default `http://localhost:8081`).
+  The guest loads its app from Metro. Android defaults to the `pixel-10a` profile and reports
+  `os_version: "17"`. Devices must match the platform selected at session creation.
 - `get_capabilities.frameworks` includes `"react-native"`.
 - `send_pointer_event` on an RN session: `down` → touch `start` on the deepest node at the
   point, `up` → touch `end` on the same target, `click` = both. After `end` the call waits for
   the next tree (2 s); a tap that changes nothing is not an error. `drag` → touch `start` at
   (x, y), 8 `move`s along (dx, dy) (timestamps 16 ms apart), `end`, all on the start's target.
-- CLI: `simcore expo [--url URL] [--device NAME] [--headless] [--appearance light|dark] [--screenshot out.png] [--click X,Y ...]`.
+- CLI: `simcore expo [--platform ios|android] [--url URL] [--device NAME] [--headless] [--appearance light|dark] [--screenshot out.png] [--click X,Y ...]`.
 
 ### Guest launch env
 
-`SIMCORE_METRO_URL`, `SIMCORE_VIEWPORT=393x852`, `SIMCORE_APPEARANCE`, `SIMCORE_SESSION_ID`,
-`SIMCORE_SCALE` (default 3). Optional: `SIMCORE_HMR=1` (connect Metro `/hot`), `SIMCORE_DEBUG=1`.
-Bundle: `GET <metro>/` with `expo-platform: ios` → manifest `launchAsset.url`
-(fallback `/index.bundle?platform=ios&dev=true&minify=false`).
+`SIMCORE_METRO_URL`, `SIMCORE_PLATFORM` (`ios` or `android`), `SIMCORE_VIEWPORT`, `SIMCORE_APPEARANCE`,
+`SIMCORE_SESSION_ID`, `SIMCORE_SCALE`, and `SIMCORE_INSETS=top,bottom` (profile insets used on Android).
+Optional: `SIMCORE_HMR=1` (connect Metro `/hot`), `SIMCORE_DEBUG=1`.
+The guest loads `launchAsset.url` from the Expo manifest at `GET <metro>/` with `expo-platform` set
+to the session platform. Plain Metro uses `/index.bundle?platform=<platform>&dev=true&minify=false`.
 
 ### ViewNode kind `rn`
 
@@ -356,6 +361,16 @@ Bundle: `GET <metro>/` with `expo-platform: ios` → manifest `launchAsset.url`
   laid out as a View and reported once as `unsupported_component: <name>`.
 - Layout follows Yoga (column, `flexShrink: 0`, `alignContent: flex-start`, border-box);
   default text: system 14pt, black. Scene node ids are reactTags, so hit tests return tags.
+
+Android uses density-independent pixels and Roboto. Its Fabric names include `AndroidTextInput`,
+`AndroidSwitch` (`on`, `enabled`, `trackTintColor`, `thumbTintColor`), `AndroidProgressBar`,
+`AndroidHorizontalScrollView` with `AndroidHorizontalScrollContentView`, and
+`AndroidSwipeRefreshLayout` wrapping a scroller. The guest responds to existing focus, text input,
+scroll, and touch messages for these nodes. A switch tap dispatches `topChange` with `value`.
+The Android status bar and navigation handle are drawn over the edge-to-edge surface.
+`__simcoreStatusBarStyle` (`default`, `dark-content`, or `light-content`) and
+`__simcoreStatusBarHidden` (boolean) are optional Android `RootView` props from `StatusBarManager`.
+Android dispatches `keyboardDidShow` and `keyboardDidHide` as simulated focus notifications.
 
 ### Host → guest (additions)
 
@@ -390,8 +405,9 @@ its existing focus + software-keyboard machinery.
   {screenX, screenY, width, height}, duration: 0, easing: "keyboard", isEventFromThisApp: true}`
   (window coordinates; hidden frame = `screenY` at the window bottom). `duration: 0` because the
   host renders settled states (`KeyboardAvoidingView` skips LayoutAnimation).
-- Host → guest `{"type":"submit","tag"}` on return → `topSubmitEditing` `{text}`; then blur
-  unless `multiline`.
+- Host → guest `{"type":"submit","tag"}` on return → `topSubmitEditing` `{text}`.
+  `submitBehavior: "submit"` retains focus and `"blurAndSubmit"` blurs. With no explicit behavior,
+  single-line inputs blur and multiline inputs retain focus.
 - Guest → host `{"type":"focus_request","tag":<u64>|null}` when JS calls the `focus` / `blur`
   commands (null = blur); host focuses/unfocuses that field and shows/hides the keyboard.
   `setTextAndSelection` / `setNativeProps({text})` update the guest's text and re-emit.

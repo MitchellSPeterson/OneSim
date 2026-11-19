@@ -210,7 +210,7 @@ mod tests {
         n.bounds = Rect { x: 10.0, y: 10.0, w: 50.0, h: 30.0 };
         n.fill = Some(Color::rgba(0.2, 0.4, 0.9, 1.0));
         n.radius = 8.0;
-        Scene { size: (80.0, 60.0), appearance: Appearance::Light, nodes: vec![n], unsupported_symbols: vec![], notes: vec![] }
+        Scene { size: (80.0, 60.0), appearance: Appearance::Light, ios: Default::default(), nodes: vec![n], unsupported_symbols: vec![], notes: vec![] }
     }
 
     #[test]

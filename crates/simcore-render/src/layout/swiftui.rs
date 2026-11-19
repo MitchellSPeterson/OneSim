@@ -11,7 +11,7 @@ use crate::scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, Shadow, Sy
 use crate::symbols::{self, SymbolSpec};
 use crate::text::{FontSpec, Fonts, Span, TextAlign};
 use simcore_protocol::{
-    Alignment, Appearance, ButtonStyle, Detent, Layer, PickerOption, PickerStyle, DynamicTypeSize, GlassShapeKind, GlassVariant, ContentMode, DisplayMode, Font, ImageScale, ListStyle, Modifier, Section, Semantic, ShapeKind, Stroke,
+    Alignment, Appearance, ButtonStyle, Detent, Layer, PickerOption, PickerStyle, DynamicTypeSize, GlassShapeKind, GlassVariant, ContentMode, DisplayMode, Font, ImageScale, IosVersion, ListStyle, Modifier, Section, Semantic, ShapeKind, Stroke,
     ViewKind, ViewNode,
 };
 use std::cmp::Ordering;
@@ -46,6 +46,14 @@ const ALERT_MESSAGE_PT: f32 = 15.0;
 const ALERT_MESSAGE_FG: ((u8, u8, u8), (u8, u8, u8)) = ((106, 107, 108), (162, 162, 162));
 const ALERT_BTN_FILL: ((u8, u8, u8), (u8, u8, u8)) = ((209, 209, 210), (47, 47, 48));
 const ALERT_DESAT: (u8, u8) = (160, 115);
+/// iOS 27 dark alert (alert-dark.png, ios27): lighter buttons, dimmer message, pinker destructive label.
+const ALERT_27_DARK_BTN: (u8, u8, u8) = (71, 71, 73);
+const ALERT_27_DARK_MESSAGE: (u8, u8, u8) = (120, 121, 124);
+const ALERT_27_DARK_DESTRUCTIVE: (u8, u8, u8) = (255, 103, 106);
+/// iOS 27 dark confirmation popover (dialog-dark.png, ios27).
+const POPOVER_27_DARK_BTN: (u8, u8, u8) = (80, 80, 82);
+const POPOVER_27_DARK_MESSAGE: (u8, u8, u8) = (128, 130, 134);
+const POPOVER_27_DARK_DESTRUCTIVE: (u8, u8, u8) = (255, 109, 112);
 /// Confirmation popover (measured on the simulator).
 /// Glass (mul, add) of the popover on a light backdrop, and its wide soft shadow (alpha, sigma, dy).
 const POPOVER_GLASS: (f32, f32) = (0.196, 0.76);
@@ -88,6 +96,8 @@ const SHEET_TOP_GAP: f64 = 0.0;
 const SHEET_RADIUS: f64 = 40.0;
 /// Backdrop blur (sigma, pt) under floating sheets, alert and dialog glass.
 const PRESENT_BLUR: f32 = 12.0;
+/// iOS 27 dark alert / popover cards: darker than plain dark glass (alert-dark.png: card ~(35..43) over the dimmed screen).
+const PRESENT_GLASS_27_DARK: (f32, f32) = (0.49, 0.125);
 /// Space above the sheet content (a list starts this far below the sheet's top edge).
 const SHEET_CONTENT_TOP: f64 = 35.0;
 
@@ -267,6 +277,13 @@ struct Ctx<'a> {
     scale: f64,
     /// Side margin of lists, cards and titles: 20pt on Plus/Max-width screens (>= 414pt), else 16.
     margin: f64,
+    /// Horizontal padding of list rows inside their card (`margin`, at least the release's minimum).
+    row_pad: f64,
+    ios: IosVersion,
+    /// Compact title bar (iPhone Duo): 28pt title in a 58pt bar.
+    compact_nav: bool,
+    /// Back button in the right status column (iPhone Duo): top-left of its 48pt circle, screen points.
+    column_back: Option<(f64, f64)>,
     scroll: &'a HashMap<String, (f64, f64)>,
     overscroll: bool,
     focus: Option<&'a str>,
@@ -316,6 +333,8 @@ pub struct SceneParams<'a> {
     pub scale: f64,
     pub appearance: Appearance,
     pub dynamic_type: DynamicTypeSize,
+    /// Simulated iOS release: version-specific look (see `crate::look`).
+    pub ios: IosVersion,
     /// Scroll offsets keyed by node id.
     pub scroll: &'a HashMap<String, (f64, f64)>,
     /// Detent / drag position of sheets by layer id.
@@ -336,6 +355,11 @@ fn ctx<'a>(params: &'a SceneParams, fonts: &'a mut Fonts) -> Ctx<'a> {
         dts: params.dynamic_type,
         scale: params.scale.max(1.0),
         margin: if params.viewport.0 >= 414.0 { 20.0 } else { 16.0 },
+        row_pad: f64::max(if params.viewport.0 >= 414.0 { 20.0 } else { 16.0 }, crate::look::look(params.ios).row_pad_min),
+        ios: params.ios,
+        compact_nav: params.device.compact_nav,
+        column_back: (params.device.safe_right > 0.0)
+            .then_some((params.viewport.0 - 72.25, 123.75)),
         scroll: params.scroll,
         overscroll: params.overscroll,
         focus: params.focus,
@@ -351,7 +375,7 @@ fn ctx<'a>(params: &'a SceneParams, fonts: &'a mut Fonts) -> Ctx<'a> {
 /// Status bar and Dynamic Island on top of `nodes`, for layouts that draw their own content (React Native).
 pub(crate) fn add_chrome(nodes: &mut Vec<Node>, params: &SceneParams, fonts: &mut Fonts) {
     if params.status_bar {
-        let lay = ctx(params, fonts).status_bar(params.viewport.0, params.device);
+        let lay = ctx(params, fonts).status_bar(params.viewport.0, params.device, params.ios);
         flatten(lay, 0.0, 0.0, Some(0), 1.0, nodes);
     }
     if let Some(isl) = params.device.island {
@@ -429,7 +453,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     let (w, h) = params.viewport;
     // Keyboard avoidance: the keyboard top replaces the bottom safe-area inset.
     let kb = params.chrome.keyboard && params.focus.is_some();
-    let kb_h = params.device.kb_base_h + params.device.safe_bottom;
+    let kb_h = crate::look::keyboard_height(params.device, params.ios);
     let (safe_top, dev_bottom) = (params.device.safe_top, params.device.safe_bottom);
     let safe_bottom = if kb { kb_h } else { dev_bottom };
     let mut cx = ctx(params, fonts);
@@ -445,9 +469,21 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     };
     cx.desat = !layers.is_empty();
     cx.sheet_up = layers.iter().any(|l| matches!(l, Layer::Sheet { .. }));
-    let geo = Geo { w, h, safe_top, safe_bottom, dev_bottom, body };
+    // A right status column (iPhone Duo) narrows the content; full-width backgrounds still reach the edge.
+    let wc = w - params.device.safe_right;
+    let geo = Geo { w: wc, h, safe_top, safe_bottom, dev_bottom, body };
     let lay = cx.place_root(root, &geo);
     flatten(lay, 0.0, 0.0, Some(0), 1.0, &mut nodes);
+    if wc < w {
+        for n in nodes.iter_mut().skip(1) {
+            if n.fill.is_some()
+                && n.bounds.x.abs() < 0.5
+                && (n.bounds.x + n.bounds.w - wc).abs() < 0.5
+            {
+                n.bounds.w = w;
+            }
+        }
+    }
     for (i, layer) in layers.iter().enumerate() {
         let id = format!("layer{i}");
         // Whatever lies under a higher layer is desaturated; a layer's own content is not.
@@ -483,17 +519,32 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         flatten(lay, 0.0, 0.0, Some(0), 1.0, &mut nodes);
     }
     if params.status_bar {
-        let lay = cx.status_bar(w, params.device);
+        let lay = cx.status_bar(w, params.device, params.ios);
         flatten(lay, 0.0, 0.0, Some(0), 1.0, &mut nodes);
     }
     let dark = params.appearance == Appearance::Dark;
     if kb {
-        crate::chrome::keyboard(&mut nodes, w, h, kb_h, dark, params.chrome.shift, params.device);
+        crate::chrome::keyboard(&mut nodes, w, h, kb_h, dark, params.chrome.shift, params.device,
+            crate::look::look(params.ios));
     }
     if let Some(isl) = params.device.island {
         crate::chrome::island(&mut nodes, isl);
     }
-    Scene { size: params.viewport, appearance: params.appearance, nodes, unsupported_symbols: cx.unsupported.into_iter().collect(), notes: vec![] }
+    if let Some((x, y, hw, hh)) = params.device.home_indicator {
+        let mut bar = Node::new("home_indicator", "home_indicator");
+        bar.bounds = Rect { x, y, w: hw, h: hh };
+        bar.parent = Some(0);
+        bar.radius = hh / 2.0;
+        bar.fill = Some(if dark {
+            Color::rgba(1.0, 1.0, 1.0, 0.6)
+        } else {
+            Color::rgba(0.0, 0.0, 0.0, 0.6)
+        });
+        bar.inspect = false;
+        nodes.push(bar);
+    }
+    Scene { size: params.viewport, appearance: params.appearance,
+        ios: params.ios, nodes, unsupported_symbols: cx.unsupported.into_iter().collect(), notes: vec![] }
 }
 
 fn flatten(lay: Lay, x: f64, y: f64, mut parent: Option<usize>, mut opacity: f32, out: &mut Vec<Node>) {
@@ -1447,7 +1498,7 @@ impl Ctx<'_> {
         let w = p.w.filter(|w| w.is_finite()).unwrap_or(402.0);
         let margin = if inset { self.margin } else { 0.0 };
         let gw = w - 2.0 * margin;
-        let inner_w = gw - 2.0 * self.margin;
+        let inner_w = gw - 2.0 * self.row_pad;
         let row_env = Env { axis: None, safe_top: 0.0, bottom_inset: 0.0, fg: None, in_row: true, ..env };
         let sec_col = if self.floating { let c = if self.dark { FLOAT_CARD.1 } else { FLOAT_CARD.0 }; rgba(c.0, c.1, c.2, 1.0) } else { self.semantic(Semantic::SecondaryGroupedBackground) };
         let sep_col = if self.floating { let c = if self.dark { FLOAT_SEP.1 } else { FLOAT_SEP.0 }; rgba(c.0, c.1, c.2, 1.0) } else { self.semantic(Semantic::Separator) };
@@ -1463,7 +1514,7 @@ impl Ctx<'_> {
                     n.role = Role::Text;
                 }
                 let hh = t.size.h + HEADER_PAD;
-                kids.push((margin + self.margin, y + (hh - t.size.h) / 2.0, t));
+                kids.push((margin + self.row_pad, y + (hh - t.size.h) / 2.0, t));
                 y += hh;
             }
             let mut sec_kids: Vec<(f64, f64, Lay)> = vec![];
@@ -1474,19 +1525,19 @@ impl Ctx<'_> {
                 let vpad = if has_bordered(row) || c.size.h > 33.0 { ROW_VPAD_BORDERED } else { ROW_VPAD };
                 let rh = ROW_MIN_H.max(c.size.h + 2.0 * vpad);
                 let yo = (rh - c.size.h) / 2.0;
-                expand_button(&mut c, 0.0, yo, (-self.margin, 0.0, gw - self.margin, rh));
+                expand_button(&mut c, 0.0, yo, (-self.row_pad, 0.0, gw - self.row_pad, rh));
                 let tx = first_text_x(&c, 0.0).unwrap_or(0.0);
                 let mut rn = Node::new(format!("{sid}#r{ri}"), "row");
                 rn.inspect = false;
                 let last = ri + 1 == sec.rows.len();
-                let mut rkids = vec![(self.margin, yo, c)];
+                let mut rkids = vec![(self.row_pad, yo, c)];
                 if !last {
                     let mut sp = Node::new(format!("{sid}#r{ri}#sep"), "separator");
                     sp.fill = Some(sep_col);
                     sp.inspect = false;
-                    let x0 = self.margin + tx;
+                    let x0 = self.row_pad + tx;
                     // Measured: 1pt (3px @3x) solid line ending at the row boundary.
-                    rkids.push((x0, rh - 1.0, Lay::new(Size { w: (gw - self.margin - x0).max(0.0), h: 1.0 }, Some(sp), vec![])));
+                    rkids.push((x0, rh - 1.0, Lay::new(Size { w: (gw - self.row_pad - x0).max(0.0), h: 1.0 }, Some(sp), vec![])));
                 }
                 sec_kids.push((0.0, ry, Lay::new(Size { w: gw, h: rh }, Some(rn), rkids)));
                 ry += rh;
@@ -1504,7 +1555,7 @@ impl Ctx<'_> {
                 let t = self.text_lay(&format!("{sid}#footer"), f, spec, self.semantic(Semantic::Secondary), Some(inner_w as f32));
                 y += 8.0;
                 let th = t.size.h;
-                kids.push((margin + self.margin, y, t));
+                kids.push((margin + self.row_pad, y, t));
                 y += th;
             }
             // Between sections 17.7; after the last one the list ends 20pt above the bottom inset (measured).
@@ -1591,12 +1642,18 @@ impl Ctx<'_> {
     fn nav_large(&mut self, id: &str, w: f64, title: Option<&str>, large: bool) -> (Option<Lay>, f64, f64) {
         let primary = self.semantic(Semantic::Primary);
         let large_title = title.filter(|_| large).map(|t| {
-            let sz = simcore_protocol::TextStyle::LargeTitle.size_at(self.dts) as f32;
+            let sz = if self.compact_nav {
+                28.0
+            } else { simcore_protocol::TextStyle::LargeTitle.size_at(self.dts) as f32
+            };
             let spec = FontSpec::new(sz, self.line_h(sz), 700, TextAlign::Leading);
             self.text_lay(&format!("{id}#title"), t, spec, primary, Some((w - 32.0) as f32))
         });
         let title_h = large_title.as_ref().map_or(0.0, |l| l.size.h);
-        let band = if large { (title_h + 1.33).max(52.0) } else { 0.0 };
+        // Compact bar: 58pt in all, the title inside it (no band to collapse).
+        let band = if self.compact_nav {
+            4.0
+        } else if large { (title_h + 1.33).max(52.0) } else { 0.0 };
         (large_title, title_h, band)
     }
 
@@ -1611,7 +1668,12 @@ impl Ctx<'_> {
         let mut bar = Node::new(format!("{}#bar", id), "navbar");
         bar.label = title.map(str::to_string);
         let mut bar_kids = vec![];
-        if let Some(tl) = large_title.filter(|_| offset < band) {
+        let compact = self.compact_nav;
+        if let Some(tl) = large_title.filter(|_| compact || offset < band) {
+            if compact {
+                // Compact bar (iPhone Duo): the title stays at the bar's top-left (measured y 31 in a bar from 24).
+                bar_kids.push((self.margin, 7.0, tl));
+            } else {
             // Title top: 54pt under the bar's top, lowered when the band has spare room (57.7 at large).
             let ty = NAV_INLINE_H + (band - title_h - 7.6).max(0.0) - offset;
             if offset > 0.0 {
@@ -1625,7 +1687,8 @@ impl Ctx<'_> {
                 bar_kids.push((self.margin, ty, tl));
             }
         }
-        if let Some(t) = title {
+        }
+        if let Some(t) = title.filter(|_| !(self.compact_nav && large)) {
             let alpha = if large { ((collapse - (band - INLINE_FADE)) / INLINE_FADE).clamp(0.0, 1.0) as f32 } else { 1.0 };
             if alpha > 0.0 {
                 // Inline titles grow with Dynamic Type but cap at x1.225 (measured at accessibility5).
@@ -1653,8 +1716,8 @@ impl Ctx<'_> {
                 n.glass = Some(self.glass_spec(GlassVariant::Regular, None, true));
             }
             n.radius = PILL;
-            // Under a presentation the chevron desaturates like the rest of the presenter.
-            let primary = if self.desat {
+            // Under a presentation the chevron desaturates like the rest of the presenter (iOS 26; iOS 27 keeps it).
+            let primary = if self.desat && self.ios < IosVersion::Ios27 {
                 let g = if self.dark { ALERT_DESAT.1 } else { ALERT_DESAT.0 };
                 rgba(g, g, g, 1.0)
             } else {
@@ -1675,7 +1738,16 @@ impl Ctx<'_> {
                 bar_kids.push((self.margin, 0.0, Lay::new(Size { w: 35.0 + tw + 17.7, h: 44.0 }, Some(n), kids)));
             } else {
                 n.glyph = Some((Glyph::BackChevron, primary));
+                if let Some((bx, by)) = self.column_back {
+                    // In the status column (iPhone Duo): a 48pt circle, screen-placed (the bar starts at the top inset).
+                    bar_kids.push((
+                        bx,
+                        by - top,
+                        Lay::new(Size { w: 48.0, h: 48.0 }, Some(n), vec![]),
+                    ));
+                } else {
                 bar_kids.push((self.margin, 0.0, Lay::new(Size { w: 44.0, h: 44.0 }, Some(n), vec![])));
+                }
             }
         }
         Lay::new(Size { w, h: bar_h - collapse }, Some(bar), bar_kids)
@@ -1701,7 +1773,12 @@ impl Ctx<'_> {
             item.action = tab.action.or_else(|| host.parse().ok());
             item.radius = PILL;
             if sel {
-                item.fill = Some(if self.dark { rgba(58, 58, 60, 1.0) } else { rgba(233, 233, 235, 1.0) });
+                // iOS 27 sinks the selection into the bar (tabs-home(-dark).png, ios27); iOS 26 raises it.
+                item.fill = Some(match (self.dark, self.ios >= IosVersion::Ios27) {
+                    (true, true) => rgba(10, 10, 10, 1.0),
+                    (false, true) => rgba(225, 225, 231, 1.0),
+                    (true, false) => rgba(58, 58, 60, 1.0),
+                    (false, false) => rgba(233, 233, 235, 1.0), });
             }
             let tint = if sel { t.tint.unwrap_or(accent) } else { label };
             let path = if sel { tab.selected_icon.as_ref().or(tab.icon.as_ref()) } else { tab.icon.as_ref() };
@@ -1721,8 +1798,10 @@ impl Ctx<'_> {
             lb.inspect = false;
             lb.text = Some(TextRun { text: tab.title.clone(), font: FontSpec::new(10.0, 12.0, if sel { 600 } else { 500 }, TextAlign::Center), color: label, strike: false, offset_x: 0.0, spans: vec![] });
             let mut ikids = vec![
-                ((94.0 - isz.0) / 2.0, 6.0, Lay::new(Size { w: isz.0, h: isz.1 }, Some(icon), vec![])),
-                (0.0, 31.0, Lay::new(Size { w: 94.0, h: 14.0 }, Some(lb), vec![])),
+                ((94.0 - isz.0) / 2.0,
+                    if tab.symbol.is_some() { 3.5 } else { 6.0 }, Lay::new(Size { w: isz.0, h: isz.1 }, Some(icon), vec![])),
+                // Label line: ink at 832.7..839.3 in the 17/18 Pro captures (both releases).
+                (0.0, 33.3, Lay::new(Size { w: 94.0, h: 14.0 }, Some(lb), vec![])),
             ];
             if let Some(b) = &tab.badge {
                 let spec = FontSpec::new(12.0, 14.0, 400, TextAlign::Center);
@@ -1938,7 +2017,11 @@ impl Ctx<'_> {
             gap = ALERT_TITLE_MESSAGE_GAP;
         }
         if let Some(m) = message {
-            let fg = if self.dark { ALERT_MESSAGE_FG.1 } else { ALERT_MESSAGE_FG.0 };
+            let fg = match (self.dark, self.ios >= IosVersion::Ios27, popover) {
+                (true, true, false) => ALERT_27_DARK_MESSAGE,
+                (true, true, true) => POPOVER_27_DARK_MESSAGE,
+                (true, false, _) => ALERT_MESSAGE_FG.1,
+                _ => ALERT_MESSAGE_FG.0, };
             let env = Env { size: ALERT_MESSAGE_PT, align: TextAlign::Leading, fg: Some(rgba(fg.0, fg.1, fg.2, 1.0)), ..Env::new() };
             let ml = self.view(m, Prop { w: Some(inner), h: None }, env);
             y += gap;
@@ -1955,8 +2038,19 @@ impl Ctx<'_> {
         let bw = if side_by_side { (card_w - 2.0 * ALERT_BTN_PAD - ALERT_BTN_GAP) / 2.0 } else { card_w - 2.0 * ALERT_BTN_PAD };
         let bh = ALERT_BTN_H;
         let accent = self.semantic(Semantic::Accent);
-        let red = self.color(&simcore_protocol::Color::Rgba { r: 1.0, g: 56.0 / 255.0, b: 60.0 / 255.0, a: 1.0, dark: Some([1.0, 66.0 / 255.0, 69.0 / 255.0]) });
-        let fills = if popover { POPOVER_BTN_FILL } else { ALERT_BTN_FILL };
+        let dark27 = self.dark && self.ios >= IosVersion::Ios27;
+        let (red27, btn27) = if popover {
+            (POPOVER_27_DARK_DESTRUCTIVE, POPOVER_27_DARK_BTN)
+        } else {
+            (ALERT_27_DARK_DESTRUCTIVE, ALERT_27_DARK_BTN)
+        };
+        let red = if dark27 {
+            self.pick((red27, red27))
+        } else { self.color(&simcore_protocol::Color::Rgba { r: 1.0, g: 56.0 / 255.0, b: 60.0 / 255.0, a: 1.0, dark: Some([1.0, 66.0 / 255.0, 69.0 / 255.0]) })
+        };
+        let fills = if popover { POPOVER_BTN_FILL } else { ALERT_BTN_FILL
+        };
+        let fills = if dark27 { (fills.0, btn27) } else { fills };
         for (i, b) in acts.iter().enumerate() {
             let ViewKind::Button { action, label, disabled, role, .. } = &b.kind else { continue };
             let (fg, weight) = match role {
@@ -1989,7 +2083,12 @@ impl Ctx<'_> {
         card.label = title.map(str::to_string);
         card.radius = if popover { POPOVER_RADIUS } else { ALERT_RADIUS };
         let (mix, shadow) = if popover { (Some(POPOVER_GLASS), Some(POPOVER_SHADOW)) } else { (None, None) };
-        card.glass = Some(crate::glass::GlassSpec { blur: Some(PRESENT_BLUR), mix: mix.filter(|_| !self.dark), shadow, ..self.glass_spec(GlassVariant::Regular, None, false) });
+        let mix = if self.dark && self.ios >= IosVersion::Ios27 {
+            Some(PRESENT_GLASS_27_DARK)
+        } else {
+            mix.filter(|_| !self.dark)
+        };
+        card.glass = Some(crate::glass::GlassSpec { blur: Some(PRESENT_BLUR), mix, shadow, ..self.glass_spec(GlassVariant::Regular, None, false) });
         Lay::new(Size { w: card_w, h: y }, Some(card), kids)
     }
 
@@ -2046,8 +2145,8 @@ impl Ctx<'_> {
     }
 
     /// iOS status bar: "9:41" at the left, signal / wifi / battery at the right.
-    fn status_bar(&mut self, w: f64, dev: &Device) -> Lay {
-        let sb = dev.status_bar;
+    fn status_bar(&mut self, w: f64, dev: &Device, ios: IosVersion) -> Lay {
+        let sb = dev.status_bar_for(ios);
         let primary = self.semantic(Semantic::Primary);
         let k = sb.icon_scale;
         let text = |cx: &mut Self, id: &str, s: &str, weight: u16, align: TextAlign| {
@@ -2065,14 +2164,41 @@ impl Ctx<'_> {
             n.inspect = false;
             Lay::new(sz, Some(n), vec![])
         };
-        let wifi = glyph("statusbar#wifi", Glyph::Wifi, primary, Size { w: 16.0 * k, h: 12.0 * k });
-        let batt = glyph("statusbar#battery", Glyph::Battery, primary, Size { w: 27.0 * k, h: 13.0 * k });
+        let ios27 = ios >= IosVersion::Ios27;
+        let wifi = glyph("statusbar#wifi",
+            if ios27 { Glyph::Wifi27 } else { Glyph::Wifi }, primary, Size { w: 16.0 * k, h: 12.0 * k });
+        let batt = glyph("statusbar#battery",
+            if ios27 {
+                Glyph::Battery27
+            } else { Glyph::Battery
+            }, primary, Size { w: 27.0 * k, h: 13.0 * k });
         let right = sb.icons.0 + (w - dev.viewport.width); // anchored to the trailing edge
         let dy = sb.icons.1;
         let mut root = Node::new("statusbar", "statusbar");
         root.inspect = false;
         let t = text(self, "statusbar#time", if dev.home_button { "9:41 AM" } else { "9:41" }, 600, TextAlign::Leading);
-        let kids = if dev.home_button {
+        let kids = if dev.safe_right > 0.0 {
+            // Status column (iPhone Duo): clock, then the battery ring around the wifi glyph, then the dot arc.
+            let cx = sb.time.0 + (w - dev.viewport.width);
+            let ring = glyph(
+                "statusbar#battery",
+                Glyph::BatteryRing,
+                primary,
+                Size { w: 41.0, h: 41.0 },
+            );
+            let dots = glyph(
+                "statusbar#signal",
+                Glyph::DotsArc,
+                self.semantic(Semantic::Tertiary),
+                Size { w: 24.0, h: 7.0 },
+            );
+            vec![
+                (cx - t.size.w / 2.0, sb.time.1 - t.size.h / 2.0, t),
+                (cx + 0.4 - 20.5, 73.75 - 20.5, ring),
+                (cx - 10.0, 70.4, wifi),
+                (cx - 11.6, 91.5, dots),
+            ]
+        } else if dev.home_button {
             // Classic layout (home-button phones): carrier + wifi left, centred time, battery right.
             let carrier = text(self, "statusbar#carrier", "Carrier", 400, TextAlign::Leading);
             let ch = carrier.size.h;
@@ -2083,7 +2209,11 @@ impl Ctx<'_> {
                 (right, 4.6 + dy, batt),
             ]
         } else {
-            let dots = glyph("statusbar#signal", Glyph::SignalDots, self.semantic(Semantic::Tertiary), Size { w: 20.0 * k, h: 4.0 * k });
+            let dots = glyph("statusbar#signal",
+                if ios27 {
+                    Glyph::SignalDots27
+                } else { Glyph::SignalDots
+                }, self.semantic(Semantic::Tertiary), Size { w: 20.0 * k, h: 4.0 * k });
             let (wx, wy) = (right - 24.7 * k, 26.2 + dy);
             vec![
                 (sb.time.0 - t.size.w / 2.0, sb.time.1 - t.size.h / 2.0, t),
@@ -2224,13 +2354,15 @@ mod tests {
 
     fn scene_sheets(json: &str, vp: (f64, f64), dark: bool, safe: (f64, f64), scroll: &HashMap<String, (f64, f64)>, focus: Option<&str>, sheets: &HashMap<String, crate::SheetPos>) -> Scene {
         let v: ViewNode = serde_json::from_str(json).unwrap();
-        let dev = Device { safe_top: safe.0, safe_bottom: safe.1, island: None, ..*crate::device::device(crate::device::DEFAULT_DEVICE).unwrap() };
+        // Frames below were measured on iOS 26.5 / iPhone 17 Pro (tests/fixtures/showcase-ios).
+        let dev = Device { safe_top: safe.0, safe_bottom: safe.1, island: None, ..*crate::device::device("iphone-17-pro").unwrap() };
         let params = SceneParams {
             viewport: vp,
             device: &dev,
             scale: 3.0,
             appearance: if dark { Appearance::Dark } else { Appearance::Light },
             dynamic_type: DynamicTypeSize::Large,
+            ios: IosVersion::Ios26,
             scroll,
             focus,
             sheets,
@@ -2382,10 +2514,11 @@ mod tests {
             &v,
             &SceneParams {
                 viewport: (402.0, 874.0),
-                device: crate::device::device(crate::device::DEFAULT_DEVICE).unwrap(),
+                device: crate::device::device("iphone-17-pro").unwrap(),
                 scale: 3.0,
                 appearance: Appearance::Dark,
                 dynamic_type: DynamicTypeSize::Large,
+                ios: IosVersion::Ios26,
                 scroll: &HashMap::new(),
                 sheets: &HashMap::new(),
                 focus: None,
@@ -2616,36 +2749,39 @@ mod tests {
     fn symbols_size_like_ios_and_unknown_ones_are_reported() {
         let s = phone(SYMBOLS);
         let cap = crate::symbols::capability();
-        let system = cap == "system";
         // Unknown names fall back to an outlined placeholder and are reported.
         let bad = by_id(&s, "bad.i");
         assert!(bad.symbol.is_none() && bad.stroke.is_some());
         assert!(s.unsupported_symbols.contains(&"no.such.symbol.xyz".to_string()));
         assert_eq!(s.unsupported_symbols.len(), if cap == "placeholder" { 5 } else { 1 });
-        if !system {
-            return; // placeholder host: no glyph metrics to check
+        if cap == "placeholder" {
+            return;
         }
+        // AppKit symbol boxes vary with the host macOS release. Check layout against the active
+        // symbol metrics, using the expected point size, weight and scale for each image.
+        let metrics = |name: &str, scale| {
+            symbols::metrics(&SymbolSpec { name: name.into(), point_size: 17.0, weight: 400, scale }).unwrap()
+        };
         let star = by_id(&s, "lab.i");
         assert!(star.symbol.is_some());
         let c = star.bounds.center();
         near(c.0, 44.0);
-        near(star.bounds.w, 28.0); // large star.fill box; ink is 24 wide
+        near(star.bounds.w, metrics("star.fill", ImageScale::Large).w);
         near(by_id(&s, "lab.t").bounds.x, 72.0);
         // accent icon, primary title; an explicit foreground colors both (here secondary on the bad row)
         assert_eq!(star.symbol.as_ref().unwrap().color, rgba(0, 136, 255, 1.0));
         assert_eq!(by_id(&s, "lab.t").text.as_ref().unwrap().color, rgba(0, 0, 0, 1.0));
         assert_eq!(by_id(&s, "bad.i").stroke.map(|s| s.0), by_id(&s, "bad.t").text.as_ref().map(|t| t.color));
-        // The layout uses AppKit's natural box. Its height varies with the macOS symbol version
-        // (18 pt on the original host, 19 pt on macOS 27.2.1). The iOS fixture checks the ink.
-        let heart = by_id(&s, "h.0");
-        let metrics = crate::symbols::metrics(&heart.symbol.as_ref().unwrap().spec).unwrap();
-        near(heart.bounds.w, 21.0);
-        near(heart.bounds.h, metrics.h);
-        assert!(by_id(&s, "h.2").bounds.w > 24.0);
+        let heart = by_id(&s, "h.0").bounds;
+        let heart_metrics = metrics("heart.fill", ImageScale::Medium);
+        near(heart.w, heart_metrics.w);
+        near(heart.h, heart_metrics.h);
+        near(by_id(&s, "h.2").bounds.w, metrics("checkmark.circle.fill", ImageScale::Large).w);
         // resizable scaledToFit keeps the symbol's aspect inside the 44pt frame
         let cloud = by_id(&s, "h.1").bounds;
-        near(cloud.w, 44.0);
-        assert!(cloud.h < 40.0 && cloud.h > 30.0, "{cloud:?}");
+        let cloud_metrics = metrics("cloud.sun.fill", ImageScale::Medium);
+        near(cloud.w.max(cloud.h), 44.0);
+        assert!((cloud.w / cloud.h - cloud_metrics.w / cloud_metrics.h).abs() < 0.001, "{cloud:?}");
         // 44pt content: 74pt row (15pt padding)
         near(by_id(&s, "l#s1#r0").bounds.h, 74.0);
     }

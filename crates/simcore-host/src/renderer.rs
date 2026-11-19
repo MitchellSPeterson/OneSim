@@ -129,7 +129,7 @@ mod tests {
         n.bounds = Rect { x: 4.0, y: 4.0, w: 30.0, h: 20.0 };
         n.fill = Some(Color::rgba(0.9, 0.2, 0.3, 1.0));
         n.radius = 5.0;
-        Scene { size: (50.0, 40.0), appearance: Appearance::Light, nodes: vec![n], unsupported_symbols: vec![], notes: vec![] }
+        Scene { size: (50.0, 40.0), appearance: Appearance::Light, ios: Default::default(), nodes: vec![n], unsupported_symbols: vec![], notes: vec![] }
     }
 
     fn fail() -> Result<Box<dyn Renderer + Send>, String> {

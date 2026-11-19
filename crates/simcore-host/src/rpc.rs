@@ -13,7 +13,7 @@ use crate::{Host, DEVICES, STARTUP_MAX};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use simcore_protocol::{
-    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, KeyboardEvent, PointerEvent, PointerKind, UiNode, Viewport,
+    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, IosVersion, KeyboardEvent, PointerEvent, PointerKind, UiNode, Viewport,
 };
 use base64::Engine;
 use std::collections::BTreeMap;
@@ -119,9 +119,11 @@ struct Pt {
 #[serde(rename_all = "camelCase")]
 struct CreateP {
     framework: String,
+    platform: Option<String>,
     device: Option<String>,
     appearance: Option<Appearance>,
     dynamic_type_size: Option<DynamicTypeSize>,
+    os_version: Option<IosVersion>,
     metro_url: Option<String>,
     app_path: Option<String>,
     root_view: Option<String>,
@@ -169,7 +171,7 @@ impl Entry {
         let s = h.get(&self.id)?;
         let v = json!({
             "sessionId": self.id, "framework": s.params.framework, "platform": s.params.platform,
-            "device": display_name(s.device.name), "viewport": s.viewport, "scale": s.scale,
+            "device": display_name(s.device.name), "osVersion": s.os_version(), "viewport": s.viewport, "scale": s.scale,
             "appearance": s.appearance, "status": s.state().as_str(), "treeVersion": s.tree_version().unwrap_or(0),
             "metroUrl": s.params.metro_url, "appPath": (!s.params.app_path.is_empty()).then_some(&s.params.app_path),
         });
@@ -235,13 +237,14 @@ impl Server {
     fn create(&self, p: CreateP) -> R {
         let params = CreateSessionParams {
             framework: p.framework,
-            platform: "ios".into(),
+            platform: p.platform.unwrap_or_else(|| "ios".into()),
             app_path: p.app_path.unwrap_or_default(),
             root_view: p.root_view,
             viewport: p.viewport,
             scale: p.scale,
             appearance: p.appearance,
             dynamic_type_size: p.dynamic_type_size,
+            os_version: p.os_version,
             device: p.device.as_deref().map(resolve_device).transpose()?.map(String::from),
             prebuilt: p.prebuilt,
             metro_url: p.metro_url,

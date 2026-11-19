@@ -375,6 +375,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ToolbarPlacement` | 16 | ⬜ |  |  |
 | `ToolbarRole` | 16 | ⬜ |  |  |
 | `ToolbarSpacer` | 26 | ⬜ |  |  |
+| `ToolbarTitleAlignment` | 13 | ⬜ |  |  |
 | `ToolbarTitleDisplayMode` | 17 | ⬜ |  |  |
 | `ToolbarTitleMenu` | 16 | ⬜ |  |  |
 | `ToolbarVerticalBehavior` | 13 | ⬜ |  |  |

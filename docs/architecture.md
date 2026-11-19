@@ -1,41 +1,66 @@
+[SimCore](../README.md) / [Documentation](README.md)
+
 # Architecture
 
-```
+SimCore separates app execution from rendering. Each native session runs app code in a guest process. The Rust host receives the guest’s view tree, lays it out, and sends input back to the guest.
+
+## A SwiftUI session
+
+```text
 client (DemoKit, CI, agent)
    │  A: JSON-lines API (`simcore serve`)            docs/protocol.md §A
    ▼
-simcore-host ── sessions, build, process supervision, input routing
-   │  uses simcore-render: framework layout → Scene → render, hit test, inspect
-   │  B: JSON-lines guest wire over child stdin/stdout
+simcore-host ── sessions, build, process supervision
+   │  uses simcore-render: layout (SwiftUI semantics) → Scene → render, hit test, inspect
+   │  B: JSON-lines guest wire over child stdin/stdout  §B
    ▼
 app process (one per session)
-   SwiftUI (swiftc + libsimcore_runtime.a C ABI), React Native (Node + Fabric), or Compose (JVM)
-
-Scene ─────┬─ CpuRenderer → tiny-skia + cosmic-text → RGBA → PNG / softbuffer / Canvas 2D
-           └─ Builder → DisplayList → Executor (Vello + wgpu) → storage texture
-                                                                 ├─ GPU capture readback
-                                                                 └─ native swap chain / WebGPU canvas
+   Swift app code  ──import SwiftUI──▶  frameworks/swiftui (our "SwiftUI" module)
+                                          │ C: C ABI  §C
+                                          ▼
+                                       libsimcore_runtime.a (Rust)
 ```
 
-## Split of responsibility
+The Swift compiler resolves `import SwiftUI` to [SimCore’s SwiftUI module](compatibility/swiftui/guest.md). The module evaluates views with Swift’s own generics, closures, and property wrappers. It submits a normalized view tree to the host through the Rust guest runtime. The host lays out the tree, renders it with the selected backend, and routes actions back to Swift closures. See the [protocol reference](protocol.md) for the messages at each boundary.
+
+## Framework guests
 
 | Concern | Where | Why |
 |---|---|---|
 | Language semantics (generics, closures, property wrappers) | Swift module | Swift compiler already does this; Rust never interprets Swift. |
 | State registry, view identity, action table | Swift module | State is tied to Swift values/closures. |
-| Normalized view tree | Framework guest → JSON | Framework-specific structure in a shared protocol. |
-| Layout | `simcore-render::layout::{swiftui,rn,compose}` | SwiftUI uses proposals, React Native uses Yoga semantics via taffy, and Compose uses constraints and measure/place. All three emit the same Scene. |
-| Compose execution | `frameworks/compose` (JVM) | The real `androidx.compose.runtime` composes the app; SimCore's `ui`/`foundation`/`material3` reduce it to Box/Column/Row/Text + Modifier chains (protocol §K), laid out by `layout::compose` with Compose's constraint rules. |
-| React Native execution | `frameworks/react-native/guest` (Node) | Runs the Metro bundle unchanged; RN's own Fabric renderer reconciles, the guest implements `nativeFabricUIManager` + TurboModules. See `frameworks/react-native/README.md`. |
-| Scene, CPU raster, hit testing, inspection | `simcore-render` | Shared scene and input semantics. CPU rendering provides the deterministic reference. |
+| Normalized view tree | Swift → JSON | Framework-specific but language-neutral. |
+| Layout | `simcore-render::layout` | SwiftUI proposes sizes, React Native uses Yoga flexbox semantics via taffy, and Compose measures and places content under constraints. All three emit the same scene type. |
+| Compose execution | [Compose guest](../frameworks/compose/README.md) (JVM) | The AndroidX Compose runtime composes the app. SimCore’s `ui`, `foundation`, and `material3` libraries reduce it to layout nodes and modifier chains. |
+| React Native execution | [React Native guest](../frameworks/react-native/README.md) (Node.js) | The guest loads the Metro bundle unchanged and implements `nativeFabricUIManager` and TurboModules while Fabric reconciles the UI. |
+| Scene, rasterization, hit testing, and inspection | `simcore-render` | The renderer handles all three frameworks. It draws nodes in paint order so Liquid Glass can sample the pixels already drawn behind it. |
 | Display-list building | `simcore-render::Builder` | Resolves paint order, clips, transforms, and device coordinates. CPU-rasterized sprites carry shaped text and symbols to the GPU. Resource IDs allow reuse across frames. |
 | GPU execution | `simcore-render-gpu::Executor` | Vello handles vector and image drawing. wgpu compute passes composite Liquid Glass, its halo and scroll edges against the accumulated frame. |
 | Presentation and recovery | `simcore-cli`, `simcore-web-gpu`, `web/renderer.js` | Own the swap chain or canvas, resize, scheduling and fallback. The host retains the session and scene when a presenter changes. |
-| Sessions, isolation, external API | `simcore-host` / `simcore-cli` | Process per session: a guest crash marks that session `crashed` only. |
+| Sessions and the external API | `simcore-host` and `simcore-cli` | Each session has its own process. If a guest exits unexpectedly, the host marks that session `crashed`. |
 
-## Choices
+## Design choices
 
-- **CPU capture by default.** The CLI without optional features has no GPU or window dependencies. The same CPU rasterizer provides the visual regression reference for CPU and GPU backends. Native windows and browser previews select GPU when available. [Renderer behavior](rendering.md)
-- **SwiftUI browser runtime.** Swift and the shared layout and CPU renderer run in `app.wasm` (WASI). A separate `wasm32-unknown-unknown` module decodes the display list for WebGPU. The display-list version is internal to the pair of modules. [Browser build](web.md)
-- **JSON transport.** Kept behind small send/receive functions so a binary encoding can replace it without touching layout or Swift evaluation.
-- **Whole-root re-evaluation** after a state change. Fine-grained invalidation is a later optimisation.
+- The CPU renderer uses tiny-skia and cosmic-text to produce deterministic screenshots for CI. Native windows and browser previews prefer GPU rendering when available. [Renderer behavior](rendering.md)
+- Native guests communicate over JSON lines. The [browser build](web.md) links the SwiftUI app, guest runtime, and CPU renderer together and calls guest functions in-process. A second WebAssembly module runs the shared display list on WebGPU.
+- The SwiftUI guest re-evaluates the root view after each state change.
+
+## Repository layout
+
+| Directory | Responsibility |
+| --- | --- |
+| [`simcore-cli`](../crates/simcore-cli) | The `simcore` command, including `run`, `expo`, `window`, and `serve`. |
+| [`simcore-host`](../crates/simcore-host) | Sessions, guest builds, and process supervision. |
+| [`simcore-render`](../crates/simcore-render) | Layout, rasterization, hit testing, and inspection. |
+| [`simcore-render-gpu`](../crates/simcore-render-gpu) | wgpu and Vello executor, GPU captures, and native presentation. |
+| [`simcore-protocol`](../crates/simcore-protocol) | Shared wire and API types. |
+| [`simcore-runtime`](../crates/simcore-runtime) | Rust guest static library and C ABI. |
+| [`simcore-web`](../crates/simcore-web) | In-process runtime and renderer for WebAssembly. |
+| [`simcore-web-gpu`](../crates/simcore-web-gpu) | WebGPU canvas presenter. |
+| [`frameworks`](../frameworks) | SwiftUI, React Native, and Compose guest implementations. |
+
+## Fonts and symbols
+
+On macOS, the renderer uses system SF Pro and SF Symbols. On other hosts, or when you set `SIMCORE_FALLBACK=1`, it uses bundled Inter and maps SF Symbol names to Phosphor Icons. The stdio API’s `get_capabilities` method reports the active `fonts` and `symbols` modes.
+
+Inter and Roboto are licensed under the SIL Open Font License 1.1. Phosphor Icons are MIT-licensed. [Inter license](../assets/fonts/OFL.txt) · [Roboto license](../assets/fonts/Roboto-OFL.txt) · [Phosphor license](../assets/symbols/phosphor/LICENSE)

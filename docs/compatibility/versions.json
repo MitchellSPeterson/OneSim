@@ -1,13 +1,25 @@
 {
   "ios": {
-    "runtime": "26.5",
-    "build": "23F77",
-    "device": "iPhone 17 Pro",
-    "apiSdk": "27.1"
+    "runtimes": [
+      {
+        "runtime": "27.2",
+        "build": "24B8117",
+        "device": "iPhone 18 Pro",
+        "fixtures": "tests/fixtures/ios27"
+      },
+      {
+        "runtime": "26.5",
+        "build": "23F77",
+        "device": "iPhone 17 Pro",
+        "fixtures": "tests/fixtures"
+      }
+    ],
+    "apiSdk": "27.2"
   },
   "expo": {
     "sdk": "58.0.26",
     "expoGo": "58.0.7",
+    "expoGoAndroid": "58.0.5",
     "reactNative": "0.88.1"
   },
   "compose": {

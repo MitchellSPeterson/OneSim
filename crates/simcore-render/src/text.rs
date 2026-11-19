@@ -12,6 +12,13 @@ const INTER_FAMILY: &str = "Inter Variable";
 const ROBOTO: &[u8] = include_bytes!("../../../assets/fonts/RobotoVariable.ttf");
 const ROBOTO_FAMILY: &str = "Roboto";
 
+/// Android draws text at a whole-pixel size (measured on the emulator: 22 sp at 2.625x renders and measures
+/// as 57 px, not 57.75), so glyphs are a little smaller than `sp * density`. Returns the size in dp.
+pub(crate) fn android_glyph_size(sp: f32, density: f32) -> f32 {
+    if density > 0.0 { (sp * density + 1e-3).floor() / density } else { sp }
+}
+
+
 /// Horizontal text alignment inside the text node's own bounds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TextAlign {

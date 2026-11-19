@@ -90,6 +90,22 @@ fn button(n: &Value) -> Option<&Value> {
 }
 
 #[test]
+fn android_expo_session_uses_the_android_profile() {
+    let mut c = Client::connect(&start());
+    init(&mut c);
+    let r = c.ok("session.create", json!({"framework": "expo", "platform": "android"}));
+    let id = &r["sessionId"];
+    let info = c.ok("session.get", json!({"sessionId": id}));
+    assert_eq!(info["framework"], "react-native");
+    assert_eq!(info["platform"], "android");
+    assert_eq!(info["osVersion"], "17");
+    assert_eq!(info["device"], "Pixel 10a");
+    assert_eq!(info["scale"], 2.625);
+    assert_eq!(c.code("device.set", json!({"sessionId": id, "device": "iPhone 18 Pro"})), "unsupported");
+    assert_eq!(c.ok("session.get", json!({"sessionId": id}))["device"], "Pixel 10a");
+}
+
+#[test]
 fn session_lifecycle_over_websocket() {
     let mut c = Client::connect(&start());
     assert_eq!(c.code("session.list", json!({})), "invalid_state"); // initialize first

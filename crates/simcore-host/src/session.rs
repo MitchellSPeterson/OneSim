@@ -1,7 +1,7 @@
 //! One guest OS process and everything we know about it.
 
 use simcore_protocol::{
-    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, GuestMessage, HostMessage, ScrollPhase, SessionError, Viewport,
+    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, GuestMessage, HostMessage, IosVersion, ScrollPhase, SessionError, Viewport,
     ViewNode,
 };
 pub use simcore_render::{device, Device, DEFAULT_DEVICE, DEVICES};
@@ -130,6 +130,8 @@ pub struct Session {
     pub scale: f64,
     pub appearance: Appearance,
     pub dynamic_type: DynamicTypeSize,
+    /// Simulated iOS release (look + reported OS version).
+    pub ios: IosVersion,
     /// Scroll, focus, shift and press state (shared with the browser backend).
     pub inter: Interaction,
     /// React Native: frames last sent to the guest (`layout` message), to send only changes.
@@ -157,12 +159,16 @@ impl Drop for Session {
     }
 }
 
-fn is_multiline(n: &ViewNode, id: &str) -> bool {
+fn submit_keeps_focus(n: &ViewNode, id: &str) -> bool {
     match &n.kind {
-        simcore_protocol::ViewKind::Rn { component, children, .. } => {
-            (n.id == id && component == "RCTMultilineTextInputView") || children.iter().any(|c| is_multiline(c, id))
-        }
-        simcore_protocol::ViewKind::Presentation { content, .. } => is_multiline(content, id),
+        simcore_protocol::ViewKind::Rn { component, props, .. } if n.id == id => match props.get("submitBehavior").and_then(Value::as_str) {
+            Some("submit" | "newline") => true,
+            Some("blurAndSubmit") => false,
+            _ => component == "RCTMultilineTextInputView"
+                || (component == "AndroidTextInput" && props.get("multiline").and_then(Value::as_bool) == Some(true)),
+        },
+        simcore_protocol::ViewKind::Rn { children, .. } => children.iter().any(|c| submit_keeps_focus(c, id)),
+        simcore_protocol::ViewKind::Presentation { content, .. } => submit_keeps_focus(content, id),
         _ => false,
     }
 }
@@ -219,6 +225,7 @@ impl Session {
             scale: p.scale.unwrap_or(dev.scale),
             appearance: p.appearance.unwrap_or(Appearance::Light),
             dynamic_type: p.dynamic_type_size.unwrap_or_default(),
+            ios: p.os_version.unwrap_or_default(),
             inter: Interaction::default(),
             sent_frames: BTreeMap::new(),
             touch: None,
@@ -234,6 +241,10 @@ impl Session {
 
     pub fn is_rn(&self) -> bool {
         self.params.framework == "react-native"
+    }
+
+    pub fn os_version(&self) -> &'static str {
+        if self.device.android { "17" } else { self.ios.name() }
     }
 
     /// Jetpack Compose on Android (protocol section K).
@@ -315,8 +326,7 @@ impl Session {
             // No build step: node runs the Expo/Metro bundle (frameworks/react-native/guest/host.js).
             let mut c = Command::new("node");
             c.arg(simcore_home().join("frameworks/react-native/guest/host.js"))
-                .env("SIMCORE_METRO_URL", self.params.metro_url.as_deref().unwrap_or("http://localhost:8081"))
-                .env("SIMCORE_SCALE", self.scale.to_string());
+                .env("SIMCORE_METRO_URL", self.params.metro_url.as_deref().unwrap_or("http://localhost:8081"));
             c
         } else if is_prebuilt(&self.params) {
             Command::new(&self.params.app_path)
@@ -396,12 +406,19 @@ impl Session {
 
     fn spawn(&mut self, mut cmd: Command) -> Result<(), ApiError> {
         let what = cmd.get_program().to_string_lossy().into_owned();
+        if self.device.android {
+            cmd.env_remove("SIMCORE_OS_BUILD");
+        } else {
+            cmd.env("SIMCORE_OS_BUILD", self.ios.build());
+        }
         let mut child = cmd
             .env("SIMCORE_SESSION_ID", &self.id)
             .env("SIMCORE_VIEWPORT", format!("{}x{}", self.viewport.width, self.viewport.height))
             .env("SIMCORE_DYNAMIC_TYPE", self.dynamic_type.name())
+            .env("SIMCORE_OS_VERSION", self.os_version())
+            .env("SIMCORE_DEVICE", self.device.name)
             .env("SIMCORE_APPEARANCE", if self.appearance == Appearance::Dark { "dark" } else { "light" })
-            .env("SIMCORE_PLATFORM", if self.device.android { "android" } else { "ios" })
+            .env("SIMCORE_PLATFORM", &self.params.platform)
             .env("SIMCORE_SCALE", self.scale.to_string())
             .env("SIMCORE_INSETS", format!("{},{}", self.device.safe_top, self.device.safe_bottom))
             .stdin(Stdio::piped())
@@ -545,17 +562,18 @@ impl Session {
 
     /// React Native: the keyboard (drawn while a field is focused) appeared or hid.
     fn send_keyboard(&mut self, shown: bool) -> Result<(), ApiError> {
-        let height = if shown { self.device.kb_base_h + self.device.safe_bottom } else { 0.0 };
+        let height = if shown {
+            simcore_render::look::keyboard_height(& self.device, self.ios) } else { 0.0 };
         self.send(&HostMessage::Keyboard { height })
     }
 
     /// React Native: return pressed while `before` was focused (the interaction state already
-    /// dropped the focus). Sends `submit`, then blur unless the input is multiline.
+    /// dropped the focus). Sends `submit` and follows the field's submit behavior.
     pub fn submit(&mut self, before: &str) -> Result<(), ApiError> {
         let Ok(tag) = before.parse::<u64>() else { return Ok(()) };
+        let keeps_focus = self.shared.lock().tree.as_ref().is_some_and(|(_, root)| submit_keeps_focus(root, before));
         self.send(&HostMessage::Submit { tag })?;
-        let multiline = self.tree().is_some_and(|(_, t)| is_multiline(&t, before));
-        if multiline {
+        if keeps_focus {
             self.inter.focus = Some(before.to_string());
             Ok(())
         } else {

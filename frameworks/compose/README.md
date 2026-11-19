@@ -36,4 +36,4 @@ a real APK of the same sources (`reference-app/`, material3 1.4.0) on the Androi
 (`tests/fixtures/compose-android`); every state must differ in < 2% of pixels, like iOS.
 
 Not yet: `Icon`/`Image`, text fields, lazy lists and scrolling, navigation, dialogs, animations, ripples,
-`AnnotatedString`, custom fonts, resources (`R.string`, `painterResource`), `ViewModel`, Expo / React Native on Android.
+`AnnotatedString`, custom fonts, resources (`R.string`, `painterResource`), `ViewModel`.

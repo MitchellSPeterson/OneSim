@@ -14,7 +14,7 @@
 //!
 //! Finally the touched region is copied from the target back into `acc`.
 
-use simcore_render::display::RRect;
+use simcore_render::display::{DisplayList, RRect};
 use simcore_render::glass::{self as g, GlassSpec, GlassVariant, ScrollEdge};
 use simcore_render::Color;
 use std::num::NonZeroU64;
@@ -368,13 +368,14 @@ impl GlassGpu {
 
     /// Composite one backdrop op onto the frame: reads `acc`, writes `target` (and, with `copy_back`, copies the
     /// result back to `acc` for whatever reads it next). `clips` are the open ancestor clips (device px).
-    pub fn encode(&mut self, fr: &Surfaces, bd: &Backdrop, clips: &[RRect], s: f32, dark: bool, copy_back: bool) -> Result<(), String> {
+    pub fn encode(&mut self, fr: &Surfaces, bd: &Backdrop, clips: &[RRect], dl: &DisplayList, copy_back: bool) -> Result<(), String> {
+        let (s, dark, ios) = (dl.scale, dl.dark, dl.ios);
         let (pw, ph) = fr.size;
         let opacity = bd.opacity;
 
         // Glass: parameters, shape and the snapshot rectangle.
         let glass = bd.glass.as_ref().filter(|(gs, ..)| gs.variant != GlassVariant::Identity).map(|(gs, sh, _)| {
-            let p = g::spec_params(gs, dark);
+            let p = g::spec_params(gs, dark, ios);
             let r = sh.r.min(sh.w / 2.0).min(sh.h / 2.0).max(0.0);
             let shape = g::Shape { x: sh.x, y: sh.y, w: sh.w, h: sh.h, r };
             let snap = g::snapshot_rect(shape, s, &p, pw, ph);
@@ -406,8 +407,9 @@ impl GlassGpu {
         // Dispatch region (page px), clipped to the frame.
         let mut rect = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
         let mut grow = |r: (i32, i32, i32, i32)| rect = (rect.0.min(r.0), rect.1.min(r.1), rect.2.max(r.2), rect.3.max(r.3));
-        if let Some((_, _, sh, _)) = &glass {
-            grow((sh.x.floor() as i32 - 1, sh.y.floor() as i32 - 1, (sh.x + sh.w).ceil() as i32 + 1, (sh.y + sh.h).ceil() as i32 + 1));
+        if let Some((_, p, sh, _)) = &glass {
+            let pad = 1 + (p.outline_w * s).ceil() as i32;
+            grow((sh.x.floor() as i32 - pad, sh.y.floor() as i32 - pad, (sh.x + sh.w).ceil() as i32 + pad, (sh.y + sh.h).ceil() as i32 + pad));
         }
         if let Some(h) = &halo {
             grow(h.rect());
@@ -474,7 +476,7 @@ impl GlassGpu {
             Some((gs, p, shape, snap)) => (*snap, [shape.x, shape.y, shape.w, shape.h, shape.r], Some(*p), Some(*gs)),
             None => ((0, 0, 1, 1), [0.0; 5], None, None),
         };
-        let pr = p.unwrap_or_else(|| g::params(GlassVariant::Regular, dark));
+        let pr = p.unwrap_or_else(|| g::params(GlassVariant::Regular, dark, ios));
         let (tint, tint_a) = match gs.and_then(|gs| gs.tint) {
             Some(t) => {
                 let sh = pr.tint_shift * 255.0;
@@ -504,11 +506,11 @@ impl GlassGpu {
                 [shape[0], shape[1], shape[2], shape[3]],
                 [shape[4], pr.lens_d * s, (pr.lens_w * s).max(0.5), (pr.rim_w * s).max(1.0)],
                 [pr.sat, pr.mul, pr.add * 255.0, pr.rim_a],
-                [pr.rim_dir, opacity, tint_a, 0.0],
-                [tint[0], tint[1], tint[2], 0.0],
+                [pr.rim_dir, opacity, tint_a, if pr.rim_vertical { 1.0 } else { 0.0 }],
+                [tint[0], tint[1], tint[2], pr.outline_a],
                 sh4(hp),
                 sh4(op),
-                [ec[0], ec[1], ec[2], 0.0],
+                [ec[0], ec[1], ec[2], pr.outline_w * s],
             ],
         );
         debug_assert_eq!(c.len() as u64, C_SIZE);
@@ -520,8 +522,7 @@ impl GlassGpu {
         }
         if let Some(e) = edge {
             for y in 0..edge_rows as usize {
-                let [a, bw, t] = g::edge_row(&e, y, s);
-                put_f(&mut self.params_cpu, &[[a, bw, t, 0.0]]);
+                put_f(&mut self.params_cpu, &[g::edge_row(&e, y, s, ios)]);
             }
         }
         let Some(sc) = self.scratch.as_ref() else { return Err("glass scratch missing".into()) };

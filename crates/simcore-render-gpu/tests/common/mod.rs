@@ -40,6 +40,7 @@ pub fn build(tree: &serde_json::Value, dark: bool, fonts: &mut Fonts) -> Scene {
         device: &dev,
         scale: 3.0,
         appearance: if dark { Appearance::Dark } else { Appearance::Light },
+        ios: simcore_protocol::IosVersion::Ios26,
         dynamic_type: Default::default(),
         scroll: &scroll,
         sheets: &Default::default(),

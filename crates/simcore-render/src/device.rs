@@ -1,6 +1,6 @@
 //! Device profiles: screen geometry and chrome, shared by the native host and the WebAssembly build.
 
-use simcore_protocol::Viewport;
+use simcore_protocol::{IosVersion,Viewport};
 
 /// Status bar placement (points, in a screen of the device's own width).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -40,12 +40,48 @@ pub struct Device {
     pub key_pitch: f64,
     /// Keyboard height above the bottom safe inset (measured 335 total with a 34pt inset).
     pub kb_base_h: f64,
+    /// Right safe-area inset: a column beside the content holding the status bar and the back button (iPhone Duo).
+    pub safe_right: f64,
+    /// Compact navigation bar: the large title sits in a 58pt bar at 28pt and never collapses (iPhone Duo).
+    pub compact_nav: bool,
+    /// Wide (iPad-style) keyboard: full-width panel, 79pt key pitch in an 801pt block (iPhone Duo).
+    pub wide_keyboard: bool,
+    /// Home indicator drawn by the host over SwiftUI content `(x, y, w, h)` (iPhone Duo).
+    pub home_indicator: Option<(f64, f64, f64, f64)>,
+    /// iOS 27 chrome where it was measured (`tests/fixtures/ios27`): status bar and keyboard height.
+    /// Other profiles keep their iOS 26 status bar and get a keyboard 7pt shorter (as on the 17e / 18 Pro).
+    pub ios27: Option<Chrome27>,
     /// Android phone (Material status bar and gesture-navigation handle; `safe_top`/`safe_bottom` are the
     /// status-bar and navigation-bar insets an edge-to-edge app draws under). Units are dp.
     pub android: bool,
 }
 
-pub const DEFAULT_DEVICE: &str = "iphone-17-pro";
+/// iOS 27 status bar and keyboard height (above the bottom inset) of one device.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Chrome27 {
+    pub status_bar: StatusBar,
+    pub kb_base_h: f64,
+}
+
+impl Device {
+    /// Status bar placement under release `v`.
+    pub fn status_bar_for(&self, v: IosVersion) -> StatusBar {
+        match (v, self.ios27) {
+            (IosVersion::Ios27, Some(c)) => c.status_bar,
+            _ => self.status_bar,
+        }
+    }
+    /// Keyboard height above the bottom safe inset under release `v`.
+    pub fn kb_base_for(&self, v: IosVersion) -> f64 {
+        match (v, self.ios27) {
+            (IosVersion::Ios26, _) => self.kb_base_h,
+            (IosVersion::Ios27, Some(c)) => c.kb_base_h,
+            (IosVersion::Ios27, None) => self.kb_base_h - 7.0,
+        }
+    }
+}
+
+pub const DEFAULT_DEVICE: &str = "iphone-18-pro";
 
 const fn sb(time: (f64, f64), font: f64, icons: (f64, f64), icon_scale: f64) -> StatusBar {
     StatusBar { time, font, icons, icon_scale }
@@ -56,7 +92,7 @@ const fn vp(width: f64, height: f64) -> Viewport {
 
 // One const per geometry class; models that render pixel-identically share it (see tests/fixtures/devices).
 const C_17_PRO: Device = Device {
-    name: DEFAULT_DEVICE,
+    name: "iphone-17-pro",
     viewport: vp(402.0, 874.0),
     scale: 3.0,
     safe_top: 62.0,
@@ -68,7 +104,59 @@ const C_17_PRO: Device = Device {
     suggestions: true,
     key_pitch: 53.9,
     kb_base_h: 301.0,
+    safe_right: 0.0,
+    compact_nav: false,
+    wide_keyboard: false,
+    home_indicator: None,
+    ios27: None,
     android: false,
+};
+// iOS 27.2 reference device (tests/fixtures/ios27): the 17 Pro's screen with a narrower island and
+// a larger status bar (measured: island x 153.3..248.3, clock 63.3..96.7, battery right edge 361.7).
+const C_18_PRO: Device = Device {
+    name: DEFAULT_DEVICE,
+    island: Some((153.4, 13.92, 95.0, 36.83)),
+    status_bar: sb((81.0, 32.2), 18.0, (332.7, -0.6), 1.1),
+    ios27: Some(Chrome27 {
+        status_bar: sb((81.0, 32.2), 18.0, (332.7, -0.6), 1.1),
+        kb_base_h: 294.0,
+    }),
+    ..C_17_PRO
+};
+// iOS 27.2 (tests/fixtures/ios27/devices/iphone-18-pro-max): the 17 Pro Max screen, island x 172.3..267.3,
+// clock 71.7..107, battery right edge 393.7; keyboard top 609 (2pt higher than iOS 26 on the 17 Pro Max).
+const C_18_PRO_MAX: Device = Device {
+    name: "iphone-18-pro-max",
+    island: Some((172.4, 13.92, 95.0, 36.83)),
+    ios27: Some(Chrome27 {
+        status_bar: sb((89.3, 32.2), 19.0, (362.8, -1.2), 1.17),
+        kb_base_h: 313.0,
+    }),
+    ..C_17_PRO_MAX
+};
+// iPhone Duo, unfolded (iOS 27.2 seed runtime 24B91016s, tests/fixtures/ios27/devices/iphone-duo): 951x669 pt at 2x,
+// landscape-like. Content 887pt wide; the right 64pt column holds the clock (centre 902.5,40), a battery ring around
+// the wifi glyph (centre 903,74) and the back button. Title bar 24..82 with a 28pt title; keyboard panel from y 405.
+const C_DUO: Device = Device {
+    name: "iphone-duo",
+    viewport: vp(951.0, 669.0),
+    scale: 2.0,
+    safe_top: 24.0,
+    safe_bottom: 20.0,
+    island: None,
+    status_bar: sb((902.5, 40.0), 17.0, (0.0, 0.0), 1.1),
+    suggestions: true,
+    key_pitch: 52.0,
+    kb_base_h: 244.0,
+    safe_right: 64.0,
+    compact_nav: true,
+    wide_keyboard: true,
+    home_indicator: Some((372.0, 656.3, 225.0, 4.7)),
+    ios27: Some(Chrome27 {
+        status_bar: sb((902.5, 40.0), 17.0, (0.0, 0.0), 1.1),
+        kb_base_h: 244.0,
+    }),
+    ..C_17_PRO
 };
 const C_16: Device = Device {
     suggestions: false,
@@ -107,6 +195,11 @@ const C_16E: Device = Device {
     safe_top: 47.0,
     island: None,
     status_bar: sb((51.0, 24.6), 15.6, (348.8, -8.0), 0.95),
+    // iOS 27.2 (tests/fixtures/ios27/devices/iphone-17e): clock 46.3..78, battery right edge 363.3, keyboard top 516.
+    ios27: Some(Chrome27 {
+        status_bar: sb((62.2, 25.9), 17.0, (336.4, -7.2), 1.02),
+        kb_base_h: 294.0,
+    }),
     ..C_16
 };
 const C_14_PLUS: Device = Device {
@@ -178,18 +271,26 @@ const C_PIXEL_10A: Device = Device {
     suggestions: false,
     key_pitch: 53.9,
     kb_base_h: 280.0,
+    safe_right: 0.0,
+    compact_nav: false,
+    wide_keyboard: false,
+    home_indicator: None,
+    ios27: None,
     android: true,
 };
 
-/// Default device of Android (Compose) sessions.
+/// Default device of Android sessions.
 pub const DEFAULT_ANDROID_DEVICE: &str = "pixel-10a";
 
 const fn named(name: &'static str, d: Device) -> Device {
     Device { name, ..d }
 }
 
-/// Every iPhone the iOS 26.5 Simulator ships (the default first), then the Android phones.
+/// iPhone profiles for iOS 26.5 and 27.2 (the default first), followed by Android profiles.
 pub const DEVICES: &[Device] = &[
+    C_18_PRO,
+    C_18_PRO_MAX,
+    C_DUO,
     C_17_PRO,
     named("iphone-17", C_17_PRO),
     named("iphone-16-pro", C_17_PRO),
@@ -235,7 +336,7 @@ mod tests {
     #[test]
     fn names_unique_and_default_first() {
         assert_eq!(DEVICES[0].name, DEFAULT_DEVICE);
-        assert_eq!(DEVICES.len(), 32);
+        assert_eq!(DEVICES.len(), 35);
         assert_eq!(DEVICES.iter().filter(|d| d.android).map(|d| d.name).collect::<Vec<_>>(), [DEFAULT_ANDROID_DEVICE]);
         for (i, d) in DEVICES.iter().enumerate() {
             assert!(DEVICES[..i].iter().all(|o| o.name != d.name), "duplicate {}", d.name);

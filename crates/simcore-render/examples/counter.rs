@@ -36,6 +36,7 @@ fn build(count: u32, vp: (f64, f64), a: Appearance, scale: f64, fonts: &mut Font
         scale,
         appearance: a,
         dynamic_type: Default::default(),
+        ios: Default::default(),
         scroll: &scroll,
         sheets: &Default::default(),
         focus: None,

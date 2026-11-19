@@ -426,7 +426,6 @@ impl Executor {
 
     /// Composite one backdrop op on the GPU, or on the CPU when it cannot.
     fn backdrop(&mut self, op: &Op, clips: &[RRect], dl: &DisplayList, copy_back: bool, stats: &mut ExecStats) -> Result<bool, RenderError> {
-        let (s, dark) = (dl.scale, dl.dark);
         let bd = match op {
             Op::Glass { shape, spec, opacity, halo_radius } => {
                 Backdrop { glass: Some((spec, *shape, *halo_radius)), opacity: *opacity, shadow: None, edge: None }
@@ -449,7 +448,7 @@ impl Executor {
                 gen: self.gen,
                 size: (dl.width, dl.height),
             };
-            match glass.encode(&fr, &bd, clips, s, dark, copy_back) {
+            match glass.encode(&fr, &bd, clips, dl, copy_back) {
                 Ok(()) => {
                     self.backdrops.0 += 1;
                     return Ok(false);
@@ -473,7 +472,7 @@ impl Executor {
         let data = self.readback.read(&self.device, &self.queue, &tgt.tex, (w, h), true, &mut stats.fallback).map_err(|m| self.map_error(m))?;
         let size = tiny_skia::IntSize::from_wh(w, h).ok_or_else(|| RenderError::Other("bad size".into()))?;
         let mut pm = tiny_skia::Pixmap::from_vec(data, size).ok_or_else(|| RenderError::Other("readback size mismatch".into()))?;
-        simcore_render::apply_backdrop_op(&mut pm, op, clips, dl.scale, dl.dark);
+        simcore_render::apply_backdrop_op(&mut pm, op, clips, dl.scale, dl.dark, dl.ios);
         // The pixmap is premultiplied, the textures hold straight alpha.
         let mut data = pm.take();
         for px in data.as_chunks_mut::<4>().0 {

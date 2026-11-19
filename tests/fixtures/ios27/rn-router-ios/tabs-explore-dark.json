@@ -1,0 +1,413 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "type": "Application",
+        "role": "UIApplication",
+        "label": "Expo Go",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 0,
+        "pid": 91796,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "index": 1,
+        "parentIndex": 0,
+        "type": "ScrollView",
+        "role": "RCTEnhancedScrollView",
+        "subrole": "UIScrollView",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 91796,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "scroll-area"
+      },
+      {
+        "index": 2,
+        "parentIndex": 1,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Explore",
+        "rect": {
+          "x": 146.6666717529297,
+          "y": 126,
+          "width": 108.66665649414062,
+          "height": 44.333335876464844
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 91796,
+        "hittable": true,
+        "ref": "e3",
+        "kind": "text"
+      },
+      {
+        "index": 3,
+        "parentIndex": 2,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Explore",
+        "rect": {
+          "x": 146.6666717529297,
+          "y": 126,
+          "width": 108.66665649414062,
+          "height": 44.333335876464844
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 91796,
+        "hittable": true,
+        "ref": "e4",
+        "kind": "text"
+      },
+      {
+        "index": 4,
+        "parentIndex": 1,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "This starter app includes example\ncode to help you get started.",
+        "rect": {
+          "x": 75.66666412353516,
+          "y": 186.33333587646484,
+          "width": 250.33334350585938,
+          "height": 48.333335876464844
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 91796,
+        "hittable": true,
+        "ref": "e5",
+        "kind": "text"
+      },
+      {
+        "index": 5,
+        "parentIndex": 4,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "rect": {
+          "x": 75.66666412353516,
+          "y": 186.33333587646484,
+          "width": 250.33334350585938,
+          "height": 48.333335876464844
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 91796,
+        "hittable": true,
+        "ref": "e6",
+        "kind": "text",
+        "inheritsLabel": true
+      },
+      {
+        "index": 6,
+        "parentIndex": 1,
+        "type": "Link",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Expo documentation, Up-right arrow in a square",
+        "rect": {
+          "x": 102.66666412353516,
+          "y": 250.6666717529297,
+          "width": 197,
+          "height": 46.33332824707031
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 91796,
+        "hittable": true,
+        "ref": "e7",
+        "kind": "link"
+      },
+      {
+        "index": 7,
+        "parentIndex": 1,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Forward, File-based routing",
+        "rect": {
+          "x": 24,
+          "y": 377,
+          "width": 354,
+          "height": 24
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 91796,
+        "hittable": true,
+        "ref": "e8",
+        "kind": "other"
+      },
+      {
+        "index": 8,
+        "parentIndex": 1,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Forward, Android, iOS, and web support",
+        "rect": {
+          "x": 24,
+          "y": 433,
+          "width": 354,
+          "height": 24
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 91796,
+        "hittable": true,
+        "ref": "e9",
+        "kind": "other"
+      },
+      {
+        "index": 9,
+        "parentIndex": 1,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Forward, Images",
+        "rect": {
+          "x": 24,
+          "y": 489,
+          "width": 354,
+          "height": 24
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 91796,
+        "hittable": true,
+        "ref": "e10",
+        "kind": "other"
+      },
+      {
+        "index": 10,
+        "parentIndex": 1,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Forward, Light and dark mode components",
+        "rect": {
+          "x": 24,
+          "y": 545,
+          "width": 354,
+          "height": 24
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 91796,
+        "hittable": true,
+        "ref": "e11",
+        "kind": "other"
+      },
+      {
+        "index": 11,
+        "parentIndex": 1,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Forward, Animations",
+        "rect": {
+          "x": 24,
+          "y": 601,
+          "width": 354,
+          "height": 24
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 91796,
+        "hittable": true,
+        "ref": "e12",
+        "kind": "other"
+      },
+      {
+        "index": 12,
+        "parentIndex": 1,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Vertical scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 369,
+          "y": 62,
+          "width": 30,
+          "height": 729
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 91796,
+        "hittable": true,
+        "ref": "e13",
+        "kind": "other"
+      },
+      {
+        "index": 13,
+        "parentIndex": 1,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Horizontal scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 62,
+          "y": 758,
+          "width": 278,
+          "height": 30
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 91796,
+        "hittable": true,
+        "ref": "e14",
+        "kind": "other"
+      },
+      {
+        "index": 14,
+        "parentIndex": 1,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Vertical scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 369,
+          "y": 62,
+          "width": 30,
+          "height": 729
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 91796,
+        "hittable": true,
+        "ref": "e15",
+        "kind": "other"
+      },
+      {
+        "index": 15,
+        "parentIndex": 1,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Horizontal scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 62,
+          "y": 758,
+          "width": 278,
+          "height": 30
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 91796,
+        "hittable": true,
+        "ref": "e16",
+        "kind": "other"
+      },
+      {
+        "index": 16,
+        "parentIndex": 0,
+        "type": "TabBar",
+        "role": "UITabBar",
+        "label": "Tab Bar",
+        "rect": {
+          "x": 0,
+          "y": 791,
+          "width": 402,
+          "height": 83
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 91796,
+        "hittable": true,
+        "ref": "e17",
+        "kind": "tab-bar"
+      },
+      {
+        "index": 17,
+        "parentIndex": 16,
+        "type": "Button",
+        "role": "_UITabButton",
+        "label": "Home",
+        "rect": {
+          "x": 111,
+          "y": 795,
+          "width": 94,
+          "height": 54
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 91796,
+        "hittable": true,
+        "ref": "e18",
+        "kind": "button"
+      },
+      {
+        "index": 18,
+        "parentIndex": 16,
+        "type": "Button",
+        "role": "_UITabButton",
+        "label": "Explore",
+        "rect": {
+          "x": 197,
+          "y": 795,
+          "width": 94,
+          "height": 54
+        },
+        "enabled": true,
+        "selected": true,
+        "depth": 2,
+        "pid": 91796,
+        "hittable": true,
+        "ref": "e19",
+        "kind": "button"
+      }
+    ],
+    "truncated": false,
+    "appName": "host.exp.Exponent",
+    "appBundleId": "host.exp.Exponent",
+    "visibility": {
+      "partial": true,
+      "visibleNodeCount": 19,
+      "totalNodeCount": 19,
+      "reasons": [
+        "scroll-hidden-below"
+      ]
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "absent",
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 280,
+        "p50Ms": 114,
+        "p95Ms": 4039,
+        "maxMs": 21868,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 280
+        }
+      },
+      "warning": "Warning: ios snapshots are slow in this run: p95 4039ms over 279 captures. Possible causes: device load, app or dev server stuck, helper fallback, or stale daemon."
+    },
+    "refsGeneration": 350683
+  }
+}

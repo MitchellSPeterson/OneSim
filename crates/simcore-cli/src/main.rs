@@ -5,7 +5,7 @@ use simcore_host::Host;
 mod window;
 
 use simcore_protocol::{
-    Appearance, CreateSessionParams, DynamicTypeSize, KeyboardEvent, PointerEvent, PointerKind, UiNode, Viewport,
+    Appearance, CreateSessionParams, DynamicTypeSize, IosVersion, KeyboardEvent, PointerEvent, PointerKind, UiNode, Viewport,
 };
 
 #[derive(Parser)]
@@ -54,6 +54,9 @@ enum Cmd {
         /// Metro dev server (default http://localhost:8081).
         #[arg(long)]
         url: Option<String>,
+        /// Target platform (defaults to iOS).
+        #[arg(long, default_value = "ios", value_parser = ["ios", "android"])]
+        platform: String,
         /// Accepted for symmetry with other runners: headless is the default.
         #[arg(long, conflicts_with = "window")]
         headless: bool,
@@ -112,6 +115,9 @@ struct Opts {
     /// Dynamic Type size: xSmall ... large (default) ... xxxLarge, accessibility1 ... accessibility5.
     #[arg(long = "dynamic-type", value_name = "SIZE")]
     dynamic_type: Option<String>,
+    /// Simulated iOS release: 26.5 or 27.2 (default).
+    #[arg(long = "ios", value_name = "VERSION")]
+    ios: Option<String>,
 }
 
 /// One interaction, in command-line order.
@@ -184,13 +190,13 @@ fn main() -> Result<()> {
             let title = format!("SimCore - {}", std::path::Path::new(&app_path).file_name().map_or(app_path.clone(), |n| n.to_string_lossy().into_owned()));
             open_window(&matches, "window", CreateSessionParams { app_path, root_view, ..params(framework) }, opts, None, title)
         }
-        Cmd::Expo { url, appearance, opts, window, .. } => {
+        Cmd::Expo { url, platform, appearance, opts, window, .. } => {
             let appearance = match appearance.as_deref() {
                 None | Some("light") => None,
                 Some("dark") => Some(Appearance::Dark),
                 Some(a) => bail!("unknown --appearance {a:?} (light, dark)"),
             };
-            let p = CreateSessionParams { metro_url: url, ..params("react-native") };
+            let p = CreateSessionParams { metro_url: url, platform, ..params("react-native") };
             if window {
                 let title = format!("SimCore - expo {}", p.metro_url.as_deref().unwrap_or("http://localhost:8081"));
                 return open_window(&matches, "expo", p, opts, appearance, title);
@@ -223,6 +229,7 @@ fn params(framework: &str) -> CreateSessionParams {
         appearance: None,
         dynamic_type_size: None,
         device: None,
+        os_version: None,
         prebuilt: false,
         metro_url: None,
     }
@@ -231,9 +238,15 @@ fn params(framework: &str) -> CreateSessionParams {
 /// A not yet started session from the shared options, and the interaction steps to apply once it runs.
 fn prepare(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: &mut Opts, appearance: Option<Appearance>) -> Result<(Host, String, Vec<Step>)> {
     let steps = steps(matches.subcommand_matches(name).expect("subcommand"));
+    let defaults = if p.platform == "android" || p.framework == "compose" {
+        simcore_host::device(simcore_render::DEFAULT_ANDROID_DEVICE).expect("default Android device")
+    } else {
+        simcore_host::device(simcore_render::DEFAULT_DEVICE).expect("default iOS device")
+    };
+    let viewport = o.device.as_deref().and_then(simcore_host::device).unwrap_or(defaults).viewport;
     p.viewport = match (o.width, o.height) {
         (None, None) => None,
-        (w, h) => Some(Viewport { width: w.unwrap_or(402.0), height: h.unwrap_or(874.0) }),
+        (w, h) => Some(Viewport { width: w.unwrap_or(viewport.width), height: h.unwrap_or(viewport.height) }),
     };
     p.scale = o.scale;
     p.appearance = Some(appearance.unwrap_or(if o.dark { Appearance::Dark } else { Appearance::Light }));
@@ -243,6 +256,11 @@ fn prepare(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: &mut
         .map(|d| DynamicTypeSize::parse(&d).with_context(|| format!("unknown --dynamic-type {d:?}")))
         .transpose()?;
     p.device = o.device.take();
+    p.os_version = o
+        .ios
+        .take()
+        .map(|v| IosVersion::parse(&v).with_context(|| format!("unknown --ios {v:?} (26.5, 27.2)")))
+        .transpose()?;
     let mut host = Host::new();
     let id = host.create_session(p)?;
     Ok((host, id, steps))

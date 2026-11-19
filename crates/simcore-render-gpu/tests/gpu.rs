@@ -35,7 +35,7 @@ fn scene(dark: bool, nodes: Vec<Node>) -> Scene {
     bg.fill = Some(if dark { Color::rgba(0.1, 0.1, 0.12, 1.0) } else { Color::rgba(1.0, 1.0, 1.0, 1.0) });
     let mut all = vec![bg];
     all.extend(nodes);
-    Scene { size: (120.0, 90.0), appearance: if dark { Appearance::Dark } else { Appearance::Light }, nodes: all, unsupported_symbols: vec![], notes: vec![] }
+    Scene { size: (120.0, 90.0), appearance: if dark { Appearance::Dark } else { Appearance::Light }, ios: simcore_protocol::IosVersion::Ios26, nodes: all, unsupported_symbols: vec![], notes: vec![] }
 }
 
 /// Stripes so the glass has a backdrop to bend and blur.
@@ -383,12 +383,16 @@ fn glass_variants_match_cpu() {
         halo.clip_radius = Some(27.0);
         cases.push((format!("halo-clip-radius{d}"), with(dark, vec![halo]), 1.0));
     }
-    for (name, sc, max) in &cases {
-        let before = g.backdrop_counts();
-        compare(&mut g, name, sc, *max);
-        let after = g.backdrop_counts();
-        let (gpu_nodes, cpu_nodes) = (after.0 - before.0, after.1 - before.1);
-        assert!(gpu_nodes > 0 && cpu_nodes == 0, "{name}: expected the GPU path, got gpu {gpu_nodes} cpu {cpu_nodes}");
+    for (name, mut sc, max) in cases {
+        for ios in simcore_protocol::IosVersion::ALL {
+            sc.ios = ios;
+            let name = format!("{name}-{}", ios.name());
+            let before = g.backdrop_counts();
+            compare(&mut g, &name, &sc, max);
+            let after = g.backdrop_counts();
+            let (gpu_nodes, cpu_nodes) = (after.0 - before.0, after.1 - before.1);
+            assert!(gpu_nodes > 0 && cpu_nodes == 0, "{name}: expected the GPU path, got gpu {gpu_nodes} cpu {cpu_nodes}");
+        }
     }
 }
 

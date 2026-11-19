@@ -11,9 +11,9 @@ Part of [Expo / React Native API coverage](README.md): status legend, summary an
 | Keep awake | expo-keep-awake | `ExpoKeepAwake` | ✅ | ⬜ | | No-op |
 | Splash screen | expo-splash-screen | `ExpoSplashScreen` | ✅ | ⬜ | | |
 | System UI | expo-system-ui | `ExpoSystemUI` | ✅ | ⬜ | | Root background color |
-| Status bar | expo-status-bar | | 🟠 | ⬜ | | Over RN `StatusBar` (above) |
-| Device | expo-device | `ExpoDevice` | 🟡 | ⬜ | | iPhone 17 Pro |
-| Constants | expo-constants | `ExponentConstants` | ✅ | ⬜ | | |
+| Status bar | expo-status-bar | | 🟠 | 🟠 | | Over RN `StatusBar` (above) |
+| Device | expo-device | `ExpoDevice` | 🟡 | 🟡 | | Model and OS of the session's device profile and iOS release. Android simulates the Pixel 10a. |
+| Constants | expo-constants | `ExponentConstants` | ✅ | ✅ | | |
 | Linking | expo-linking | `ExpoLinking` | 🟠 | ⬜ | | No launch URL (Expo Router lands on `index`) |
 | Image | expo-image | `ExpoImage` | ✅ | ⬜ | | GIF/WebP do not draw (as core Image) |
 | Symbols | expo-symbols | `SymbolModule` | ✅ | — | | SF Symbols; Phosphor in fallback mode |
@@ -33,8 +33,8 @@ Part of [Expo / React Native API coverage](README.md): status legend, summary an
 | Audio | expo-audio | | ⬜ | ⬜ | | |
 | Video | expo-video | | ⬜ | ⬜ | | |
 | Sensors | expo-sensors | | ⬜ | ⬜ | | |
-| Blur | expo-blur | `ExpoBlur` | 🟠 | ⬜ | | Fitted to iOS 26.5 for `default`/`light`/`dark`/`systemMaterial`; other `system*Material` thicknesses reuse `systemMaterial`; intensity treated as linear |
-| Linear gradient | expo-linear-gradient | `ExpoLinearGradient` | ✅ | ⬜ | | `colors`, `locations`, `start`/`end` |
+| Blur | expo-blur | `ExpoBlur` | 🟠 | 🟠 | | Fitted to iOS 26.5 for `default`/`light`/`dark`/`systemMaterial`. Android draws the tint used by the default blur method. Target-based blur is pending. |
+| Linear gradient | expo-linear-gradient | `ExpoLinearGradient` | ✅ | 🟠 | | `colors`, `locations`, `start`/`end`. Android supports uniform corner rounding. |
 | Localization | expo-localization | `ExpoLocalization` | ✅ | ⬜ | | Fixed en-US / USD / US units / gregorian; time zone from the host `TZ` (else America/Los_Angeles); no change events |
 | Crypto | expo-crypto | `ExpoCrypto` | ✅ | ⬜ | | Digest (SHA-1/256/384/512, MD5), random bytes, UUID |
 | Crypto AES | expo-crypto/aes | `ExpoCryptoAES` | ⛔ | ⬜ | | The classes exist so `expo-crypto` imports; every call rejects as unsupported |

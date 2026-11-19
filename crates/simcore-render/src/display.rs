@@ -12,9 +12,10 @@
 
 use crate::glass::{GlassSpec, GlassVariant, ScrollEdge};
 use crate::Color;
+use simcore_protocol::IosVersion;
 
 /// Bumped on any incompatible change to the encoding.
-pub const VERSION: u16 = 2;
+pub const VERSION: u16 = 3;
 const MAGIC: &[u8; 4] = b"SCDL";
 
 /// A rounded rectangle in device pixels (`r` = corner radius; 0 = sharp).
@@ -93,6 +94,8 @@ pub struct DisplayList {
     /// Device pixels per point (backdrop parameters are in points).
     pub scale: f32,
     pub dark: bool,
+    /// iOS look used by backdrop effects.
+    pub ios: IosVersion,
     /// Resources first used by this frame (the executor keeps them until dropped).
     pub added: Vec<Resource>,
     /// Resource ids no longer referenced; free them before executing `ops`.
@@ -253,6 +256,10 @@ impl DisplayList {
         w.u32(self.height);
         w.f32(self.scale);
         w.u8(self.dark as u8);
+        w.u8(match self.ios {
+            IosVersion::Ios26 => 0,
+            IosVersion::Ios27 => 1,
+        });
         w.len(self.added.len());
         for r in &self.added {
             w.u64(r.id);
@@ -349,6 +356,11 @@ impl DisplayList {
             return Err(format!("display list version {v}, expected {VERSION}"));
         }
         let (width, height, scale, dark) = (r.u32()?, r.u32()?, r.f32()?, r.bool()?);
+        let ios = match r.u8()? {
+            0 => IosVersion::Ios26,
+            1 => IosVersion::Ios27,
+            tag => return Err(format!("bad iOS look tag {tag}")),
+        };
         let n = r.len(20)?;
         let mut added = Vec::with_capacity(n);
         for _ in 0..n {
@@ -407,7 +419,7 @@ impl DisplayList {
         if !r.0.is_empty() {
             return Err(format!("{} trailing bytes after display list", r.0.len()));
         }
-        Ok(Self { width, height, scale, dark, added, dropped, ops })
+        Ok(Self { width, height, scale, dark, ios, added, dropped, ops })
     }
 }
 
@@ -424,6 +436,7 @@ mod tests {
             height: 80,
             scale: 3.0,
             dark: true,
+            ios: IosVersion::Ios26,
             added: vec![Resource { id: 7, width: 2, height: 1, rgba: vec![1, 2, 3, 4, 5, 6, 7, 8] }],
             dropped: vec![3, 4],
             ops: vec![
@@ -444,9 +457,11 @@ mod tests {
 
     #[test]
     fn round_trips() {
-        let dl = sample();
-        assert_eq!(DisplayList::decode(&dl.encode()).unwrap(), dl);
-        assert_eq!(dl.ops.iter().filter(|o| o.is_backdrop()).count(), 3);
+        for ios in IosVersion::ALL {
+            let dl = DisplayList { ios, ..sample() };
+            assert_eq!(DisplayList::decode(&dl.encode()).unwrap(), dl);
+            assert_eq!(dl.ops.iter().filter(|o| o.is_backdrop()).count(), 3);
+        }
     }
 
     #[test]
@@ -465,7 +480,7 @@ mod tests {
         let mut huge = sample();
         huge.added.clear();
         let mut b = huge.encode();
-        b[19..23].copy_from_slice(&u32::MAX.to_le_bytes());
+        b[20..24].copy_from_slice(&u32::MAX.to_le_bytes());
         assert!(DisplayList::decode(&b).is_err());
     }
 }

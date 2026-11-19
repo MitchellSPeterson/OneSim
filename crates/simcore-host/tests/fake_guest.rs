@@ -240,10 +240,11 @@ fn software_keyboard_keys_edit_text() {
     assert!(find(&tree(&mut host), &|n| n.kind == "keyboard").is_none());
     click(&mut host, &id, &labelled("textfield", "New todo"));
     let kb = find(&tree(&mut host), &|n| n.kind == "keyboard").expect("keyboard when focused").clone();
-    assert_eq!((kb.frame.y, kb.frame.height), (539.0, 335.0));
+    // Default session: iPhone 18 Pro on iOS 27.2 (keyboard 7pt shorter than iOS 26's 335).
+    assert_eq!((kb.frame.y, kb.frame.height), (546.0, 328.0));
     assert!(kb.children.iter().filter(|k| k.role.as_deref() == Some("key")).count() >= 30);
     // keyboard avoidance: the screenshot with keyboard renders and field stays above it
-    assert!(field(&mut host).frame.y + field(&mut host).frame.height < 539.0);
+    assert!(field(&mut host).frame.y + field(&mut host).frame.height < 546.0);
     assert_eq!(kb.value.as_deref(), Some("shift"), "empty field starts shifted");
 
     key(&mut host, "h");
@@ -339,6 +340,33 @@ fn react_native_touch_round_trip() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
+#[test]
+fn android_multiline_submit_retains_focus() {
+    let dir = std::env::temp_dir().join(format!("simcore-android-rn-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let rn = dir.join("fake-rn-guest");
+    let _ = std::fs::remove_file(&rn);
+    std::os::unix::fs::symlink(GUEST, &rn).unwrap();
+
+    let p = serde_json::json!({"framework": "expo", "platform": "android", "app_path": rn, "prebuilt": true});
+    let mut host = Host::new();
+    let id = host.create_session(serde_json::from_value(p).unwrap()).unwrap();
+    host.start_session(&id).unwrap();
+    let root = host.inspect(&id).unwrap().1;
+    let (x, y) = center(find(&root, &|n| n.id == "8").unwrap());
+    host.pointer(&id, PointerEvent::new(PointerKind::Click, x, y)).unwrap();
+    host.keyboard(&id, KeyboardEvent::Text { text: "Ann".into() }).unwrap();
+    host.keyboard(&id, KeyboardEvent::Key { key: "enter".into() }).unwrap();
+    assert_eq!(host.status(&id).unwrap()["focus"], "8");
+    host.keyboard(&id, KeyboardEvent::Text { text: " Lee".into() }).unwrap();
+    let root = host.inspect(&id).unwrap().1;
+    assert_eq!(find(&root, &|n| n.id == "8").unwrap().value.as_deref(), Some("Ann Lee"));
+    let log = find(&root, &|n| n.id == "10").unwrap().label.as_deref().unwrap();
+    assert!(log.ends_with("T:Ann S T:Ann Lee"), "{log}");
+    host.shutdown();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
 /// Tap the field by its placeholder (focus + keyboard), type, press return: guest sees focus, text_input, submit, blur.
 fn rn_text_input_flow(host: &mut Host, id: &str) {
     let log = |host: &mut Host| {
@@ -349,14 +377,14 @@ fn rn_text_input_flow(host: &mut Host, id: &str) {
     let field = find(&root, &|n| n.role.as_deref() == Some("textfield") && n.label.as_deref() == Some("Name")).unwrap();
     let (x, y) = center(field);
     host.pointer(id, PointerEvent::new(PointerKind::Click, x, y)).unwrap();
-    assert_eq!(log(host), "Log: F K335.0");
+    assert_eq!(log(host), "Log: F K328.0");
     let root = host.inspect(id).unwrap().1;
     assert!(find(&root, &|n| n.kind == "keyboard").is_some(), "focus shows the keyboard");
     assert_eq!(host.status(id).unwrap()["focus"], "8");
     host.keyboard(id, KeyboardEvent::Text { text: "Ann".into() }).unwrap();
-    assert_eq!(log(host), "Log: F K335.0 T:Ann");
+    assert_eq!(log(host), "Log: F K328.0 T:Ann");
     host.keyboard(id, KeyboardEvent::Key { key: "enter".into() }).unwrap();
-    assert_eq!(log(host), "Log: F K335.0 T:Ann S B K0.0");
+    assert_eq!(log(host), "Log: F K328.0 T:Ann S B K0.0");
     let root = host.inspect(id).unwrap().1;
     assert!(find(&root, &|n| n.kind == "keyboard").is_none(), "return blurs a single-line input");
     assert_eq!(find(&root, &|n| n.id == "8").unwrap().value.as_deref(), Some("Ann"));

@@ -76,7 +76,7 @@ fn builder_drops_unused_resources_and_stays_bounded() {
     assert!(!first.added.is_empty());
     let held = b.cache_len();
     assert_eq!(held, first.added.len());
-    let empty = Scene { size: (402.0, 874.0), appearance: Appearance::Light, nodes: vec![], unsupported_symbols: vec![], notes: vec![] };
+    let empty = Scene { size: (402.0, 874.0), appearance: Appearance::Light, ios: simcore_protocol::IosVersion::Ios26, nodes: vec![], unsupported_symbols: vec![], notes: vec![] };
     let mut dropped: Vec<u64> = vec![];
     for i in 0..CACHE_TTL_FRAMES + 3 {
         let dl = b.build(&empty, &mut fonts, 3.0);
@@ -107,7 +107,7 @@ fn builder_drops_unused_resources_and_stays_bounded() {
             n.opacity = 1.0 - (i * 2500 + k) as f32 / 100_000.0;
             nodes.push(n);
         }
-        let sc = Scene { size: (100.0, 300.0), appearance: Appearance::Light, nodes, unsupported_symbols: vec![], notes: vec![] };
+        let sc = Scene { size: (100.0, 300.0), appearance: Appearance::Light, ios: simcore_protocol::IosVersion::Ios26, nodes, unsupported_symbols: vec![], notes: vec![] };
         b.build(&sc, &mut fonts, 1.0);
         live = live.max(b.cache_len());
     }
@@ -174,6 +174,7 @@ fn executor_needs_no_fonts_or_scene() {
         height: h,
         scale: 1.0,
         dark: false,
+        ios: simcore_protocol::IosVersion::Ios26,
         added: vec![sprite],
         dropped: vec![],
         ops: vec![

@@ -16,6 +16,7 @@ mod display_build;
 pub mod glass;
 mod image;
 mod interaction;
+pub mod look;
 mod raster;
 mod scene;
 mod symbols;
