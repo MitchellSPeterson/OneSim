@@ -12,6 +12,15 @@ const crypto = require('node:crypto');
 const { Buffer } = require('node:buffer');
 const process = require('node:process');
 const UNSUP = 'unsupported';
+// iOS release the host simulates (SIMCORE_OS_VERSION) -> its Simulator runtime build; pinned in docs/compatibility/versions.json.
+const IOS_BUILDS = { '27.2': '24B8117', '26.5': '23F77' };
+const OS_VERSION = IOS_BUILDS[process.env.SIMCORE_OS_VERSION] ? process.env.SIMCORE_OS_VERSION : '27.2';
+const OS_BUILD = IOS_BUILDS[OS_VERSION];
+// expo-device identity of the simulated phone (SIMCORE_DEVICE profile slug): [model id, year class]; others report a generic model.
+const MODELS = { 'iphone-18-pro': ['iPhone19,2', 2026], 'iphone-18-pro-max': ['iPhone19,3', 2026], 'iphone-duo': ['iPhone19,4', 2026], 'iphone-17-pro': ['iPhone18,1', 2025], 'iphone-17-pro-max': ['iPhone18,2', 2025], 'iphone-17': ['iPhone18,3', 2025], 'iphone-air': ['iPhone18,4', 2025], 'iphone-17e': ['iPhone18,5', 2026] };
+const DEVICE = process.env.SIMCORE_DEVICE || 'iphone-18-pro';
+const MODEL_NAME = DEVICE.split('-').map((w) => (w === 'iphone' ? 'iPhone' : w === 'se' ? 'SE' : w[0].toUpperCase() + w.slice(1))).join(' ');
+const [MODEL_ID, YEAR_CLASS] = MODELS[DEVICE] || [null, null];
 const HIDDEN = new Set(['getConstants', 'addListener', 'removeListeners']);
 // Optional modules RN feature-detects: absent => JS falls back (JS Animated driver, no perf API, ...).
 const ABSENT = new Set(['NativeAnimatedModule', 'NativeAnimatedTurboModule', 'NativeCPUTime', 'ReactDevToolsRuntimeSettingsModule', 'NativeReactDevToolsSettingsManager', 'NativeIdleCallbacksCxx', 'NativeIdleCallbacks', 'JSCExecutor', 'IntentAndroid', 'SoundManager', 'Performance', 'HeadlessJsTaskSupport', 'PerformanceObserver', 'IntersectionObserver', 'MutationObserver', 'ResizeObserver', 'FrameRateLogger', 'UIManager', 'I18nManagerAndroid']);
@@ -75,7 +84,7 @@ module.exports = function createRegistry(rt, h) {
 
   const entries = [
     // ---- React Native core (TurboModules) ----
-    { name: 'PlatformConstants', status: 'implemented', constants: () => ({ isTesting: false, isDisableAnimations: false, reactNativeVersion: { major: +ver[1], minor: +ver[2], patch: +ver[3] }, forceTouchAvailable: false, osVersion: '26.5', systemName: 'iOS', interfaceIdiom: 'phone' }) },
+    { name: 'PlatformConstants', status: 'implemented', constants: () => ({ isTesting: false, isDisableAnimations: false, reactNativeVersion: { major: +ver[1], minor: +ver[2], patch: +ver[3] }, forceTouchAvailable: false, osVersion: OS_VERSION, systemName: 'iOS', interfaceIdiom: 'phone' }) },
     // DeviceInfo.Dimensions feeds RN's Dimensions / useWindowDimensions (session viewport); host `environment` updates it.
     { name: 'DeviceInfo', status: 'simulated', constants: () => ({ Dimensions: rt.dimensions() }) },
     { name: 'Appearance', status: 'simulated', methods: { getColorScheme: () => rt.appearance, ...listener }, events: ['appearanceChanged'] },
@@ -176,8 +185,8 @@ module.exports = function createRegistry(rt, h) {
       setBackgroundColorAsync: async (c) => { if (c == null) delete rt.rootProps.backgroundColor; else rt.rootProps.backgroundColor = c; rt.scheduleEmit(); },
       getBackgroundColorAsync: async () => (rt.rootProps.backgroundColor == null ? null : '#' + (rt.rootProps.backgroundColor >>> 0).toString(16).padStart(8, '0').replace(/^(..)(......)$/, '$2$1')) } },
     { name: 'ExpoDevice', package: 'expo-device', kind: 'expo', status: 'simulated',
-      constants: { isDevice: false, brand: 'Apple', manufacturer: 'Apple', modelId: 'iPhone18,1', modelName: 'iPhone 17 Pro', deviceYearClass: 2025, totalMemory: 12 * 1024 ** 3,
-        osName: 'iOS', osVersion: '26.5', osBuildId: '23F77', osInternalBuildId: '23F77', deviceName: 'iPhone', deviceType: 1, supportedCpuArchitectures: ['arm64e', 'arm64'] },
+      constants: { isDevice: false, brand: 'Apple', manufacturer: 'Apple', modelId: MODEL_ID, modelName: MODEL_NAME, deviceYearClass: YEAR_CLASS, totalMemory: 12 * 1024 ** 3,
+        osName: 'iOS', osVersion: OS_VERSION, osBuildId: OS_BUILD, osInternalBuildId: OS_BUILD, deviceName: 'iPhone', deviceType: 1, supportedCpuArchitectures: ['arm64e', 'arm64'] },
       methods: { getDeviceTypeAsync: async () => 1, getUptimeAsync: async () => node.performance.now(), isRootedExperimentalAsync: async () => false } },
     // expo-linking: no launch URL, so Expo Router falls back to the scheme root and lands on `index`. Opening URLs is unsupported.
     { name: 'ExpoLinking', package: 'expo-linking', kind: 'expo', status: 'implemented', methods: { getLinkingURL: () => null, clearInitialURL: () => {} } },
@@ -193,8 +202,8 @@ module.exports = function createRegistry(rt, h) {
     { name: 'ExponentConstants', package: 'expo-constants', kind: 'expo', status: 'implemented',
       constants: () => ({ manifest: rt.manifest, experienceUrl: rt.manifest ? `exp://${new URL(rt.scriptURL).host}` : null,
         appOwnership: null, executionEnvironment: 'bare', sessionId: cfg.session || 'simcore', installationId: 'simcore', statusBarHeight: 54,
-        systemFonts: [], isDevice: false, deviceName: 'iPhone', expoVersion: null, platform: { ios: { model: 'iPhone', systemVersion: '26.5' } } }),
-      methods: { getWebViewUserAgentAsync: async () => 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) SimCore' } },
+        systemFonts: [], isDevice: false, deviceName: 'iPhone', expoVersion: null, platform: { ios: { model: 'iPhone', systemVersion: OS_VERSION } } }),
+      methods: { getWebViewUserAgentAsync: async () => `Mozilla/5.0 (iPhone; CPU iPhone OS ${OS_VERSION.replace('.', '_')} like Mac OS X) SimCore` } },
 
     // ---- simulated expo modules (host control through `simulate`) ----
     { name: 'ExpoClipboard', package: 'expo-clipboard', kind: 'expo', status: 'simulated', strict: true, events: ['onClipboardChanged'], constants: { isPasteButtonAvailable: false },

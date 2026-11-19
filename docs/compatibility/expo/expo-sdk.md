@@ -12,7 +12,7 @@ Part of [Expo / React Native API coverage](README.md): status legend, summary an
 | Splash screen | expo-splash-screen | `ExpoSplashScreen` | ✅ | ⬜ | | |
 | System UI | expo-system-ui | `ExpoSystemUI` | ✅ | ⬜ | | Root background color |
 | Status bar | expo-status-bar | | 🟠 | ⬜ | | Over RN `StatusBar` (above) |
-| Device | expo-device | `ExpoDevice` | 🟡 | ⬜ | | iPhone 17 Pro |
+| Device | expo-device | `ExpoDevice` | 🟡 | ⬜ | | Model and OS of the session's device profile and iOS release |
 | Constants | expo-constants | `ExponentConstants` | ✅ | ⬜ | | |
 | Linking | expo-linking | `ExpoLinking` | 🟠 | ⬜ | | No launch URL (Expo Router lands on `index`) |
 | Image | expo-image | `ExpoImage` | ✅ | ⬜ | | GIF/WebP do not draw (as core Image) |

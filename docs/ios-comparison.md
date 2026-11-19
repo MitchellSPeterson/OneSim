@@ -1,12 +1,15 @@
 # SimCore vs iOS Simulator
 
 Same unmodified source (`examples/swiftui-showcase/Showcase.swift`) rendered by:
-- **iOS 26.5 Simulator**, iPhone 17 Pro (Apple's SwiftUI), shots in `tests/fixtures/showcase-ios/`
+- **iOS 27.2 Simulator**, iPhone 18 Pro (Apple's SwiftUI), shots in `tests/fixtures/ios27/showcase-ios/` (the default, `--ios 27.2`; results in "iOS 27.2" below)
+- **iOS 26.5 Simulator**, iPhone 17 Pro (Apple's SwiftUI), shots in `tests/fixtures/showcase-ios/` (`--ios 26.5`; the table right below)
 - **SimCore** (SimCore's SwiftUI module + Rust renderer, headless), 402×874 @3x
 
 **Pass rule:** every state must be < 2% (see CONTRIBUTING.md). CI enforces it.
 
-Reproduce: `scripts/compare-ios.sh` (needs Python + Pillow). Re-capture iOS references: `scripts/build-ios-sim.sh`, then follow `tests/fixtures/showcase-ios/README.md`.
+Reproduce: `scripts/compare-ios.sh` (needs Python + Pillow; renders every state once per release, `SIMCORE_IOS=27.2` limits it). Re-capture iOS references: `scripts/build-ios-sim.sh`, then follow `tests/fixtures/showcase-ios/README.md` and `tests/fixtures/ios27/README.md`.
+
+## iOS 26.5
 
 | state | system fonts | fallback (`SIMCORE_FALLBACK=1`) | notes |
 |---|---:|---:|---|
@@ -99,3 +102,93 @@ Pass rule in this mode is **< 3.5%**: the 2% budget plus the measured glyph-shap
 
 ![fallback symbols](ios-comparison/fallback/cmp-symbols.png)
 ![fallback typography](ios-comparison/fallback/cmp-typography.png)
+
+
+## iOS 27.2
+
+Every state of every app on the iPhone 18 Pro / iOS 27.2 references (`tests/fixtures/ios27/`), plus the iOS 27 device
+fixtures (iPhone 18 Pro Max, 17e, Duo). What iOS 27 draws differently, and how SimCore models it, is in
+`tests/fixtures/ios27/README.md`. Measured 2026-11-19 on macOS 27 / Xcode 27.2.
+
+| app / state | system fonts | fallback (`SIMCORE_FALLBACK=1`) |
+|---|---:|---:|
+| showcase / alert-dark | 0.93% | 1.58% |
+| showcase / alert | 1.18% | 1.83% |
+| showcase / controls-changed | 1.03% | 1.45% |
+| showcase / controls | 0.89% | 1.44% |
+| showcase / cover-dark | 0.25% | 0.28% |
+| showcase / cover | 0.26% | 0.30% |
+| showcase / dialog-dark | 1.45% | 2.07% |
+| showcase / dialog | 1.53% | 2.11% |
+| showcase / form-changed | 0.95% | 1.11% |
+| showcase / form-dark | 0.87% | 1.05% |
+| showcase / form-menu | 1.07% | 1.28% |
+| showcase / form | 0.86% | 1.05% |
+| showcase / glass-dark | 0.61% | 0.77% |
+| showcase / glass-pressed | 0.78% | 0.90% |
+| showcase / glass | 0.77% | 0.92% |
+| showcase / home-dark | 0.78% | 1.11% |
+| showcase / home | 0.78% | 1.11% |
+| showcase / keyboard-dark | 1.74% | 2.40% |
+| showcase / keyboard-shift | 1.38% | 2.26% |
+| showcase / long-list-collapsed | 0.74% | 1.02% |
+| showcase / long-list-scrolled | 0.77% | 1.12% |
+| showcase / long-list | 0.68% | 0.97% |
+| showcase / shapes | 0.42% | 0.58% |
+| showcase / sheet-dark | 0.16% | 0.31% |
+| showcase / sheet-medium-dark | 0.93% | 1.42% |
+| showcase / sheet-medium | 1.12% | 1.62% |
+| showcase / sheet-nested-dark | 1.47% | 1.50% |
+| showcase / sheet-nested | 1.58% | 1.61% |
+| showcase / sheet | 0.18% | 0.34% |
+| showcase / symbols-dark | 0.85% | 1.54% |
+| showcase / symbols | 0.81% | 1.50% |
+| showcase / todos-toggled | 0.56% | 1.14% |
+| showcase / todos-typed | 1.63% | 2.29% |
+| showcase / todos | 0.57% | 1.16% |
+| showcase / typography-scrolled-dark | 1.90% | 4.82% |
+| showcase / typography-scrolled | 1.91% | 4.88% |
+| showcase / typography | 1.68% | 2.76% |
+| SwiftUI TabView / tabs-home-dark | 0.78% | 1.02% |
+| SwiftUI TabView / tabs-home | 0.75% | 0.97% |
+| SwiftUI TabView / tabs-pushed | 0.69% | 0.99% |
+| SwiftUI TabView / tabs-second | 0.60% | 0.96% |
+| SwiftUI TabView / tabs-settings-dark | 0.86% | 1.19% |
+| React Native / alert-dark | 0.63% | 0.89% |
+| React Native / alert | 0.89% | 1.18% |
+| React Native / controls-changed | 0.47% | 0.59% |
+| React Native / controls-typed | 1.43% | 1.65% |
+| React Native / controls | 0.54% | 0.66% |
+| React Native / home-dark | 0.45% | 0.69% |
+| React Native / home | 0.45% | 0.69% |
+| React Native / image | 0.14% | 0.17% |
+| React Native / keyboard-avoiding-dark | 1.25% | 1.35% |
+| React Native / keyboard-avoiding | 1.17% | 1.30% |
+| React Native / layout | 0.56% | 0.64% |
+| React Native / refresh-pulled-dark | 0.81% | 1.45% |
+| React Native / refresh-pulled | 0.80% | 1.45% |
+| React Native / scroll-scrolled | 0.86% | 1.13% |
+| React Native / scroll | 0.77% | 1.02% |
+| React Native / text | 2.45% | 4.35% |
+| React Native / visuals-dark | 0.78% | 0.89% |
+| React Native / visuals | 0.87% | 0.99% |
+| Expo Router / tabs-explore-dark | 1.43% | 2.27% |
+| Expo Router / tabs-explore-expanded | 1.86% | 3.26% |
+| Expo Router / tabs-explore | 1.37% | 2.21% |
+| Expo Router / tabs-home-dark | 1.04% | 1.25% |
+| Expo Router / tabs-home | 1.35% | 1.56% |
+| Expo Router / stack-back | 0.31% | 0.39% |
+| Expo Router / stack-detail-dark | 0.56% | 0.63% |
+| Expo Router / stack-detail | 0.43% | 0.57% |
+| Expo Router / stack-list | 0.31% | 0.39% |
+| iphone-17e / home | 0.88% | 1.19% |
+| iphone-17e / keyboard-shift | 1.49% | 2.43% |
+| iphone-18-pro-max / home | 0.72% | 0.95% |
+| iphone-18-pro-max / keyboard-shift | 1.29% | 2.02% |
+| iphone-duo / home | 0.60% | 0.80% |
+| iphone-duo / keyboard-shift | 1.48% | 2.01% |
+
+Known gaps: `rn-showcase-ios/text` is 4.4% in fallback mode on both releases (also on 26.5 before iOS 27 support: Inter on 19
+dense lines; its approved limit applies to system fonts only). The iPhone Duo is modelled unfolded only, for SwiftUI; React
+Native content does not yet avoid its status column. The two keyboard completions next to the typed word are left empty
+(no prediction engine).

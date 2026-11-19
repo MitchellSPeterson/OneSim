@@ -94,6 +94,14 @@ pub enum Glyph {
     Wifi,
     SignalDots,
     Battery,
+    /// iOS 27 status bar icons: thicker wifi arcs, a solid battery with a round nub.
+    Wifi27,
+    Battery27,
+    SignalDots27,
+    /// iPhone Duo status column: battery as a green ring (open at the bottom, bolt in a gap at the top)
+    /// and the four signal dots on an arc below it.
+    BatteryRing,
+    DotsArc,
     // Software keyboard icons, drawn by `chrome`.
     Shift,
     ShiftFilled,
@@ -262,6 +270,8 @@ impl Node {
 pub struct Scene {
     pub size: (f64, f64),
     pub appearance: Appearance,
+    /// iOS release whose look the rasterizer draws (glass).
+    pub ios: simcore_protocol::IosVersion,
     pub nodes: Vec<Node>,
     /// Symbol names the host could not render (placeholders were drawn), sorted, deduplicated.
     pub unsupported_symbols: Vec<String>,

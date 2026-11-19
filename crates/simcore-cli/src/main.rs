@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use clap::{ArgMatches, CommandFactory, FromArgMatches, Parser, Subcommand};
 use simcore_host::Host;
 use simcore_protocol::{
-    Appearance, CreateSessionParams, DynamicTypeSize, KeyboardEvent, PointerEvent, PointerKind, UiNode, Viewport,
+    Appearance, CreateSessionParams, DynamicTypeSize, IosVersion, KeyboardEvent, PointerEvent, PointerKind, UiNode, Viewport,
 };
 
 #[derive(Parser)]
@@ -92,6 +92,9 @@ struct Opts {
     /// Dynamic Type size: xSmall ... large (default) ... xxxLarge, accessibility1 ... accessibility5.
     #[arg(long = "dynamic-type", value_name = "SIZE")]
     dynamic_type: Option<String>,
+    /// Simulated iOS release: 26.5 or 27.2 (default).
+    #[arg(long = "ios", value_name = "VERSION")]
+    ios: Option<String>,
 }
 
 /// One interaction, in command-line order.
@@ -173,6 +176,7 @@ fn params(framework: &str) -> CreateSessionParams {
         appearance: None,
         dynamic_type_size: None,
         device: None,
+        os_version: None,
         prebuilt: false,
         metro_url: None,
     }
@@ -192,6 +196,10 @@ fn run(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: Opts, ap
         .map(|d| DynamicTypeSize::parse(&d).with_context(|| format!("unknown --dynamic-type {d:?}")))
         .transpose()?;
     p.device = o.device;
+    p.os_version = o
+        .ios
+        .map(|v| IosVersion::parse(&v).with_context(|| format!("unknown --ios {v:?} (26.5, 27.2)")))
+        .transpose()?;
     let mut host = Host::new();
     let id = host.create_session(p)?;
     let result = drive(&mut host, &id, o.screenshot, &steps, o.inspect);

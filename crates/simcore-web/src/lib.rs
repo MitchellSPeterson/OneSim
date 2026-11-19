@@ -5,7 +5,7 @@
 //! JS drives it through the `simcore_web_*` exports at the bottom; input goes through
 //! `simcore_render::Interaction` (the same state machine as the native host) and its effects
 //! call the Swift callbacks directly.
-use simcore_protocol::{Appearance, DynamicTypeSize, KeyboardEvent, PointerEvent, PointerKind, ViewNode};
+use simcore_protocol::{Appearance, DynamicTypeSize, IosVersion, KeyboardEvent, PointerEvent, PointerKind, ViewNode};
 use simcore_render::{build_scene, device, render, resolve_label, Device, DEFAULT_DEVICE, DEVICES, DragPhase, Effect, Fonts, Interaction, Scene, SceneParams};
 use std::cell::RefCell;
 use std::ffi::{c_char, c_void, CStr, CString};
@@ -29,6 +29,7 @@ struct State {
     scale: f64,
     dark: bool,
     dynamic_type: DynamicTypeSize,
+    ios: IosVersion,
     inter: Interaction,
     /// Set before a guest callback; a tree submit clears it by drawing.
     stale: bool,
@@ -43,7 +44,7 @@ thread_local! {
     // ponytail: thread-local state; protocol says single-threaded.
     static STATE: RefCell<State> = RefCell::new(State {
         ctx: 0, on_action: None, on_env: None, on_text: None, version: None, tree: None, scene: None,
-        fonts: None, device: device(DEFAULT_DEVICE).unwrap(), viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, inter: Interaction::default(),
+        fonts: None, device: device(DEFAULT_DEVICE).unwrap(), viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios27, inter: Interaction::default(),
         stale: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), buf: Vec::new(),
     });
     static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
@@ -63,6 +64,7 @@ fn draw(s: &mut State) {
         scale: s.scale,
         appearance: if s.dark { Appearance::Dark } else { Appearance::Light },
         dynamic_type: s.dynamic_type,
+        ios: s.ios,
         scroll: &s.inter.scroll,
         sheets: &s.inter.sheets,
         focus: s.inter.focus.as_deref(),
@@ -228,6 +230,18 @@ pub extern "C" fn simcore_web_set_dynamic_type(index: i32) -> i32 {
     with(|s| s.dynamic_type = DynamicTypeSize::from_index(index.max(0) as usize));
     // Before `init` there is no guest yet; the size is picked up by the first render.
     if with(|s| s.on_env.is_some()) { push_environment() } else { 0 }
+}
+
+/// Simulated iOS release by index into `IosVersion::ALL` (0 = 26.5, 1 = 27.2); out of range = newest.
+#[no_mangle]
+pub extern "C" fn simcore_web_set_ios(index: i32) -> i32 {
+    with(|s| {
+        s.ios = IosVersion::ALL
+            .get(index.max(0) as usize)
+            .copied()
+            .unwrap_or_default()
+    });
+    0
 }
 
 #[no_mangle]

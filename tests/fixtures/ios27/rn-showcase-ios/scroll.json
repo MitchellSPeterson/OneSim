@@ -1,0 +1,537 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "rect": {
+          "width": 402,
+          "height": 874,
+          "x": 0,
+          "y": 0
+        },
+        "label": "Expo Go",
+        "depth": 0,
+        "hittable": false,
+        "enabled": true,
+        "index": 0,
+        "type": "Application",
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "rect": {
+          "width": 402,
+          "height": 874,
+          "x": 0,
+          "y": 0
+        },
+        "label": "Back",
+        "depth": 1,
+        "hittable": true,
+        "parentIndex": 0,
+        "enabled": true,
+        "index": 1,
+        "type": "Other",
+        "ref": "e2",
+        "kind": "other"
+      },
+      {
+        "rect": {
+          "width": 60,
+          "height": 20.333335876464844,
+          "x": 16,
+          "y": 74
+        },
+        "label": "Back",
+        "depth": 2,
+        "hittable": true,
+        "parentIndex": 1,
+        "enabled": true,
+        "index": 2,
+        "type": "Other",
+        "ref": "e3",
+        "kind": "other"
+      },
+      {
+        "rect": {
+          "width": 45.33332824707031,
+          "height": 20.333335876464844,
+          "x": 187,
+          "y": 73.6666669845581
+        },
+        "label": "Scroll",
+        "depth": 2,
+        "hittable": true,
+        "parentIndex": 1,
+        "enabled": true,
+        "index": 3,
+        "type": "StaticText",
+        "ref": "e4",
+        "kind": "text"
+      },
+      {
+        "rect": {
+          "width": 42.666656494140625,
+          "height": 20.333335876464844,
+          "x": 343.3333435058594,
+          "y": 74
+        },
+        "label": "Jump",
+        "depth": 2,
+        "hittable": true,
+        "parentIndex": 1,
+        "enabled": true,
+        "index": 4,
+        "type": "Other",
+        "ref": "e5",
+        "kind": "other"
+      },
+      {
+        "rect": {
+          "width": 402,
+          "height": 768,
+          "x": 0,
+          "y": 106
+        },
+        "label": "Row 1",
+        "depth": 2,
+        "hittable": true,
+        "parentIndex": 1,
+        "enabled": true,
+        "index": 5,
+        "type": "Other",
+        "ref": "e6",
+        "kind": "other"
+      },
+      {
+        "rect": {
+          "width": 402,
+          "height": 768,
+          "x": 0,
+          "y": 106
+        },
+        "label": "Row 1",
+        "hiddenContentBelow": true,
+        "depth": 3,
+        "hittable": true,
+        "parentIndex": 5,
+        "enabled": true,
+        "index": 6,
+        "type": "ScrollView",
+        "ref": "e7",
+        "kind": "scroll-area"
+      },
+      {
+        "rect": {
+          "width": 402,
+          "height": 768,
+          "x": 0,
+          "y": 106
+        },
+        "label": "Row 1",
+        "depth": 4,
+        "hittable": false,
+        "parentIndex": 6,
+        "enabled": true,
+        "index": 7,
+        "type": "Other",
+        "ref": "e8",
+        "kind": "other"
+      },
+      {
+        "rect": {
+          "width": 370,
+          "height": 20.333335876464844,
+          "x": 16,
+          "y": 117.3333330154419
+        },
+        "label": "Row 1",
+        "depth": 5,
+        "hittable": true,
+        "parentIndex": 7,
+        "enabled": true,
+        "index": 8,
+        "type": "StaticText",
+        "ref": "e9",
+        "kind": "text"
+      },
+      {
+        "rect": {
+          "width": 370,
+          "height": 20.333343505859375,
+          "x": 16,
+          "y": 161.3333330154419
+        },
+        "label": "Row 2",
+        "depth": 5,
+        "hittable": true,
+        "parentIndex": 7,
+        "enabled": true,
+        "index": 9,
+        "type": "StaticText",
+        "ref": "e10",
+        "kind": "text"
+      },
+      {
+        "rect": {
+          "width": 370,
+          "height": 20.333343505859375,
+          "x": 16,
+          "y": 205.3333330154419
+        },
+        "label": "Row 3",
+        "depth": 5,
+        "hittable": true,
+        "parentIndex": 7,
+        "enabled": true,
+        "index": 10,
+        "type": "StaticText",
+        "ref": "e11",
+        "kind": "text"
+      },
+      {
+        "rect": {
+          "y": 249.3333330154419,
+          "width": 370,
+          "x": 16,
+          "height": 20.333328247070312
+        },
+        "label": "Row 4",
+        "depth": 5,
+        "hittable": true,
+        "parentIndex": 7,
+        "enabled": true,
+        "index": 11,
+        "type": "StaticText",
+        "ref": "e12",
+        "kind": "text"
+      },
+      {
+        "rect": {
+          "y": 293.3333330154419,
+          "width": 370,
+          "x": 16,
+          "height": 20.33331298828125
+        },
+        "label": "Row 5",
+        "depth": 5,
+        "hittable": true,
+        "parentIndex": 7,
+        "enabled": true,
+        "index": 12,
+        "type": "StaticText",
+        "ref": "e13",
+        "kind": "text"
+      },
+      {
+        "rect": {
+          "y": 337.3333330154419,
+          "width": 370,
+          "x": 16,
+          "height": 20.33331298828125
+        },
+        "label": "Row 6",
+        "depth": 5,
+        "hittable": true,
+        "parentIndex": 7,
+        "enabled": true,
+        "index": 13,
+        "type": "StaticText",
+        "ref": "e14",
+        "kind": "text"
+      },
+      {
+        "rect": {
+          "y": 381.3333330154419,
+          "width": 370,
+          "x": 16,
+          "height": 20.33331298828125
+        },
+        "label": "Row 7",
+        "depth": 5,
+        "hittable": true,
+        "parentIndex": 7,
+        "enabled": true,
+        "index": 14,
+        "type": "StaticText",
+        "ref": "e15",
+        "kind": "text"
+      },
+      {
+        "rect": {
+          "y": 425.3333330154419,
+          "width": 370,
+          "x": 16,
+          "height": 20.33331298828125
+        },
+        "label": "Row 8",
+        "depth": 5,
+        "hittable": true,
+        "parentIndex": 7,
+        "enabled": true,
+        "index": 15,
+        "type": "StaticText",
+        "ref": "e16",
+        "kind": "text"
+      },
+      {
+        "rect": {
+          "y": 469.3333330154419,
+          "width": 370,
+          "x": 16,
+          "height": 20.33331298828125
+        },
+        "label": "Row 9",
+        "depth": 5,
+        "hittable": true,
+        "parentIndex": 7,
+        "enabled": true,
+        "index": 16,
+        "type": "StaticText",
+        "ref": "e17",
+        "kind": "text"
+      },
+      {
+        "rect": {
+          "y": 513.3333330154419,
+          "width": 370,
+          "x": 16,
+          "height": 20.3333740234375
+        },
+        "label": "Row 10",
+        "depth": 5,
+        "hittable": true,
+        "parentIndex": 7,
+        "enabled": true,
+        "index": 17,
+        "type": "StaticText",
+        "ref": "e18",
+        "kind": "text"
+      },
+      {
+        "rect": {
+          "y": 557.3333330154419,
+          "width": 370,
+          "x": 16,
+          "height": 20.3333740234375
+        },
+        "label": "Row 11",
+        "depth": 5,
+        "hittable": true,
+        "parentIndex": 7,
+        "enabled": true,
+        "index": 18,
+        "type": "StaticText",
+        "ref": "e19",
+        "kind": "text"
+      },
+      {
+        "parentIndex": 7,
+        "enabled": true,
+        "index": 19,
+        "label": "Row 12",
+        "type": "StaticText",
+        "rect": {
+          "y": 601.3333330154419,
+          "width": 370,
+          "x": 16,
+          "height": 20.3333740234375
+        },
+        "depth": 5,
+        "hittable": true,
+        "ref": "e20",
+        "kind": "text"
+      },
+      {
+        "parentIndex": 7,
+        "enabled": true,
+        "index": 20,
+        "label": "Row 13",
+        "type": "StaticText",
+        "rect": {
+          "y": 645.3333330154419,
+          "width": 370,
+          "x": 16,
+          "height": 20.3333740234375
+        },
+        "depth": 5,
+        "hittable": true,
+        "ref": "e21",
+        "kind": "text"
+      },
+      {
+        "parentIndex": 7,
+        "enabled": true,
+        "index": 21,
+        "label": "Row 14",
+        "type": "StaticText",
+        "rect": {
+          "y": 689.3333330154419,
+          "width": 370,
+          "x": 16,
+          "height": 20.3333740234375
+        },
+        "depth": 5,
+        "hittable": true,
+        "ref": "e22",
+        "kind": "text"
+      },
+      {
+        "parentIndex": 7,
+        "enabled": true,
+        "index": 22,
+        "label": "Row 15",
+        "type": "StaticText",
+        "rect": {
+          "y": 733.3333330154419,
+          "width": 370,
+          "x": 16,
+          "height": 20.3333740234375
+        },
+        "depth": 5,
+        "hittable": true,
+        "ref": "e23",
+        "kind": "text"
+      },
+      {
+        "parentIndex": 7,
+        "enabled": true,
+        "index": 23,
+        "label": "Row 16",
+        "type": "StaticText",
+        "rect": {
+          "y": 777.3333330154419,
+          "width": 370,
+          "x": 16,
+          "height": 20.3333740234375
+        },
+        "depth": 5,
+        "hittable": true,
+        "ref": "e24",
+        "kind": "text"
+      },
+      {
+        "parentIndex": 7,
+        "enabled": true,
+        "index": 24,
+        "label": "Row 17",
+        "type": "StaticText",
+        "rect": {
+          "y": 821.3333330154419,
+          "width": 370,
+          "x": 16,
+          "height": 20.3333740234375
+        },
+        "depth": 5,
+        "hittable": true,
+        "ref": "e25",
+        "kind": "text"
+      },
+      {
+        "parentIndex": 7,
+        "enabled": true,
+        "index": 25,
+        "label": "Row 18",
+        "type": "StaticText",
+        "rect": {
+          "y": 865.3333330154419,
+          "width": 370,
+          "x": 16,
+          "height": 8.666666984558105
+        },
+        "depth": 5,
+        "hittable": false,
+        "ref": "e26",
+        "kind": "text"
+      },
+      {
+        "parentIndex": 6,
+        "enabled": true,
+        "index": 26,
+        "label": "Vertical scroll bar, 3 pages",
+        "type": "Other",
+        "rect": {
+          "y": 106,
+          "width": 30,
+          "x": 369,
+          "height": 706
+        },
+        "depth": 4,
+        "value": "0%",
+        "hittable": true,
+        "ref": "e27",
+        "kind": "other"
+      },
+      {
+        "parentIndex": 6,
+        "enabled": true,
+        "index": 27,
+        "label": "Horizontal scroll bar, 1 page",
+        "type": "Other",
+        "rect": {
+          "y": 841,
+          "width": 278,
+          "x": 62,
+          "height": 30
+        },
+        "depth": 4,
+        "value": "0%",
+        "hittable": true,
+        "ref": "e28",
+        "kind": "other"
+      }
+    ],
+    "truncated": false,
+    "appName": "host.exp.Exponent",
+    "appBundleId": "host.exp.Exponent",
+    "visibility": {
+      "partial": true,
+      "visibleNodeCount": 28,
+      "totalNodeCount": 28,
+      "reasons": [
+        "scroll-hidden-below"
+      ]
+    },
+    "keyboard": {
+      "kind": "absent"
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "unknown",
+    "snapshotQuality": {
+      "state": "healthy",
+      "backend": "tree",
+      "timing": {
+        "acquisitionMs": 371.4550733566284,
+        "presentationMs": 2.7129650115966797
+      }
+    },
+    "snapshotQualityNotes": [
+      {
+        "code": "regular-geometry-clipped",
+        "clippedNodeCount": 3,
+        "droppedNodeCount": 64
+      }
+    ],
+    "warnings": [
+      "Simulator AX snapshot unavailable (circuit-disabled); used XCTest for this app generation."
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 221,
+        "p50Ms": 114,
+        "p95Ms": 4039,
+        "maxMs": 21868,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 221
+        }
+      },
+      "warning": "Warning: ios snapshots are slow in this run: p95 3880ms over 220 captures. Possible causes: device load, app or dev server stuck, helper fallback, or stale daemon."
+    },
+    "refsGeneration": 350647
+  }
+}

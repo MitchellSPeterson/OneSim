@@ -1,0 +1,274 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "type": "Application",
+        "role": "UIApplication",
+        "label": "Expo Go",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 0,
+        "pid": 27441,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "index": 1,
+        "parentIndex": 0,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Back",
+        "rect": {
+          "x": 16,
+          "y": 74,
+          "width": 60,
+          "height": 20.333332061767578
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 27441,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "other"
+      },
+      {
+        "index": 2,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Visuals",
+        "rect": {
+          "x": 328.6666564941406,
+          "y": 73.6666669845581,
+          "width": 57.333343505859375,
+          "height": 20.333332061767578
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 27441,
+        "hittable": true,
+        "ref": "e3",
+        "kind": "text"
+      },
+      {
+        "index": 3,
+        "parentIndex": 2,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Visuals",
+        "rect": {
+          "x": 328.6666564941406,
+          "y": 73.6666669845581,
+          "width": 57.333343505859375,
+          "height": 20.333332061767578
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 27441,
+        "hittable": true,
+        "ref": "e4",
+        "kind": "text"
+      },
+      {
+        "index": 4,
+        "parentIndex": 0,
+        "type": "ActivityIndicator",
+        "role": "UIActivityIndicatorView",
+        "label": "In progress",
+        "value": "1",
+        "rect": {
+          "x": 102.66666412353516,
+          "y": 134,
+          "width": 36,
+          "height": 36
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 27441,
+        "hittable": true,
+        "ref": "e5",
+        "kind": "activity-indicator"
+      },
+      {
+        "index": 5,
+        "parentIndex": 0,
+        "type": "ActivityIndicator",
+        "role": "UIActivityIndicatorView",
+        "label": "In progress",
+        "value": "1",
+        "rect": {
+          "x": 247.3333282470703,
+          "y": 134,
+          "width": 36,
+          "height": 36
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 27441,
+        "hittable": true,
+        "ref": "e6",
+        "kind": "activity-indicator"
+      },
+      {
+        "index": 6,
+        "parentIndex": 0,
+        "type": "ActivityIndicator",
+        "role": "UIActivityIndicatorView",
+        "label": "In progress",
+        "value": "1",
+        "rect": {
+          "x": 38.33333396911621,
+          "y": 142,
+          "width": 20,
+          "height": 20
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 27441,
+        "hittable": true,
+        "ref": "e7",
+        "kind": "activity-indicator"
+      },
+      {
+        "index": 7,
+        "parentIndex": 0,
+        "type": "ActivityIndicator",
+        "role": "UIActivityIndicatorView",
+        "label": "In progress",
+        "value": "1",
+        "rect": {
+          "x": 183,
+          "y": 142,
+          "width": 20,
+          "height": 20
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 27441,
+        "hittable": true,
+        "ref": "e8",
+        "kind": "activity-indicator"
+      },
+      {
+        "index": 8,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Gradient",
+        "rect": {
+          "x": 144,
+          "y": 237,
+          "width": 113.66665649414062,
+          "height": 33.66667175292969
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 27441,
+        "hittable": true,
+        "ref": "e9",
+        "kind": "text"
+      },
+      {
+        "index": 9,
+        "parentIndex": 8,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Gradient",
+        "rect": {
+          "x": 144,
+          "y": 237,
+          "width": 113.66665649414062,
+          "height": 33.66667175292969
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 27441,
+        "hittable": true,
+        "ref": "e10",
+        "kind": "text"
+      },
+      {
+        "index": 10,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Blur: default, light, dark, material",
+        "rect": {
+          "x": 16,
+          "y": 534,
+          "width": 370,
+          "height": 20.33331298828125
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 27441,
+        "hittable": true,
+        "ref": "e11",
+        "kind": "text"
+      },
+      {
+        "index": 11,
+        "parentIndex": 10,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "rect": {
+          "x": 16,
+          "y": 534,
+          "width": 370,
+          "height": 20.33331298828125
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 27441,
+        "hittable": true,
+        "ref": "e12",
+        "kind": "text",
+        "inheritsLabel": true
+      }
+    ],
+    "truncated": false,
+    "appName": "host.exp.Exponent",
+    "appBundleId": "host.exp.Exponent",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 12,
+      "totalNodeCount": 12,
+      "reasons": []
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "absent",
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 236,
+        "p50Ms": 119,
+        "p95Ms": 4802,
+        "maxMs": 21868,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 236
+        }
+      },
+      "warning": "Warning: ios snapshots are slow in this run: p95 4577ms over 235 captures. Possible causes: device load, app or dev server stuck, helper fallback, or stale daemon."
+    },
+    "refsGeneration": 350657
+  }
+}

@@ -1,0 +1,603 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "type": "Application",
+        "role": "UIApplication",
+        "label": "Expo Go",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 0,
+        "pid": 33832,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "index": 1,
+        "parentIndex": 0,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Back",
+        "rect": {
+          "x": 16,
+          "y": 74,
+          "width": 60,
+          "height": 20.333335876464844
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "other"
+      },
+      {
+        "index": 2,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Controls",
+        "rect": {
+          "x": 318,
+          "y": 73.6666669845581,
+          "width": 68,
+          "height": 20.333335876464844
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e3",
+        "kind": "text"
+      },
+      {
+        "index": 3,
+        "parentIndex": 2,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Controls",
+        "rect": {
+          "x": 318,
+          "y": 73.6666669845581,
+          "width": 68,
+          "height": 20.333335876464844
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e4",
+        "kind": "text"
+      },
+      {
+        "index": 4,
+        "parentIndex": 0,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Count",
+        "rect": {
+          "x": 16,
+          "y": 122,
+          "width": 370,
+          "height": 49.66667175292969
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e5",
+        "kind": "other"
+      },
+      {
+        "index": 5,
+        "parentIndex": 0,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Increment",
+        "rect": {
+          "x": 16,
+          "y": 171.66666412353516,
+          "width": 129,
+          "height": 44.33332824707031
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e6",
+        "kind": "other"
+      },
+      {
+        "index": 6,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Alpha",
+        "rect": {
+          "x": 16,
+          "y": 239.66666674613953,
+          "width": 43.66666793823242,
+          "height": 20.333328247070312
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e7",
+        "kind": "text"
+      },
+      {
+        "index": 7,
+        "parentIndex": 6,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Alpha",
+        "rect": {
+          "x": 16,
+          "y": 239.66666674613953,
+          "width": 43.66666793823242,
+          "height": 20.333328247070312
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e8",
+        "kind": "text"
+      },
+      {
+        "index": 8,
+        "parentIndex": 0,
+        "type": "Switch",
+        "role": "UISwitch",
+        "label": "Alpha",
+        "value": "1",
+        "rect": {
+          "x": 323,
+          "y": 236,
+          "width": 63,
+          "height": 28
+        },
+        "enabled": true,
+        "depth": 1,
+        "checked": true,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e9",
+        "kind": "switch"
+      },
+      {
+        "index": 9,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Beta",
+        "rect": {
+          "x": 16,
+          "y": 287.6666667461395,
+          "width": 35,
+          "height": 20.333343505859375
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e10",
+        "kind": "text"
+      },
+      {
+        "index": 10,
+        "parentIndex": 9,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Beta",
+        "rect": {
+          "x": 16,
+          "y": 287.6666667461395,
+          "width": 35,
+          "height": 20.333343505859375
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e11",
+        "kind": "text"
+      },
+      {
+        "index": 11,
+        "parentIndex": 0,
+        "type": "Switch",
+        "role": "UISwitch",
+        "label": "Beta",
+        "value": "0",
+        "rect": {
+          "x": 323,
+          "y": 284,
+          "width": 63,
+          "height": 28
+        },
+        "enabled": true,
+        "depth": 1,
+        "checked": false,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e12",
+        "kind": "switch"
+      },
+      {
+        "index": 12,
+        "parentIndex": 0,
+        "type": "TextField",
+        "role": "RCTUITextField",
+        "subrole": "UITextField",
+        "label": "Type here",
+        "value": "Type here",
+        "placeholder": "Type here",
+        "rect": {
+          "x": 17,
+          "y": 337,
+          "width": 368,
+          "height": 42
+        },
+        "enabled": true,
+        "depth": 1,
+        "password": false,
+        "editable": true,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e13",
+        "kind": "text-field"
+      },
+      {
+        "index": 13,
+        "parentIndex": 0,
+        "type": "Group",
+        "role": "_UIAlertControllerPhoneTVMacView",
+        "label": "Reset count?",
+        "rect": {
+          "x": 41,
+          "y": 375,
+          "width": 320,
+          "height": 152
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e14",
+        "kind": "group"
+      },
+      {
+        "index": 14,
+        "parentIndex": 13,
+        "type": "ScrollView",
+        "role": "_UIInterfaceActionGroupHeaderScrollView",
+        "rect": {
+          "x": 41,
+          "y": 375,
+          "width": 320,
+          "height": 72
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 33832,
+        "hittable": true,
+        "hiddenContentAbove": true,
+        "ref": "e15",
+        "kind": "scroll-area"
+      },
+      {
+        "index": 15,
+        "parentIndex": 14,
+        "type": "StaticText",
+        "role": "UILabel",
+        "label": "Reset count?",
+        "rect": {
+          "x": 71,
+          "y": 397,
+          "width": 260,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e16",
+        "kind": "text"
+      },
+      {
+        "index": 16,
+        "parentIndex": 14,
+        "type": "StaticText",
+        "role": "UILabel",
+        "label": "The count goes back to zero.",
+        "rect": {
+          "x": 71,
+          "y": 424.6666666666667,
+          "width": 260,
+          "height": 18
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e17",
+        "kind": "text"
+      },
+      {
+        "index": 17,
+        "parentIndex": 14,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Vertical scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 328,
+          "y": 375,
+          "width": 30,
+          "height": 72
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e18",
+        "kind": "other"
+      },
+      {
+        "index": 18,
+        "parentIndex": 14,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Horizontal scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 41,
+          "y": 414,
+          "width": 320,
+          "height": 30
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e19",
+        "kind": "other"
+      },
+      {
+        "index": 19,
+        "parentIndex": 14,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Vertical scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 328,
+          "y": 375,
+          "width": 30,
+          "height": 72
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e20",
+        "kind": "other"
+      },
+      {
+        "index": 20,
+        "parentIndex": 14,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Horizontal scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 41,
+          "y": 414,
+          "width": 320,
+          "height": 30
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e21",
+        "kind": "other"
+      },
+      {
+        "index": 21,
+        "parentIndex": 13,
+        "type": "ScrollView",
+        "role": "_UIInterfaceActionRepresentationsSequenceView",
+        "rect": {
+          "x": 41,
+          "y": 447,
+          "width": 320,
+          "height": 80
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 33832,
+        "hittable": true,
+        "hiddenContentBelow": true,
+        "ref": "e22",
+        "kind": "scroll-area"
+      },
+      {
+        "index": 22,
+        "parentIndex": 21,
+        "type": "Button",
+        "role": "_UIInterfaceActionCustomViewRepresentationView",
+        "label": "Cancel",
+        "rect": {
+          "x": 57,
+          "y": 463,
+          "width": 140,
+          "height": 48
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e23",
+        "kind": "button"
+      },
+      {
+        "index": 23,
+        "parentIndex": 21,
+        "type": "Button",
+        "role": "_UIInterfaceActionCustomViewRepresentationView",
+        "label": "Reset",
+        "rect": {
+          "x": 205,
+          "y": 463,
+          "width": 140,
+          "height": 48
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e24",
+        "kind": "button"
+      },
+      {
+        "index": 24,
+        "parentIndex": 21,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Vertical scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 328,
+          "y": 447,
+          "width": 30,
+          "height": 80
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e25",
+        "kind": "other"
+      },
+      {
+        "index": 25,
+        "parentIndex": 21,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Horizontal scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 41,
+          "y": 494,
+          "width": 320,
+          "height": 30
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e26",
+        "kind": "other"
+      },
+      {
+        "index": 26,
+        "parentIndex": 21,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Vertical scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 328,
+          "y": 447,
+          "width": 30,
+          "height": 80
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e27",
+        "kind": "other"
+      },
+      {
+        "index": 27,
+        "parentIndex": 21,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Horizontal scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 41,
+          "y": 494,
+          "width": 320,
+          "height": 30
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 33832,
+        "hittable": true,
+        "ref": "e28",
+        "kind": "other"
+      }
+    ],
+    "truncated": false,
+    "appName": "host.exp.Exponent",
+    "appBundleId": "host.exp.Exponent",
+    "visibility": {
+      "partial": true,
+      "visibleNodeCount": 28,
+      "totalNodeCount": 28,
+      "reasons": [
+        "scroll-hidden-above",
+        "scroll-hidden-below"
+      ]
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "presented",
+    "snapshotQualityNotes": [
+      {
+        "code": "regular-geometry-clipped",
+        "clippedNodeCount": 2,
+        "droppedNodeCount": 6
+      }
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 247,
+        "p50Ms": 122,
+        "p95Ms": 4577,
+        "maxMs": 21868,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 247
+        }
+      },
+      "warning": "Warning: ios snapshots are slow in this run: p95 4295ms over 246 captures. Possible causes: device load, app or dev server stuck, helper fallback, or stale daemon."
+    },
+    "refsGeneration": 350663
+  }
+}

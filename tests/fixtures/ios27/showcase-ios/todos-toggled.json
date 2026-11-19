@@ -1,0 +1,505 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "rect": {
+          "y": 0,
+          "width": 402,
+          "x": 0,
+          "height": 874
+        },
+        "label": "Showcase",
+        "type": "Application",
+        "index": 0,
+        "enabled": true,
+        "hittable": false,
+        "depth": 0,
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "type": "Other",
+        "label": "Toolbar",
+        "index": 1,
+        "parentIndex": 0,
+        "enabled": true,
+        "hittable": true,
+        "depth": 1,
+        "ref": "e2",
+        "kind": "other"
+      },
+      {
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "type": "Other",
+        "label": "Showcase",
+        "index": 2,
+        "parentIndex": 1,
+        "enabled": true,
+        "hittable": true,
+        "depth": 2,
+        "ref": "e3",
+        "kind": "other"
+      },
+      {
+        "rect": {
+          "x": 0,
+          "y": 62,
+          "width": 402,
+          "height": 106
+        },
+        "type": "NavigationBar",
+        "label": "Showcase",
+        "index": 3,
+        "identifier": "Todos",
+        "parentIndex": 2,
+        "enabled": true,
+        "hittable": true,
+        "depth": 3,
+        "ref": "e4",
+        "kind": "navigation-bar"
+      },
+      {
+        "rect": {
+          "x": 16,
+          "y": 62,
+          "width": 44,
+          "height": 44
+        },
+        "type": "Button",
+        "label": "Showcase",
+        "index": 4,
+        "identifier": "BackButton",
+        "parentIndex": 3,
+        "enabled": true,
+        "hittable": true,
+        "depth": 4,
+        "ref": "e5",
+        "kind": "button"
+      },
+      {
+        "rect": {
+          "x": 16,
+          "y": 119.66666666666667,
+          "width": 95.33333333333333,
+          "height": 40.66666666666667
+        },
+        "type": "StaticText",
+        "label": "Todos",
+        "index": 5,
+        "parentIndex": 3,
+        "enabled": true,
+        "hittable": true,
+        "depth": 4,
+        "ref": "e6",
+        "kind": "text"
+      },
+      {
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "type": "Other",
+        "label": "Vertical scroll bar, 1 page",
+        "index": 6,
+        "parentIndex": 2,
+        "enabled": true,
+        "hittable": true,
+        "depth": 3,
+        "ref": "e7",
+        "kind": "other"
+      },
+      {
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "type": "CollectionView",
+        "index": 7,
+        "parentIndex": 6,
+        "enabled": true,
+        "hittable": true,
+        "depth": 4,
+        "ref": "e8",
+        "kind": "collection",
+        "inheritsLabel": true
+      },
+      {
+        "rect": {
+          "x": 16,
+          "y": 168,
+          "width": 370,
+          "height": 52
+        },
+        "type": "Cell",
+        "label": "Add",
+        "index": 8,
+        "parentIndex": 7,
+        "enabled": true,
+        "hittable": true,
+        "depth": 5,
+        "ref": "e9",
+        "kind": "cell"
+      },
+      {
+        "rect": {
+          "x": 16,
+          "y": 168,
+          "width": 370,
+          "height": 52
+        },
+        "type": "Other",
+        "label": "Add",
+        "index": 9,
+        "parentIndex": 8,
+        "enabled": true,
+        "hittable": true,
+        "depth": 6,
+        "ref": "e10",
+        "kind": "other"
+      },
+      {
+        "rect": {
+          "x": 36,
+          "y": 183,
+          "width": 291.3333333333333,
+          "height": 22
+        },
+        "placeholder": "New todo",
+        "type": "TextField",
+        "parentIndex": 9,
+        "index": 10,
+        "enabled": true,
+        "hittable": true,
+        "depth": 7,
+        "password": false,
+        "editable": true,
+        "ref": "e11",
+        "kind": "text-field"
+      },
+      {
+        "rect": {
+          "x": 335.3333333333333,
+          "y": 183.83333333333334,
+          "width": 30.666666666666686,
+          "height": 20.333333333333314
+        },
+        "type": "Button",
+        "label": "Add",
+        "index": 11,
+        "parentIndex": 9,
+        "enabled": false,
+        "hittable": false,
+        "depth": 7,
+        "ref": "e12",
+        "kind": "button"
+      },
+      {
+        "rect": {
+          "x": 16,
+          "y": 237.66666666666669,
+          "width": 370,
+          "height": 40.333333333333314
+        },
+        "type": "Cell",
+        "label": "Items",
+        "index": 12,
+        "parentIndex": 7,
+        "enabled": true,
+        "hittable": true,
+        "depth": 5,
+        "ref": "e13",
+        "kind": "cell"
+      },
+      {
+        "rect": {
+          "x": 16,
+          "y": 237.66666666666669,
+          "width": 370,
+          "height": 40.333333333333314
+        },
+        "type": "Other",
+        "label": "Items",
+        "index": 13,
+        "parentIndex": 12,
+        "enabled": true,
+        "hittable": true,
+        "depth": 6,
+        "ref": "e14",
+        "kind": "other"
+      },
+      {
+        "rect": {
+          "x": 16,
+          "y": 237.66666666666669,
+          "width": 370,
+          "height": 40.333333333333314
+        },
+        "type": "StaticText",
+        "label": "Items",
+        "index": 14,
+        "parentIndex": 13,
+        "enabled": true,
+        "hittable": true,
+        "depth": 7,
+        "ref": "e15",
+        "kind": "text"
+      },
+      {
+        "rect": {
+          "x": 16,
+          "y": 278,
+          "width": 370,
+          "height": 52
+        },
+        "type": "Cell",
+        "label": "Write the PRD",
+        "index": 15,
+        "parentIndex": 7,
+        "enabled": true,
+        "hittable": true,
+        "depth": 5,
+        "ref": "e16",
+        "kind": "cell"
+      },
+      {
+        "rect": {
+          "x": 16,
+          "y": 278,
+          "width": 370,
+          "height": 52
+        },
+        "type": "Other",
+        "label": "Write the PRD",
+        "index": 16,
+        "parentIndex": 15,
+        "enabled": true,
+        "hittable": true,
+        "depth": 6,
+        "ref": "e17",
+        "kind": "other"
+      },
+      {
+        "rect": {
+          "x": 16,
+          "y": 278,
+          "width": 370,
+          "height": 52
+        },
+        "type": "Button",
+        "label": "Write the PRD",
+        "index": 17,
+        "parentIndex": 16,
+        "enabled": true,
+        "hittable": true,
+        "depth": 7,
+        "ref": "e18",
+        "kind": "button"
+      },
+      {
+        "rect": {
+          "x": 16,
+          "y": 330,
+          "width": 370,
+          "height": 52
+        },
+        "type": "Cell",
+        "label": "Build the renderer",
+        "index": 18,
+        "parentIndex": 7,
+        "enabled": true,
+        "hittable": true,
+        "depth": 5,
+        "ref": "e19",
+        "kind": "cell"
+      },
+      {
+        "parentIndex": 18,
+        "label": "Build the renderer",
+        "index": 19,
+        "type": "Other",
+        "rect": {
+          "x": 16,
+          "y": 330,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 6,
+        "hittable": true,
+        "ref": "e20",
+        "kind": "other"
+      },
+      {
+        "parentIndex": 19,
+        "label": "Build the renderer",
+        "index": 20,
+        "type": "Button",
+        "rect": {
+          "x": 16,
+          "y": 330,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 7,
+        "hittable": true,
+        "ref": "e21",
+        "kind": "button"
+      },
+      {
+        "parentIndex": 7,
+        "label": "Ship the SwiftUI subset",
+        "index": 21,
+        "type": "Cell",
+        "rect": {
+          "x": 16,
+          "y": 382,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 5,
+        "hittable": true,
+        "ref": "e22",
+        "kind": "cell"
+      },
+      {
+        "parentIndex": 21,
+        "label": "Ship the SwiftUI subset",
+        "index": 22,
+        "type": "Other",
+        "rect": {
+          "x": 16,
+          "y": 382,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 6,
+        "hittable": true,
+        "ref": "e23",
+        "kind": "other"
+      },
+      {
+        "parentIndex": 22,
+        "label": "Ship the SwiftUI subset",
+        "index": 23,
+        "type": "Button",
+        "rect": {
+          "x": 16,
+          "y": 382,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 7,
+        "hittable": true,
+        "ref": "e24",
+        "kind": "button"
+      },
+      {
+        "parentIndex": 7,
+        "index": 24,
+        "type": "Other",
+        "rect": {
+          "x": 369,
+          "y": 116,
+          "width": 30,
+          "height": 696
+        },
+        "enabled": true,
+        "depth": 5,
+        "value": "0%",
+        "hittable": true,
+        "ref": "e25",
+        "kind": "other",
+        "inheritsLabel": true
+      },
+      {
+        "parentIndex": 2,
+        "label": "Toolbar",
+        "index": 25,
+        "type": "Toolbar",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 3,
+        "identifier": "Toolbar",
+        "hittable": true,
+        "ref": "e26",
+        "kind": "toolbar"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.showcase",
+    "appBundleId": "dev.simcore.showcase",
+    "visibility": {
+      "partial": true,
+      "visibleNodeCount": 26,
+      "totalNodeCount": 26,
+      "reasons": [
+        "scroll-hidden-below"
+      ]
+    },
+    "keyboard": {
+      "kind": "absent"
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "unknown",
+    "snapshotQuality": {
+      "state": "healthy",
+      "backend": "tree",
+      "timing": {
+        "acquisitionMs": 88.43600749969482,
+        "presentationMs": 0.1800060272216797
+      }
+    },
+    "snapshotQualityNotes": [
+      {
+        "code": "regular-geometry-clipped",
+        "clippedNodeCount": 2,
+        "droppedNodeCount": 0
+      }
+    ],
+    "warnings": [
+      "Simulator AX snapshot unavailable (circuit-disabled); used XCTest for this app generation."
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 32,
+        "p50Ms": 101,
+        "p95Ms": 6067,
+        "maxMs": 10693,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 32
+        }
+      }
+    },
+    "refsGeneration": 350501
+  }
+}

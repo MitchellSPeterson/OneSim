@@ -20,6 +20,6 @@ UI matched against the iOS Simulator by pixel diff passes only when **every stat
 
 The fallback allowance is the measured, untunable glyph-shape gap: Inter's widths are fitted to SF and fallback runs up to ~1.3 pt above system mode.
 - Check: `scripts/compare-ios.sh` and `SIMCORE_FALLBACK=1 scripts/compare-ios.sh`. Each exits non-zero on any failing state, and CI runs both.
-- A new UI element needs an iOS reference state in `tests/fixtures/showcase-ios/` (see its README for capture steps) and a matching `shot` line in `scripts/compare-ios.sh`.
+- A new UI element needs an iOS reference state for every supported release, in `tests/fixtures/ios27/showcase-ios/` (iOS 27.2, iPhone 18 Pro) and `tests/fixtures/showcase-ios/` (iOS 26.5, iPhone 17 Pro); see their READMEs for capture steps. Add a matching `shot` line in `scripts/compare-ios.sh`, which renders every state once per release (`SIMCORE_IOS=27.2` limits it to one).
 - Exceptions (maintainer-approved, `STATE_MAX` in `scripts/compare_ios.py`): `typography-scrolled(-dark)` in fallback mode have a temporary < 5% limit (see docs/ios-comparison.md Known gaps); `rn-showcase-ios/text` in system mode has < 2.5% (dense text; layout matches within 1–2 px, the rest is glyph rasterization).
 - Don't raise the threshold or drop a state to make a change pass; fix the rendering. Use `SIMCORE_MAX_DIFF` only to explore locally.

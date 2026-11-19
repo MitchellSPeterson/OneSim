@@ -1,0 +1,207 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "enabled": true,
+        "rect": {
+          "y": 0,
+          "height": 874,
+          "width": 402,
+          "x": 0
+        },
+        "label": "Expo Go",
+        "type": "Application",
+        "depth": 0,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "index": 1,
+        "enabled": true,
+        "rect": {
+          "y": 74,
+          "height": 20.333335876464844,
+          "width": 60,
+          "x": 16
+        },
+        "label": "Back",
+        "type": "Other",
+        "depth": 1,
+        "parentIndex": 0,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "other"
+      },
+      {
+        "index": 2,
+        "enabled": true,
+        "rect": {
+          "y": 73.6666669845581,
+          "height": 20.333335876464844,
+          "width": 49,
+          "x": 337
+        },
+        "label": "Image",
+        "type": "StaticText",
+        "depth": 1,
+        "parentIndex": 0,
+        "hittable": true,
+        "ref": "e3",
+        "kind": "text"
+      },
+      {
+        "index": 3,
+        "enabled": true,
+        "rect": {
+          "y": 73.6666669845581,
+          "height": 20.333335876464844,
+          "width": 49,
+          "x": 337
+        },
+        "label": "Image",
+        "type": "StaticText",
+        "depth": 2,
+        "parentIndex": 2,
+        "hittable": true,
+        "ref": "e4",
+        "kind": "text"
+      },
+      {
+        "index": 4,
+        "enabled": true,
+        "rect": {
+          "y": 106,
+          "height": 768,
+          "width": 402,
+          "x": 0
+        },
+        "type": "ScrollView",
+        "depth": 1,
+        "parentIndex": 0,
+        "hittable": true,
+        "ref": "e5",
+        "kind": "scroll-area"
+      },
+      {
+        "index": 5,
+        "enabled": true,
+        "rect": {
+          "y": 106,
+          "height": 706,
+          "width": 30,
+          "x": 369
+        },
+        "label": "Vertical scroll bar, 1 page",
+        "type": "Other",
+        "value": "0%",
+        "depth": 2,
+        "parentIndex": 4,
+        "hittable": true,
+        "ref": "e6",
+        "kind": "other"
+      },
+      {
+        "index": 6,
+        "enabled": true,
+        "rect": {
+          "y": 841,
+          "height": 30,
+          "width": 278,
+          "x": 62
+        },
+        "label": "Horizontal scroll bar, 1 page",
+        "type": "Other",
+        "value": "0%",
+        "depth": 2,
+        "parentIndex": 4,
+        "hittable": true,
+        "ref": "e7",
+        "kind": "other"
+      },
+      {
+        "index": 7,
+        "enabled": true,
+        "rect": {
+          "y": 106,
+          "height": 706,
+          "width": 30,
+          "x": 369
+        },
+        "label": "Vertical scroll bar, 1 page",
+        "type": "Other",
+        "value": "0%",
+        "depth": 2,
+        "parentIndex": 4,
+        "hittable": true,
+        "ref": "e8",
+        "kind": "other"
+      },
+      {
+        "index": 8,
+        "enabled": true,
+        "rect": {
+          "y": 841,
+          "height": 30,
+          "width": 278,
+          "x": 62
+        },
+        "label": "Horizontal scroll bar, 1 page",
+        "type": "Other",
+        "value": "0%",
+        "depth": 2,
+        "parentIndex": 4,
+        "hittable": true,
+        "ref": "e9",
+        "kind": "other"
+      }
+    ],
+    "truncated": false,
+    "appName": "host.exp.Exponent",
+    "appBundleId": "host.exp.Exponent",
+    "visibility": {
+      "partial": true,
+      "visibleNodeCount": 9,
+      "totalNodeCount": 9,
+      "reasons": [
+        "scroll-hidden-below"
+      ]
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "unknown",
+    "snapshotQuality": {
+      "state": "recovered",
+      "backend": "private-ax",
+      "reason": "XCTest-backed snapshot tiers were deferred after recent slow accessibility work on this screen",
+      "reasonCode": "deferred",
+      "timing": {
+        "acquisitionMs": 312.20102310180664,
+        "presentationMs": 0.25391578674316406
+      }
+    },
+    "warnings": [
+      "Detected an overly complex or slow accessibility tree. Fell back to the private-ax snapshot backend. It is OK to continue; use --json to inspect snapshotQuality.reason if you need recovery details.",
+      "Simulator AX snapshot unavailable (circuit-disabled); used XCTest for this app generation."
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 227,
+        "p50Ms": 117,
+        "p95Ms": 4577,
+        "maxMs": 21868,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 227
+        }
+      },
+      "warning": "Warning: ios snapshots are slow in this run: p95 4295ms over 226 captures. Possible causes: device load, app or dev server stuck, helper fallback, or stale daemon."
+    },
+    "refsGeneration": 350651
+  }
+}

@@ -108,6 +108,46 @@ impl DynamicTypeSize {
     }
 }
 
+/// Simulated iOS release: picks the look the host draws and the OS version the guest reports.
+/// Each is pinned to the Simulator runtime its reference screenshots were captured on
+/// (`docs/compatibility/versions.json`); the newest is the default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize)]
+pub enum IosVersion {
+    #[serde(rename = "26.5", alias = "26")]
+    Ios26,
+    #[default]
+    #[serde(rename = "27.2", alias = "27")]
+    Ios27,
+}
+
+impl IosVersion {
+    pub const ALL: [IosVersion; 2] = [Self::Ios26, Self::Ios27];
+    /// Runtime version, e.g. `27.2`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Ios26 => "26.5",
+            Self::Ios27 => "27.2",
+        }
+    }
+    /// Runtime build, e.g. `24B8117`.
+    pub fn build(self) -> &'static str {
+        match self {
+            Self::Ios26 => "23F77",
+            Self::Ios27 => "24B8117",
+        }
+    }
+    /// Accepts `27.2`, `27`, `ios27`, `iOS 27.2`.
+    pub fn parse(s: &str) -> Option<Self> {
+        let s = s
+            .trim()
+            .trim_start_matches(|c: char| c.is_ascii_alphabetic() || c == ' ');
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|v| v.name() == s || v.name().split('.').next() == Some(s))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Viewport {
     pub width: f64,

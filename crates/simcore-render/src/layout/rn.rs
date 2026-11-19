@@ -7,7 +7,7 @@ use super::swiftui::{add_chrome, rn_nav_bar, rn_nav_height, rn_tab_bar, switch_s
 use crate::scene::{Color, Glyph, ImageRun, Node, Rect, Role, Scene, ScrollInfo, TextRun};
 use crate::text::{FontSpec, Fonts, Span, TextAlign};
 use serde_json::Value;
-use simcore_protocol::{Appearance, ViewKind, ViewNode};
+use simcore_protocol::{Appearance, IosVersion, ViewKind, ViewNode};
 use std::collections::BTreeSet;
 use taffy::prelude::*;
 use taffy::compute_leaf_layout;
@@ -683,11 +683,14 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     super::swiftui::rn_alerts(params, cx.fonts, layers, &mut nodes);
     // RN does not avoid the keyboard: it just covers the bottom of the screen.
     if params.chrome.keyboard && nodes.iter().any(|n| n.field.is_some() && Some(n.id.as_str()) == params.focus) {
-        let kb_h = params.device.kb_base_h + params.device.safe_bottom;
-        crate::chrome::keyboard(&mut nodes, w, h, kb_h, dark, params.chrome.shift, params.device);
-    } else if params.device.safe_bottom > 0.0 && !dark && !nodes.iter().any(|n| n.kind == "tabbar") {
+        let kb_h = crate::look::keyboard_height(params.device, params.ios);
+        crate::chrome::keyboard(&mut nodes, w, h, kb_h, dark, params.chrome.shift, params.device,
+            crate::look::look(params.ios));
+    } else if params.device.safe_bottom > 0.0 && !dark
+        && params.ios < IosVersion::Ios27 && !nodes.iter().any(|n| n.kind == "tabbar") {
         // Home indicator (measured on iOS 26.5: 144 x 4.7 pt, 13 pt above the bottom edge). ponytail: light only,
-        // the dark references show none; it also dims/hides on iOS, which is not modelled.
+        // the dark references show none; it also dims/hides on iOS, which is not modelled. The iOS 27.2 references
+        // (Expo Go 58) show none at all.
         let mut bar = Node::new("home_indicator", "home_indicator");
         bar.bounds = Rect { x: (w - 144.0) / 2.0, y: h - 13.0, w: 144.0, h: 4.7 };
         bar.parent = Some(0);
@@ -700,6 +703,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     Scene {
         size: params.viewport,
         appearance: params.appearance,
+        ios: params.ios,
         nodes,
         unsupported_symbols: vec![],
         notes: cx.notes.into_iter().collect(),
@@ -1146,6 +1150,7 @@ mod tests {
             scale: 3.0,
             appearance: Appearance::Light,
             dynamic_type: Default::default(),
+            ios: Default::default(),
             scroll: &scroll,
             focus: None,
             overscroll: false,
@@ -1196,6 +1201,7 @@ mod tests {
         let scroll = HashMap::new();
         let params = SceneParams {
             viewport: (402.0, 874.0), device: dev, scale: 3.0, appearance: Appearance::Light, dynamic_type: Default::default(),
+            ios: Default::default(),
             scroll: &scroll, focus: Some("2"), overscroll: false, status_bar: true, chrome: crate::ChromeParams { keyboard: true, shift: false }, sheets: &HashMap::new(),
         };
         let scene = build_scene(&tree, &params, &mut Fonts::new());
@@ -1236,6 +1242,7 @@ mod tests {
         let scroll = HashMap::new();
         let params = SceneParams {
             viewport: (402.0, 874.0), device: dev, scale: 3.0, appearance: Appearance::Light, dynamic_type: Default::default(),
+            ios: Default::default(),
             scroll: &scroll, focus: None, overscroll: false, status_bar: true, chrome: crate::ChromeParams { keyboard: false, shift: false }, sheets: &HashMap::new(),
         };
         let scene = build_scene(&tree, &params, &mut Fonts::new());
@@ -1275,6 +1282,7 @@ mod tests {
         let scroll = HashMap::new();
         let params = SceneParams {
             viewport: (402.0, 874.0), device: dev, scale: 3.0, appearance: Appearance::Light, dynamic_type: Default::default(),
+            ios: Default::default(),
             scroll: &scroll, focus: None, overscroll: false, status_bar: true, chrome: Default::default(), sheets: &HashMap::new(),
         };
         let scene = build_scene(&tree, &params, &mut Fonts::new());

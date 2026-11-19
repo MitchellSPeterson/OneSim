@@ -1,6 +1,6 @@
 //! External API (client <-> host) request/response types.
 
-use crate::wire::{Appearance, DynamicTypeSize, Viewport};
+use crate::wire::{Appearance, DynamicTypeSize, IosVersion, Viewport};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -87,9 +87,12 @@ pub struct CreateSessionParams {
     /// Dynamic Type size (default `large`).
     #[serde(default, alias = "dynamicTypeSize")]
     pub dynamic_type_size: Option<DynamicTypeSize>,
-    /// Device profile name (default `iphone-17-pro`).
+    /// Device profile name (default `iphone-18-pro`).
     #[serde(default)]
     pub device: Option<String>,
+    /// Simulated iOS release (`"26.5"` or `"27.2"`, default the newest).
+    #[serde(default, alias = "osVersion")]
+    pub os_version: Option<IosVersion>,
     /// Test hook: skip the Swift build and spawn `app_path` directly.
     #[serde(default)]
     pub prebuilt: bool,

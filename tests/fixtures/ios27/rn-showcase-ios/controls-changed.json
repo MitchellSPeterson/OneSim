@@ -1,0 +1,300 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "type": "Application",
+        "role": "UIApplication",
+        "label": "Expo Go",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 0,
+        "pid": 7247,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "index": 1,
+        "parentIndex": 0,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Back",
+        "rect": {
+          "x": 16,
+          "y": 74,
+          "width": 60,
+          "height": 20.333335876464844
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 7247,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "other"
+      },
+      {
+        "index": 2,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Controls",
+        "rect": {
+          "x": 318,
+          "y": 73.6666669845581,
+          "width": 68,
+          "height": 20.333335876464844
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 7247,
+        "hittable": true,
+        "ref": "e3",
+        "kind": "text"
+      },
+      {
+        "index": 3,
+        "parentIndex": 2,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Controls",
+        "rect": {
+          "x": 318,
+          "y": 73.6666669845581,
+          "width": 68,
+          "height": 20.333335876464844
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 7247,
+        "hittable": true,
+        "ref": "e4",
+        "kind": "text"
+      },
+      {
+        "index": 4,
+        "parentIndex": 0,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Count",
+        "rect": {
+          "x": 16,
+          "y": 122,
+          "width": 370,
+          "height": 49.66667175292969
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 7247,
+        "hittable": true,
+        "ref": "e5",
+        "kind": "other"
+      },
+      {
+        "index": 5,
+        "parentIndex": 0,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Increment",
+        "rect": {
+          "x": 16,
+          "y": 171.66666412353516,
+          "width": 129,
+          "height": 44.33332824707031
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 7247,
+        "hittable": true,
+        "ref": "e6",
+        "kind": "other"
+      },
+      {
+        "index": 6,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Alpha",
+        "rect": {
+          "x": 16,
+          "y": 239.66666674613953,
+          "width": 43.66666793823242,
+          "height": 20.333328247070312
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 7247,
+        "hittable": true,
+        "ref": "e7",
+        "kind": "text"
+      },
+      {
+        "index": 7,
+        "parentIndex": 6,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Alpha",
+        "rect": {
+          "x": 16,
+          "y": 239.66666674613953,
+          "width": 43.66666793823242,
+          "height": 20.333328247070312
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 7247,
+        "hittable": true,
+        "ref": "e8",
+        "kind": "text"
+      },
+      {
+        "index": 8,
+        "parentIndex": 0,
+        "type": "Switch",
+        "role": "UISwitch",
+        "label": "Alpha",
+        "value": "0",
+        "rect": {
+          "x": 323,
+          "y": 236,
+          "width": 63,
+          "height": 28
+        },
+        "enabled": true,
+        "depth": 1,
+        "checked": false,
+        "pid": 7247,
+        "hittable": true,
+        "ref": "e9",
+        "kind": "switch"
+      },
+      {
+        "index": 9,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Beta",
+        "rect": {
+          "x": 16,
+          "y": 287.6666667461395,
+          "width": 35,
+          "height": 20.333343505859375
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 7247,
+        "hittable": true,
+        "ref": "e10",
+        "kind": "text"
+      },
+      {
+        "index": 10,
+        "parentIndex": 9,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Beta",
+        "rect": {
+          "x": 16,
+          "y": 287.6666667461395,
+          "width": 35,
+          "height": 20.333343505859375
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 7247,
+        "hittable": true,
+        "ref": "e11",
+        "kind": "text"
+      },
+      {
+        "index": 11,
+        "parentIndex": 0,
+        "type": "Switch",
+        "role": "UISwitch",
+        "label": "Beta",
+        "value": "0",
+        "rect": {
+          "x": 323,
+          "y": 284,
+          "width": 63,
+          "height": 28
+        },
+        "enabled": true,
+        "depth": 1,
+        "checked": false,
+        "pid": 7247,
+        "hittable": true,
+        "ref": "e12",
+        "kind": "switch"
+      },
+      {
+        "index": 12,
+        "parentIndex": 0,
+        "type": "TextField",
+        "role": "RCTUITextField",
+        "subrole": "UITextField",
+        "label": "Type here",
+        "value": "Type here",
+        "placeholder": "Type here",
+        "rect": {
+          "x": 17,
+          "y": 337,
+          "width": 368,
+          "height": 42
+        },
+        "enabled": true,
+        "depth": 1,
+        "password": false,
+        "editable": true,
+        "pid": 7247,
+        "hittable": true,
+        "ref": "e13",
+        "kind": "text-field"
+      }
+    ],
+    "truncated": false,
+    "appName": "host.exp.Exponent",
+    "appBundleId": "host.exp.Exponent",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 13,
+      "totalNodeCount": 13,
+      "reasons": []
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "absent",
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 215,
+        "p50Ms": 114,
+        "p95Ms": 3880,
+        "maxMs": 21868,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 215
+        }
+      },
+      "warning": "Warning: ios snapshots are slow in this run: p95 3657ms over 214 captures. Possible causes: device load, app or dev server stuck, helper fallback, or stale daemon."
+    },
+    "refsGeneration": 350643
+  }
+}

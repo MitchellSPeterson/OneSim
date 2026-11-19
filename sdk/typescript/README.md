@@ -7,7 +7,7 @@ Needs a global `WebSocket` (Node >= 22 or a browser). No build step: Node 22.18+
 import { SimCoreClient } from "@simcore/sdk";
 
 const simcore = new SimCoreClient({ url: "http://localhost:3030" }); // http(s):// is mapped to ws(s)://
-const session = await simcore.createSession({ framework: "expo", device: "iPhone 17 Pro", metroUrl: "http://localhost:8081" });
+const session = await simcore.createSession({ framework: "expo", device: "iPhone 18 Pro", metroUrl: "http://localhost:8081" });
 await session.tap({ label: "Increment" });
 const { png } = await session.screenshot();           // Uint8Array
 session.on("navigation.changed", (e) => console.log(e.data.route));

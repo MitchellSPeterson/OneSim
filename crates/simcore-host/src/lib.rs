@@ -141,7 +141,7 @@ impl Host {
         Ok(json!({
             "session_id": s.id, "state": s.state().as_str(), "framework": s.params.framework,
             "platform": s.params.platform, "app_path": s.params.app_path, "viewport": s.viewport,
-            "device": s.device.name, "safe_area": {"top": s.device.safe_top, "bottom": s.device.safe_bottom},
+            "device": s.device.name, "os_version": s.ios.name(), "safe_area": {"top": s.device.safe_top, "bottom": s.device.safe_bottom},
             "focus": s.inter.focus, "island": s.device.island.map(|(x, y, w, h)| json!({"x": x, "y": y, "width": w, "height": h})),
             "scale": s.scale, "appearance": s.appearance, "tree_version": s.tree().map(|t| t.0),
         }))
@@ -248,6 +248,7 @@ impl Host {
             scale: s.scale,
             appearance: s.appearance,
             dynamic_type: s.dynamic_type,
+            ios: s.ios,
             scroll: &s.inter.scroll,
             sheets: &s.inter.sheets,
             focus: s.inter.focus.as_deref(),

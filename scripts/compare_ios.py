@@ -11,10 +11,13 @@ from pathlib import Path
 from PIL import Image, ImageChops, ImageDraw
 
 FALLBACK = os.environ.get("SIMCORE_FALLBACK") == "1"
-IOS_RUNTIME = json.load(open(Path(__file__).parent.parent / "docs/compatibility/versions.json"))["ios"]["runtime"]
+ROOT = Path(__file__).resolve().parent.parent
+# Runtime the references were captured on: set by compare-ios.sh, else the newest pinned one.
+IOS_RUNTIME = os.environ.get("SIMCORE_COMPARE_IOS") or json.load(open(ROOT / "docs/compatibility/versions.json"))["ios"]["runtimes"][0]["runtime"]
 MAX_DIFF = float(os.environ.get("SIMCORE_MAX_DIFF", "3.5" if FALLBACK else "2.0"))
 ios_dir, sc_dir, out = map(Path, sys.argv[1:4])
-# Maintainer-approved per-state limits, keyed "<fixture dir>/<state>". Keep this list short and justified.
+# Maintainer-approved per-state limits, keyed "<fixture dir>/<state>" (the dir name, so a state keeps its limit in
+# every iOS release's reference set: tests/fixtures/showcase-ios and tests/fixtures/ios27/showcase-ios alike). Keep this list short and justified.
 # - typography-scrolled(-dark), fallback only (temporary): Inter at AX5 sizes bottoms out at ~4.9% without
 #   SF kerning tables (docs/ios-comparison.md, Known gaps). Remove once that gap is closed.
 # - rn-showcase-ios/text, system fonts only: 19 dense lines; positions match within 1-2 px, the rest is

@@ -42,13 +42,13 @@ stream. Ids are strings (`"s1"`).
 
 | method | params | result |
 |---|---|---|
-| `session.create` | `{"framework":"expo"\|"react-native"\|"swiftui","device"?:"iPhone 17 Pro"\|"iphone-17-pro","appearance"?,"dynamicTypeSize"?,"metroUrl"?,"appPath"?,"rootView"?,"viewport"?:{width,height},"scale"?,"load"?:false}` | `{"sessionId","status":"created"}`; with `"load": true` it also loads (like `runtime.load`) and returns `"status":"running"` |
+| `session.create` | `{"framework":"expo"\|"react-native"\|"swiftui","device"?:"iPhone 18 Pro"\|"iphone-18-pro","osVersion"?:"27.2"\|"26.5","appearance"?,"dynamicTypeSize"?,"metroUrl"?,"appPath"?,"rootView"?,"viewport"?:{width,height},"scale"?,"load"?:false}` | `{"sessionId","status":"created"}`; with `"load": true` it also loads (like `runtime.load`) and returns `"status":"running"` |
 | `session.list` | – | `{"sessions":[SessionInfo]}` |
 | `session.get` | `{"sessionId"}` | `SessionInfo` |
 | `session.destroy` | `{"sessionId"}` | `{}` (stops if running, frees the id) |
 
 `SessionInfo`: `{"sessionId","framework","platform","device","viewport":{width,height},"scale","appearance","status","treeVersion","metroUrl"?,"appPath"?}`.
-Device names accept the display name (`"iPhone 17 Pro"`) or the profile slug (`"iphone-17-pro"`).
+Device names accept the display name (`"iPhone 18 Pro"`) or the profile slug (`"iphone-18-pro"`); the default is the iPhone 18 Pro. `osVersion` picks the simulated iOS release (look of the renderer, version the guest reports): `"27.2"` (default) or `"26.5"`; `session.get` reports it.
 
 ## Runtime lifecycle
 

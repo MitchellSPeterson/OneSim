@@ -1,0 +1,214 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "type": "Application",
+        "role": "UIApplication",
+        "label": "Expo Go",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 0,
+        "pid": 32665,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "index": 1,
+        "parentIndex": 0,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Showcase",
+        "rect": {
+          "x": 0,
+          "y": 62,
+          "width": 402,
+          "height": 56.666664123535156
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 32665,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "other"
+      },
+      {
+        "index": 2,
+        "parentIndex": 0,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Layout",
+        "rect": {
+          "x": 16,
+          "y": 118.66666793823242,
+          "width": 370,
+          "height": 52.00000762939453
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 32665,
+        "hittable": true,
+        "ref": "e3",
+        "kind": "other"
+      },
+      {
+        "index": 3,
+        "parentIndex": 0,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Text",
+        "rect": {
+          "x": 16,
+          "y": 170.66666412353516,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 32665,
+        "hittable": true,
+        "ref": "e4",
+        "kind": "other"
+      },
+      {
+        "index": 4,
+        "parentIndex": 0,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Controls",
+        "rect": {
+          "x": 16,
+          "y": 222.6666717529297,
+          "width": 370,
+          "height": 51.99998474121094
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 32665,
+        "hittable": true,
+        "ref": "e5",
+        "kind": "other"
+      },
+      {
+        "index": 5,
+        "parentIndex": 0,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Scroll",
+        "rect": {
+          "x": 16,
+          "y": 274.6666717529297,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 32665,
+        "hittable": true,
+        "ref": "e6",
+        "kind": "other"
+      },
+      {
+        "index": 6,
+        "parentIndex": 0,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Image",
+        "rect": {
+          "x": 16,
+          "y": 326.6666564941406,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 32665,
+        "hittable": true,
+        "ref": "e7",
+        "kind": "other"
+      },
+      {
+        "index": 7,
+        "parentIndex": 0,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Visuals",
+        "rect": {
+          "x": 16,
+          "y": 378.6666564941406,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 32665,
+        "hittable": true,
+        "ref": "e8",
+        "kind": "other"
+      },
+      {
+        "index": 8,
+        "parentIndex": 0,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Refresh",
+        "rect": {
+          "x": 16,
+          "y": 430.6666564941406,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 32665,
+        "hittable": true,
+        "ref": "e9",
+        "kind": "other"
+      }
+    ],
+    "truncated": false,
+    "appName": "host.exp.Exponent",
+    "appBundleId": "host.exp.Exponent",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 9,
+      "totalNodeCount": 9,
+      "reasons": []
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "absent",
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 244,
+        "p50Ms": 119,
+        "p95Ms": 4577,
+        "maxMs": 21868,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 244
+        }
+      },
+      "warning": "Warning: ios snapshots are slow in this run: p95 4295ms over 243 captures. Possible causes: device load, app or dev server stuck, helper fallback, or stale daemon."
+    },
+    "refsGeneration": 350661
+  }
+}

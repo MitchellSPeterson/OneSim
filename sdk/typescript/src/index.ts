@@ -14,6 +14,8 @@ export interface CreateSessionOptions {
   device?: string;
   appearance?: Appearance;
   dynamicTypeSize?: string;
+  /** Simulated iOS release: "27.2" (default) or "26.5". */
+  osVersion?: string;
   metroUrl?: string;
   appPath?: string;
   rootView?: string;
