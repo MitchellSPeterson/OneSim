@@ -72,6 +72,13 @@ impl Host {
         Self { sessions: HashMap::new(), next_id: 1, fonts: None, greeted: false }
     }
 
+    /// React Native live mode for the calls that follow (`Session::settle`); restore `true` afterwards.
+    pub fn set_settle(&mut self, id: &str, on: bool) {
+        if let Some(s) = self.sessions.get_mut(id) {
+            s.settle = on;
+        }
+    }
+
     pub(crate) fn get(&mut self, id: &str) -> Result<&mut Session, ApiError> {
         self.sessions.get_mut(id).ok_or_else(|| err(ErrorCode::NotFound, format!("unknown session {id}")))
     }
@@ -186,16 +193,23 @@ impl Host {
         if !self.get(id)?.is_rn() || self.get(id)?.state() == State::Paused {
             return self.build(id);
         }
+        let settle = self.get(id)?.settle;
         let (start, deadline) = (Instant::now(), Instant::now() + SETTLE_MAX.max(anim));
         loop {
-            self.get(id)?.wait_quiet(QUIET, anim);
+            if settle {
+                self.get(id)?.wait_quiet(QUIET, anim);
+            }
             let generation = self.get(id)?.generation();
             let out = self.build(id)?;
             let acted = self.rn_apply_requests(id, &out.0);
             let s = self.get(id)?;
             let sent = s.sync_layout(&out.0);
             let animating = !acted && !sent && start.elapsed() >= anim;
-            if (!acted && !sent && s.generation() == generation) || animating || Instant::now() > deadline {
+            let done = !acted && !sent && s.generation() == generation;
+            // Live: no waiting, but a host-side change (`scroll_to`, focus) still needs one rebuild,
+            // since the guest may never send a tree for it.
+            let live_done = !settle && !acted;
+            if done || animating || live_done || Instant::now() > deadline {
                 return Ok(out);
             }
         }

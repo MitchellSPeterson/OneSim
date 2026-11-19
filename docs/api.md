@@ -69,6 +69,12 @@ Targets are points `{"x","y"}` or a semantic selector `{"element": "<UiNode id>"
 `{"label": "<accessibility label>"}` (same resolution as the CLI `--click LABEL`). Every input
 call returns after the app has settled (same rule as v1 `send_pointer_event`).
 
+Live viewers: `input.tap`, `input.press`, `input.scroll`, `render.screenshot` and `render.frame` accept
+`"settle": false`. React Native then skips every wait for the guest (the next tree, the quiet window:
+150 ms to 2 s per call): touches return once sent, snapshots take one layout pass. Trees the guest
+commits afterwards arrive as `render.updated`; fetch another frame then.
+SwiftUI never waits, so the flag changes nothing there. Keep the default for deterministic screenshots.
+
 | method | params | result |
 |---|---|---|
 | `input.tap` | target | `{"hit": <id or null>}` |

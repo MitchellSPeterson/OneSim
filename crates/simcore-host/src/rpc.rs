@@ -85,6 +85,7 @@ struct P {
     element: Option<String>,
     label: Option<String>,
     duration_ms: Option<u64>,
+    settle: Option<bool>,
     dx: Option<f64>,
     dy: Option<f64>,
     text: Option<String>,
@@ -458,22 +459,27 @@ fn session_call(srv: &Server, en: &Arc<Entry>, method: &str, a: P) -> R {
             Ok(json!({"status": s.state().as_str(), "treeVersion": s.tree_version().unwrap_or(0), "errors": errors}))
         }),
         "input.tap" | "input.press" | "input.scroll" => en.with(|h| {
-            h.get(sid)?.require_running()?;
-            let (x, y) = target(h, sid, &a)?;
-            let hit = match method {
-                "input.tap" => h.pointer(sid, PointerEvent::new(PointerKind::Click, x, y))?.0,
-                "input.press" => {
-                    h.pointer(sid, PointerEvent::new(PointerKind::Down, x, y))?;
-                    std::thread::sleep(Duration::from_millis(a.duration_ms.unwrap_or(500).min(60_000)));
-                    h.pointer(sid, PointerEvent::new(PointerKind::Up, x, y))?.0
-                }
-                _ => {
-                    let ev = PointerEvent { kind: PointerKind::Scroll, x, y, dx: a.dx.unwrap_or(0.0), dy: a.dy.unwrap_or(0.0) };
-                    h.pointer(sid, ev)?;
-                    return Ok(json!({}));
-                }
-            };
-            Ok(json!({"hit": hit}))
+            h.set_settle(sid, a.settle != Some(false));
+            let r = (|| {
+                h.get(sid)?.require_running()?;
+                let (x, y) = target(h, sid, &a)?;
+                let hit = match method {
+                    "input.tap" => h.pointer(sid, PointerEvent::new(PointerKind::Click, x, y))?.0,
+                    "input.press" => {
+                        h.pointer(sid, PointerEvent::new(PointerKind::Down, x, y))?;
+                        std::thread::sleep(Duration::from_millis(a.duration_ms.unwrap_or(500).min(60_000)));
+                        h.pointer(sid, PointerEvent::new(PointerKind::Up, x, y))?.0
+                    }
+                    _ => {
+                        let ev = PointerEvent { kind: PointerKind::Scroll, x, y, dx: a.dx.unwrap_or(0.0), dy: a.dy.unwrap_or(0.0) };
+                        h.pointer(sid, ev)?;
+                        return Ok(json!({}));
+                    }
+                };
+                Ok(json!({"hit": hit}))
+            })();
+            h.set_settle(sid, true);
+            r
         }),
         "input.swipe" => {
             let (Some(f), Some(t)) = (&a.from, &a.to) else { return Err(bad("from and to ({x,y}) required")) };
@@ -493,11 +499,13 @@ fn session_call(srv: &Server, en: &Arc<Entry>, method: &str, a: P) -> R {
                 return Err(e(-32000, "unsupported", "screenshot format must be \"png\""));
             }
             let frame = method == "render.frame";
-            let (w, h_, png, v) = if frame {
-                en.with(|h| h.screenshot_sized(sid, None, None, None))?
-            } else {
-                en.with(|h| h.screenshot_sized(sid, a.scale, a.width, a.height))?
-            };
+            let (scale, width, height) = if frame { (None, None, None) } else { (a.scale, a.width, a.height) };
+            let (w, h_, png, v) = en.with(|h| {
+                h.set_settle(sid, a.settle != Some(false));
+                let r = h.screenshot_sized(sid, scale, width, height);
+                h.set_settle(sid, true);
+                r
+            })?;
             Ok(if frame {
                 json!({"treeVersion": v, "width": w, "height": h_, "data": b64(png)})
             } else {
