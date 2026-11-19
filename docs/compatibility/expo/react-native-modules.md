@@ -24,7 +24,7 @@ Part of [Expo / React Native API coverage](README.md): status legend, summary an
 | Alert | react-native | `AlertManager` | 🟠 | ⬜ | [#7](https://github.com/MitchellSPeterson/SimCore/issues/7) | `Alert.alert` drawn as the iOS 26 alert (SwiftUI `.alert` rendering), button roles, taps run `onPress`; `Alert.prompt` unsupported |
 | ActionSheetIOS | react-native | `ActionSheetManager` | ⛔ | — | | |
 | Share | react-native | `ShareModule` | ⛔ | ⬜ | | |
-| Vibration | react-native | `Vibration` | ⛔ | ⬜ | | |
+| Vibration | react-native | `Vibration` | 🟡 | ⬜ | | Calls emit `module.called`; no haptic output |
 | PushNotificationIOS | react-native | `PushNotificationManager` | ⛔ | — | | |
 | Image store / editor | react-native | `ImageStoreManager` `ImageEditor` | ⛔ | ⬜ | | |
 | Accessibility settings writes | react-native | `AccessibilityManager` | ⛔ | — | | |

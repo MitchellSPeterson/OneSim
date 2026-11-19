@@ -44,18 +44,28 @@ fn clip_mask(mask: Option<&Mask>, path: &Path, xf: Transform, pw: u32, ph: u32) 
 fn draw_gradient(pm: &mut Pixmap, n: &crate::scene::Node, g: &crate::scene::Gradient, s: f32, mask: Option<&Mask>) {
     let b = n.bounds;
     let Some(path) = rrect(b.x as f32, b.y as f32, b.w as f32, b.h as f32, n.radius as f32) else { return };
-    let a = g.angle.to_radians();
-    let (dx, dy) = (a.sin(), -a.cos());
-    let (cx, cy) = ((b.x + b.w / 2.0) as f32, (b.y + b.h / 2.0) as f32);
-    let half = (b.w as f32 * dx.abs() + b.h as f32 * dy.abs()) / 2.0;
     let k = g.stops.len().saturating_sub(1).max(1) as f32;
     let stops: Vec<tiny_skia::GradientStop> = g
         .stops
         .iter()
         .enumerate()
-        .map(|(i, c)| tiny_skia::GradientStop::new(i as f32 / k, tiny_skia::Color::from_rgba(c.r, c.g, c.b, c.a * n.opacity).unwrap_or(tiny_skia::Color::BLACK)))
+        .map(|(i, c)| {
+            let at = g.locations.as_ref().and_then(|l| l.get(i)).copied().unwrap_or(i as f32 / k);
+            tiny_skia::GradientStop::new(at, tiny_skia::Color::from_rgba(c.r, c.g, c.b, c.a * n.opacity).unwrap_or(tiny_skia::Color::BLACK))
+        })
         .collect();
-    let Some(sh) = tiny_skia::LinearGradient::new((cx - dx * half, cy - dy * half).into(), (cx + dx * half, cy + dy * half).into(), stops, tiny_skia::SpreadMode::Pad, Transform::identity()) else { return };
+    let (from, to) = if let Some([x0, y0, x1, y1]) = g.points {
+        // Unit-box points placed on the bounds; isolines stay perpendicular on screen (CAGradientLayer, measured on iOS 26.5).
+        let at = |u: f32, v: f32| (b.x as f32 + u * b.w as f32, b.y as f32 + v * b.h as f32);
+        (at(x0, y0), at(x1, y1))
+    } else {
+        let a = g.angle.to_radians();
+        let (dx, dy) = (a.sin(), -a.cos());
+        let (cx, cy) = ((b.x + b.w / 2.0) as f32, (b.y + b.h / 2.0) as f32);
+        let half = (b.w as f32 * dx.abs() + b.h as f32 * dy.abs()) / 2.0;
+        ((cx - dx * half, cy - dy * half), (cx + dx * half, cy + dy * half))
+    };
+    let Some(sh) = tiny_skia::LinearGradient::new(from.into(), to.into(), stops, tiny_skia::SpreadMode::Pad, Transform::identity()) else { return };
     let p = Paint { shader: sh, ..Paint::default() };
     pm.fill_path(&path, &p, FillRule::Winding, Transform::from_scale(s, s), mask);
 }
@@ -98,6 +108,8 @@ fn stroke_pts(pm: &mut Pixmap, pts: &[(f32, f32)], c: Color, w: f32, xf: Transfo
 
 /// Spinner spokes as fractions of the box: inner radius, outer radius, width; alpha lost across the 8 spokes.
 const SPINNER_SPOKE: (f32, f32, f32) = (0.24, 0.44, 0.115);
+/// Large style (UIActivityIndicatorView `.large`, 33 pt box; measured on iOS 26.5).
+const SPINNER_SPOKE_LARGE: (f32, f32, f32) = (0.242, 0.455, 0.142);
 const SPINNER_FADE: f32 = 0.85;
 
 /// Icons drawn inside `(x, y, w, h)` (points).
@@ -197,15 +209,16 @@ fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: 
                 pm.fill_path(&p, &paint(c, 1.0), FillRule::Winding, xf, mask);
             }
         }
-        Glyph::Spinner => {
+        Glyph::Spinner | Glyph::SpinnerLarge => {
             // 8 rounded spokes, the leading one opaque, the rest fading (the indicator at rest).
             let s = w.min(h);
+            let k = if g == Glyph::Spinner { SPINNER_SPOKE } else { SPINNER_SPOKE_LARGE };
             for i in 0..8 {
                 let a = (i as f32 * 45.0).to_radians();
                 let (dx, dy) = (a.sin(), -a.cos());
-                let (r0, r1) = (SPINNER_SPOKE.0 * s, SPINNER_SPOKE.1 * s);
+                let (r0, r1) = (k.0 * s, k.1 * s);
                 let alpha = 1.0 - (i as f32 / 8.0) * SPINNER_FADE;
-                stroke_pts(pm, &[(cx + dx * r0, cy + dy * r0), (cx + dx * r1, cy + dy * r1)], Color { a: c.a * alpha, ..c }, SPINNER_SPOKE.2 * s, xf, mask);
+                stroke_pts(pm, &[(cx + dx * r0, cy + dy * r0), (cx + dx * r1, cy + dy * r1)], Color { a: c.a * alpha, ..c }, k.2 * s, xf, mask);
             }
         }
         Glyph::Battery => {

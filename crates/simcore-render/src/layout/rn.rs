@@ -4,7 +4,7 @@
 //! hit test returns the deepest tag under a point (`action` stays for real native actions: nav back, tabs). Content starts at y=0 (RN handles safe areas).
 
 use super::swiftui::{add_chrome, rn_nav_bar, rn_nav_height, rn_tab_bar, switch_style, NavBack, SceneParams, TabBar, TabBarItem, KNOB, SWITCH, TAB_BAR_INSET};
-use crate::scene::{Color, ImageRun, Node, Rect, Role, Scene, ScrollInfo, TextRun};
+use crate::scene::{Color, Glyph, ImageRun, Node, Rect, Role, Scene, ScrollInfo, TextRun};
 use crate::text::{FontSpec, Fonts, Span, TextAlign};
 use serde_json::Value;
 use simcore_protocol::{Appearance, ViewKind, ViewNode};
@@ -208,6 +208,8 @@ struct Cx<'a, 'f> {
     parent_row: bool,
     /// Tallest `lineHeight` of a nested span of the paragraph being collected.
     span_lh: f32,
+    /// Core `SafeAreaView`s: padded by the part of the safe-area insets they overlap (after a first layout pass).
+    safe: Vec<NodeId>,
 }
 
 #[derive(Clone, Copy)]
@@ -477,7 +479,8 @@ impl<'a> Cx<'a, '_> {
             "RootView" | "RCTView" | "RCTScrollView" | "RCTScrollContentView" | "RCTImageView" | "RCTText" | "RCTSwitch"
             | "RCTModalHostView" | "RNSScreenStack" | "RNSScreen" | "RNSScreenContentWrapper" | "RNSTabsHostIOS"
             | "RNSTabsScreenIOS" | "RNCSafeAreaProvider" | "RNCSafeAreaView" | "RNSSafeAreaView"
-            | "ViewManagerAdapter_ExpoImage" | "ViewManagerAdapter_SymbolModule" | "RNGestureHandlerButton" | "RNGestureHandlerRootView" => {}
+            | "ViewManagerAdapter_ExpoImage" | "ViewManagerAdapter_SymbolModule" | "RNGestureHandlerButton" | "RNGestureHandlerRootView"
+            | "ActivityIndicatorView" | "PullToRefreshView" | "SafeAreaView" | "ViewManagerAdapter_ExpoLinearGradient" | "ViewManagerAdapter_ExpoBlur_ExpoBlurView" => {}
             // Drawn by the host from the screen's header props.
             "RNSScreenStackHeaderConfig" | "RNSScreenStackHeaderSubview" => return None,
             c if c.starts_with("ViewManagerAdapter_ExpoGlassEffect_") => {}
@@ -497,6 +500,11 @@ impl<'a> Cx<'a, '_> {
         }
         if matches!(component.as_str(), "RNCSafeAreaView" | "RNSSafeAreaView") {
             self.safe_padding(props, &mut st);
+        }
+        // iOS puts the refresh control above the content (drawn by the scroll view), outside the content flow.
+        if component == "PullToRefreshView" {
+            st.position = Position::Absolute;
+            st.size = taffy::Size { width: percent(1.0), height: length(0.0) };
         }
         if component == "RCTText" {
             let t = self.text(node, props);
@@ -566,6 +574,9 @@ impl<'a> Cx<'a, '_> {
         (self.insets, self.parent_row) = (saved_insets, saved_row);
         let ids: Vec<NodeId> = kids.iter().map(|k| k.id).collect();
         let id = self.tree.new_with_children(st, &ids).ok()?;
+        if component == "SafeAreaView" {
+            self.safe.push(id);
+        }
         let mut item = Item::new(node, props, id, kids);
         (item.header, item.tabs) = (header, tabs);
         if component == "RCTModalHostView" {
@@ -577,8 +588,37 @@ impl<'a> Cx<'a, '_> {
         Some(item)
     }
 
-    /// Lay out the subtree at `id` as a root of `w` x `h` points.
+    /// Lay out the subtree at `id` as a root of `w` x `h` points. Core `SafeAreaView`s then get the part of the
+    /// insets they overlap as padding (replacing their own, like RN's SafeAreaView shadow node) and it is laid out again.
     fn compute(&mut self, id: NodeId, w: f64, h: f64) {
+        self.compute_pass(id, w, h);
+        let mut again = false;
+        for s in self.safe.clone() {
+            let (mut y, mut n) = (0.0, s);
+            loop {
+                y += self.tree.layout(n).map_or(0.0, |l| l.location.y as f64);
+                match self.tree.parent(n) {
+                    Some(p) => n = p,
+                    None => break,
+                }
+            }
+            if n != id {
+                continue;
+            }
+            // ponytail: ancestors' scroll offsets are ignored (a SafeAreaView inside a scrolled ScrollView pads as if unscrolled).
+            let sh = self.tree.layout(s).map_or(0.0, |l| l.size.height as f64);
+            let (top, bottom) = ((self.insets.0 - y).clamp(0.0, self.insets.0), (y + sh - (h - self.insets.1)).clamp(0.0, self.insets.1));
+            let mut st = self.tree.style(s).cloned().unwrap_or_default();
+            st.padding = taffy::Rect { left: length(0.0), right: length(0.0), top: length(top as f32), bottom: length(bottom as f32) };
+            let _ = self.tree.set_style(s, st);
+            again = true;
+        }
+        if again {
+            self.compute_pass(id, w, h);
+        }
+    }
+
+    fn compute_pass(&mut self, id: NodeId, w: f64, h: f64) {
         let mut st = self.tree.style(id).cloned().unwrap_or_default();
         st.size = taffy::Size { width: length(w as f32), height: length(h as f32) };
         st.position = Position::Relative;
@@ -620,7 +660,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     };
     let (w, h) = params.viewport;
     let dark = params.appearance == Appearance::Dark;
-    let mut cx = Cx { tree: TaffyTree::new(), notes: BTreeSet::new(), scale: params.scale.max(1.0), dark, fonts, modals: vec![], insets: insets(h), inset_top: 0.0, rot: 0.0, stack: None, parent_row: false, span_lh: 0.0 };
+    let mut cx = Cx { tree: TaffyTree::new(), notes: BTreeSet::new(), scale: params.scale.max(1.0), dark, fonts, modals: vec![], insets: insets(h), inset_top: 0.0, rot: 0.0, stack: None, parent_row: false, span_lh: 0.0, safe: vec![] };
     cx.tree.disable_rounding();
     let bg = if dark { 0.0 } else { 1.0 };
     let mut screen = Node::new("root", "screen");
@@ -714,11 +754,13 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
     if component == "RCTScrollView" {
         n.kind = "scroll";
         let vertical = p.get("horizontal").and_then(Value::as_bool) != Some(true);
-        let content = it.kids.first().and_then(|k| cx.tree.layout(k.id).ok()).map_or((0.0, 0.0), |c| (c.size.width as f64, c.size.height as f64));
+        let content = it.kids.iter().find(|k| rn_component(k.node) != "PullToRefreshView").and_then(|k| cx.tree.layout(k.id).ok()).map_or((0.0, 0.0), |c| (c.size.width as f64, c.size.height as f64));
+        // A refreshing `RefreshControl` keeps its band open above the content (UIRefreshControl's extra top inset).
+        let refreshing = it.kids.iter().any(|k| rn_component(k.node) == "PullToRefreshView" && k.props.get("refreshing").and_then(Value::as_bool) == Some(true));
         // Content inset: an explicit `contentInset`, or the header/status area for `automatic` adjustment under a stack header.
         let ci = |k: &str| p.get("contentInset").and_then(|i| num(i, k));
         let auto = p.get("contentInsetAdjustmentBehavior").and_then(Value::as_str) == Some("automatic") && p.get("contentInset").is_none();
-        let (it_top, it_bottom) = (ci("top").unwrap_or(if auto { cx.inset_top } else { 0.0 }), ci("bottom").unwrap_or(0.0));
+        let (it_top, it_bottom) = (ci("top").unwrap_or(if auto { cx.inset_top } else { 0.0 }) + if refreshing { REFRESH_H } else { 0.0 }, ci("bottom").unwrap_or(0.0));
         let max = if vertical { (0.0, (content.1 + it_top + it_bottom - h).max(0.0)) } else { ((content.0 - w).max(0.0), 0.0) };
         // `contentOffset` is only the initial offset: any host scroll state wins.
         let initial = p.get("contentOffset").map_or((0.0, 0.0), |o| (num(o, "x").unwrap_or(0.0), num(o, "y").unwrap_or(0.0)));
@@ -732,7 +774,7 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
             let stops: Vec<Color> = g.get("colorStops").and_then(Value::as_array).into_iter().flatten().filter_map(|c| cx.color(c.get("color"))).collect();
             let angle = g.get("direction").and_then(|d| num(d, "value")).unwrap_or(180.0) as f32;
             if stops.len() >= 2 {
-                n.gradient = Some(crate::scene::Gradient { angle, stops });
+                n.gradient = Some(crate::scene::Gradient { angle, stops, points: None, locations: None });
             }
         }
     }
@@ -783,10 +825,45 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
     if component.starts_with("ViewManagerAdapter_ExpoGlassEffect_GlassView") {
         let variant = if p.get("glassEffectStyle").and_then(Value::as_str) == Some("clear") { simcore_protocol::GlassVariant::Clear } else { simcore_protocol::GlassVariant::Regular };
         let tint = p.get("tintColor").and_then(|t| t.as_str().and_then(css_color).or_else(|| cx.color(Some(t))));
-        n.glass = Some(crate::glass::GlassSpec { variant, tint, interactive: p.get("isInteractive").and_then(Value::as_bool) == Some(true), blur: None, mix: None, shadow: None });
+        n.glass = Some(crate::glass::GlassSpec { variant, tint, interactive: p.get("isInteractive").and_then(Value::as_bool) == Some(true), blur: None, mix: None, shadow: None, flat: None });
         if n.radius == 0.0 {
             n.radius = h.min(w) / 2.0;
         }
+    }
+    if component == "ActivityIndicatorView" {
+        // `hidesWhenStopped` (default on): a stopped indicator draws nothing. ponytail: a static frame (spokes at rest).
+        let stopped = p.get("animating").and_then(Value::as_bool) == Some(false);
+        if !(stopped && p.get("hidesWhenStopped").and_then(Value::as_bool) != Some(false)) {
+            let c = cx.color(p.get("color")).unwrap_or(Color::rgba(0.6, 0.6, 0.6, 1.0));
+            n.glyph = Some((Glyph::Spinner, c));
+            if prop_str(p, "size").as_deref() == Some("large") {
+                // UIKit's large indicator is 33 pt, pinned to the top-left of RN's 36 pt frame (measured on iOS 26.5).
+                n.glyph = Some((Glyph::SpinnerLarge, c));
+                n.bounds = Rect { x, y, w: 33.0, h: 33.0 };
+            }
+        }
+        n.kind = "spinner";
+    }
+    if component == "PullToRefreshView" {
+        // The spinner sits centred in the open band above the content (`origin` is the content's, shifted by the band).
+        if p.get("refreshing").and_then(Value::as_bool) == Some(true) {
+            let c = cx.color(p.get("tintColor")).unwrap_or(if cx.dark { REFRESH_TINT.1 } else { REFRESH_TINT.0 });
+            n.bounds = Rect { x: x + (w - REFRESH_SPINNER) / 2.0, y: y - (REFRESH_H + REFRESH_SPINNER) / 2.0, w: REFRESH_SPINNER, h: REFRESH_SPINNER };
+            n.glyph = Some((Glyph::SpinnerLarge, c));
+        }
+        n.kind = "refresh";
+    }
+    if component == "ViewManagerAdapter_ExpoLinearGradient" {
+        let stops: Vec<Color> = p.get("colors").and_then(Value::as_array).into_iter().flatten().filter_map(|c| cx.color(Some(c))).collect();
+        let pt = |k: &str, d: [f32; 2]| p.get(k).and_then(Value::as_array).filter(|a| a.len() == 2).map_or(d, |a| [a[0].as_f64().unwrap_or(0.0) as f32, a[1].as_f64().unwrap_or(0.0) as f32]);
+        let (a, b) = (pt("startPoint", [0.5, 0.0]), pt("endPoint", [0.5, 1.0]));
+        let locations = p.get("locations").and_then(Value::as_array).map(|l| l.iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect::<Vec<_>>()).filter(|l| l.len() == stops.len());
+        if !stops.is_empty() {
+            n.gradient = Some(crate::scene::Gradient { angle: 0.0, stops, points: Some([a[0], a[1], b[0], b[1]]), locations });
+        }
+    }
+    if component == "ViewManagerAdapter_ExpoBlur_ExpoBlurView" {
+        n.glass = Some(blur_spec(prop_str(p, "tint").as_deref().unwrap_or("default"), num(p, "intensity").unwrap_or(50.0), cx.dark));
     }
     if matches!(component.as_str(), "RCTImageView" | "ViewManagerAdapter_ExpoImage") {
         n.kind = "image";
@@ -916,6 +993,45 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
             let t: Vec<_> = out[me + 1..].iter().filter(|c| c.role == Role::Text).filter_map(|c| c.label.clone()).collect();
             (!t.is_empty()).then(|| t.join(" "))
         });
+    }
+}
+
+/// Height of a refreshing `RefreshControl`'s band above the content, its spinner box and default tint (iOS 26.5).
+const REFRESH_H: f64 = 181.0 / 3.0;
+const REFRESH_SPINNER: f64 = 28.0;
+/// (light, dark): the leading spoke's colour.
+const REFRESH_TINT: (Color, Color) = (Color { r: 174.0 / 255.0, g: 174.0 / 255.0, b: 175.0 / 255.0, a: 1.0 }, Color { r: 73.0 / 255.0, g: 73.0 / 255.0, b: 79.0 / 255.0, a: 1.0 });
+
+/// expo-blur `BlurView`: a `UIBlurEffect` style (by `tint`) faded in by `intensity` (0...100, the effect animator's
+/// fraction, taken as linear), drawn as a flat glass: backdrop blur sigma (pt), saturation, then `c * mul + add`.
+/// Fitted on iOS 26.5 per style at full intensity (`default` from its 50% capture).
+// ponytail: all `system*Material` thicknesses share systemMaterial's fit, `extraLight` is `light`, `prominent` is `regular`.
+fn blur_spec(tint: &str, intensity: f64, dark: bool) -> crate::glass::GlassSpec {
+    // (sigma, mul, sat, add rgb 0...255)
+    const LIGHT: (f32, f32, f32, [f32; 3]) = (28.0, 0.72, 1.67, [76.0, 78.0, 64.0]);
+    const DARK: (f32, f32, f32, [f32; 3]) = (16.0, 0.328, 0.88, [13.0, 11.0, 1.0]);
+    const REGULAR: [(f32, f32, f32, [f32; 3]); 2] = [(26.0, 0.632, 1.36, [74.0, 98.0, 62.0]), (18.0, 0.308, 1.24, [2.0, 20.0, 6.0])];
+    const MATERIAL: [(f32, f32, f32, [f32; 3]); 2] = [(26.0, 0.143, 1.58, [208.0, 205.0, 202.0]), (26.0, 0.083, 3.32, [58.0, 52.0, 54.0])];
+    let dark = if tint.ends_with("Dark") { true } else if tint.ends_with("Light") { false } else { dark };
+    let (sigma, mul, sat, add) = match tint {
+        "light" | "extraLight" => LIGHT,
+        "dark" => DARK,
+        t if t.starts_with("system") => MATERIAL[dark as usize],
+        _ => REGULAR[dark as usize],
+    };
+    let k = (intensity / 100.0).clamp(0.01, 1.0) as f32;
+    let (mul, sat, add) = (1.0 + (mul - 1.0) * k, 1.0 + (sat - 1.0) * k, add.map(|a| a * k));
+    // `add` becomes a tint mixed in at `ta` (glass tints mix after the transform): c' = c (1 - ta) + t ta.
+    let ta = add.iter().fold(0.0f32, |m, a| m.max(*a)) / 255.0;
+    let tint = (ta > 0.0).then(|| Color { r: add[0] / 255.0 / ta, g: add[1] / 255.0 / ta, b: add[2] / 255.0 / ta, a: ta });
+    crate::glass::GlassSpec {
+        variant: crate::glass::GlassVariant::Clear,
+        tint,
+        interactive: false,
+        blur: Some(sigma * k),
+        mix: Some((mul / (1.0 - ta).max(0.01), 0.0)),
+        shadow: None,
+        flat: Some(sat),
     }
 }
 
@@ -1102,6 +1218,40 @@ mod tests {
         assert!(n("5") > n("4"));
         assert_eq!(scene.hit_test(200.0, 300.0).map(|i| scene.nodes[i].id.as_str()), Some("6"));
         let _ = std::fs::remove_file(png);
+    }
+
+    #[test]
+    fn spinner_refresh_safe_area_gradient_blur() {
+        let v = |id: &str, comp: &str, props: Value, kids: Vec<Value>| json!({"kind":"rn","id":id,"component":comp,"props":props,"children":kids});
+        let tree: ViewNode = serde_json::from_value(v("1", "RootView", json!({}), vec![
+            v("2", "SafeAreaView", json!({"flex":1}), vec![
+                v("3", "ActivityIndicatorView", json!({"width":20,"height":20}), vec![]),
+                v("4", "ActivityIndicatorView", json!({"width":36,"height":36,"animating":false}), vec![]),
+                v("5", "ViewManagerAdapter_ExpoLinearGradient", json!({"height":50,"colors":[0xFFFF0000u64, 0xFF0000FFu64],"locations":[0.0, 0.3],"startPoint":[0.0, 0.0],"endPoint":[1.0, 1.0]}), vec![]),
+                v("6", "ViewManagerAdapter_ExpoBlur_ExpoBlurView", json!({"height":50,"tint":"dark","intensity":100}), vec![]),
+                v("7", "RCTScrollView", json!({"flex":1}), vec![
+                    v("8", "PullToRefreshView", json!({"refreshing":true}), vec![]),
+                    v("9", "RCTScrollContentView", json!({}), vec![v("10", "RCTView", json!({"height":44}), vec![])])])])])).unwrap();
+        let dev = device(DEFAULT_DEVICE).unwrap();
+        let scroll = HashMap::new();
+        let params = SceneParams {
+            viewport: (402.0, 874.0), device: dev, scale: 3.0, appearance: Appearance::Light, dynamic_type: Default::default(),
+            scroll: &scroll, focus: None, overscroll: false, status_bar: true, chrome: crate::ChromeParams { keyboard: false, shift: false }, sheets: &HashMap::new(),
+        };
+        let scene = build_scene(&tree, &params, &mut Fonts::new());
+        assert!(scene.notes.is_empty(), "{:?}", scene.notes);
+        let n = |id: &str| &scene.nodes[scene.nodes.iter().position(|n| n.id == id).unwrap()];
+        // SafeAreaView at the screen top pads by the full insets.
+        assert_eq!(n("3").bounds.y, 62.0);
+        assert!(n("3").glyph.is_some() && n("4").glyph.is_none(), "stopped indicator hides");
+        let g = n("5").gradient.as_ref().unwrap();
+        assert_eq!((g.points, g.locations.clone()), (Some([0.0, 0.0, 1.0, 1.0]), Some(vec![0.0, 0.3])));
+        assert!(n("6").glass.is_some_and(|g| g.flat.is_some()));
+        // Refreshing: the content opens a band; the spinner is centred in it.
+        assert!((n("10").bounds.y - n("7").bounds.y - REFRESH_H).abs() < 1e-3);
+        assert!(n("8").glyph.is_some());
+        assert!((n("8").bounds.y + REFRESH_SPINNER / 2.0 - n("7").bounds.y - REFRESH_H / 2.0).abs() < 1e-3);
+        assert_eq!(n("7").bounds.y + n("7").bounds.h, 874.0 - 34.0, "bottom inset");
     }
 
     #[test]

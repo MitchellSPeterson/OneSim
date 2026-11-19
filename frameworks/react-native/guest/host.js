@@ -31,6 +31,8 @@ const EXPO_VIEWS = {
   SymbolModule: { events: [], props: ['name', 'type', 'scale', 'tintColor', 'animated', 'weight', 'colors', 'resizeMode', 'animationSpec'] },
   ExpoGlassEffect_GlassView: { events: [], props: ['glassEffectStyle', 'tintColor', 'isInteractive', 'colorScheme', 'borderRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius', 'borderTopLeftRadius', 'borderTopRightRadius', 'borderTopStartRadius', 'borderTopEndRadius', 'borderBottomStartRadius', 'borderBottomEndRadius', 'borderCurve'] },
   ExpoGlassEffect_GlassContainer: { events: [], props: ['spacing'] },
+  ExpoLinearGradient: { events: [], props: ['colors', 'startPoint', 'endPoint', 'locations'] },
+  ExpoBlur_ExpoBlurView: { events: [], props: ['tint', 'intensity'] },
 };
 function expoViewConfig(key) {
   const v = EXPO_VIEWS[key];
@@ -41,6 +43,8 @@ function expoViewConfig(key) {
   };
 }
 // Duration of a stack push/pop (UINavigationController default) between willAppear and appear; SIMCORE_NAV_MS overrides (0 = instant).
+// Pull distance (pt) past the top at which a RefreshControl fires onRefresh. ponytail: approximate, not measured on iOS.
+const REFRESH_PULL = 100;
 const NAV_MS = process.env.SIMCORE_NAV_MS != null ? Number(process.env.SIMCORE_NAV_MS) : 350;
 // Safe-area insets of portrait iPhones by logical height (Dynamic Island 62, notch/DI 59 or 47, X-style notch 44, home-button 20).
 const insetsFor = (h) => ({ top: h >= 874 ? 62 : h >= 852 ? 59 : h >= 812 ? (h >= 844 ? 47 : 44) : 20, left: 0, right: 0, bottom: h >= 812 ? 34 : 0 });
@@ -586,7 +590,12 @@ class Runtime {
         this.scrolled.set(m.tag, cur);
         const ev = { contentOffset: { x: m.x, y: m.y }, contentSize: { width: m.contentWidth, height: m.contentHeight }, layoutMeasurement: { width: m.width, height: m.height }, contentInset: { top: 0, left: 0, bottom: 0, right: 0 }, zoomScale: 1, target: m.tag };
         if (m.phase === 'begin') this.dispatch(n, 'topScrollBeginDrag', ev, 8);
-        else if (m.phase === 'scroll') this.dispatch(n, 'topScroll', ev, 8);
+        else if (m.phase === 'scroll') {
+          this.dispatch(n, 'topScroll', ev, 8);
+          // Overscroll past the top beyond UIRefreshControl's trigger distance starts a refresh.
+          const rc = m.y <= -REFRESH_PULL && n.children.map((c) => this.nodes.get(c.reactTag) || c).find((c) => c.viewName === 'PullToRefreshView');
+          if (rc && !rc.props.refreshing) this.dispatch(rc, 'topRefresh', {}, 2);
+        }
         else if (m.phase === 'end') {
           if (!last || last[0] !== m.x || last[1] !== m.y) this.dispatch(n, 'topScroll', ev, 8); // programmatic scrollTo reply
           this.dispatch(n, 'topScrollEndDrag', ev, 8);

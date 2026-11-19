@@ -13,7 +13,7 @@ Part of [Expo / React Native API coverage](README.md): status legend, summary an
 | Modal | react-native | `RCTModalHostView` | ✅ | ⬜ | | |
 | Pressable / Touchable* / Button | react-native | | ✅ | ⬜ | | JS components over View + touch |
 | KeyboardAvoidingView | react-native | | ✅ | ⬜ | [#11](https://github.com/MitchellSPeterson/SimCore/issues/11) | Lands in its final layout (keyboard events carry `duration: 0`, no LayoutAnimation) |
-| ActivityIndicator | react-native | | ⬜ | ⬜ | | |
-| RefreshControl | react-native | | ⬜ | ⬜ | | |
-| SafeAreaView (core) | react-native | | ⬜ | ⬜ | | Use `react-native-safe-area-context` (below) |
+| ActivityIndicator | react-native | `ActivityIndicatorView` | 🟠 | ⬜ | | Small, large, `color`, `hidesWhenStopped`; static frame (no spin), spoke fade runs opposite to iOS; numeric `size` draws small |
+| RefreshControl | react-native | `PullToRefreshView` | 🟠 | ⬜ | | `refreshing` spinner band, `tintColor`; pulling 100 pt past the top fires `onRefresh`; no rubber-band/pull-progress drawing, `title`/`titleColor`/`progressViewOffset` ignored |
+| SafeAreaView (core) | react-native | `SafeAreaView` | ✅ | ⬜ | | Pads by the device insets it overlaps (portrait); deprecated in RN 0.88, prefer `react-native-safe-area-context` |
 | InputAccessoryView | react-native | | ⬜ | — | | iOS only |

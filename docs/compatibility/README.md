@@ -7,7 +7,7 @@ framework's README has the status legend, a per-area summary and how to add or c
 | Framework | iOS | Android |
 |---|---|---|
 | [SwiftUI](swiftui/README.md) | 9% (121/1379) | — |
-| [Expo / React Native](expo/README.md) | 44% (44/101) | 0% (0/93) |
+| [Expo / React Native](expo/README.md) | 58% (59.5/102) | 0% (0/94) |
 | [Jetpack Compose](compose/README.md) | — | 0% (0/2181) |
 <!-- coverage:end -->
 

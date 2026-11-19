@@ -33,22 +33,23 @@ Part of [Expo / React Native API coverage](README.md): status legend, summary an
 | Audio | expo-audio | | ⬜ | ⬜ | | |
 | Video | expo-video | | ⬜ | ⬜ | | |
 | Sensors | expo-sensors | | ⬜ | ⬜ | | |
-| Blur | expo-blur | | ⬜ | ⬜ | | |
-| Linear gradient | expo-linear-gradient | | ⬜ | ⬜ | | |
-| Localization | expo-localization | | ⬜ | ⬜ | | |
-| Crypto | expo-crypto | | ⬜ | ⬜ | | |
-| Application | expo-application | | ⬜ | ⬜ | | |
-| Network | expo-network | | ⬜ | ⬜ | | |
-| Battery | expo-battery | | ⬜ | ⬜ | | |
-| Brightness | expo-brightness | | ⬜ | ⬜ | | |
-| Screen orientation | expo-screen-orientation | | ⬜ | ⬜ | | |
+| Blur | expo-blur | `ExpoBlur` | 🟠 | ⬜ | | Fitted to iOS 26.5 for `default`/`light`/`dark`/`systemMaterial`; other `system*Material` thicknesses reuse `systemMaterial`; intensity treated as linear |
+| Linear gradient | expo-linear-gradient | `ExpoLinearGradient` | ✅ | ⬜ | | `colors`, `locations`, `start`/`end` |
+| Localization | expo-localization | `ExpoLocalization` | ✅ | ⬜ | | Fixed en-US / USD / US units / gregorian; time zone from the host `TZ` (else America/Los_Angeles); no change events |
+| Crypto | expo-crypto | `ExpoCrypto` | ✅ | ⬜ | | Digest (SHA-1/256/384/512, MD5), random bytes, UUID |
+| Crypto AES | expo-crypto/aes | `ExpoCryptoAES` | ⛔ | ⬜ | | The classes exist so `expo-crypto` imports; every call rejects as unsupported |
+| Application | expo-application | `ExpoApplication` | 🟡 | ⬜ | | Name, id, version and build from the app config; installation time is session start; fixed vendor id |
+| Network | expo-network | `ExpoNetwork` | 🟡 | ⬜ | | Always Wi-Fi, connected, 192.168.1.2, airplane mode off; no `simulate` key or change events yet |
+| Battery | expo-battery | `ExpoBattery` | 🟡 | ⬜ | | Full at 100%; `simulate battery {level, state, lowPowerMode}` updates it and emits the change events |
+| Brightness | expo-brightness | `ExpoBrightness` | 🟡 | ⬜ | | Value kept in session state (default 0.5); permission always granted; no effect on rendering |
+| Screen orientation | expo-screen-orientation | `ExpoScreenOrientation` | 🟡 | ⬜ | | Portrait only: `DEFAULT`, `PORTRAIT`, `PORTRAIT_UP` locks resolve, any other lock rejects as unsupported; no orientation change events |
 | Sharing | expo-sharing | | ⬜ | ⬜ | | |
 | Auth session | expo-auth-session | | ⬜ | ⬜ | | Needs expo-web-browser |
-| Local authentication | expo-local-authentication | | ⬜ | ⬜ | | |
+| Local authentication | expo-local-authentication | `ExpoLocalAuthentication` | 🟡 | ⬜ | | Face ID enrolled; `simulate localauth {success, error?}` sets the next result; `authenticateAsync` emits `module.called` |
 | Contacts | expo-contacts | | ⬜ | ⬜ | | |
 | Calendar | expo-calendar | | ⬜ | ⬜ | | |
-| Store review | expo-store-review | | ⬜ | ⬜ | | |
-| Tracking transparency | expo-tracking-transparency | | ⬜ | — | | iOS only |
+| Store review | expo-store-review | `ExpoStoreReview` | 🟡 | ⬜ | | Available; `requestReview` emits `module.called` and shows nothing |
+| Tracking transparency | expo-tracking-transparency | `ExpoTrackingTransparency` | 🟡 | — | | iOS only. Permission key `tracking` (`simulate permissions {tracking}`); advertising id is the zero UUID (JS returns null) |
 | Mail composer | expo-mail-composer | | ⬜ | ⬜ | | |
 | SMS | expo-sms | | ⬜ | ⬜ | | |
 | Speech | expo-speech | | ⬜ | ⬜ | | |
