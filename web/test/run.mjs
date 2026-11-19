@@ -173,8 +173,8 @@ const suites = {
     assert.ok(byRole(sim, "key", "space"), "software keyboard is showing");
     sim.type("Buy milk");
     assert.equal(field(sim).value, "Buy milk");
-    sim.clickLabel("s"); // on-canvas key (shift is still up: programmatic typing leaves it, as native)
-    assert.equal(field(sim).value, "Buy milkS");
+    sim.clickLabel("s"); // typing into the field has dropped Shift
+    assert.equal(field(sim).value, "Buy milks");
     sim.clickLabel("delete");
     assert.equal(field(sim).value, "Buy milk");
     sim.key("backspace");

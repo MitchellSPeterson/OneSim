@@ -2749,34 +2749,39 @@ mod tests {
     fn symbols_size_like_ios_and_unknown_ones_are_reported() {
         let s = phone(SYMBOLS);
         let cap = crate::symbols::capability();
-        let system = cap == "system";
         // Unknown names fall back to an outlined placeholder and are reported.
         let bad = by_id(&s, "bad.i");
         assert!(bad.symbol.is_none() && bad.stroke.is_some());
         assert!(s.unsupported_symbols.contains(&"no.such.symbol.xyz".to_string()));
         assert_eq!(s.unsupported_symbols.len(), if cap == "placeholder" { 5 } else { 1 });
-        if !system {
-            return; // placeholder host: no glyph metrics to check
+        if cap == "placeholder" {
+            return;
         }
+        // AppKit symbol boxes vary with the host macOS release. Check layout against the active
+        // symbol metrics, using the expected point size, weight and scale for each image.
+        let metrics = |name: &str, scale| {
+            symbols::metrics(&SymbolSpec { name: name.into(), point_size: 17.0, weight: 400, scale }).unwrap()
+        };
         let star = by_id(&s, "lab.i");
         assert!(star.symbol.is_some());
         let c = star.bounds.center();
         near(c.0, 44.0);
-        near(star.bounds.w, 28.0); // large star.fill box; ink is 24 wide
+        near(star.bounds.w, metrics("star.fill", ImageScale::Large).w);
         near(by_id(&s, "lab.t").bounds.x, 72.0);
         // accent icon, primary title; an explicit foreground colors both (here secondary on the bad row)
         assert_eq!(star.symbol.as_ref().unwrap().color, rgba(0, 136, 255, 1.0));
         assert_eq!(by_id(&s, "lab.t").text.as_ref().unwrap().color, rgba(0, 0, 0, 1.0));
         assert_eq!(by_id(&s, "bad.i").stroke.map(|s| s.0), by_id(&s, "bad.t").text.as_ref().map(|t| t.color));
-        // heart.fill at 17pt: 21x18 box (16.7x15.3 ink on iOS); large is bigger than medium
         let heart = by_id(&s, "h.0").bounds;
-        near(heart.w, 21.0);
-        near(heart.h, 18.0);
-        assert!(by_id(&s, "h.2").bounds.w > 24.0);
+        let heart_metrics = metrics("heart.fill", ImageScale::Medium);
+        near(heart.w, heart_metrics.w);
+        near(heart.h, heart_metrics.h);
+        near(by_id(&s, "h.2").bounds.w, metrics("checkmark.circle.fill", ImageScale::Large).w);
         // resizable scaledToFit keeps the symbol's aspect inside the 44pt frame
         let cloud = by_id(&s, "h.1").bounds;
-        near(cloud.w, 44.0);
-        assert!(cloud.h < 40.0 && cloud.h > 30.0, "{cloud:?}");
+        let cloud_metrics = metrics("cloud.sun.fill", ImageScale::Medium);
+        near(cloud.w.max(cloud.h), 44.0);
+        assert!((cloud.w / cloud.h - cloud_metrics.w / cloud_metrics.h).abs() < 0.001, "{cloud:?}");
         // 44pt content: 74pt row (15pt padding)
         near(by_id(&s, "l#s1#r0").bounds.h, 74.0);
     }
