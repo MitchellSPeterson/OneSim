@@ -17,6 +17,7 @@ KOTLINC="$(ls -d "$TC"/kotlinc-*/ | tail -1)"
 PLUGIN="$KOTLINC/lib/compose-compiler-plugin.jar"
 STDLIB="$KOTLINC/lib/kotlin-stdlib.jar"
 CP="$(ls "$TC"/jars/*.jar | tr '\n' ':')"
+command -v shasum >/dev/null || shasum() { sha256sum "$@"; }
 KFLAGS=(-jvm-target 17 -Xplugin="$PLUGIN" -nowarn -Xsuppress-version-warnings)
 
 # 1. Framework (cached by the hash of its sources and the toolchain).
@@ -76,8 +77,10 @@ fi
 
 "$KOTLINC/bin/kotlinc" "${KFLAGS[@]}" -cp "$CP$FW" -module-name app "${SOURCES[@]}" -d "$BUILD/app.jar"
 
-cat > "$OUT" <<SH
-#!/bin/sh
-exec java -Xshare:auto -XX:TieredStopAtLevel=1 -cp "$BUILD/app.jar:$FW:$CP$STDLIB" onesim.compose.Guest $ACTIVITY
-SH
-chmod +x "$OUT"
+JAVA_ARGS="-Xshare:auto -XX:TieredStopAtLevel=1 -cp"
+if [[ "$OUT" == *.cmd ]]; then # Windows (Git Bash): a batch launcher with a native `;` classpath
+  printf '@java %s "%s" onesim.compose.Guest %s\r\n' "$JAVA_ARGS" "$(cygpath -wp "$BUILD/app.jar:$FW:$CP$STDLIB")" "$ACTIVITY" > "$OUT"
+else
+  printf '#!/bin/sh\nexec java %s "%s" onesim.compose.Guest %s\n' "$JAVA_ARGS" "$BUILD/app.jar:$FW:$CP$STDLIB" "$ACTIVITY" > "$OUT"
+  chmod +x "$OUT"
+fi

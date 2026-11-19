@@ -9,6 +9,17 @@ use tungstenite::{Message, WebSocket};
 
 const GUEST: &str = env!("CARGO_BIN_EXE_onesim-fake-guest");
 
+/// `GUEST` under another name (the fake guest picks its behaviour from it): a symlink, or a copy on Windows.
+fn alias(path: std::path::PathBuf) -> std::path::PathBuf {
+    let path = path.with_extension(std::env::consts::EXE_EXTENSION);
+    let _ = std::fs::remove_file(&path);
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(GUEST, &path).unwrap();
+    #[cfg(not(unix))]
+    std::fs::copy(GUEST, &path).unwrap();
+    path
+}
+
 struct Client {
     ws: WebSocket<TcpStream>,
     next: u64,
@@ -160,9 +171,7 @@ fn session_lifecycle_over_websocket() {
 #[test]
 fn reconnect_replays_since_and_modules() {
     let addr = start();
-    let rn = std::env::temp_dir().join(format!("onesim-rn-ws-{}", std::process::id()));
-    let _ = std::fs::remove_file(&rn);
-    std::os::unix::fs::symlink(GUEST, &rn).unwrap(); // the guest serves a React Native tree when named "*rn*"
+    let rn = alias(std::env::temp_dir().join(format!("onesim-rn-ws-{}", std::process::id()))); // the guest serves a React Native tree when named "*rn*"
 
     let mut a = Client::connect(&addr);
     init(&mut a);

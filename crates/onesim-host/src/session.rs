@@ -208,11 +208,34 @@ fn err(code: ErrorCode, msg: impl Into<String>) -> ApiError {
 
 /// Test hook: a regular executable that is not a `.swift` file is spawned directly.
 fn is_prebuilt(p: &CreateSessionParams) -> bool {
-    use std::os::unix::fs::PermissionsExt;
     let path = Path::new(&p.app_path);
+    #[cfg(unix)]
+    let exe = |m: &std::fs::Metadata| std::os::unix::fs::PermissionsExt::mode(&m.permissions()) & 0o111 != 0;
+    #[cfg(not(unix))]
+    let exe = |_: &std::fs::Metadata| path.extension().is_some_and(|e| e == "exe");
     p.prebuilt
         || (path.extension().is_none_or(|e| e != "swift" && e != "kt")
-            && path.metadata().is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0))
+            && path.metadata().is_ok_and(|m| m.is_file() && exe(&m)))
+}
+
+/// The build scripts are bash. On Windows that is Git Bash, never System32's WSL launcher (`SIMCORE_BASH` overrides).
+fn bash() -> Command {
+    if let Some(b) = std::env::var_os("SIMCORE_BASH") {
+        return Command::new(b);
+    }
+    #[cfg(windows)]
+    for dir in ["ProgramW6432", "ProgramFiles"].iter().filter_map(std::env::var_os) {
+        let git = PathBuf::from(dir).join("Git/bin/bash.exe");
+        if git.is_file() {
+            return Command::new(git);
+        }
+    }
+    Command::new("bash")
+}
+
+/// Path argument for a bash script: forward slashes, which Git Bash accepts and backslash-escaping cannot break.
+fn sh_path(p: &Path) -> String {
+    p.to_string_lossy().replace('\\', "/")
 }
 
 impl Session {
@@ -362,9 +385,10 @@ impl Session {
         }
         let dir = home.join("target/onesim-apps").join(format!("{}-{}", std::process::id(), self.id));
         std::fs::create_dir_all(&dir).map_err(|e| err(ErrorCode::BuildFailed, e.to_string()))?;
-        let out = dir.join("app");
-        let mut cmd = Command::new(&script);
-        cmd.arg(&self.params.app_path).arg(&out);
+        // Windows runs the Compose guest through a batch launcher (build-app.sh writes one for a `.cmd` output).
+        let out = dir.join(if cfg!(windows) && self.is_compose() { "app.cmd".into() } else { format!("app{}", std::env::consts::EXE_SUFFIX) });
+        let mut cmd = bash();
+        cmd.arg(sh_path(&script)).arg(sh_path(Path::new(&self.params.app_path))).arg(sh_path(&out));
         if let Some(r) = &self.params.root_view {
             cmd.arg(r);
         }

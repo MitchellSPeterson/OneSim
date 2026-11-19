@@ -136,3 +136,63 @@ jobs:
         with:
           name: web-comparison
           path: target/compare-web/
+
+  portable:
+    # Linux and Windows: the host, CLI and renderer, plus headless SwiftUI, Compose and Expo guests.
+    # Apple's fonts and symbols exist only on macOS, so these runners always use the bundled Inter + Phosphor fallback.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace
+      - run: cargo test --workspace
+        env:
+          SIMCORE_SKIP_GPU_TESTS: '1'
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy -p onesim-cli --features window,gpu --all-targets -- -D warnings
+      - name: Install Swift (Windows)
+        if: runner.os == 'Windows'
+        uses: compnerd/gha-setup-swift@main
+        with:
+          branch: swift-6.1.2-release
+          tag: 6.1.2-RELEASE
+      - name: End-to-end headless SwiftUI counter
+        run: |
+          swift --version
+          cargo run -q -p onesim-cli -- run examples/swiftui-counter --root-view CounterView \
+            --click Increment --inspect | tee counter.json | grep -q '"Count: 1"' || { cat counter.json; exit 1; }
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: End-to-end Jetpack Compose counter
+        run: |
+          cargo run -q -p onesim-cli -- run examples/compose-counter \
+            --click Increment --click Increment --click Decrement --inspect | grep -q '"Count: 1"'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: iOS pixel-diff gate, fallback fonts/symbols (every state < 3.5%)
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
+          npm ci --prefix examples/expo-showcase
+          npm ci --prefix examples/expo-router-stack
+          npm ci --prefix examples/expo-default
+          SIMCORE_FALLBACK=1 scripts/compare-ios.sh
+      - name: Upload comparison sheets
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-comparison-linux
+          path: target/compare/

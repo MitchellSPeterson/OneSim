@@ -3,7 +3,6 @@ use serde_json::{value::RawValue, Value};
 use std::cell::RefCell;
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::io::{BufRead, Write};
-use std::os::fd::FromRawFd;
 
 pub type ActionCb = Option<unsafe extern "C" fn(*mut c_void, u64)>;
 pub type TextCb = Option<unsafe extern "C" fn(*mut c_void, u64, *const c_char)>;
@@ -125,7 +124,11 @@ pub extern "C" fn simcore_runtime_init() -> i32 {
             set_err(format!("dup/dup2 failed: {}", std::io::Error::last_os_error()));
             return 1;
         }
-        let file = std::fs::File::from_raw_fd(fd);
+        #[cfg(unix)]
+        let file: std::fs::File = std::os::fd::FromRawFd::from_raw_fd(fd);
+        // The CRT fd owns a Win32 handle; write to it directly so CRT text mode never turns `\n` into `\r\n`.
+        #[cfg(windows)]
+        let file: std::fs::File = std::os::windows::io::FromRawHandle::from_raw_handle(libc::get_osfhandle(fd) as _);
         match init_with(Box::new(file)) {
             Ok(()) => 0,
             Err(e) => { set_err(e); 1 }
