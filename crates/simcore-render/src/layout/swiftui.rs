@@ -934,7 +934,7 @@ impl Ctx<'_> {
                 n.fill = Some(if self.dark { rgba(84, 84, 88, 0.6) } else { rgba(60, 60, 67, 0.29) });
                 Lay::new(size, Some(n), vec![])
             }
-            ViewKind::Empty | ViewKind::Rn { .. } => Lay::new(Size::default(), Some(Node::new(&v.id, "empty")), vec![]),
+            ViewKind::Empty | ViewKind::Rn { .. } | ViewKind::Compose { .. } => Lay::new(Size::default(), Some(Node::new(&v.id, "empty")), vec![]),
             // Only the root's presentation layer is drawn (see `layout`); nested, it is transparent.
             ViewKind::Presentation { content, .. } => self.view(content, p, env),
             ViewKind::Scroll { axis, child } => self.scroll(v, *axis == simcore_protocol::Axis::Vertical, child, p, env),

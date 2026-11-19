@@ -497,6 +497,14 @@ pub enum DisplayMode {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ViewKind {
+    /// Jetpack Compose layout primitive (section K): `Box`, `Column`, `Row` or `Text`, modifier chain in `props.modifier`.
+    Compose {
+        component: String,
+        #[serde(default)]
+        props: serde_json::Value,
+        #[serde(default)]
+        children: Vec<ViewNode>,
+    },
     /// React Native Fabric node (`id` = reactTag). `props` is Fabric's flat attribute payload.
     Rn {
         component: String,

@@ -532,3 +532,76 @@ JS-driven push/pop needs no message. The guest spaces appear events by 350 ms
 
 - New kind `tabview` (`TabView`): `{"kind":"tabview","id","selected": index,"tabs":[{"title","systemImage"?: SF symbol,"badge"?: string,"action": u64}],"content": ViewNode}`. Only the selected tab's content is sent. Running a tab's `action` (the ordinary `action` message, section B) selects it; no new host-to-guest message. Guest paths: tab `i` lives at `<tabview>/t/<i>` and the guest keeps the hidden tabs' state alive, so `@State` and a `NavigationStack`'s path persist across switches.
 - Host: the content is placed like a root view with a bottom safe-area inset of 83 pt (scrollers and navigation stacks run under the bar, other content is centred above it), then the iOS 26 floating Liquid Glass tab bar shared with Expo Router native tabs (section H, milestone 3): a capsule 20 pt above the bottom, 94 x 54 pt items at an 86 pt pitch, the selected one on a gray capsule with an accent `<symbol>.fill`, `badge` as a red 18 pt capsule at the icon's top right. Items are buttons `<tabview>#tab-<i>` labelled with the title.
+
+## K. v1 additions: Jetpack Compose on Android (additive, protocol version stays 1)
+
+Guest: a JVM process running the app's Kotlin code compiled with the Kotlin Compose compiler plugin against the
+**real** `androidx.compose.runtime` (composition, snapshots, recomposition) and SimCore's own reimplementation of
+`androidx.compose.ui` / `foundation` / `material3` / `activity-compose` (`frameworks/compose`). Material components
+are built in Kotlin out of the ui primitives below, as in AndroidX, so the wire only carries **layout primitives
+plus a modifier chain**; the host lays them out with Compose's constraint-based measure/place model
+(`simcore-render::layout::compose`).
+
+### API
+
+- `create_session` accepts `"framework": "compose"` with `"platform": "android"` (default for compose), `app_path`
+  = a `.kt` file or a directory of them. `root_view` names a top-level `@Composable` function with no parameters;
+  without it the guest launches the app's `ComponentActivity` subclass (`onCreate` → `setContent { … }`).
+- Default device for compose sessions: `pixel-10a` (Android).
+- CLI: `simcore run <dir with .kt files> [--root-view Name]` picks compose automatically.
+
+### Guest launch env
+
+Section B env plus `SIMCORE_PLATFORM=android`, `SIMCORE_SCALE` (density), `SIMCORE_INSETS=top,bottom` (dp; status
+bar and gesture navigation bar, which an edge-to-edge app draws under).
+
+### ViewNode kind `compose`
+
+`{"kind":"compose","id":"<slot path>","component":"Column"|"Row"|"Box"|"Text","props":{...},"children":[...]}`
+
+Units: dp (= scene points), sp = dp (font scale 1). Colors: `[r,g,b,a]` floats 0...1 (resolved by the guest, so the
+Material color scheme and dark theme are guest-side). Shapes: `{"corners":[tl,tr,br,bl]}` in dp, or
+`{"percent":[tl,tr,br,bl]}` of the shorter side (`CircleShape` = 50%); absent = rectangle.
+
+| component | props |
+|---|---|
+| `Box` | `contentAlignment`: `[h, v]` biases -1...1 (default `[-1,-1]` TopStart), `propagateMinConstraints`: bool |
+| `Column` | `arrangement`: Arrangement, `alignment`: horizontal bias -1...1 (Start = -1) |
+| `Row` | `arrangement`: Arrangement, `alignment`: vertical bias -1...1 (Top = -1) |
+| `Text` | `text`, `color`, `fontSize`, `lineHeight` (sp), `fontWeight` (100...900), `letterSpacing` (sp), `textAlign`: `start`\|`center`\|`end`, `maxLines`, `softWrap` |
+
+Arrangement: `{"type":"start"|"end"|"center"|"spaceBetween"|"spaceAround"|"spaceEvenly"}` or
+`{"type":"spacedBy","space":dp,"align":bias}` (main axis; Column `start` = Top).
+
+`props.modifier` is the Modifier chain in source order (first = outermost):
+
+| entry | meaning (Compose) |
+|---|---|
+| `{"padding":[start,top,end,bottom]}` | `padding` |
+| `{"width":dp}` / `{"height":dp}` | `width` / `height` (`size` = both), coerced into the incoming constraints |
+| `{"widthIn":[min,max]}` / `{"heightIn":[min,max]}` | `widthIn` / `heightIn` (`null` = unspecified) |
+| `{"requiredWidth":dp}` / `{"requiredHeight":dp}` | `requiredWidth` / `requiredHeight` |
+| `{"defaultMinSize":[w,h]}` | `defaultMinSize` (`null` = unspecified) |
+| `{"fillMaxWidth":f}` / `{"fillMaxHeight":f}` | `fillMaxWidth` / `fillMaxHeight` (`fillMaxSize` = both) |
+| `{"wrapContent":[h,v]}` | `wrapContentSize(align)` (biases) |
+| `{"minInteractive":dp}` | `minimumInteractiveComponentSize` (at least dp per side, content centred, may exceed the constraints) |
+| `{"align":[h,v]}` / `{"align":bias}` | `BoxScope.align` / `RowScope`/`ColumnScope.align` (parent data) |
+| `{"weight":w,"fill":bool}` | `RowScope`/`ColumnScope.weight` (parent data, not a layer) |
+| `{"offset":[x,y]}` | `offset` |
+| `{"background":{"color","shape"?}}` | `background` |
+| `{"border":{"width","color","shape"?}}` | `border` |
+| `{"clip":shape}` | `clip` |
+| `{"shadow":{"elevation","shape"?}}` | `shadow` (Material tonal shadow, drawn as a soft drop shadow) |
+| `{"alpha":f}` | `alpha` |
+| `{"clickable":{"action":u64,"enabled":bool,"role"?:"button"\|"switch"\|"checkbox"\|"radio"\|"tab","label"?}}` | `clickable` / `toggleable` / `selectable` |
+
+Host → guest: the section B `action` (tap on a `clickable`), `environment` (appearance → `isSystemInDarkTheme()`),
+`shutdown`. The guest re-composes and sends a new `tree` after each, once the Recomposer is idle.
+
+### Android chrome (host)
+
+The host draws the Android status bar (clock "9:41" left, wifi and battery right, as in the emulator's demo mode) over
+the top inset and the gesture navigation handle centred in the bottom inset; app content is laid out full screen
+(edge-to-edge). Layout is in whole device pixels like Compose (`roundToPx` for dp values, text sizes rounded up), and
+text is drawn at a whole-pixel font size (Android floors `sp × density`). Elevation draws Android's ambient + spot
+shadow pair (the spot shadow shifts down with distance from the top of the screen).

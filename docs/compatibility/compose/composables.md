@@ -20,25 +20,25 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `BadgedBox` | material3 | ⬜ |  |  |
 | `BasicAlertDialog` | material3 | ⬜ |  |  |
 | `BasicSecureTextField` | foundation | ⬜ |  |  |
-| `BasicText` | foundation | ⬜ |  |  |
+| `BasicText` | foundation | 🟠 | | String only (no AnnotatedString); overflow always clips; no minLines |
 | `BasicTextField` | foundation | ⬜ |  |  |
 | `BasicTooltipBox` | foundation | ⬜ |  | Experimental |
 | `BottomAppBar` | material3 | ⬜ |  |  |
 | `BottomSheet` | material3 | ⬜ |  | Experimental |
 | `BottomSheetScaffold` | material3 | ⬜ |  | Experimental |
-| `Box` | foundation-layout | ⬜ |  |  |
+| `Box` | foundation-layout | ✅ | |  |
 | `BoxWithConstraints` | foundation-layout | ⬜ |  |  |
-| `Button` | material3 | ⬜ |  |  |
+| `Button` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state |
 | `ButtonGroup` | material3 | ⬜ |  |  |
 | `CapturedAnimatedVisibility` | animation | ⬜ |  |  |
-| `Card` | material3 | ⬜ |  |  |
-| `CenterAlignedTopAppBar` | material3 | ⬜ |  |  |
+| `Card` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state |
+| `CenterAlignedTopAppBar` | material3 | 🟠 | | No scroll behavior; navigation icon slot has no Icon support yet |
 | `CheckableDropdownMenuItem` | material3 | ⬜ |  |  |
 | `Checkbox` | material3 | ⬜ |  |  |
 | `CircularProgressIndicator` | material3 | ⬜ |  |  |
 | `CircularWavyProgressIndicator` | material3 | ⬜ |  |  |
 | `ClickableText` | foundation | ⬜ |  | Deprecated |
-| `Column` | foundation-layout | ⬜ |  |  |
+| `Column` | foundation-layout | ✅ | |  |
 | `ContainedLoadingIndicator` | material3 | ⬜ |  | Experimental |
 | `ContextualFlowColumn` | foundation-layout | ⬜ |  | Deprecated; Experimental |
 | `ContextualFlowRow` | foundation-layout | ⬜ |  | Deprecated; Experimental |
@@ -61,8 +61,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `DropdownMenuItem` | material3 | ⬜ |  |  |
 | `DropdownMenuPopup` | material3 | ⬜ |  |  |
 | `ElevatedAssistChip` | material3 | ⬜ |  |  |
-| `ElevatedButton` | material3 | ⬜ |  |  |
-| `ElevatedCard` | material3 | ⬜ |  |  |
+| `ElevatedButton` | material3 | 🟠 | | No Android reference screenshot yet; no ripple or press state |
+| `ElevatedCard` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state |
 | `ElevatedFilterChip` | material3 | ⬜ |  |  |
 | `ElevatedSuggestionChip` | material3 | ⬜ |  |  |
 | `ElevatedToggleButton` | material3 | ⬜ |  |  |
@@ -72,17 +72,17 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `ExpandedFullScreenSearchBar` | material3 | ⬜ |  |  |
 | `ExposedDropdownMenu` | material3 | ⬜ |  |  |
 | `ExposedDropdownMenuBox` | material3 | ⬜ |  |  |
-| `ExtendedFloatingActionButton` | material3 | ⬜ |  |  |
+| `ExtendedFloatingActionButton` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state; icon/text/expanded overload missing |
 | `FilledIconButton` | material3 | ⬜ |  |  |
 | `FilledIconToggleButton` | material3 | ⬜ |  |  |
-| `FilledTonalButton` | material3 | ⬜ |  |  |
+| `FilledTonalButton` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state |
 | `FilledTonalIconButton` | material3 | ⬜ |  |  |
 | `FilledTonalIconToggleButton` | material3 | ⬜ |  |  |
 | `FilledTonalToggleButton` | material3 | ⬜ |  |  |
 | `FilterChip` | material3 | ⬜ |  |  |
 | `FlexBox` | foundation-layout | ⬜ |  |  |
 | `FlexibleBottomAppBar` | material3 | ⬜ |  |  |
-| `FloatingActionButton` | material3 | ⬜ |  |  |
+| `FloatingActionButton` | material3 | 🟠 | | No Android reference screenshot yet; no ripple or press state |
 | `FloatingActionButtonMenu` | material3 | ⬜ |  |  |
 | `FloatingActionButtonMenuItem` | material3 | ⬜ |  |  |
 | `FlowColumn` | foundation-layout | ⬜ |  |  |
@@ -90,7 +90,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Grid` | foundation-layout | ⬜ |  |  |
 | `Group` | ui | ⬜ |  |  |
 | `HorizontalCenteredHeroCarousel` | material3 | ⬜ |  |  |
-| `HorizontalDivider` | material3 | ⬜ |  |  |
+| `HorizontalDivider` | material3 | ✅ | |  |
 | `HorizontalFloatingToolbar` | material3 | ⬜ |  |  |
 | `HorizontalMultiBrowseCarousel` | material3 | ⬜ |  |  |
 | `HorizontalPager` | foundation | ⬜ |  |  |
@@ -139,8 +139,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `NavigationDrawerItem` | material3 | ⬜ |  |  |
 | `NavigationRail` | material3 | ⬜ |  |  |
 | `NavigationRailItem` | material3 | ⬜ |  |  |
-| `OutlinedButton` | material3 | ⬜ |  |  |
-| `OutlinedCard` | material3 | ⬜ |  |  |
+| `OutlinedButton` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state |
+| `OutlinedCard` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state |
 | `OutlinedIconButton` | material3 | ⬜ |  |  |
 | `OutlinedIconToggleButton` | material3 | ⬜ |  |  |
 | `OutlinedSecureTextField` | material3 | ⬜ |  |  |
@@ -154,7 +154,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `PredictiveBackHandler` | activity-compose | ⬜ |  |  |
 | `PrimaryScrollableTabRow` | material3 | ⬜ |  |  |
 | `PrimaryTabRow` | material3 | ⬜ |  |  |
-| `ProvideTextStyle` | material3 | ⬜ |  |  |
+| `ProvideTextStyle` | material3 | ✅ | |  |
 | `PullToRefreshBox` | material3 | ⬜ |  |  |
 | `RadioButton` | material3 | ⬜ |  |  |
 | `RangeSlider` | material3 | ⬜ |  |  |
@@ -163,8 +163,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `ReportDrawnAfter` | activity-compose | ⬜ |  |  |
 | `ReportDrawnWhen` | activity-compose | ⬜ |  |  |
 | `RichTooltip` | material3 | ⬜ |  | Experimental |
-| `Row` | foundation-layout | ⬜ |  |  |
-| `Scaffold` | material3 | ⬜ |  |  |
+| `Row` | foundation-layout | ✅ | |  |
+| `Scaffold` | material3 | 🟠 | | Bars are stacked around the content (content does not scroll under them); no snackbar host |
 | `Scrim` | material3 | ⬜ |  |  |
 | `ScrollableTabRow` | material3 | ⬜ |  | Deprecated |
 | `ScrollField` | material3 | ⬜ |  |  |
@@ -186,17 +186,17 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Snackbar` | material3 | ⬜ |  |  |
 | `SnackbarHost` | material3 | ⬜ |  |  |
 | `SoundEffectOnInteraction` | ui | ⬜ |  |  |
-| `Spacer` | foundation-layout | ⬜ |  |  |
+| `Spacer` | foundation-layout | ✅ | |  |
 | `SplitButtonLayout` | material3 | ⬜ |  |  |
 | `SubcomposeLayout` | ui | ⬜ |  |  |
 | `SuggestionChip` | material3 | ⬜ |  |  |
-| `Surface` | material3 | ⬜ |  |  |
+| `Surface` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state; tonalElevation does not tint |
 | `SwipeToDismissBox` | material3 | ⬜ |  |  |
-| `Switch` | material3 | ⬜ |  |  |
+| `Switch` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state; thumbContent not drawn |
 | `Tab` | material3 | ⬜ |  |  |
 | `TabRow` | material3 | ⬜ |  | Deprecated |
-| `Text` | material3 | ⬜ |  |  |
-| `TextButton` | material3 | ⬜ |  |  |
+| `Text` | material3 | 🟠 | | String only (no AnnotatedString); overflow always clips; custom fonts render as Roboto |
+| `TextButton` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state |
 | `TextField` | material3 | ⬜ |  |  |
 | `TimeInput` | material3 | ⬜ |  |  |
 | `TimePicker` | material3 | ⬜ |  |  |
@@ -205,11 +205,11 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `ToggleButton` | material3 | ⬜ |  |  |
 | `ToggleFloatingActionButton` | material3 | ⬜ |  |  |
 | `TooltipBox` | material3 | ⬜ |  | Experimental |
-| `TopAppBar` | material3 | ⬜ |  |  |
+| `TopAppBar` | material3 | 🟠 | | No scroll behavior; navigation icon slot has no Icon support yet |
 | `TopSearchBar` | material3 | ⬜ |  | Deprecated; Experimental |
 | `TriStateCheckbox` | material3 | ⬜ |  |  |
 | `TwoRowsTopAppBar` | material3 | ⬜ |  |  |
-| `VerticalDivider` | material3 | ⬜ |  |  |
+| `VerticalDivider` | material3 | ✅ | |  |
 | `VerticalDragHandle` | material3 | ⬜ |  |  |
 | `VerticalFloatingToolbar` | material3 | ⬜ |  |  |
 | `VerticalPager` | foundation | ⬜ |  |  |

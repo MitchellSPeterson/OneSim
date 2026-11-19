@@ -10,7 +10,7 @@ $ simcore run examples/swiftui-counter --root-view CounterView --click Increment
 |---|---|---|
 | SwiftUI | ✅ v0.1: navigation, tabs, lists, forms and controls (pickers, sliders, progress), presentations, shapes, text styles, SF Symbols, Liquid Glass, software keyboard, `@State`/`@Binding`/`ObservableObject`/`@AppStorage` ([API coverage](docs/compatibility/swiftui/README.md)) | n/a |
 | Expo / React Native | 🧪 v0.2 preview: core components, Fast Refresh, Expo Router native stack and tabs, Reanimated, simulated device modules ([API coverage](docs/compatibility/expo/README.md)) | 🔜 coming ([API coverage](docs/compatibility/expo/README.md)) |
-| Jetpack Compose | n/a | 🔜 planned ([API coverage](docs/compatibility/compose/README.md)) |
+| Jetpack Compose | n/a | 🧪 preview: real Compose runtime, Material 3 buttons, cards, surfaces, Scaffold, top app bars, switches, layouts and modifiers, Pixel 10a device ([API coverage](docs/compatibility/compose/README.md)) |
 
 Beyond SwiftUI, we will reimplement the Apple frameworks apps reach for (Charts, SpriteKit, SceneKit, RealityKit, ARKit, MapKit, StoreKit, MusicKit, PencilKit, WidgetKit, UIKit, CoreGraphics, Metal, Vision); see the [roadmap](docs/roadmap.md#apple-frameworks-beyond-swiftui).
 
@@ -46,7 +46,18 @@ cargo run -p simcore-cli -- expo --url http://localhost:8081 --screenshot out.pn
 
 Which APIs work today, per platform, with an overall percentage: [docs/compatibility/expo/README.md](docs/compatibility/expo/README.md). Details: [frameworks/react-native/README.md](frameworks/react-native/README.md), [docs/protocol.md](docs/protocol.md) §H.
 
-**Android is coming.** The same Expo apps will render as Android (Material) through an Android host; the coverage doc tracks every API for Android from zero so the work can be picked up row by row.
+## Jetpack Compose on Android (preview)
+
+Unmodified Compose apps (`ComponentActivity` + `setContent { }`) build with the Kotlin Compose compiler against the real
+`androidx.compose.runtime` and SimCore's own `ui` / `foundation` / `material3`, and render as a Pixel 10a. Needs Java 17+;
+the Kotlin compiler and runtime jars are downloaded on first use. Details: [frameworks/compose/README.md](frameworks/compose/README.md),
+[docs/protocol.md](docs/protocol.md) §K.
+
+```sh
+cargo run -p simcore-cli -- run examples/compose-counter --click Increment --screenshot counter.png
+```
+
+**Expo on Android is coming.** The same Expo apps will render as Android (Material) through an Android host; the coverage doc tracks every API for Android from zero so the work can be picked up row by row.
 
 ## Requirements
 
@@ -108,7 +119,7 @@ cargo run -p simcore-render --example counter --features window -- --window    #
 | `crates/simcore-runtime` | Guest staticlib, C ABI linked into the app |
 | `frameworks/swiftui` | SimCore's `SwiftUI` module and C bridge |
 | `frameworks/react-native` | Node guest for Expo / React Native: Fabric UIManager, native-module registry (`guest/modules.js`) |
-| `frameworks/compose` | Jetpack Compose engine (not started) |
+| `frameworks/compose` | Jetpack Compose engine (preview): Kotlin guest, `ui`/`foundation`/`material3` on the real Compose runtime |
 
 ## Fonts and symbols fallback
 

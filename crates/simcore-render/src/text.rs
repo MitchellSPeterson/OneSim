@@ -8,6 +8,9 @@ const MONO_FAMILY: &str = ".SF NS Mono";
 /// Open-licensed fallback (Inter, SIL OFL 1.1; variable `wght` axis), embedded for determinism.
 const INTER: &[u8] = include_bytes!("../../../assets/fonts/InterVariable.ttf");
 const INTER_FAMILY: &str = "Inter Variable";
+/// Android's default sans-serif (Roboto, SIL OFL 1.1; variable `wdth`/`wght`), embedded: used for `FontSpec::android` text.
+const ROBOTO: &[u8] = include_bytes!("../../../assets/fonts/RobotoVariable.ttf");
+const ROBOTO_FAMILY: &str = "Roboto";
 
 /// Horizontal text alignment inside the text node's own bounds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -54,13 +57,15 @@ pub struct FontSpec {
     pub lines: Option<usize>,
     /// Explicit paragraph line height (RN `lineHeight`): every run uses `pitch`; otherwise a run's pitch scales with its size.
     pub fixed_pitch: bool,
+    /// Android text: Roboto, with `tracking` taken as given (Compose `letterSpacing`).
+    pub android: bool,
 }
 
 impl FontSpec {
     pub fn new(size: f32, line_height: f32, weight: u16, align: TextAlign) -> Self {
         // Leading: 22/17 of the size up to large-title sizes, ~1.12 x size + 2.64 above (accessibility sizes, measured: 53pt -> 62pt).
         let pitch = if size > 34.0 { size * 1.12 + 2.64 } else { line_height.max(size * 22.0 / 17.0) };
-        Self { size, pt: size, line_height, pitch, weight, align, tracking: tracking_em(size, weight), mono: false, lines: None, fixed_pitch: false }
+        Self { size, pt: size, line_height, pitch, weight, align, tracking: tracking_em(size, weight), mono: false, lines: None, fixed_pitch: false, android: false }
     }
 }
 
@@ -148,6 +153,9 @@ pub fn fonts_capability() -> &'static str {
     }
 }
 
+/// Text, size bits, weight, wrap width bits, Android tracking bits.
+type MeasureKey = (String, u32, u16, u32, u32);
+
 /// System fonts + glyph cache, shared by layout (measuring) and raster (drawing).
 pub struct Fonts {
     sys: FontSystem,
@@ -155,7 +163,7 @@ pub struct Fonts {
     sf: bool,
     inter: bool,
     has_mono: bool,
-    measured: HashMap<(String, u32, u16, u32), (f64, f64)>,
+    measured: HashMap<MeasureKey, (f64, f64)>,
 }
 
 /// One drawn text line: x range and baseline, relative to the text origin (device px).
@@ -191,6 +199,7 @@ impl Fonts {
         if inter {
             db.load_font_data(INTER.to_vec());
         }
+        db.load_font_data(ROBOTO.to_vec());
         let sys = FontSystem::new_with_locale_and_db("en-US".into(), db);
         let has_mono = sys.db().faces().any(|f| f.families.iter().any(|(n, _)| n == MONO_FAMILY));
         Self { sys, cache: SwashCache::new(), sf, inter, has_mono, measured: HashMap::new() }
@@ -217,10 +226,13 @@ impl Fonts {
 
     /// Family, tracking (em) and weight of one face. `sf_tracking` is SF's tracking for this face;
     /// `big` selects Inter's accessibility-size fit (see `INTER_BIG_SCALE`).
-    fn face(&self, mono: bool, pt: f32, size_px: f32, weight: u16, sf_tracking: f32, big: bool) -> (Family<'static>, f32, u16) {
+    #[allow(clippy::too_many_arguments)]
+    fn face(&self, mono: bool, android: bool, pt: f32, size_px: f32, weight: u16, sf_tracking: f32, big: bool) -> (Family<'static>, f32, u16) {
         let wght = if big { (weight as i32 + INTER_BIG_WEIGHT).clamp(100, 900) as u16 } else { weight };
         if mono {
             (self.mono_family(), 0.0, wght)
+        } else if android {
+            (Family::Name(ROBOTO_FAMILY), sf_tracking, weight)
         } else if self.sf {
             (Family::Name(SF_FAMILY), sf_tracking, wght)
         } else {
@@ -282,19 +294,20 @@ impl Fonts {
     fn build(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span]) -> Buffer {
         // Inter's glyphs are ~8% larger than SF's at the same size; at accessibility sizes that is a lot
         // of ink, so the fallback draws them slightly smaller (tracking is fitted for it).
-        let big = !self.sf && f.pt > 40.0;
+        let big = !self.sf && !f.android && f.pt > 40.0;
         let size = if big { f.size * INTER_BIG_SCALE } else { f.size };
         let mut b = Buffer::new(&mut self.sys, Metrics::new(size, f.pitch));
         b.set_size(width, None);
-        let (family, tracking, wght) = self.face(f.mono, f.pt, f.size, f.weight, f.tracking, big);
+        let (family, tracking, wght) = self.face(f.mono, f.android, f.pt, f.size, f.weight, f.tracking, big);
         let attrs = Attrs::new().family(family).weight(Weight(wght)).letter_spacing(tracking);
         if !spans.is_empty() {
             let sf = self.sf;
             let runs = spans.iter().enumerate().map(|(i, s)| {
                 let k = s.pt / f.pt;
                 let size_px = f.size * k;
-                let big = !sf && s.pt > 40.0;
-                let (fam, tracking, wght) = self.face(f.mono || s.mono, s.pt, size_px, s.weight, tracking_em(s.pt, s.weight), big);
+                let big = !sf && !f.android && s.pt > 40.0;
+                let sf_tracking = if f.android { f.tracking } else { tracking_em(s.pt, s.weight) };
+                let (fam, tracking, wght) = self.face(f.mono || s.mono, f.android, s.pt, size_px, s.weight, sf_tracking, big);
                 let m = Metrics::new(if big { size_px * INTER_BIG_SCALE } else { size_px }, if f.fixed_pitch { f.pitch } else { f.pitch * k });
                 let c = Color::rgba((s.color.r * 255.0).round() as u8, (s.color.g * 255.0).round() as u8, (s.color.b * 255.0).round() as u8, (s.color.a * 255.0).round() as u8);
                 let a = Attrs::new().family(fam).weight(Weight(wght)).letter_spacing(tracking).metrics(m).color(c).metadata(i);
@@ -318,7 +331,9 @@ impl Fonts {
 
     /// Size of `text`, wrapping at `width` when given.
     pub fn measure(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span]) -> (f64, f64) {
-        let key = (text.to_string(), f.size.to_bits(), f.weight, width.map_or(u32::MAX, f32::to_bits));
+        // Android text carries its own tracking (Compose letterSpacing) and face; iOS tracking follows size and weight.
+        let tracking = if f.android { f.tracking.to_bits() ^ 0x8000_0000 } else { 0 };
+        let key = (text.to_string(), f.size.to_bits(), f.weight, width.map_or(u32::MAX, f32::to_bits), tracking);
         let plain = spans.is_empty() && f.lines.is_none();
         if plain {
             if let Some(r) = self.measured.get(&key) {
