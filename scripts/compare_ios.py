@@ -1,4 +1,4 @@
-"""Side-by-side iOS vs SimCore comparison. Usage: compare_ios.py IOS_DIR SIMCORE_DIR OUT_DIR
+"""Side-by-side iOS (or Android, for *-android fixture dirs) vs SimCore comparison. Usage: compare_ios.py IOS_DIR SIMCORE_DIR OUT_DIR
 
 Pass rule: every state must have < MAX_DIFF % of its pixels off by more than ~10%
 (luminance of the per-pixel RGB difference > 24 of 255). MAX_DIFF is 2% with Apple's
@@ -12,8 +12,9 @@ from PIL import Image, ImageChops, ImageDraw
 
 FALLBACK = os.environ.get("SIMCORE_FALLBACK") == "1"
 ROOT = Path(__file__).resolve().parent.parent
+VERSIONS = json.loads((ROOT / "docs/compatibility/versions.json").read_text())
 # Runtime the references were captured on: set by compare-ios.sh, else the newest pinned one.
-IOS_RUNTIME = os.environ.get("SIMCORE_COMPARE_IOS") or json.load(open(ROOT / "docs/compatibility/versions.json"))["ios"]["runtimes"][0]["runtime"]
+IOS_RUNTIME = os.environ.get("SIMCORE_COMPARE_IOS") or VERSIONS["ios"]["runtimes"][0]["runtime"]
 MAX_DIFF = float(os.environ.get("SIMCORE_MAX_DIFF", "3.5" if FALLBACK else "2.0"))
 ios_dir, sc_dir, out = map(Path, sys.argv[1:4])
 # Maintainer-approved per-state limits, keyed "<fixture dir>/<state>" (the dir name, so a state keeps its limit in
@@ -25,6 +26,8 @@ ios_dir, sc_dir, out = map(Path, sys.argv[1:4])
 STATE_MAX = {} if "SIMCORE_MAX_DIFF" in os.environ else (
     {"showcase-ios/typography-scrolled": 5.0, "showcase-ios/typography-scrolled-dark": 5.0} if FALLBACK
     else {"rn-showcase-ios/text": 2.5})
+REF_LABEL = (f'{VERSIONS["android"]["release"]} {VERSIONS["android"]["device"]} Emulator' if ios_dir.name.endswith("-android")
+             else f'iOS {IOS_RUNTIME} Simulator')
 limit = lambda name: STATE_MAX.get(f"{ios_dir.name}/{name}", MAX_DIFF)
 rows = []
 for ios_png in sorted(ios_dir.glob("*.png")):
@@ -41,7 +44,7 @@ for ios_png in sorted(ios_dir.glob("*.png")):
     heat = Image.merge("RGB", (diff.point(lambda v: min(255, v * 3)), diff.point(lambda v: 0), diff.point(lambda v: 0)))
     w, h = a.size
     sheet = Image.new("RGB", (w * 3, h + 60), "white")
-    for i, (img, label) in enumerate([(a, f"iOS {IOS_RUNTIME} Simulator"), (b, "SimCore"), (heat, f"diff {differing:.1f}%")]):
+    for i, (img, label) in enumerate([(a, REF_LABEL), (b, "SimCore"), (heat, f"diff {differing:.1f}%")]):
         sheet.paste(img, (i * w, 60))
         ImageDraw.Draw(sheet).text((i * w + 20, 15), label, fill="black", font_size=36)
     sheet.resize((w * 3 // 3, (h + 60) // 3)).save(out / f"cmp-{ios_png.stem}.png")

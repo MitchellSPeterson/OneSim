@@ -51,6 +51,9 @@ pub struct Device {
     /// iOS 27 chrome where it was measured (`tests/fixtures/ios27`): status bar and keyboard height.
     /// Other profiles keep their iOS 26 status bar and get a keyboard 7pt shorter (as on the 17e / 18 Pro).
     pub ios27: Option<Chrome27>,
+    /// Android phone (Material status bar and gesture-navigation handle; `safe_top`/`safe_bottom` are the
+    /// status-bar and navigation-bar insets an edge-to-edge app draws under). Units are dp.
+    pub android: bool,
 }
 
 /// iOS 27 status bar and keyboard height (above the bottom inset) of one device.
@@ -106,6 +109,7 @@ const C_17_PRO: Device = Device {
     wide_keyboard: false,
     home_indicator: None,
     ios27: None,
+    android: false,
 };
 // iOS 27.2 reference device (tests/fixtures/ios27): the 17 Pro's screen with a narrower island and
 // a larger status bar (measured: island x 153.3..248.3, clock 63.3..96.7, battery right edge 361.7).
@@ -252,11 +256,37 @@ const C_SE: Device = Device {
     ..C_17_PRO
 };
 
+/// Pixel 10a (Android 17 emulator AVD): 1080x2424 px at 420 dpi = 411.43 x 923.43 dp, density 2.625.
+/// Insets measured on the emulator (`dumpsys window`): status bar 142 px, gesture navigation bar 63 px.
+const C_PIXEL_10A: Device = Device {
+    name: "pixel-10a",
+    viewport: vp(1080.0 / 2.625, 2424.0 / 2.625),
+    scale: 2.625,
+    safe_top: 142.0 / 2.625,
+    safe_bottom: 63.0 / 2.625,
+    island: None,
+    // Measured on the emulator: clock text box centred at (57.9, 26.9) dp, 14 sp; battery nub ends at 382.9 dp.
+    status_bar: sb((57.9, 26.9), 14.0, (382.9, 0.0), 1.0),
+    home_button: false,
+    suggestions: false,
+    key_pitch: 53.9,
+    kb_base_h: 280.0,
+    safe_right: 0.0,
+    compact_nav: false,
+    wide_keyboard: false,
+    home_indicator: None,
+    ios27: None,
+    android: true,
+};
+
+/// Default device of Android (Compose) sessions.
+pub const DEFAULT_ANDROID_DEVICE: &str = "pixel-10a";
+
 const fn named(name: &'static str, d: Device) -> Device {
     Device { name, ..d }
 }
 
-/// Every iPhone the iOS 26.5 and 27.2 Simulators ship; the default comes first.
+/// iPhone profiles for iOS 26.5 and 27.2 (the default first), followed by Android profiles.
 pub const DEVICES: &[Device] = &[
     C_18_PRO,
     C_18_PRO_MAX,
@@ -292,6 +322,7 @@ pub const DEVICES: &[Device] = &[
     named("iphone-11", C_11),
     named("iphone-se-3", C_SE),
     named("iphone-se-2", C_SE),
+    C_PIXEL_10A,
 ];
 
 pub fn device(name: &str) -> Option<&'static Device> {
@@ -305,7 +336,8 @@ mod tests {
     #[test]
     fn names_unique_and_default_first() {
         assert_eq!(DEVICES[0].name, DEFAULT_DEVICE);
-        assert_eq!(DEVICES.len(), 34);
+        assert_eq!(DEVICES.len(), 35);
+        assert_eq!(DEVICES.iter().filter(|d| d.android).map(|d| d.name).collect::<Vec<_>>(), [DEFAULT_ANDROID_DEVICE]);
         for (i, d) in DEVICES.iter().enumerate() {
             assert!(DEVICES[..i].iter().all(|o| o.name != d.name), "duplicate {}", d.name);
         }

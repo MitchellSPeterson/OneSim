@@ -92,6 +92,8 @@ pub enum Glyph {
     Minus,
     Plus,
     Wifi,
+    /// Android status-bar wifi (two stroked arcs over a dot), drawn in a 16x11.8 dp box.
+    AndroidWifi,
     SignalDots,
     Battery,
     /// iOS 27 status bar icons: thicker wifi arcs, a solid battery with a round nub.

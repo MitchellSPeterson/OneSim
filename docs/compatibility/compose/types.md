@@ -12,7 +12,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `AccessibilityManager` | ui | ⬜ |  |  |
 | `Adaptation` | ui-graphics | ⬜ |  |  |
 | `AlertDialogDefaults` | material3 | ⬜ |  |  |
-| `Alignment` | ui | ⬜ |  |  |
+| `Alignment` | ui | ✅ | |  |
 | `AlignmentLine` | ui | ⬜ |  |  |
 | `AlphaScope` | foundation | ⬜ |  | Experimental |
 | `AnchoredDraggableDefaults` | foundation | ⬜ |  |  |
@@ -61,7 +61,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `ApproachMeasureScope` | ui | ⬜ |  |  |
 | `ArcAnimationSpec` | animation-core | ⬜ |  | Experimental |
 | `ArcMode` | animation-core | ⬜ |  |  |
-| `Arrangement` | foundation-layout | ⬜ |  |  |
+| `Arrangement` | foundation-layout | ✅ | |  |
 | `AssistChipDefaults` | material3 | ⬜ |  |  |
 | `AutoClearFocusBehavior` | ui | ⬜ |  |  |
 | `Autofill` | ui | ⬜ |  | Deprecated |
@@ -95,7 +95,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `BottomSheetDefaults` | material3 | ⬜ |  | Experimental |
 | `BottomSheetScaffoldState` | material3 | ⬜ |  | Experimental |
 | `BoundsTransform` | animation | ⬜ |  |  |
-| `BoxScope` | foundation-layout | ⬜ |  |  |
+| `BoxScope` | foundation-layout | 🟠 | | matchParentSize behaves as fillMaxSize |
 | `BoxWithConstraintsScope` | foundation-layout | ⬜ |  |  |
 | `Breadth` | foundation | ⬜ |  | Experimental |
 | `BringIntoViewModifierNode` | ui | ⬜ |  |  |
@@ -106,8 +106,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `BrushPainter` | ui-graphics | ⬜ |  |  |
 | `BuildDrawCacheParams` | ui | ⬜ |  |  |
 | `Bullet` | ui-text | ⬜ |  |  |
-| `ButtonColors` | material3 | ⬜ |  |  |
-| `ButtonDefaults` | material3 | ⬜ |  |  |
+| `ButtonColors` | material3 | ✅ | |  |
+| `ButtonDefaults` | material3 | 🟠 | | Colors, shapes, paddings and sizes; no elevation animation |
 | `ButtonElevation` | material3 | ⬜ |  |  |
 | `ButtonGroupDefaults` | material3 | ⬜ |  |  |
 | `ButtonGroupMenuState` | material3 | ⬜ |  |  |
@@ -141,7 +141,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `CollectionInfo` | ui | ⬜ |  |  |
 | `CollectionItemInfo` | ui | ⬜ |  |  |
 | `CollectionPreviewParameterProvider` | ui-tooling-preview | ⬜ |  |  |
-| `Color` | ui-graphics | ⬜ |  |  |
+| `Color` | ui-graphics | ✅ | |  |
 | `ColorFilter` | ui-graphics | ⬜ |  |  |
 | `ColorFilterScope` | foundation | ⬜ |  | Experimental |
 | `ColorMatrix` | ui-graphics | ⬜ |  |  |
@@ -149,10 +149,10 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `ColorModel` | ui-graphics | ⬜ |  |  |
 | `ColorPainter` | ui-graphics | ⬜ |  |  |
 | `ColorProducer` | ui-graphics | ⬜ |  |  |
-| `ColorScheme` | material3 | ⬜ |  |  |
+| `ColorScheme` | material3 | ✅ | |  |
 | `ColorSpace` | ui-graphics | ⬜ |  |  |
 | `ColorSpaces` | ui-graphics | ⬜ |  |  |
-| `ColumnScope` | foundation-layout | ⬜ |  |  |
+| `ColumnScope` | foundation-layout | 🟠 | | weight and align only |
 | `CombinedModifier` | ui | ⬜ |  |  |
 | `CommitTextCommand` | ui-text | ⬜ |  |  |
 | `CommonStyle` | foundation | ⬜ |  | Experimental |
@@ -218,7 +218,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `DialogWindowProvider` | ui | ⬜ |  |  |
 | `DisplayMode` | material3 | ⬜ |  |  |
 | `DividerDefaults` | material3 | ⬜ |  |  |
-| `Dp` | ui-unit | ⬜ |  |  |
+| `Dp` | ui-unit | ✅ | |  |
 | `DpRect` | ui-unit | ⬜ |  |  |
 | `DpTouchBoundsExpansion` | ui | ⬜ |  |  |
 | `Drag2DScope` | foundation | ⬜ |  |  |
@@ -349,7 +349,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `FontSynthesis` | ui-text | ⬜ |  |  |
 | `FontSynthesisScope` | foundation | ⬜ |  | Experimental |
 | `FontVariation` | ui-text | ⬜ |  |  |
-| `FontWeight` | ui-text | ⬜ |  |  |
+| `FontWeight` | ui-text | ✅ | |  |
 | `FontWeightScope` | foundation | ⬜ |  | Experimental |
 | `ForegroundScope` | foundation | ⬜ |  | Experimental |
 | `Fr` | foundation-layout | ⬜ |  |  |
@@ -537,7 +537,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `ModalBottomSheetDefaults` | material3 | ⬜ |  | Experimental |
 | `ModalBottomSheetProperties` | material3 | ⬜ |  | Experimental |
 | `ModalWideNavigationRailProperties` | material3 | ⬜ |  |  |
-| `Modifier` | ui | ⬜ |  |  |
+| `Modifier` | ui | ✅ | |  |
 | `ModifierInfo` | ui | ⬜ |  |  |
 | `ModifierLocal` | ui | ⬜ |  |  |
 | `ModifierLocalConsumer` | ui | ⬜ |  |  |
@@ -709,9 +709,9 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `RotaryInputModifierNode` | ui | ⬜ |  |  |
 | `RotaryScrollEvent` | ui | ⬜ |  |  |
 | `RotationScope` | foundation | ⬜ |  | Experimental |
-| `RoundedCornerShape` | foundation | ⬜ |  |  |
+| `RoundedCornerShape` | foundation | 🟠 | | Per-corner radii render with the largest corner |
 | `RoundRect` | ui-geometry | ⬜ |  |  |
-| `RowScope` | foundation-layout | ⬜ |  |  |
+| `RowScope` | foundation-layout | 🟠 | | weight and align only (no alignByBaseline) |
 | `Ruler` | ui | ⬜ |  |  |
 | `RulerScope` | ui | ⬜ |  |  |
 | `ScaffoldDefaults` | material3 | ⬜ |  |  |
@@ -762,7 +762,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `ShadowScope` | ui, foundation | ⬜ |  |  |
 | `Shape` | ui-graphics | ⬜ |  |  |
 | `ShapeDefaults` | material3 | ⬜ |  |  |
-| `Shapes` | material3 | ⬜ |  |  |
+| `Shapes` | material3 | ✅ | |  |
 | `ShapeScope` | foundation | ⬜ |  | Experimental |
 | `SharedTransitionDefaults` | animation | ⬜ |  |  |
 | `SharedTransitionScope` | animation | ⬜ |  |  |
@@ -835,7 +835,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `TabRowDefaults` | material3 | ⬜ |  |  |
 | `TargetedFlingBehavior` | foundation | ⬜ |  |  |
 | `TaskDispatchers` | ui | ⬜ |  |  |
-| `TextAlign` | ui-text | ⬜ |  |  |
+| `TextAlign` | ui-text | ✅ | |  |
 | `TextAlignScope` | foundation | ⬜ |  | Experimental |
 | `TextAutoSize` | foundation | ⬜ |  |  |
 | `TextAutoSizeDefaults` | foundation | ⬜ |  |  |
@@ -881,12 +881,12 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `TextPainter` | ui-text | ⬜ |  |  |
 | `TextRange` | ui-text | ⬜ |  |  |
 | `TextSelectionColors` | foundation | ⬜ |  |  |
-| `TextStyle` | ui-text | ⬜ |  |  |
+| `TextStyle` | ui-text | 🟠 | | color, size, weight, letterSpacing, lineHeight, textAlign only |
 | `TextStyleScope` | foundation | ⬜ |  | Experimental |
 | `TextStyleStyleScope` | foundation | ⬜ |  | Experimental |
 | `TextToolbar` | ui | ⬜ |  |  |
 | `TextToolbarStatus` | ui | ⬜ |  |  |
-| `TextUnit` | ui-unit | ⬜ |  |  |
+| `TextUnit` | ui-unit | ✅ | |  |
 | `TextUnitType` | ui-unit | ⬜ |  |  |
 | `TileMode` | ui-graphics | ⬜ |  |  |
 | `TimeInputColors` | material3 | ⬜ |  |  |
@@ -929,7 +929,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `TtsAnnotation` | ui-text | ⬜ |  |  |
 | `TweenSpec` | animation-core | ⬜ |  |  |
 | `TwoWayConverter` | animation-core | ⬜ |  |  |
-| `Typography` | material3 | ⬜ |  |  |
+| `Typography` | material3 | ✅ | |  |
 | `UiComposable` | ui | ⬜ |  |  |
 | `UiMediaScope` | ui | ⬜ |  | Experimental |
 | `UndoState` | foundation | ⬜ |  |  |

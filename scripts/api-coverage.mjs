@@ -107,7 +107,7 @@ writeSummary(`${dir}README.md`, [
   `| Expo SDK | ${expo.sdk} (React Native ${expo.reactNative}) | Examples, native module contracts |`,
   `| Expo Go | ${expo.expoGo} | Expo reference screenshots |`,
   `| Jetpack Compose | ${Object.entries(V.compose).map(([l, v]) => `${l} ${v}`).join(', ')} | Compose API inventory (\`scripts/compose-inventory.mjs\`) |`,
-  `| Android | ${Object.keys(V.android).length ? Object.entries(V.android).map(([k, v]) => `${k} ${v}`).join(', ') : 'none yet (no Android host)'} | |`,
+  `| Android | ${V.android.release} (API ${V.android.api}) emulator, ${V.android.device}; Kotlin ${V.android.kotlin} | Device profile and insets of Compose sessions, Compose guest compiler (\`frameworks/compose/scripts/toolchain.sh\`) |`,
 ].join('\n'), 'versions');
 const drift = (path, msg) => errors.push(`${path}: ${msg} (docs/compatibility/versions.json)`);
 const bare = (spec) => String(spec).replace(/^[~^=]/, '');
@@ -117,6 +117,11 @@ for (const ex of readdirSync(root + 'examples')) {
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
   if (deps.expo && bare(deps.expo) !== expo.sdk) drift(`examples/${ex}/package.json`, `expo ${deps.expo}, expected ~${expo.sdk}`);
   if (deps['react-native'] && bare(deps['react-native']) !== expo.reactNative) drift(`examples/${ex}/package.json`, `react-native ${deps['react-native']}, expected ${expo.reactNative}`);
+}
+// The Compose guest's toolchain compiles with the pinned Kotlin and runs the pinned Compose runtime.
+const tc = 'frameworks/compose/scripts/toolchain.sh', tcSrc = readFileSync(root + tc, 'utf8');
+for (const want of [`KOTLIN=${V.android.kotlin}`, `COMPOSE_RUNTIME=${V.compose.runtime}`]) {
+  if (!tcSrc.includes(want)) drift(tc, `expected \`${want}\``);
 }
 // The OS version the Expo guest reports to apps.
 const guest = 'frameworks/react-native/guest/modules.js', guestSrc = readFileSync(root + guest, 'utf8');
@@ -128,23 +133,23 @@ for (const [file, re] of [['crates/simcore-protocol/src/wire.rs', (r) => `Self::
   const src = readFileSync(root + file, 'utf8');
   for (const r of ios.runtimes) if (!src.includes(re(r))) drift(file, `expected \`${re(r)}\``);
 }
-// Reference screenshots say which runtime (and Expo Go) they were captured on: each runtime's fixture sets
-// (`fixtures` dir, nested runtime dirs excluded) must name it.
+// Reference screenshots name their runtime and, for Android, the emulator device.
 const fixtureDirs = new Set(ios.runtimes.map((r) => r.fixtures));
 for (const r of ios.runtimes) {
-  const walk = (rel) => {
-    for (const fx of readdirSync(root + rel)) {
-      const sub = `${rel}/${fx}`;
-      if (fixtureDirs.has(sub)) continue;
-      let readme;
-      try { readme = readFileSync(`${root}${sub}/README.md`, 'utf8'); } catch { continue; }
-      if (!readme.includes(`iOS ${r.runtime}`)) drift(`${sub}/README.md`, `does not say it was captured on iOS ${r.runtime}; recapture or update the matrix`);
-      for (const m of readme.matchAll(/Expo Go (\d+(?:\.\d+)*)/g)) {
-        if (!expo.expoGo.startsWith(m[1])) drift(`${sub}/README.md`, `Expo Go ${m[1]}, expected ${expo.expoGo}`);
-      }
+  for (const fx of readdirSync(root + r.fixtures)) {
+    const sub = `${r.fixtures}/${fx}`;
+    if (fixtureDirs.has(sub)) continue;
+    const path = `${sub}/README.md`;
+    let readme;
+    try { readme = readFileSync(root + path, 'utf8'); } catch { continue; }
+    const android = fx.endsWith('-android');
+    const want = android ? `${V.android.release} (API ${V.android.api})` : `iOS ${r.runtime}`;
+    if (!readme.includes(want)) drift(path, `does not say it was captured on ${want}; recapture or update the matrix`);
+    if (android && !readme.includes(V.android.device)) drift(path, `expected device ${V.android.device}`);
+    for (const m of readme.matchAll(/Expo Go (\d+(?:\.\d+)*)/g)) {
+      if (!expo.expoGo.startsWith(m[1])) drift(path, `Expo Go ${m[1]}, expected ${expo.expoGo}`);
     }
-  };
-  walk(r.fixtures);
+  }
 }
 
 // Cross-check: every registry module has a row, and the row's iOS status agrees with the registry.

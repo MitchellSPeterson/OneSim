@@ -93,7 +93,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `changedToUpIgnoreConsumed` | ui | ⬜ |  |  |
 | `checked` | foundation | ⬜ |  | Experimental |
 | `checkScrollableContainerConstraints` | foundation | ⬜ |  |  |
-| `CircleShape` | foundation | ⬜ |  |  |
+| `CircleShape` | foundation | ✅ | |  |
 | `clearText` | foundation | ⬜ |  |  |
 | `clearTextSubstitution` | ui | ⬜ |  |  |
 | `clipPath` | ui-graphics | ⬜ |  |  |
@@ -139,7 +139,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `currentBackStackEntryAsState` | navigation-compose | ⬜ |  |  |
 | `currentValueOf` | ui | ⬜ |  |  |
 | `cutText` | ui | ⬜ |  |  |
-| `darkColorScheme` | material3 | ⬜ |  |  |
+| `darkColorScheme` | material3 | ✅ | |  |
 | `DatePickerState` | material3 | ⬜ |  |  |
 | `DateRangePickerState` | material3 | ⬜ |  |  |
 | `debugInspectorInfo` | ui | ⬜ |  |  |
@@ -336,7 +336,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `isPressed` | ui | ⬜ |  |  |
 | `isSatisfiedBy` | ui-unit | ⬜ |  |  |
 | `isSupported` | ui-graphics | ⬜ |  |  |
-| `isSystemInDarkTheme` | foundation | ⬜ |  |  |
+| `isSystemInDarkTheme` | foundation | ✅ | |  |
 | `item` | foundation | ⬜ |  |  |
 | `items` | foundation | ⬜ |  |  |
 | `itemsIndexed` | foundation | ⬜ |  |  |
@@ -345,7 +345,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `LastBaseline` | ui | ⬜ |  |  |
 | `LazyLayoutScrollScope` | foundation | ⬜ |  |  |
 | `lerp` | ui, ui-graphics, ui-text, ui-unit, ui-geometry, foundation | ⬜ |  |  |
-| `lightColorScheme` | material3 | ⬜ |  |  |
+| `lightColorScheme` | material3 | ✅ | |  |
 | `LinearEasing` | animation-core | ⬜ |  |  |
 | `LinearGradientShader` | ui-graphics | ⬜ |  |  |
 | `LinearOutSlowInEasing` | animation-core | ⬜ |  |  |
@@ -561,7 +561,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `selectAll` | foundation | ⬜ |  |  |
 | `selected` | foundation | ⬜ |  | Experimental |
 | `SemanticsPropertyKey` | ui | ⬜ |  |  |
-| `setContent` | activity-compose | ⬜ |  |  |
+| `setContent` | activity-compose | ✅ | | Called from the app activity's onCreate (or a generated activity for --root-view) |
 | `setDisplayedMonth` | material3 | ⬜ |  |  |
 | `setFrom` | ui-graphics | ⬜ |  |  |
 | `setOutline` | ui-graphics | ⬜ |  |  |

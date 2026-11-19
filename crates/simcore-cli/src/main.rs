@@ -25,7 +25,7 @@ enum Cmd {
     /// Build and run an app headlessly, applying --click/--type/--key/--scroll in command-line
     /// order, then optionally screenshotting and inspecting.
     Run {
-        /// A .swift file or directory (or a prebuilt guest executable).
+        /// A .swift file or directory, a .kt file or directory (Jetpack Compose, Android), or a prebuilt guest executable.
         app_path: String,
         #[arg(long)]
         root_view: Option<String>,
@@ -152,7 +152,8 @@ fn main() -> Result<()> {
             Ok(())
         }
         Cmd::Run { app_path, root_view, opts } => {
-            run(&matches, "run", CreateSessionParams { app_path, root_view, ..params("swiftui") }, opts, None)
+            let framework = if is_kotlin(&app_path) { "compose" } else { "swiftui" };
+            run(&matches, "run", CreateSessionParams { app_path, root_view, ..params(framework) }, opts, None)
         }
         Cmd::Expo { url, appearance, opts, .. } => {
             let appearance = match appearance.as_deref() {
@@ -163,6 +164,18 @@ fn main() -> Result<()> {
             run(&matches, "expo", CreateSessionParams { metro_url: url, ..params("react-native") }, opts, appearance)
         }
     }
+}
+
+/// A `.kt` file, or a directory holding Kotlin sources (searched two levels deep): a Jetpack Compose app.
+fn is_kotlin(path: &str) -> bool {
+    fn walk(dir: &std::path::Path, depth: u32) -> bool {
+        std::fs::read_dir(dir).into_iter().flatten().flatten().any(|e| {
+            let p = e.path();
+            p.extension().is_some_and(|x| x == "kt") || (depth > 0 && p.is_dir() && walk(&p, depth - 1))
+        })
+    }
+    let p = std::path::Path::new(path);
+    if p.is_dir() { walk(p, 2) } else { p.extension().is_some_and(|x| x == "kt") }
 }
 
 fn params(framework: &str) -> CreateSessionParams {

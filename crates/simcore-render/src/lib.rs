@@ -4,6 +4,7 @@
 //! [`Scene`]; everything else works on the scene only.
 
 pub mod layout {
+    pub mod compose;
     pub mod rn;
     pub mod swiftui;
 }
@@ -22,7 +23,7 @@ mod text;
 pub use raster::{render, render_png};
 pub use symbols::{capability as symbols_capability, SymbolMask, SymbolMetrics, SymbolSpec};
 pub use chrome::{autocap, ChromeParams};
-pub use device::{device, Device, StatusBar, DEFAULT_DEVICE, DEVICES};
+pub use device::{device, Device, StatusBar, DEFAULT_ANDROID_DEVICE, DEFAULT_DEVICE, DEVICES};
 pub use interaction::{resolve_label, DragPhase, Effect, Interaction};
 pub use layout::swiftui::SceneParams;
 pub use scene::{Color, Glyph, Gradient, ImageRun, Node, Rect, Role, Scene, ScrollInfo, SheetInfo, SheetPos, Shadow, SymbolRun, TextRun};
@@ -34,6 +35,7 @@ use simcore_protocol::ViewNode;
 pub fn build_scene(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
     match root.kind {
         simcore_protocol::ViewKind::Rn { .. } => layout::rn::layout(root, params, fonts),
+        simcore_protocol::ViewKind::Compose { .. } => layout::compose::layout(root, params, fonts),
         // A React Native alert (`Alert.alert`): RN content under SwiftUI alert layers.
         simcore_protocol::ViewKind::Presentation { ref content, .. } if matches!(content.kind, simcore_protocol::ViewKind::Rn { .. }) => layout::rn::layout(root, params, fonts),
         _ => layout::swiftui::layout(root, params, fonts),

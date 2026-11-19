@@ -22,7 +22,8 @@ app process (one per session)
 | Language semantics (generics, closures, property wrappers) | Swift module | Swift compiler already does this; Rust never interprets Swift. |
 | State registry, view identity, action table | Swift module | State is tied to Swift values/closures. |
 | Normalized view tree | Swift → JSON | Framework-specific but language-neutral. |
-| Layout | `simcore-render::layout::{swiftui,rn}` | Proposal-based SwiftUI semantics; React Native uses Yoga flexbox semantics via taffy. Both emit the same Scene. |
+| Layout | `simcore-render::layout::{swiftui,rn}` | Proposal-based SwiftUI semantics; React Native uses Yoga flexbox semantics via taffy; Compose uses its own constraints-down, sizes-up measure/place. Both emit the same Scene. |
+| Compose execution | `frameworks/compose` (JVM) | The real `androidx.compose.runtime` composes the app; SimCore's `ui`/`foundation`/`material3` reduce it to Box/Column/Row/Text + Modifier chains (protocol §K), laid out by `layout::compose` with Compose's constraint rules. |
 | React Native execution | `frameworks/react-native/guest` (Node) | Runs the Metro bundle unchanged; RN's own Fabric renderer reconciles, the guest implements `nativeFabricUIManager` + TurboModules. See `frameworks/react-native/README.md`. |
 | Scene, raster, hit test, inspection | `simcore-render` | Framework-neutral; shared by every future framework. Liquid Glass is a backdrop effect in `glass.rs` (CPU, deterministic, wasm-safe); nodes are in paint order so a glass node reads the pixels already drawn. |
 | Sessions, isolation, external API | `simcore-host` / `simcore-cli` | Process per session: a guest crash marks that session `crashed` only. |

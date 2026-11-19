@@ -15,13 +15,17 @@
 | v0.2 M3 Expo Router: unmodified create-expo-app template (NativeTabs, Reanimated 4/worklets, expo-image/symbols/glass) + native Stack app (push/pop, params, header back); 9 iOS reference states pass both modes | done (no transition animations, header subviews, large-title collapse) |
 | v0.2 M4 native-module registry (implemented/simulated/unsupported, PRD diagnostics; clipboard, haptics, location, permissions simulated), JSON-RPC 2.0 over WebSocket (`simcore serve --listen`, `docs/api.md`), per-session ordered events with replay, TypeScript SDK (`sdk/typescript`), DemoKit-style example (`examples/demokit-integration`) | done |
 
+| Compose C0: unmodified Compose app (Activity + `setContent`) on the real Compose runtime, own `ui`/`foundation`/`material3`, Compose measure/place in the host, Pixel 10a device with Android status bar and gesture handle (`simcore run examples/compose-counter`) | done (Android 17 emulator pixel gate: `scripts/compare-android.sh`) |
+
 v0.2 definition of done (PRD §14): all items met except visual fidelity of the RN showcase `text` state (2.49% vs 2% limit; see M1). Known limits: no push/pop transition animations, no redbox UI, `navigation.changed` only for Expo Router, landscape unsupported, Node instead of Hermes.
 
 SwiftUI since v0.1: presentations (alerts, sheets, dialogs, covers), value navigation, environment objects, lifecycle, `onChange`, `onTapGesture`, `@AppStorage`, lazy stacks, `Form`, `Picker`, `Slider`, `ProgressView`, `SecureField`, `LabeledContent`, `TabView`/`Tab`/`.badge` ([compatibility](compatibility/swiftui/README.md)).
 
 Next SwiftUI surface: `.task` (async wake path into the runtime), `@Observable`/`@Bindable` (macro plugin), `.toolbar`/`ToolbarItem`, `@FocusState`, `LazyVGrid`/`Grid`, `Image("asset")`, `.searchable`, `.swipeActions`, `.refreshable`, animations.
 
-Later: Jetpack Compose engine (own layout, Kotlin runtime out of process), React Native engine (Hermes + Fabric, Yoga layout), WASM execution backend (Wasmtime), binary wire encoding, native module registry (implemented / simulated / unsupported).
+Next Compose surface: `Icon` (Material Symbols), `TextField`, `LazyColumn` and scrolling, `AlertDialog`, navigation-compose.
+
+Later: React Native engine (Hermes + Fabric, Yoga layout), WASM execution backend (Wasmtime), binary wire encoding, native module registry (implemented / simulated / unsupported).
 
 ## Apple frameworks beyond SwiftUI
 

@@ -94,16 +94,28 @@ impl Host {
         if p.framework == "expo" {
             p.framework = "react-native".into();
         }
-        if !matches!(p.framework.as_str(), "swiftui" | "react-native") {
+        if matches!(p.framework.as_str(), "jetpack-compose" | "android") {
+            p.framework = "compose".into();
+        }
+        if !matches!(p.framework.as_str(), "swiftui" | "react-native" | "compose") {
             return Err(err(
                 ErrorCode::Unsupported,
-                format!("framework {:?} (\"swiftui\", \"react-native\")", p.framework),
+                format!("framework {:?} (\"swiftui\", \"react-native\", \"compose\")", p.framework),
             ));
         }
-        if p.platform != "ios" {
-            return Err(err(ErrorCode::Unsupported, format!("platform {:?} (only \"ios\")", p.platform)));
+        // Compose runs on Android only; `platform` defaults to "ios" on the wire, so it is implied here.
+        if p.framework == "compose" {
+            p.platform = "android".into();
+            p.device.get_or_insert_with(|| simcore_render::DEFAULT_ANDROID_DEVICE.into());
+        } else if p.platform != "ios" {
+            return Err(err(ErrorCode::Unsupported, format!("platform {:?} for {} (only \"ios\")", p.platform, p.framework)));
         }
-        if p.framework == "swiftui" && !std::path::Path::new(&p.app_path).exists() {
+        if let Some(d) = p.device.as_deref().and_then(device) {
+            if d.android != (p.platform == "android") {
+                return Err(err(ErrorCode::Unsupported, format!("device {:?} is not a{} device", d.name, if d.android { "n iOS" } else { "n Android" })));
+            }
+        }
+        if matches!(p.framework.as_str(), "swiftui" | "compose") && !std::path::Path::new(&p.app_path).exists() {
             return Err(err(ErrorCode::BadRequest, format!("app_path {:?} does not exist", p.app_path)));
         }
         if let Some(d) = &p.device {
@@ -583,7 +595,7 @@ impl Host {
         }
         match method {
             "get_capabilities" => ok(json!({
-                "frameworks": ["swiftui", "react-native"], "platforms": ["ios"], "commands": COMMANDS, "headless": true,
+                "frameworks": ["swiftui", "react-native", "compose"], "platforms": ["ios", "android"], "commands": COMMANDS, "headless": true,
                 "devices": DEVICES.iter().map(|d| d.name).collect::<Vec<_>>(),
                 "pointer_events": ["down", "up", "click", "scroll"],
                 "keyboard": {"events": ["text", "key"], "keys": ["backspace", "enter"]},

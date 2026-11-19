@@ -207,7 +207,7 @@ fn is_prebuilt(p: &CreateSessionParams) -> bool {
     use std::os::unix::fs::PermissionsExt;
     let path = Path::new(&p.app_path);
     p.prebuilt
-        || (path.extension().is_none_or(|e| e != "swift")
+        || (path.extension().is_none_or(|e| e != "swift" && e != "kt")
             && path.metadata().is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0))
 }
 
@@ -237,6 +237,11 @@ impl Session {
 
     pub fn is_rn(&self) -> bool {
         self.params.framework == "react-native"
+    }
+
+    /// Jetpack Compose on Android (protocol section K).
+    pub fn is_compose(&self) -> bool {
+        self.params.framework == "compose"
     }
 
     /// Current state; a running session whose guest exited reads as crashed.
@@ -344,7 +349,7 @@ impl Session {
 
     fn build(&mut self) -> Result<PathBuf, ApiError> {
         let home = simcore_home();
-        let script = home.join("scripts/build-swift-app.sh");
+        let script = home.join(if self.is_compose() { "frameworks/compose/scripts/build-app.sh" } else { "scripts/build-swift-app.sh" });
         if !script.exists() {
             return Err(err(ErrorCode::BuildFailed, format!("{} not found (set SIMCORE_HOME)", script.display())));
         }
@@ -402,6 +407,9 @@ impl Session {
             .env("SIMCORE_DEVICE", self.device.name)
             .env("SIMCORE_OS_BUILD", self.ios.build())
             .env("SIMCORE_APPEARANCE", if self.appearance == Appearance::Dark { "dark" } else { "light" })
+            .env("SIMCORE_PLATFORM", if self.device.android { "android" } else { "ios" })
+            .env("SIMCORE_SCALE", self.scale.to_string())
+            .env("SIMCORE_INSETS", format!("{},{}", self.device.safe_top, self.device.safe_bottom))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

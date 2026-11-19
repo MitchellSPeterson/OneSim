@@ -119,6 +119,7 @@ fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: 
     let k = match g {
         Glyph::SignalDots | Glyph::SignalDots27 => w / 20.0,
         Glyph::Wifi | Glyph::Wifi27 => h / 12.0,
+        Glyph::AndroidWifi => h / 11.8,
         Glyph::Battery | Glyph::Battery27 => h / 13.0,
         // Emoji / dictation inside the SE's short bottom-row keys (the 17 Pro's sit in a 44pt box).
         Glyph::Emoji | Glyph::Mic if h < 44.0 => h / 60.0,
@@ -378,6 +379,21 @@ fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: 
                     let st = Stroke { width: k as f32 * 2.4, line_join: LineJoin::Round, ..Stroke::default() };
                     pm.stroke_path(&p, &paint(Color::rgba(0.0, 0.0, 0.0, 0.016), 1.0), &st, xf, mask);
                 }
+                pm.fill_path(&p, &paint(c, 1.0), FillRule::Winding, xf, mask);
+            }
+        }
+        Glyph::AndroidWifi => {
+            // Measured on the Android 17 emulator (Pixel 10a): arcs of radius 4.9 and 9.45 dp, +-50 deg from
+            // vertical, 1.7 dp round-capped strokes, around a 1.45 dp dot.
+            let (ox, oy) = (x + w / 2.0, y + 10.5);
+            for r in [4.9f32, 9.45] {
+                let pts: Vec<(f32, f32)> = (0..=16)
+                    .map(|i| (-50.0 + 100.0 * i as f32 / 16.0).to_radians())
+                    .map(|a| (ox + r * a.sin(), oy - r * a.cos()))
+                    .collect();
+                stroke_pts(pm, &pts, c, 1.7, xf, mask);
+            }
+            if let Some(p) = PathBuilder::from_circle(ox, oy, 1.45) {
                 pm.fill_path(&p, &paint(c, 1.0), FillRule::Winding, xf, mask);
             }
         }
