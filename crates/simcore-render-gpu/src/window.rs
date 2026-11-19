@@ -68,7 +68,7 @@ impl WindowRenderer {
     /// Create the surface for `window` (any `Arc<impl HasWindowHandle + HasDisplayHandle>`), pick a compatible
     /// adapter, and build an [`Executor`] on its device. `size` is the window's physical size in pixels.
     pub fn new(window: impl Into<wgpu::SurfaceTarget<'static>>, size: (u32, u32)) -> Result<Self, String> {
-        let instance = wgpu::Instance::default();
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
         let surface = instance.create_surface(window).map_err(|e| format!("create surface: {e}"))?;
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,

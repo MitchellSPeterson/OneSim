@@ -10,7 +10,7 @@ use crate::readback::Readback;
 
 /// Whether a GPU adapter can be acquired at all (cheap probe; creates no device).
 pub fn adapter_available() -> bool {
-    let instance = wgpu::Instance::default();
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
     pollster::block_on(instance.request_adapter(&adapter_options())).is_ok()
 }
 
@@ -40,7 +40,7 @@ pub struct GpuRenderer {
 impl GpuRenderer {
     /// Acquire an adapter and device. `Err` carries a human-readable reason (no adapter, init failure).
     pub fn new_headless() -> Result<Self, String> {
-        let instance = wgpu::Instance::default();
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
         let adapter = pollster::block_on(instance.request_adapter(&adapter_options())).map_err(|e| format!("no GPU adapter: {e}"))?;
         let info = adapter.get_info();
         let name = format!("{} ({:?})", info.name, info.backend);
