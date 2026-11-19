@@ -342,10 +342,22 @@ fn glass_variants_match_cpu() {
         clip.clip_radius = Some(12.0);
         e.parent = Some(9);
         cases.push((format!("edge-clipped{d}"), with(dark, vec![clip, e.clone()]), 1.0, true));
-        // Edge combined with glass on one node takes the CPU path (and must still match).
+        // Edge combined with glass on one node: separate passes in the CPU's order, all on the GPU.
         let mut both = glass_node("both", 20.0, 20.0, 80.0, 30.0, 15.0, spec(GlassVariant::Regular));
         both.edge = e.edge;
-        cases.push((format!("glass+edge-fallback{d}"), with(dark, vec![both]), 1.0, false));
+        cases.push((format!("glass+edge{d}"), with(dark, vec![both]), 1.0, true));
+        // More ancestor clips than the composite shader takes: the CPU fallback (and must still match).
+        let mut nested = vec![];
+        for k in 0..5 {
+            let mut c = node("clip", 4.0 + k as f64, 4.0 + k as f64, 110.0 - 2.0 * k as f64, 80.0 - 2.0 * k as f64);
+            c.clip_radius = Some(20.0 - k as f64);
+            c.parent = (k > 0).then_some(9 + k - 1);
+            nested.push(c);
+        }
+        let mut gl = glass_node("deep", 10.0, 20.0, 90.0, 34.0, 17.0, spec(GlassVariant::Regular));
+        gl.parent = Some(13);
+        nested.push(gl);
+        cases.push((format!("five-clips-fallback{d}"), with(dark, nested), 1.0, false));
     }
     for (name, sc, max, on_gpu) in &cases {
         let before = g.backdrop_counts();

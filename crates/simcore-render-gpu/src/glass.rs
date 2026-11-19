@@ -14,8 +14,9 @@
 //!
 //! Finally the touched region is copied from the target back into `acc`.
 
-use simcore_render::glass::{self as g, GlassVariant};
-use simcore_render::{Node, Scene};
+use simcore_render::display::RRect;
+use simcore_render::glass::{self as g, GlassSpec, GlassVariant, ScrollEdge};
+use simcore_render::Color;
 use std::num::NonZeroU64;
 use vello::wgpu;
 
@@ -23,7 +24,8 @@ const PASSES: &str = include_str!("shaders/glass_passes.wgsl");
 const COMPOSITE: &str = include_str!("shaders/glass_composite.wgsl");
 /// Dynamic-offset uniform slots per node (snapshot 1 + blur 6, halo 3, own shadow 3 = 13).
 const SLOTS: u64 = 16;
-const MAX_CLIPS: usize = 4;
+/// Ancestor clips the composite shader intersects (more take the CPU path).
+pub(crate) const MAX_CLIPS: usize = 4;
 /// `P` in `glass_passes.wgsl`: four vec4<i32> + four vec4<f32>.
 const P_SIZE: u64 = 128;
 /// `C` in `glass_composite.wgsl`: 6 + 8 vec4 + 4 clips + radii.
@@ -87,6 +89,23 @@ pub(crate) struct Surfaces<'a> {
     pub size: (u32, u32),
 }
 
+/// An own shadow in device pixels (`color` carries node opacity).
+pub(crate) struct OwnShadow {
+    pub shape: RRect,
+    pub color: Color,
+    pub sigma: f32,
+    pub dx: f32,
+    pub dy: f32,
+}
+
+/// What one composite pass draws: any of glass (with its halo), a shadow and the scroll edge.
+pub(crate) struct Backdrop<'a> {
+    pub glass: Option<(&'a GlassSpec, RRect)>,
+    pub opacity: f32,
+    pub shadow: Option<OwnShadow>,
+    pub edge: Option<ScrollEdge>,
+}
+
 pub(crate) struct GlassGpu {
     pipes: Pipes,
     bgl_pass: wgpu::BindGroupLayout,
@@ -114,11 +133,12 @@ struct ShadowPlan {
 }
 
 impl ShadowPlan {
-    fn new(b: (f32, f32, f32, f32), radius_pt: f32, sigma_pt: f32, dx: f32, dy: f32, rgba: [u8; 4], s: f32) -> Self {
-        let sigma = (sigma_pt * s).max(0.5);
+    /// A shadow of the device-pixel shape `b = (x, y, w, h)` with corner radius `r`, offset `(dx, dy)`.
+    fn new(b: (f32, f32, f32, f32), r: f32, sigma: f32, dx: f32, dy: f32, rgba: [u8; 4]) -> Self {
+        let sigma = sigma.max(0.5);
         let pad = (sigma * 3.0).ceil() + 2.0;
-        let (px, py) = (b.0 * s + dx * s, b.1 * s + dy * s);
-        let (w, h) = ((b.2 * s + 2.0 * pad).ceil() as u32 + 1, (b.3 * s + 2.0 * pad).ceil() as u32 + 1);
+        let (px, py) = (b.0 + dx, b.1 + dy);
+        let (w, h) = ((b.2 + 2.0 * pad).ceil() as u32 + 1, (b.3 + 2.0 * pad).ceil() as u32 + 1);
         let f = ((sigma / 4.0).floor() as i32).max(1);
         ShadowPlan {
             gx0: (px.floor() - pad) as i32,
@@ -127,8 +147,8 @@ impl ShadowPlan {
             gh: h.div_ceil(f as u32),
             f,
             sigma_cells: sigma / f as f32,
-            shape: [px, py, b.2 * s, b.3 * s],
-            r: radius_pt * s,
+            shape: [px, py, b.2, b.3],
+            r,
             rgb: [rgba[0] as f32, rgba[1] as f32, rgba[2] as f32],
             alpha: rgba[3] as f32 / 255.0,
         }
@@ -185,7 +205,7 @@ fn make_img(device: &wgpu::Device, w: u32, h: u32) -> Img {
 
 impl GlassGpu {
     /// Compile the pipelines. `Err` carries the validation message (the caller falls back to the CPU backdrop path).
-    pub fn new(device: &wgpu::Device) -> Result<Self, String> {
+    pub async fn new(device: &wgpu::Device) -> Result<Self, String> {
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let uniform_ty = |dynamic: bool, size: u64| wgpu::BindingType::Buffer {
             ty: wgpu::BufferBindingType::Uniform,
@@ -234,7 +254,7 @@ impl GlassGpu {
             gauss_v: pipe(&pl_pass, &m_pass, "gauss_v"),
             composite: pipe(&pl_comp, &m_comp, "main"),
         };
-        if let Some(e) = pollster::block_on(scope.pop()) {
+        if let Some(e) = scope.pop().await {
             return Err(format!("glass shaders: {e}"));
         }
         let stride = (device.limits().min_uniform_buffer_offset_alignment as u64).max(P_SIZE).next_power_of_two();
@@ -251,17 +271,6 @@ impl GlassGpu {
             mapped_at_creation: false,
         });
         Ok(Self { pipes, bgl_pass, bgl_comp, stride, uniform, comp, slots: Vec::new(), rows_cpu: Vec::new(), scratch: None })
-    }
-
-    /// Whether node `idx` can be composited here (otherwise the caller uses the CPU backdrop path).
-    pub fn supports(scene: &Scene, idx: usize, scale: f64) -> bool {
-        let n = &scene.nodes[idx];
-        let glass = n.glass.as_ref().is_some_and(|g| g.variant != GlassVariant::Identity);
-        // The edge blurs what the pixmap holds after the glass and shadows: keep that combination on the CPU.
-        if n.edge.is_some() && (glass || n.shadow.is_some()) {
-            return false;
-        }
-        simcore_render::clip_chain(scene, idx, scale).len() <= MAX_CLIPS
     }
 
     fn pass_bg(&self, device: &wgpu::Device, src: &wgpu::TextureView, dst: &wgpu::TextureView) -> wgpu::BindGroup {
@@ -355,34 +364,35 @@ impl GlassGpu {
         off as u32
     }
 
-    /// Composite backdrop node `idx` onto the frame: reads `acc`, writes `target` (and copies the result back to `acc`).
-    pub fn encode(&mut self, fr: &Surfaces, scene: &Scene, idx: usize, scale: f64) -> Result<(), String> {
-        let n: &Node = &scene.nodes[idx];
-        let (s, (pw, ph)) = (scale as f32, fr.size);
-        let dark = scene.appearance == simcore_protocol::Appearance::Dark;
-        let b = n.bounds;
-        let bb = (b.x as f32, b.y as f32, b.w as f32, b.h as f32);
+    /// Composite one backdrop op onto the frame: reads `acc`, writes `target` (and, with `copy_back`, copies the
+    /// result back to `acc` for whatever reads it next). `clips` are the open ancestor clips (device px).
+    pub fn encode(&mut self, fr: &Surfaces, bd: &Backdrop, clips: &[RRect], s: f32, dark: bool, copy_back: bool) -> Result<(), String> {
+        if clips.len() > MAX_CLIPS {
+            return Err(format!("{} ancestor clips (max {MAX_CLIPS})", clips.len()));
+        }
+        let (pw, ph) = fr.size;
+        let opacity = bd.opacity;
 
         // Glass: parameters, shape and the snapshot rectangle.
-        let glass = n.glass.as_ref().filter(|gs| gs.variant != GlassVariant::Identity).map(|gs| {
+        let glass = bd.glass.as_ref().filter(|(gs, _)| gs.variant != GlassVariant::Identity).map(|(gs, sh)| {
             let p = g::spec_params(gs, dark);
-            let r = (n.radius as f32).min(bb.2 / 2.0).min(bb.3 / 2.0) * s;
-            let shape = g::Shape { x: bb.0 * s, y: bb.1 * s, w: bb.2 * s, h: bb.3 * s, r };
+            let r = sh.r.min(sh.w / 2.0).min(sh.h / 2.0).max(0.0);
+            let shape = g::Shape { x: sh.x, y: sh.y, w: sh.w, h: sh.h, r };
             let snap = g::snapshot_rect(shape, s, &p, pw, ph);
-            (gs, p, shape, snap)
+            (*gs, p, shape, snap)
         });
-        let halo = glass.as_ref().filter(|(_, p, ..)| p.sh_a > 0.0).map(|(_, p, ..)| {
-            let rgba = [0, 0, 0, u8c(p.sh_a * n.opacity)];
-            ShadowPlan::new(bb, n.radius.max(n.clip_radius.unwrap_or(0.0)) as f32, p.sh_sigma, 0.0, p.sh_dy, rgba, s)
+        let halo = glass.as_ref().filter(|(_, p, ..)| p.sh_a > 0.0).map(|(_, p, shape, _)| {
+            let rgba = [0, 0, 0, u8c(p.sh_a * opacity)];
+            ShadowPlan::new((shape.x, shape.y, shape.w, shape.h), shape.r, p.sh_sigma * s, 0.0, p.sh_dy * s, rgba)
         });
-        let own = n.shadow.as_ref().map(|sd| {
+        let own = bd.shadow.as_ref().map(|sd| {
             let c = sd.color;
-            let rgba = [u8c(c.r), u8c(c.g), u8c(c.b), u8c(c.a * n.opacity)];
-            ShadowPlan::new(bb, n.radius.max(n.clip_radius.unwrap_or(0.0)) as f32, sd.radius as f32, sd.dx as f32, sd.dy as f32, rgba, s)
+            let rgba = [u8c(c.r), u8c(c.g), u8c(c.b), u8c(c.a)];
+            ShadowPlan::new((sd.shape.x, sd.shape.y, sd.shape.w, sd.shape.h), sd.shape.r, sd.sigma, sd.dx, sd.dy, rgba)
         });
-        let edge = n.edge.as_ref();
+        let edge = bd.edge;
         let edge_f = (s.round() as u32).max(1);
-        let edge_rows = edge.map_or(0, |e| g::edge_rows(e, s, ph as usize) as u32);
+        let edge_rows = edge.map_or(0, |e| g::edge_rows(&e, s, ph as usize) as u32);
         let (ebw, ebh) = (pw.div_ceil(edge_f), edge_rows.div_ceil(edge_f));
 
         let a_need = match (&glass, edge) {
@@ -458,7 +468,10 @@ impl GlassGpu {
         }
 
         // Composite uniform.
-        let chain = simcore_render::clip_chain(scene, idx, scale);
+        let chain: Vec<[f32; 5]> = clips
+            .iter()
+            .map(|c| [c.x, c.y, c.w, c.h, c.r.min(c.w / 2.0).min(c.h / 2.0).max(0.0)])
+            .collect();
         let flags = halo.is_some() as i32 | (glass.is_some() as i32) << 1 | (own.is_some() as i32) << 2 | (edge.is_some() as i32) << 3;
         let (snap, shape, p, gs) = match &glass {
             Some((gs, p, shape, snap)) => (*snap, [shape.x, shape.y, shape.w, shape.h, shape.r], Some(*p), Some(*gs)),
@@ -500,7 +513,7 @@ impl GlassGpu {
                 [shape[0], shape[1], shape[2], shape[3]],
                 [shape[4], pr.lens_d * s, (pr.lens_w * s).max(0.5), (pr.rim_w * s).max(1.0)],
                 [pr.sat, pr.mul, pr.add * 255.0, pr.rim_a],
-                [pr.rim_dir, n.opacity, tint_a, 0.0],
+                [pr.rim_dir, opacity, tint_a, 0.0],
                 [tint[0], tint[1], tint[2], 0.0],
                 sh4(hp),
                 sh4(op),
@@ -515,7 +528,7 @@ impl GlassGpu {
         if let Some(e) = edge {
             self.rows_cpu.clear();
             for y in 0..edge_rows as usize {
-                let [a, bw, t] = g::edge_row(e, y, s);
+                let [a, bw, t] = g::edge_row(&e, y, s);
                 [a, bw, t, 0.0].iter().for_each(|v| self.rows_cpu.extend_from_slice(&v.to_le_bytes()));
             }
             if let Some(sc) = &self.scratch {
@@ -548,12 +561,14 @@ impl GlassGpu {
             cp.set_bind_group(0, &sc.comp, &[]);
             cp.dispatch_workgroups(groups((rx1 - rx0) as u32), groups((ry1 - ry0) as u32), 1);
         }
-        let origin = wgpu::Origin3d { x: rx0 as u32, y: ry0 as u32, z: 0 };
-        enc.copy_texture_to_texture(
-            wgpu::TexelCopyTextureInfo { texture: fr.target, mip_level: 0, origin, aspect: wgpu::TextureAspect::All },
-            wgpu::TexelCopyTextureInfo { texture: fr.acc, mip_level: 0, origin, aspect: wgpu::TextureAspect::All },
-            wgpu::Extent3d { width: (rx1 - rx0) as u32, height: (ry1 - ry0) as u32, depth_or_array_layers: 1 },
-        );
+        if copy_back {
+            let origin = wgpu::Origin3d { x: rx0 as u32, y: ry0 as u32, z: 0 };
+            enc.copy_texture_to_texture(
+                wgpu::TexelCopyTextureInfo { texture: fr.target, mip_level: 0, origin, aspect: wgpu::TextureAspect::All },
+                wgpu::TexelCopyTextureInfo { texture: fr.acc, mip_level: 0, origin, aspect: wgpu::TextureAspect::All },
+                wgpu::Extent3d { width: (rx1 - rx0) as u32, height: (ry1 - ry0) as u32, depth_or_array_layers: 1 },
+            );
+        }
         fr.queue.submit([enc.finish()]);
         Ok(())
     }

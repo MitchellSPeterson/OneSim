@@ -367,15 +367,30 @@ thread_local! {
     static SHADOWS: RefCell<HashMap<ShadowKey, Rc<Pixmap>>> = RefCell::new(HashMap::new());
 }
 
+/// A shadow in device pixels: the shape's `x, y, w, h`, its corner radius, gaussian sigma, offset and straight RGBA.
+struct DevShadow {
+    b: (f32, f32, f32, f32),
+    radius: f32,
+    sigma: f32,
+    dx: f32,
+    dy: f32,
+    rgba: [u8; 4],
+}
+
 /// SwiftUI `shadow(radius:)` is a gaussian with sigma = radius (fitted to simulator renders).
 fn draw_shadow(pm: &mut Pixmap, n: &crate::scene::Node, sh: &Shadow, b: (f32, f32, f32, f32), s: f32, mask: Option<&Mask>) {
     let (id, op, radius) = (n.id.as_str(), n.opacity, n.radius.max(n.clip_radius.unwrap_or(0.0)) as f32);
-    let sigma = (sh.radius as f32 * s).max(0.5);
-    let pad = (sigma * 3.0).ceil() + 2.0;
-    let (px, py) = (b.0 * s + sh.dx as f32 * s, b.1 * s + sh.dy as f32 * s);
-    let (fx, fy) = (px - px.floor(), py - py.floor());
     let rgba = [sh.color.r, sh.color.g, sh.color.b, sh.color.a * op].map(|v| (v * 255.0).round() as u8);
-    let key = (id.to_string(), [(b.2 * s).to_bits(), (b.3 * s).to_bits(), (radius * s).to_bits(), sigma.to_bits(), fx.to_bits(), fy.to_bits(), 0], rgba);
+    let dev = DevShadow { b: (b.0 * s, b.1 * s, b.2 * s, b.3 * s), radius: radius * s, sigma: (sh.radius as f32 * s).max(0.5), dx: sh.dx as f32 * s, dy: sh.dy as f32 * s, rgba };
+    draw_shadow_dev(pm, id, &dev, mask);
+}
+
+fn draw_shadow_dev(pm: &mut Pixmap, id: &str, sh: &DevShadow, mask: Option<&Mask>) {
+    let DevShadow { b, radius, sigma, rgba, .. } = *sh;
+    let pad = (sigma * 3.0).ceil() + 2.0;
+    let (px, py) = (b.0 + sh.dx, b.1 + sh.dy);
+    let (fx, fy) = (px - px.floor(), py - py.floor());
+    let key = (id.to_string(), [b.2.to_bits(), b.3.to_bits(), radius.to_bits(), sigma.to_bits(), fx.to_bits(), fy.to_bits(), 0], rgba);
     let img = SHADOWS.with(|c| {
         let mut c = c.borrow_mut();
         if c.len() > 256 {
@@ -383,9 +398,9 @@ fn draw_shadow(pm: &mut Pixmap, n: &crate::scene::Node, sh: &Shadow, b: (f32, f3
         }
         c.entry(key)
             .or_insert_with(|| {
-                let (w, h) = ((b.2 * s + 2.0 * pad).ceil() as u32 + 1, (b.3 * s + 2.0 * pad).ceil() as u32 + 1);
+                let (w, h) = ((b.2 + 2.0 * pad).ceil() as u32 + 1, (b.3 + 2.0 * pad).ceil() as u32 + 1);
                 let mut cov = Pixmap::new(w.max(1), h.max(1)).expect("shadow size");
-                if let Some(p) = rrect(pad + fx, pad + fy, b.2 * s, b.3 * s, radius * s) {
+                if let Some(p) = rrect(pad + fx, pad + fy, b.2, b.3, radius) {
                     let mut white = Paint::default();
                     white.set_color_rgba8(255, 255, 255, 255);
                     cov.fill_path(&p, &white, FillRule::Winding, Transform::identity(), None);
@@ -610,6 +625,44 @@ pub fn apply_backdrop(pm: &mut Pixmap, scene: &Scene, idx: usize, scale: f64) {
     let mask = chain.iter().rev().fold(None, |m, &i| child_mask(&scene.nodes[i], m, s, pw, ph));
     let dark = scene.appearance == simcore_protocol::Appearance::Dark;
     paint_backdrop(pm, &scene.nodes[idx], dark, s, mask.as_deref());
+}
+
+/// Paint the backdrop display-list op `op` ([`crate::display::Op::is_backdrop`]) into `pm`, which holds everything
+/// painted before it, clipped by `clips` (outermost first). Everything is in device pixels at `scale` px per point.
+/// This is the CPU reference for the GPU executor's backdrop passes and its fallback.
+pub fn apply_backdrop_op(pm: &mut Pixmap, op: &crate::display::Op, clips: &[crate::display::RRect], scale: f32, dark: bool) {
+    use crate::display::Op;
+    let (pw, ph) = (pm.width(), pm.height());
+    let mask = clips.iter().fold(None, |m: Option<Mask>, c| match rrect(c.x, c.y, c.w, c.h, c.r) {
+        Some(p) => Some(clip_mask(m.as_ref(), &p, Transform::identity(), pw, ph)),
+        None => m,
+    });
+    let mask = mask.as_ref();
+    let rgba = |c: Color| [c.r, c.g, c.b, c.a].map(|v| (v * 255.0).round() as u8);
+    match op {
+        Op::Glass { shape, spec, opacity } => {
+            if spec.variant == crate::glass::GlassVariant::Identity {
+                return;
+            }
+            let p = crate::glass::spec_params(spec, dark);
+            let r = shape.r.min(shape.w / 2.0).min(shape.h / 2.0).max(0.0);
+            let sh = crate::glass::Shape { x: shape.x, y: shape.y, w: shape.w, h: shape.h, r };
+            // Snapshot the backdrop before our own halo lands on it.
+            let snap = crate::glass::snapshot(pm, sh, scale, &p);
+            if p.sh_a > 0.0 {
+                let halo = Color::rgba(0.0, 0.0, 0.0, p.sh_a * opacity);
+                let dev = DevShadow { b: (sh.x, sh.y, sh.w, sh.h), radius: r, sigma: (p.sh_sigma * scale).max(0.5), dx: 0.0, dy: p.sh_dy * scale, rgba: rgba(halo) };
+                draw_shadow_dev(pm, "", &dev, mask);
+            }
+            crate::glass::draw(pm, snap, sh, spec, scale, dark, *opacity, mask);
+        }
+        Op::BackdropShadow { shape, color, sigma, dx, dy } => {
+            let dev = DevShadow { b: (shape.x, shape.y, shape.w, shape.h), radius: shape.r, sigma: sigma.max(0.5), dx: *dx, dy: *dy, rgba: rgba(*color) };
+            draw_shadow_dev(pm, "", &dev, mask);
+        }
+        Op::Edge(e) => crate::glass::draw_edge(pm, e, scale, mask),
+        _ => {}
+    }
 }
 
 /// Which part of a node's content [`node_sprite`] draws.

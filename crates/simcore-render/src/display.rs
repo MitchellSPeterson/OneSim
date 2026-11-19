@@ -60,8 +60,9 @@ pub enum Op {
     Gradient { shape: RRect, p0: (f32, f32), p1: (f32, f32), stops: Vec<(f32, Color)> },
     /// Gaussian shadow of `shape` (`sigma` in device px) offset by `(dx, dy)`.
     Shadow { shape: RRect, color: Color, sigma: f32, dx: f32, dy: f32 },
-    /// Bitmap `id` mapped by the affine `[a, b, c, d, e, f]` (x' = a x + c y + e, y' = b x + d y + f),
-    /// multiplied by `opacity`.
+    /// Bitmap `id` mapped by the affine `[a, b, c, d, e, f]` (x' = a x + c y + e, y' = b x + d y + f,
+    /// bitmap pixel space to device px), multiplied by `opacity`. Draws the transformed bitmap rectangle
+    /// (edge pixels extended for sampling) inside the current clip.
     Image { id: u64, transform: [f32; 6], sampling: Sampling, opacity: f32 },
     /// Bitmap `id` drawn 1:1 with its top-left at whole device pixel `(x, y)`.
     Sprite { id: u64, x: i32, y: i32 },
@@ -70,12 +71,16 @@ pub enum Op {
     Glass { shape: RRect, spec: GlassSpec, opacity: f32 },
     /// Scroll-edge progressive blur + veil under a bar (see `glass::draw_edge`).
     Edge(ScrollEdge),
+    /// Like [`Op::Shadow`] but evaluated on the backdrop path: an exact gaussian that matches the CPU
+    /// raster (what a node that also draws glass or a scroll edge gets). Same fields and meaning;
+    /// `color` has node opacity applied.
+    BackdropShadow { shape: RRect, color: Color, sigma: f32, dx: f32, dy: f32 },
 }
 
 impl Op {
     /// Reads previously painted pixels (forces a pass boundary on GPU backends).
     pub fn is_backdrop(&self) -> bool {
-        matches!(self, Op::Glass { .. } | Op::Edge(_))
+        matches!(self, Op::Glass { .. } | Op::Edge(_) | Op::BackdropShadow { .. })
     }
 }
 
@@ -318,6 +323,12 @@ impl DisplayList {
                     w.color(e.color);
                     w.f32(e.tint);
                 }
+                Op::BackdropShadow { shape, color, sigma, dx, dy } => {
+                    w.u8(10);
+                    w.rrect(*shape);
+                    w.color(*color);
+                    [*sigma, *dx, *dy].into_iter().for_each(|v| w.f32(v));
+                }
             }
         }
         w.0
@@ -378,6 +389,7 @@ impl DisplayList {
                 7 => Op::Sprite { id: r.u64()?, x: r.i32()?, y: r.i32()? },
                 8 => Op::Glass { shape: r.rrect()?, spec: decode_spec(&mut r)?, opacity: r.f32()? },
                 9 => Op::Edge(ScrollEdge { bar: r.f32()?, color: r.color()?, tint: r.f32()? }),
+                10 => Op::BackdropShadow { shape: r.rrect()?, color: r.color()?, sigma: r.f32()?, dx: r.f32()?, dy: r.f32()? },
                 t => return Err(format!("bad op tag {t}")),
             });
         }
@@ -413,6 +425,7 @@ mod tests {
                 Op::Sprite { id: 7, x: -3, y: 9 },
                 Op::Glass { shape: rr, spec, opacity: 1.0 },
                 Op::Edge(ScrollEdge { bar: 100.0, color: c, tint: 0.5 }),
+                Op::BackdropShadow { shape: rr, color: c, sigma: 3.0, dx: 1.0, dy: 2.0 },
                 Op::PopClip,
             ],
         }
@@ -422,7 +435,7 @@ mod tests {
     fn round_trips() {
         let dl = sample();
         assert_eq!(DisplayList::decode(&dl.encode()).unwrap(), dl);
-        assert_eq!(dl.ops.iter().filter(|o| o.is_backdrop()).count(), 2);
+        assert_eq!(dl.ops.iter().filter(|o| o.is_backdrop()).count(), 3);
     }
 
     #[test]

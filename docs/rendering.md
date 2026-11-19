@@ -8,6 +8,11 @@ Layout, hit testing and input are backend independent: the host builds one `Scen
 | `cpu` | tiny-skia + cosmic-text, the deterministic reference (all pixel-diff gates use it) | always |
 | `gpu` | wgpu + Vello (`crates/simcore-render-gpu`), render to texture and read back once per frame; Liquid Glass and scroll edges run as compute passes on an accumulation texture (`SIMCORE_GPU_GLASS=cpu` forces the CPU backdrop path) | `--features gpu` and a usable adapter |
 
+The GPU backend is a display-list pipeline: `simcore_render::Builder` lowers a `Scene` (fonts, layout, sprites) to a
+`DisplayList` (`crates/simcore-render/src/display.rs`, device pixels, binary encoding), and `simcore_render_gpu::Executor`
+runs it into a texture with no fonts or scene. `GpuRenderer` is Builder + Executor + one readback. The executor builds for
+`wasm32-unknown-unknown` with `--no-default-features`.
+
 ## Selecting
 
 `--renderer auto|gpu|cpu` (CLI, global) overrides `SIMCORE_RENDERER`; with neither set, headless capture uses `cpu`.
