@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pixel parity gate, browser backend vs native: render the 13 showcase states of
+# Pixel parity gate, browser backend vs native: render showcase states from
 # scripts/compare-ios.sh through the Node harness (target/web/app.wasm, bundled Inter + Phosphor)
 # and through native `SIMCORE_FALLBACK=1 simcore run`, then require every state < 2% differing
 # pixels (compare_ios.py metric). Build first: scripts/build-web.sh examples/swiftui-showcase
@@ -9,7 +9,10 @@ cd "$(dirname "$0")/.."
 [ -f target/web/app.wasm ] || { echo "error: target/web/app.wasm missing; run scripts/build-web.sh examples/swiftui-showcase" >&2; exit 2; }
 cargo build -q -p simcore-cli
 out=target/compare-web; rm -rf "$out"; mkdir -p "$out/native" "$out/web"
-app=examples/swiftui-showcase
+guests=$(mktemp -d)
+trap 'rm -rf "$guests"' EXIT
+app="$guests/showcase"
+scripts/build-swift-app.sh examples/swiftui-showcase "$app"
 shot() {
   local name=$1; shift
   SIMCORE_FALLBACK=1 ./target/debug/simcore run "$app" "$@" --screenshot "$out/native/$name.png" >/dev/null 2>&1
