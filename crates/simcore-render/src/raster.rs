@@ -117,10 +117,10 @@ fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: 
     let (x, y, w, h) = b;
     // Status bar glyphs are drawn at their 17 Pro size (20x4, 16x12, 27x13) and scaled to the box.
     let k = match g {
-        Glyph::SignalDots => w / 20.0,
-        Glyph::Wifi => h / 12.0,
+        Glyph::SignalDots | Glyph::SignalDots27 => w / 20.0,
+        Glyph::Wifi | Glyph::Wifi27 => h / 12.0,
         Glyph::AndroidWifi => h / 11.8,
-        Glyph::Battery => h / 13.0,
+        Glyph::Battery | Glyph::Battery27 => h / 13.0,
         // Emoji / dictation inside the SE's short bottom-row keys (the 17 Pro's sit in a 44pt box).
         Glyph::Emoji | Glyph::Mic if h < 44.0 => h / 60.0,
         _ => 1.0,
@@ -172,6 +172,178 @@ fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: 
             }
             for r in [7.2, 10.8] {
                 stroke_pts(pm, &arc(r), c, 2.0, xf, mask);
+            }
+        }
+        Glyph::BatteryRing => {
+            // Two arcs (r 19.2, 2.75pt, round caps) from 12 to 136 degrees either side of the top, bolt in the gap.
+            let r = 19.2;
+            let green = Color::rgba(52.0 / 255.0, 199.0 / 255.0, 89.0 / 255.0, c.a);
+            for side in [-1.0f32, 1.0] {
+                let mut pb = PathBuilder::new();
+                for i in 0..=24 {
+                    let a = (12.0 + 124.0 * i as f32 / 24.0).to_radians() * side;
+                    let (px, py) = (cx + r * a.sin(), cy - r * a.cos());
+                    if i == 0 {
+                        pb.move_to(px, py)
+                    } else {
+                        pb.line_to(px, py)
+                    }
+                }
+                if let Some(p) = pb.finish() {
+                    let st = Stroke {
+                        width: 2.75,
+                        line_cap: LineCap::Round,
+                        line_join: LineJoin::Round,
+                        ..Stroke::default()
+                    };
+                    pm.stroke_path(&p, &paint(green, 1.0), &st, xf, mask);
+                }
+            }
+            let mut bolt = PathBuilder::new();
+            for (i, (bx, by)) in [
+                (0.6, -4.4),
+                (2.2, -4.4),
+                (1.0, -0.6),
+                (2.6, -0.4),
+                (-0.8, 4.4),
+                (-0.2, 0.6),
+                (-2.4, 0.4),
+            ]
+            .iter()
+            .enumerate()
+            {
+                let (px, py) = (cx + bx, cy - r + by);
+                if i == 0 {
+                    bolt.move_to(px, py)
+                } else {
+                    bolt.line_to(px, py)
+                }
+            }
+            bolt.close();
+            if let Some(p) = bolt.finish() {
+                pm.fill_path(
+                    &p,
+                    &paint(Color::rgba(0.5, 0.55, 0.52, c.a), 1.0),
+                    FillRule::Winding,
+                    xf,
+                    mask,
+                );
+            }
+        }
+        Glyph::DotsArc => {
+            for (dx, dy) in [(2.4, 2.25), (8.6, 4.75), (15.5, 4.75), (21.9, 2.0)] {
+                if let Some(p) = PathBuilder::from_circle(x + dx, y + dy, 1.8) {
+                    pm.fill_path(&p, &paint(c, 1.0), FillRule::Winding, xf, mask);
+                }
+            }
+        }
+        Glyph::SignalDots27 => {
+            // Smaller dots on iOS 27 (3pt at the 18 Pro's 1.1 scale, 5.67pt apart), sitting lower.
+            for i in 0..4 {
+                if let Some(p) =
+                    PathBuilder::from_circle(x + 2.7 + i as f32 * 5.15, cy + 0.75, 1.36)
+                {
+                    pm.fill_path(&p, &paint(c, 1.0), FillRule::Winding, xf, mask);
+                }
+            }
+        }
+        Glyph::Wifi27 => {
+            // Measured on the iOS 27.2 18 Pro (home.png): r 3.4 / 6.8 / 11.4 at its 1.1 scale, 2.4pt arcs, round caps.
+            let (bx, by) = (cx + 1.2, y + h + 0.15);
+            let arc = |r: f32| -> Vec<(f32, f32)> {
+                (0..=16)
+                    .map(|i| {
+                        let a = (-43.0 + 86.0 * i as f32 / 16.0).to_radians();
+                        (bx + r * a.sin(), by - r * a.cos())
+                    })
+                    .collect()
+            };
+            let mut wedge = PathBuilder::new();
+            wedge.move_to(bx, by);
+            for (px, py) in arc(3.4) {
+                wedge.line_to(px, py);
+            }
+            wedge.close();
+            if let Some(p) = wedge.finish() {
+                pm.fill_path(&p, &paint(c, 1.0), FillRule::Winding, xf, mask);
+                let st = Stroke {
+                    width: 0.8,
+                    line_join: LineJoin::Round,
+                    ..Stroke::default()
+                };
+                pm.stroke_path(&p, &paint(c, 1.0), &st, xf, mask);
+            }
+            for r in [6.8, 11.2] {
+                let mut pb = PathBuilder::new();
+                for (i, (px, py)) in arc(r).into_iter().enumerate() {
+                    if i == 0 {
+                        pb.move_to(px, py)
+                    } else {
+                        pb.line_to(px, py)
+                    }
+                }
+                if let Some(p) = pb.finish() {
+                    let st = Stroke {
+                        width: 2.4,
+                        line_cap: LineCap::Round,
+                        line_join: LineJoin::Round,
+                        ..Stroke::default()
+                    };
+                    pm.stroke_path(&p, &paint(c, 1.0), &st, xf, mask);
+                }
+            }
+        }
+        Glyph::Battery27 => {
+            // Solid green body with a round nub and the charging bolt (iOS 27.2 home.png).
+            let green = Color::rgba(52.0 / 255.0, 199.0 / 255.0, 89.0 / 255.0, c.a);
+            if let Some(p) = rrect(x + 0.9, y - 0.1, 23.9, h - 0.6, 3.9) {
+                pm.fill_path(&p, &paint(green, 1.0), FillRule::Winding, xf, mask);
+            }
+            if let Some(p) = rrect(x + 24.0, cy - 2.4, 2.9, 4.2, 1.3) {
+                pm.fill_path(&p, &paint(green, 1.0), FillRule::Winding, xf, mask);
+            }
+            let mut bolt = PathBuilder::new();
+            for (i, (bx, by)) in [
+                (12.6, 0.7),
+                (15.9, 0.7),
+                (14.8, 4.6),
+                (17.3, 5.3),
+                (11.5, 12.6),
+                (12.2, 8.3),
+                (7.6, 7.3),
+            ]
+            .iter()
+            .enumerate()
+            {
+                if i == 0 {
+                    bolt.move_to(x + bx, y + by);
+                } else {
+                    bolt.line_to(x + bx, y + by);
+                }
+            }
+            bolt.close();
+            if let Some(p) = bolt.finish() {
+                // Light: a gray-green bolt; dark (white glyph color): neutral gray (keyboard-dark.png).
+                let fill = if c.r > 0.5 {
+                    Color::rgba(0.5, 0.5, 0.5, c.a)
+                } else {
+                    Color::rgba(156.0 / 255.0, 178.0 / 255.0, 164.0 / 255.0, c.a)
+                };
+                pm.fill_path(&p, &paint(fill, 1.0), FillRule::Winding, xf, mask);
+                let st = Stroke {
+                    width: 0.9,
+                    line_join: LineJoin::Round,
+                    ..Stroke::default()
+                };
+                pm.stroke_path(
+                    &p,
+                    &paint(
+                        Color::rgba(205.0 / 255.0, 234.0 / 255.0, 216.0 / 255.0, c.a),
+                        1.0,
+                    ),
+                    &st,
+                    xf,
+                    mask);
             }
         }
         Glyph::Shift | Glyph::ShiftFilled | Glyph::Backspace | Glyph::Return | Glyph::Emoji | Glyph::Mic => {
@@ -461,7 +633,7 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
         // Liquid Glass: snapshot the backdrop before our own halo lands on it.
         let glass = n.glass.as_ref().filter(|g| g.variant != crate::glass::GlassVariant::Identity).map(|g| {
             let dark = scene.appearance == simcore_protocol::Appearance::Dark;
-            let p = crate::glass::spec_params(g, dark);
+            let p = crate::glass::spec_params(g, dark, scene.ios);
             let r = (n.radius as f32).min(bw / 2.0).min(bh / 2.0) * s;
             let shape = crate::glass::Shape { x: bx * s, y: by * s, w: bw * s, h: bh * s, r };
             (g, p, shape, crate::glass::snapshot(&pm, shape, s, &p), dark)
@@ -473,13 +645,14 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
             }
         }
         if let Some((g, _, shape, snap, dark)) = glass {
-            crate::glass::draw(&mut pm, snap, shape, g, s, dark, n.opacity, mask.as_deref());
+            crate::glass::draw(&mut pm, snap, shape, g, s, dark,
+                scene.ios, n.opacity, mask.as_deref());
         }
         if let Some(sd) = &n.shadow {
             draw_shadow(&mut pm, n, sd, sh, s, mask.as_deref());
         }
         if let Some(e) = &n.edge {
-            crate::glass::draw_edge(&mut pm, e, s, mask.as_deref());
+            crate::glass::draw_edge(&mut pm, e, s, scene.ios, mask.as_deref());
         }
         if let Some(c) = n.fill {
             if n.radius > 0.0 {
@@ -585,7 +758,8 @@ mod tests {
         let mut n = Node::new("card", "shadow");
         n.bounds = SRect { x: 40.0, y: 40.0, w: 100.0, h: 60.0 };
         n.shadow = Some(Shadow { color: Color::rgba(0.0, 0.0, 0.0, 0.33), radius: 6.0, dx: 0.0, dy: 0.0 });
-        let scene = Scene { size: (180.0, 140.0), appearance: Appearance::Light, nodes: vec![n], unsupported_symbols: vec![], notes: vec![] };
+        let scene = Scene { size: (180.0, 140.0), appearance: Appearance::Light,
+            ios: Default::default(), nodes: vec![n], unsupported_symbols: vec![], notes: vec![] };
         let pm = render(&scene, &mut Fonts::new(), 3.0);
         // alpha at distance d above the top edge: 0.33 * (1 - Phi(d / 6))
         let a = |d: f32| pm.pixel(270, ((40.0 - d) * 3.0) as u32).unwrap().alpha() as f32 / 255.0;

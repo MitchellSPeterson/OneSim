@@ -1,0 +1,882 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "type": "Application",
+        "role": "UIApplication",
+        "label": "Expo Go",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 0,
+        "pid": 37786,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "index": 1,
+        "parentIndex": 0,
+        "type": "Other",
+        "role": "RCTViewComponentView",
+        "subrole": "UIView",
+        "label": "Back",
+        "rect": {
+          "x": 16,
+          "y": 74,
+          "width": 60,
+          "height": 20.333335876464844
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "other"
+      },
+      {
+        "index": 2,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Refreshing",
+        "rect": {
+          "x": 299.6666564941406,
+          "y": 73.6666669845581,
+          "width": 86.33334350585938,
+          "height": 20.333335876464844
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e3",
+        "kind": "text"
+      },
+      {
+        "index": 3,
+        "parentIndex": 2,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Refreshing",
+        "rect": {
+          "x": 299.6666564941406,
+          "y": 73.6666669845581,
+          "width": 86.33334350585938,
+          "height": 20.333335876464844
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e4",
+        "kind": "text"
+      },
+      {
+        "index": 4,
+        "parentIndex": 0,
+        "type": "ScrollView",
+        "role": "RCTEnhancedScrollView",
+        "subrole": "UIScrollView",
+        "rect": {
+          "x": 0,
+          "y": 106,
+          "width": 402,
+          "height": 768
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 37786,
+        "hittable": true,
+        "hiddenContentBelow": true,
+        "ref": "e5",
+        "kind": "scroll-area"
+      },
+      {
+        "index": 5,
+        "parentIndex": 4,
+        "type": "Other",
+        "role": "UIRefreshControl",
+        "label": "Refreshing content",
+        "rect": {
+          "x": 0,
+          "y": 106,
+          "width": 402,
+          "height": 60
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e6",
+        "kind": "other"
+      },
+      {
+        "index": 6,
+        "parentIndex": 4,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Item 1",
+        "rect": {
+          "x": 16,
+          "y": 177.66666634877524,
+          "width": 370,
+          "height": 20.333335876464844
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e7",
+        "kind": "text"
+      },
+      {
+        "index": 7,
+        "parentIndex": 6,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Item 1",
+        "rect": {
+          "x": 16,
+          "y": 177.66666634877524,
+          "width": 370,
+          "height": 20.333335876464844
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e8",
+        "kind": "text"
+      },
+      {
+        "index": 8,
+        "parentIndex": 4,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Item 2",
+        "rect": {
+          "x": 16,
+          "y": 221.66666634877524,
+          "width": 370,
+          "height": 20.333343505859375
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e9",
+        "kind": "text"
+      },
+      {
+        "index": 9,
+        "parentIndex": 8,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Item 2",
+        "rect": {
+          "x": 16,
+          "y": 221.66666634877524,
+          "width": 370,
+          "height": 20.333343505859375
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e10",
+        "kind": "text"
+      },
+      {
+        "index": 10,
+        "parentIndex": 4,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Item 3",
+        "rect": {
+          "x": 16,
+          "y": 265.66666634877527,
+          "width": 370,
+          "height": 20.333343505859375
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e11",
+        "kind": "text"
+      },
+      {
+        "index": 11,
+        "parentIndex": 10,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Item 3",
+        "rect": {
+          "x": 16,
+          "y": 265.66666634877527,
+          "width": 370,
+          "height": 20.333343505859375
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e12",
+        "kind": "text"
+      },
+      {
+        "index": 12,
+        "parentIndex": 4,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Item 4",
+        "rect": {
+          "x": 16,
+          "y": 309.66666634877527,
+          "width": 370,
+          "height": 20.333328247070312
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e13",
+        "kind": "text"
+      },
+      {
+        "index": 13,
+        "parentIndex": 12,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Item 4",
+        "rect": {
+          "x": 16,
+          "y": 309.66666634877527,
+          "width": 370,
+          "height": 20.333328247070312
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e14",
+        "kind": "text"
+      },
+      {
+        "index": 14,
+        "parentIndex": 4,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Item 5",
+        "rect": {
+          "x": 16,
+          "y": 353.66666634877527,
+          "width": 370,
+          "height": 20.33331298828125
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e15",
+        "kind": "text"
+      },
+      {
+        "index": 15,
+        "parentIndex": 14,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Item 5",
+        "rect": {
+          "x": 16,
+          "y": 353.66666634877527,
+          "width": 370,
+          "height": 20.33331298828125
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e16",
+        "kind": "text"
+      },
+      {
+        "index": 16,
+        "parentIndex": 4,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Item 6",
+        "rect": {
+          "x": 16,
+          "y": 397.6666663487752,
+          "width": 370,
+          "height": 20.33331298828125
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e17",
+        "kind": "text"
+      },
+      {
+        "index": 17,
+        "parentIndex": 16,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Item 6",
+        "rect": {
+          "x": 16,
+          "y": 397.6666663487752,
+          "width": 370,
+          "height": 20.33331298828125
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e18",
+        "kind": "text"
+      },
+      {
+        "index": 18,
+        "parentIndex": 4,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Item 7",
+        "rect": {
+          "x": 16,
+          "y": 441.6666663487752,
+          "width": 370,
+          "height": 20.33331298828125
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e19",
+        "kind": "text"
+      },
+      {
+        "index": 19,
+        "parentIndex": 18,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Item 7",
+        "rect": {
+          "x": 16,
+          "y": 441.6666663487752,
+          "width": 370,
+          "height": 20.33331298828125
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e20",
+        "kind": "text"
+      },
+      {
+        "index": 20,
+        "parentIndex": 4,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Item 8",
+        "rect": {
+          "x": 16,
+          "y": 485.6666663487752,
+          "width": 370,
+          "height": 20.33331298828125
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e21",
+        "kind": "text"
+      },
+      {
+        "index": 21,
+        "parentIndex": 20,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Item 8",
+        "rect": {
+          "x": 16,
+          "y": 485.6666663487752,
+          "width": 370,
+          "height": 20.33331298828125
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e22",
+        "kind": "text"
+      },
+      {
+        "index": 22,
+        "parentIndex": 4,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Item 9",
+        "rect": {
+          "x": 16,
+          "y": 529.6666663487752,
+          "width": 370,
+          "height": 20.33331298828125
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e23",
+        "kind": "text"
+      },
+      {
+        "index": 23,
+        "parentIndex": 22,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Item 9",
+        "rect": {
+          "x": 16,
+          "y": 529.6666663487752,
+          "width": 370,
+          "height": 20.33331298828125
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e24",
+        "kind": "text"
+      },
+      {
+        "index": 24,
+        "parentIndex": 4,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Item 10",
+        "rect": {
+          "x": 16,
+          "y": 573.6666663487752,
+          "width": 370,
+          "height": 20.3333740234375
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e25",
+        "kind": "text"
+      },
+      {
+        "index": 25,
+        "parentIndex": 24,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Item 10",
+        "rect": {
+          "x": 16,
+          "y": 573.6666663487752,
+          "width": 370,
+          "height": 20.3333740234375
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e26",
+        "kind": "text"
+      },
+      {
+        "index": 26,
+        "parentIndex": 4,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Item 11",
+        "rect": {
+          "x": 16,
+          "y": 617.6666663487752,
+          "width": 370,
+          "height": 20.3333740234375
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e27",
+        "kind": "text"
+      },
+      {
+        "index": 27,
+        "parentIndex": 26,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Item 11",
+        "rect": {
+          "x": 16,
+          "y": 617.6666663487752,
+          "width": 370,
+          "height": 20.3333740234375
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e28",
+        "kind": "text"
+      },
+      {
+        "index": 28,
+        "parentIndex": 4,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Item 12",
+        "rect": {
+          "x": 16,
+          "y": 661.6666663487753,
+          "width": 370,
+          "height": 20.3333740234375
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e29",
+        "kind": "text"
+      },
+      {
+        "index": 29,
+        "parentIndex": 28,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Item 12",
+        "rect": {
+          "x": 16,
+          "y": 661.6666663487753,
+          "width": 370,
+          "height": 20.3333740234375
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e30",
+        "kind": "text"
+      },
+      {
+        "index": 30,
+        "parentIndex": 4,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Item 13",
+        "rect": {
+          "x": 16,
+          "y": 705.6666663487753,
+          "width": 370,
+          "height": 20.3333740234375
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e31",
+        "kind": "text"
+      },
+      {
+        "index": 31,
+        "parentIndex": 30,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Item 13",
+        "rect": {
+          "x": 16,
+          "y": 705.6666663487753,
+          "width": 370,
+          "height": 20.3333740234375
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e32",
+        "kind": "text"
+      },
+      {
+        "index": 32,
+        "parentIndex": 4,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Item 14",
+        "rect": {
+          "x": 16,
+          "y": 749.6666663487753,
+          "width": 370,
+          "height": 20.3333740234375
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e33",
+        "kind": "text"
+      },
+      {
+        "index": 33,
+        "parentIndex": 32,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Item 14",
+        "rect": {
+          "x": 16,
+          "y": 749.6666663487753,
+          "width": 370,
+          "height": 20.3333740234375
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e34",
+        "kind": "text"
+      },
+      {
+        "index": 34,
+        "parentIndex": 4,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Item 15",
+        "rect": {
+          "x": 16,
+          "y": 793.6666663487753,
+          "width": 370,
+          "height": 20.3333740234375
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e35",
+        "kind": "text"
+      },
+      {
+        "index": 35,
+        "parentIndex": 34,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Item 15",
+        "rect": {
+          "x": 16,
+          "y": 793.6666663487753,
+          "width": 370,
+          "height": 20.3333740234375
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e36",
+        "kind": "text"
+      },
+      {
+        "index": 36,
+        "parentIndex": 4,
+        "type": "StaticText",
+        "role": "RCTParagraphComponentView",
+        "subrole": "UIView",
+        "label": "Item 16",
+        "rect": {
+          "x": 16,
+          "y": 837.6666663487753,
+          "width": 370,
+          "height": 20.3333740234375
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e37",
+        "kind": "text"
+      },
+      {
+        "index": 37,
+        "parentIndex": 36,
+        "type": "StaticText",
+        "role": "RCTAccessibilityElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Item 16",
+        "rect": {
+          "x": 16,
+          "y": 837.6666663487753,
+          "width": 370,
+          "height": 20.3333740234375
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e38",
+        "kind": "text"
+      },
+      {
+        "index": 38,
+        "parentIndex": 4,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Vertical scroll bar, 2 pages",
+        "value": "0%",
+        "rect": {
+          "x": 369,
+          "y": 106,
+          "width": 30,
+          "height": 706
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e39",
+        "kind": "other"
+      },
+      {
+        "index": 39,
+        "parentIndex": 4,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Horizontal scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 62,
+          "y": 841,
+          "width": 278,
+          "height": 30
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e40",
+        "kind": "other"
+      },
+      {
+        "index": 40,
+        "parentIndex": 4,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Vertical scroll bar, 2 pages",
+        "value": "0%",
+        "rect": {
+          "x": 369,
+          "y": 106,
+          "width": 30,
+          "height": 706
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e41",
+        "kind": "other"
+      },
+      {
+        "index": 41,
+        "parentIndex": 4,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Horizontal scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 62,
+          "y": 841,
+          "width": 278,
+          "height": 30
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 37786,
+        "hittable": true,
+        "ref": "e42",
+        "kind": "other"
+      }
+    ],
+    "truncated": false,
+    "appName": "host.exp.Exponent",
+    "appBundleId": "host.exp.Exponent",
+    "visibility": {
+      "partial": true,
+      "visibleNodeCount": 42,
+      "totalNodeCount": 42,
+      "reasons": [
+        "scroll-hidden-below"
+      ]
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "absent",
+    "snapshotQualityNotes": [
+      {
+        "code": "regular-geometry-clipped",
+        "clippedNodeCount": 3,
+        "droppedNodeCount": 41
+      }
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 258,
+        "p50Ms": 118,
+        "p95Ms": 4577,
+        "maxMs": 21868,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 258
+        }
+      },
+      "warning": "Warning: ios snapshots are slow in this run: p95 4295ms over 257 captures. Possible causes: device load, app or dev server stuck, helper fallback, or stale daemon."
+    },
+    "refsGeneration": 350669
+  }
+}

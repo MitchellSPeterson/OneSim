@@ -114,6 +114,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.textSelectionAffinity` | 18 | ⬜ |  |  |
 | `\.timeZone` | 13 | ⬜ |  |  |
 | `\.toolbarLabelStyle` | 18 | ⬜ |  |  |
+| `\.toolbarTitleAlignment` | 13 | ⬜ |  |  |
 | `\.toolbarVerticalEdge` | 13 | ⬜ |  |  |
 | `\.truncationMode` | 13 | ⬜ |  |  |
 | `\.undoManager` | 13 | ⬜ |  |  |

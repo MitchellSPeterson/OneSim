@@ -1,0 +1,1430 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "type": "Other",
+        "role": "_TtC7SwiftUIP33_ACC2C5639A7D76F611E170E831FCA49118SwiftUIApplication",
+        "subrole": "UIApplication",
+        "label": "Showcase",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 0,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "other"
+      },
+      {
+        "index": 1,
+        "parentIndex": 0,
+        "type": "NavigationBar",
+        "role": "SwiftUI.UIKitNavigationBar",
+        "subrole": "UINavigationBar",
+        "identifier": "Controls",
+        "rect": {
+          "x": 0,
+          "y": 62,
+          "width": 402,
+          "height": 106
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e2",
+        "kind": "navigation-bar",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 2,
+        "parentIndex": 1,
+        "type": "Button",
+        "role": "UIAccessibilityBackButtonElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Showcase",
+        "identifier": "BackButton",
+        "rect": {
+          "x": 16,
+          "y": 62,
+          "width": 44,
+          "height": 44
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e3",
+        "kind": "button",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 3,
+        "parentIndex": 1,
+        "type": "StaticText",
+        "role": "UILabel",
+        "label": "Controls",
+        "rect": {
+          "x": 16,
+          "y": 119.66666666666667,
+          "width": 135.66666666666666,
+          "height": 40.66666666666667
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e4",
+        "kind": "text",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 4,
+        "parentIndex": 0,
+        "type": "CollectionView",
+        "role": "SwiftUI.UpdateCoalescingCollectionView",
+        "subrole": "UICollectionView",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 56668,
+        "hittable": true,
+        "ref": "e5",
+        "kind": "collection"
+      },
+      {
+        "index": 5,
+        "parentIndex": 4,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewCell",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 168,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e6",
+        "kind": "cell",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 6,
+        "parentIndex": 5,
+        "type": "Switch",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Notifications",
+        "value": "1",
+        "rect": {
+          "x": 16,
+          "y": 168,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 3,
+        "checked": true,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e7",
+        "kind": "switch",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 7,
+        "parentIndex": 6,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Notifications",
+        "rect": {
+          "x": 36,
+          "y": 183.83333333333334,
+          "width": 96,
+          "height": 20.333333333333343
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e8",
+        "kind": "text",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 8,
+        "parentIndex": 6,
+        "type": "Switch",
+        "role": "UISwitch",
+        "value": "1",
+        "rect": {
+          "x": 305,
+          "y": 180,
+          "width": 63,
+          "height": 28
+        },
+        "enabled": true,
+        "depth": 4,
+        "checked": true,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e9",
+        "kind": "switch",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 9,
+        "parentIndex": 4,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewCell",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 220,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e10",
+        "kind": "cell",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 10,
+        "parentIndex": 9,
+        "type": "Stepper",
+        "role": "UIStepper",
+        "label": "Volume: 3",
+        "value": "3",
+        "rect": {
+          "x": 36,
+          "y": 230,
+          "width": 330,
+          "height": 32
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e11",
+        "kind": "stepper",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 11,
+        "parentIndex": 10,
+        "type": "Button",
+        "role": "UIAccessibilityElement",
+        "label": "Volume: 3, Decrement",
+        "value": "3",
+        "identifier": "Decrement",
+        "rect": {
+          "x": 272,
+          "y": 230,
+          "width": 47,
+          "height": 32
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e12",
+        "kind": "button",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 12,
+        "parentIndex": 10,
+        "type": "Button",
+        "role": "UIAccessibilityElement",
+        "label": "Volume: 3, Increment",
+        "value": "3",
+        "identifier": "Increment",
+        "rect": {
+          "x": 319,
+          "y": 230,
+          "width": 47,
+          "height": 32
+        },
+        "enabled": true,
+        "depth": 4,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e13",
+        "kind": "button",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 13,
+        "parentIndex": 9,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Volume: 3",
+        "rect": {
+          "x": 36,
+          "y": 235.83333333333334,
+          "width": 76,
+          "height": 20.333333333333343
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e14",
+        "kind": "text",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 14,
+        "parentIndex": 4,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewCell",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 272,
+          "width": 370,
+          "height": 64.33333333333331
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e15",
+        "kind": "cell",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 15,
+        "parentIndex": 14,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Less",
+        "rect": {
+          "x": 36,
+          "y": 287,
+          "width": 59,
+          "height": 34.333333333333314
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e16",
+        "kind": "button",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 16,
+        "parentIndex": 14,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "3",
+        "rect": {
+          "x": 117.83333333333333,
+          "y": 294,
+          "width": 10.333333333333329,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e17",
+        "kind": "text",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 17,
+        "parentIndex": 14,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "More",
+        "rect": {
+          "x": 151,
+          "y": 287,
+          "width": 63.333333333333314,
+          "height": 34.333333333333314
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e18",
+        "kind": "button",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 18,
+        "parentIndex": 4,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewCell",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 336.33333333333337,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e19",
+        "kind": "cell",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 19,
+        "parentIndex": 18,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "You will be notified",
+        "rect": {
+          "x": 16,
+          "y": 336.33333333333337,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e20",
+        "kind": "text",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 20,
+        "parentIndex": 4,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewCell",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 423.33333333333337,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e21",
+        "kind": "cell",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 21,
+        "parentIndex": 20,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Show alert",
+        "rect": {
+          "x": 16,
+          "y": 423.33333333333337,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e22",
+        "kind": "button",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 22,
+        "parentIndex": 4,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewCell",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 475.3333333333333,
+          "width": 370,
+          "height": 51.99999999999994
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e23",
+        "kind": "cell",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 23,
+        "parentIndex": 22,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Show sheet",
+        "rect": {
+          "x": 16,
+          "y": 475.3333333333333,
+          "width": 370,
+          "height": 51.99999999999994
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e24",
+        "kind": "button",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 24,
+        "parentIndex": 4,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewCell",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 527.3333333333333,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e25",
+        "kind": "cell",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 25,
+        "parentIndex": 24,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Show half sheet",
+        "rect": {
+          "x": 16,
+          "y": 527.3333333333333,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e26",
+        "kind": "button",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 26,
+        "parentIndex": 4,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewCell",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 579.3333333333333,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e27",
+        "kind": "cell",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 27,
+        "parentIndex": 26,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Show dialog",
+        "rect": {
+          "x": 16,
+          "y": 579.3333333333333,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e28",
+        "kind": "button",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 28,
+        "parentIndex": 4,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewCell",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 631.3333333333333,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e29",
+        "kind": "cell",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 29,
+        "parentIndex": 28,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "Show cover",
+        "rect": {
+          "x": 16,
+          "y": 631.3333333333333,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e30",
+        "kind": "button",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 30,
+        "parentIndex": 4,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Vertical scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 369,
+          "y": 116,
+          "width": 30,
+          "height": 696
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e31",
+        "kind": "other",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 31,
+        "parentIndex": 4,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Vertical scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 369,
+          "y": 116,
+          "width": 30,
+          "height": 696
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 56668,
+        "hittable": false,
+        "ref": "e32",
+        "kind": "other",
+        "interactionBlocked": "covered",
+        "coveredBy": {
+          "kind": "other",
+          "label": "dismiss popup",
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 402,
+            "height": 874
+          }
+        },
+        "presentationHints": [
+          "covered"
+        ]
+      },
+      {
+        "index": 32,
+        "parentIndex": 0,
+        "type": "Toolbar",
+        "role": "_UIFloatingBarContainerView",
+        "label": "Toolbar",
+        "identifier": "Toolbar",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 56668,
+        "hittable": true,
+        "ref": "e33",
+        "kind": "toolbar"
+      },
+      {
+        "index": 33,
+        "parentIndex": 0,
+        "type": "Other",
+        "role": "_UIPopoverDimmingView",
+        "label": "dismiss popup",
+        "identifier": "PopoverDismissRegion",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 56668,
+        "hittable": true,
+        "ref": "e34",
+        "kind": "other"
+      },
+      {
+        "index": 34,
+        "parentIndex": 0,
+        "type": "Group",
+        "role": "_UIAlertControllerPhoneTVMacView",
+        "label": "Volume preset",
+        "rect": {
+          "x": 141.66666666666666,
+          "y": 501.3333333333333,
+          "width": 239.99999999999997,
+          "height": 208.33333333333331
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 56668,
+        "hittable": true,
+        "ref": "e35",
+        "kind": "group"
+      },
+      {
+        "index": 35,
+        "parentIndex": 34,
+        "type": "ScrollView",
+        "role": "_UIInterfaceActionGroupHeaderScrollView",
+        "rect": {
+          "x": 141.66666666666666,
+          "y": 501.3333333333333,
+          "width": 239.99999999999997,
+          "height": 72.33333333333331
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 56668,
+        "hittable": true,
+        "hiddenContentAbove": true,
+        "ref": "e36",
+        "kind": "scroll-area"
+      },
+      {
+        "index": 36,
+        "parentIndex": 35,
+        "type": "StaticText",
+        "role": "UILabel",
+        "label": "Volume preset",
+        "rect": {
+          "x": 171.66666666666666,
+          "y": 523.3333333333334,
+          "width": 179.99999999999997,
+          "height": 20.33333333333337
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": true,
+        "ref": "e37",
+        "kind": "text"
+      },
+      {
+        "index": 37,
+        "parentIndex": 35,
+        "type": "StaticText",
+        "role": "UILabel",
+        "label": "Pick a preset level.",
+        "rect": {
+          "x": 171.66666666666666,
+          "y": 551.3333333333334,
+          "width": 179.99999999999997,
+          "height": 18
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": true,
+        "ref": "e38",
+        "kind": "text"
+      },
+      {
+        "index": 38,
+        "parentIndex": 35,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Horizontal scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 141.66666666666666,
+          "y": 540.6666666666666,
+          "width": 239.99999999999997,
+          "height": 30
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": true,
+        "ref": "e39",
+        "kind": "other"
+      },
+      {
+        "index": 39,
+        "parentIndex": 35,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Vertical scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 348.66666666666663,
+          "y": 535.3333333333333,
+          "width": 30,
+          "height": 38.33333333333337
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": true,
+        "ref": "e40",
+        "kind": "other"
+      },
+      {
+        "index": 40,
+        "parentIndex": 35,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Vertical scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 348.66666666666663,
+          "y": 535.3333333333333,
+          "width": 30,
+          "height": 38.33333333333337
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": true,
+        "ref": "e41",
+        "kind": "other"
+      },
+      {
+        "index": 41,
+        "parentIndex": 35,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Horizontal scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 141.66666666666666,
+          "y": 540.6666666666666,
+          "width": 239.99999999999997,
+          "height": 30
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": true,
+        "ref": "e42",
+        "kind": "other"
+      },
+      {
+        "index": 42,
+        "parentIndex": 34,
+        "type": "ScrollView",
+        "role": "_UIInterfaceActionRepresentationsSequenceView",
+        "rect": {
+          "x": 141.66666666666666,
+          "y": 573.6666666666666,
+          "width": 239.99999999999997,
+          "height": 136
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 56668,
+        "hittable": true,
+        "ref": "e43",
+        "kind": "scroll-area"
+      },
+      {
+        "index": 43,
+        "parentIndex": 42,
+        "type": "Button",
+        "role": "_UIInterfaceActionCustomViewRepresentationView",
+        "label": "Mute",
+        "rect": {
+          "x": 157.66666666666666,
+          "y": 589.6666666666666,
+          "width": 207.99999999999997,
+          "height": 48
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": true,
+        "ref": "e44",
+        "kind": "button"
+      },
+      {
+        "index": 44,
+        "parentIndex": 42,
+        "type": "Button",
+        "role": "_UIInterfaceActionCustomViewRepresentationView",
+        "label": "Max",
+        "rect": {
+          "x": 157.66666666666666,
+          "y": 645.6666666666666,
+          "width": 207.99999999999997,
+          "height": 48
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": true,
+        "ref": "e45",
+        "kind": "button"
+      },
+      {
+        "index": 45,
+        "parentIndex": 42,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Vertical scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 348.66666666666663,
+          "y": 573.6666666666666,
+          "width": 30,
+          "height": 102
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": true,
+        "ref": "e46",
+        "kind": "other"
+      },
+      {
+        "index": 46,
+        "parentIndex": 42,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Horizontal scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 175.66666666666666,
+          "y": 676.6666666666666,
+          "width": 171.99999999999997,
+          "height": 30
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": true,
+        "ref": "e47",
+        "kind": "other"
+      },
+      {
+        "index": 47,
+        "parentIndex": 42,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Vertical scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 348.66666666666663,
+          "y": 573.6666666666666,
+          "width": 30,
+          "height": 102
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": true,
+        "ref": "e48",
+        "kind": "other"
+      },
+      {
+        "index": 48,
+        "parentIndex": 42,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Horizontal scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 175.66666666666666,
+          "y": 676.6666666666666,
+          "width": 171.99999999999997,
+          "height": 30
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 56668,
+        "hittable": true,
+        "ref": "e49",
+        "kind": "other"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.showcase",
+    "appBundleId": "dev.simcore.showcase",
+    "visibility": {
+      "partial": true,
+      "visibleNodeCount": 49,
+      "totalNodeCount": 49,
+      "reasons": [
+        "scroll-hidden-above",
+        "scroll-hidden-below"
+      ]
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "presented",
+    "snapshotQualityNotes": [
+      {
+        "code": "regular-geometry-clipped",
+        "clippedNodeCount": 2,
+        "droppedNodeCount": 4
+      }
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 62,
+        "p50Ms": 100,
+        "p95Ms": 2564,
+        "maxMs": 10693,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 62
+        }
+      }
+    },
+    "refsGeneration": 350529
+  }
+}

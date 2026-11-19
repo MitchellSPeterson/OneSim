@@ -40,6 +40,7 @@ fn main() {
                 scale: 3.0,
                 appearance: a,
                 dynamic_type: Default::default(),
+                ios: Default::default(),
                 scroll: &scroll,
                 sheets: &Default::default(),
                 focus: focus.as_deref(),

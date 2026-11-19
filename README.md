@@ -16,7 +16,7 @@ Beyond SwiftUI, we will reimplement the Apple frameworks apps reach for (Charts,
 
 Milestones: [docs/roadmap.md](docs/roadmap.md).
 
-Rendered output stays within 0.4–1.9% of the iOS 26 Simulator pixel-for-pixel across 13 states, including SF Symbols and the software keyboard, on the [showcase app](examples/swiftui-showcase/Showcase.swift). See [docs/ios-comparison.md](docs/ios-comparison.md).
+Rendered output stays within 2% of the iOS Simulator pixel-for-pixel, for both supported releases (iOS 27.2 on the iPhone 18 Pro, the default, and iOS 26.5 on the iPhone 17 Pro; `--ios`), across every reference state including SF Symbols, Liquid Glass and the software keyboard, on the [showcase app](examples/swiftui-showcase/Showcase.swift). See [docs/ios-comparison.md](docs/ios-comparison.md).
 
 ![SimCore vs iOS Simulator](docs/ios-comparison/cmp-controls-changed.png)
 

@@ -1,0 +1,1080 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "enabled": true,
+        "depth": 0,
+        "label": "Showcase",
+        "type": "Application",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 844
+        },
+        "index": 0,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "enabled": true,
+        "depth": 1,
+        "label": "Toolbar",
+        "type": "Other",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 844
+        },
+        "index": 1,
+        "hittable": true,
+        "parentIndex": 0,
+        "ref": "e2",
+        "kind": "other"
+      },
+      {
+        "enabled": true,
+        "depth": 2,
+        "label": "Showcase",
+        "type": "Other",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 844
+        },
+        "index": 2,
+        "hittable": true,
+        "parentIndex": 1,
+        "ref": "e3",
+        "kind": "other"
+      },
+      {
+        "enabled": true,
+        "depth": 3,
+        "label": "Showcase",
+        "identifier": "Showcase",
+        "type": "NavigationBar",
+        "index": 3,
+        "rect": {
+          "x": 0,
+          "y": 47,
+          "width": 390,
+          "height": 106
+        },
+        "hittable": true,
+        "parentIndex": 2,
+        "ref": "e4",
+        "kind": "navigation-bar"
+      },
+      {
+        "enabled": true,
+        "depth": 4,
+        "label": "Showcase",
+        "type": "StaticText",
+        "rect": {
+          "x": 16,
+          "y": 104.66666666666667,
+          "width": 164,
+          "height": 40.66666666666667
+        },
+        "index": 4,
+        "hittable": true,
+        "parentIndex": 3,
+        "ref": "e5",
+        "kind": "text"
+      },
+      {
+        "enabled": true,
+        "depth": 3,
+        "label": "Vertical scroll bar, 1 page",
+        "type": "Other",
+        "hittable": true,
+        "rect": {
+          "width": 390,
+          "y": 0,
+          "height": 844,
+          "x": 0
+        },
+        "index": 5,
+        "parentIndex": 2,
+        "ref": "e6",
+        "kind": "other"
+      },
+      {
+        "enabled": true,
+        "depth": 4,
+        "type": "CollectionView",
+        "hittable": true,
+        "rect": {
+          "width": 390,
+          "y": 0,
+          "height": 844,
+          "x": 0
+        },
+        "index": 6,
+        "parentIndex": 5,
+        "ref": "e7",
+        "kind": "collection",
+        "inheritsLabel": true
+      },
+      {
+        "enabled": true,
+        "depth": 5,
+        "label": "Screens",
+        "type": "Cell",
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 153,
+          "height": 40.33333333333334,
+          "x": 16
+        },
+        "index": 7,
+        "parentIndex": 6,
+        "ref": "e8",
+        "kind": "cell"
+      },
+      {
+        "enabled": true,
+        "depth": 6,
+        "label": "Screens",
+        "type": "Other",
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 153,
+          "height": 40.33333333333334,
+          "x": 16
+        },
+        "index": 8,
+        "parentIndex": 7,
+        "ref": "e9",
+        "kind": "other"
+      },
+      {
+        "enabled": true,
+        "depth": 7,
+        "label": "Screens",
+        "type": "Other",
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 153,
+          "height": 40.333333333333314,
+          "x": 16
+        },
+        "index": 9,
+        "parentIndex": 8,
+        "ref": "e10",
+        "kind": "other"
+      },
+      {
+        "enabled": true,
+        "depth": 8,
+        "label": "Screens",
+        "type": "StaticText",
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 153,
+          "height": 40.33333333333334,
+          "x": 16
+        },
+        "index": 10,
+        "parentIndex": 9,
+        "ref": "e11",
+        "kind": "text"
+      },
+      {
+        "enabled": true,
+        "depth": 5,
+        "label": "Typography",
+        "type": "Cell",
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 193.33333333333334,
+          "height": 52,
+          "x": 16
+        },
+        "index": 11,
+        "parentIndex": 6,
+        "ref": "e12",
+        "kind": "cell"
+      },
+      {
+        "enabled": true,
+        "depth": 6,
+        "label": "Typography",
+        "type": "Other",
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 193.33333333333334,
+          "height": 52,
+          "x": 16
+        },
+        "index": 12,
+        "parentIndex": 11,
+        "ref": "e13",
+        "kind": "other"
+      },
+      {
+        "enabled": true,
+        "depth": 7,
+        "label": "Typography",
+        "type": "Button",
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 193.33333333333334,
+          "height": 52,
+          "x": 16
+        },
+        "index": 13,
+        "parentIndex": 12,
+        "ref": "e14",
+        "kind": "button"
+      },
+      {
+        "enabled": true,
+        "depth": 8,
+        "label": "Typography",
+        "type": "StaticText",
+        "hittable": true,
+        "rect": {
+          "width": 90.66666666666666,
+          "y": 209.16666666666669,
+          "height": 20.333333333333314,
+          "x": 36
+        },
+        "index": 14,
+        "parentIndex": 13,
+        "ref": "e15",
+        "kind": "text"
+      },
+      {
+        "enabled": true,
+        "depth": 8,
+        "identifier": "chevron.forward",
+        "type": "Image",
+        "rect": {
+          "width": 7,
+          "y": 213.33333333333334,
+          "height": 12,
+          "x": 344.6666666666667
+        },
+        "hittable": true,
+        "index": 15,
+        "parentIndex": 13,
+        "ref": "e16",
+        "kind": "image"
+      },
+      {
+        "enabled": true,
+        "depth": 5,
+        "label": "Shapes",
+        "type": "Cell",
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 245.33333333333331,
+          "height": 52,
+          "x": 16
+        },
+        "index": 16,
+        "parentIndex": 6,
+        "ref": "e17",
+        "kind": "cell"
+      },
+      {
+        "enabled": true,
+        "depth": 6,
+        "label": "Shapes",
+        "type": "Other",
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 245.33333333333331,
+          "height": 52,
+          "x": 16
+        },
+        "index": 17,
+        "parentIndex": 16,
+        "ref": "e18",
+        "kind": "other"
+      },
+      {
+        "enabled": true,
+        "depth": 7,
+        "label": "Shapes",
+        "type": "Button",
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 245.33333333333331,
+          "height": 52,
+          "x": 16
+        },
+        "index": 18,
+        "parentIndex": 17,
+        "ref": "e19",
+        "kind": "button"
+      },
+      {
+        "label": "Shapes",
+        "type": "StaticText",
+        "index": 19,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 56.66666666666666,
+          "y": 261.16666666666663,
+          "height": 20.33333333333337,
+          "x": 36
+        },
+        "depth": 8,
+        "parentIndex": 18,
+        "ref": "e20",
+        "kind": "text"
+      },
+      {
+        "identifier": "chevron.forward",
+        "type": "Image",
+        "index": 20,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 7,
+          "y": 265.3333333333333,
+          "height": 12,
+          "x": 344.6666666666667
+        },
+        "depth": 8,
+        "parentIndex": 18,
+        "ref": "e21",
+        "kind": "image"
+      },
+      {
+        "label": "Todos",
+        "type": "Cell",
+        "index": 21,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 297.33333333333337,
+          "height": 52,
+          "x": 16
+        },
+        "depth": 5,
+        "parentIndex": 6,
+        "ref": "e22",
+        "kind": "cell"
+      },
+      {
+        "label": "Todos",
+        "type": "Other",
+        "index": 22,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 297.33333333333337,
+          "height": 52,
+          "x": 16
+        },
+        "depth": 6,
+        "parentIndex": 21,
+        "ref": "e23",
+        "kind": "other"
+      },
+      {
+        "label": "Todos",
+        "type": "Button",
+        "index": 23,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 297.33333333333337,
+          "height": 52,
+          "x": 16
+        },
+        "depth": 7,
+        "parentIndex": 22,
+        "ref": "e24",
+        "kind": "button"
+      },
+      {
+        "label": "Todos",
+        "type": "StaticText",
+        "index": 24,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 46.66666666666666,
+          "y": 313.16666666666674,
+          "height": 20.333333333333314,
+          "x": 35.99999999999997
+        },
+        "depth": 8,
+        "parentIndex": 23,
+        "ref": "e25",
+        "kind": "text"
+      },
+      {
+        "identifier": "chevron.forward",
+        "type": "Image",
+        "index": 25,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 7,
+          "y": 317.33333333333337,
+          "height": 12,
+          "x": 344.6666666666667
+        },
+        "depth": 8,
+        "parentIndex": 23,
+        "ref": "e26",
+        "kind": "image"
+      },
+      {
+        "label": "Controls",
+        "type": "Cell",
+        "index": 26,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 349.33333333333337,
+          "height": 52,
+          "x": 16
+        },
+        "depth": 5,
+        "parentIndex": 6,
+        "ref": "e27",
+        "kind": "cell"
+      },
+      {
+        "label": "Controls",
+        "type": "Other",
+        "index": 27,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 349.33333333333337,
+          "height": 52,
+          "x": 16
+        },
+        "depth": 6,
+        "parentIndex": 26,
+        "ref": "e28",
+        "kind": "other"
+      },
+      {
+        "label": "Controls",
+        "type": "Button",
+        "index": 28,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 349.33333333333337,
+          "height": 52,
+          "x": 16
+        },
+        "depth": 7,
+        "parentIndex": 27,
+        "ref": "e29",
+        "kind": "button"
+      },
+      {
+        "label": "Controls",
+        "type": "StaticText",
+        "index": 29,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 64.33333333333333,
+          "y": 365.16666666666674,
+          "height": 20.333333333333314,
+          "x": 36
+        },
+        "depth": 8,
+        "parentIndex": 28,
+        "ref": "e30",
+        "kind": "text"
+      },
+      {
+        "identifier": "chevron.forward",
+        "type": "Image",
+        "index": 30,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 7,
+          "y": 369.33333333333337,
+          "height": 12,
+          "x": 344.6666666666667
+        },
+        "depth": 8,
+        "parentIndex": 28,
+        "ref": "e31",
+        "kind": "image"
+      },
+      {
+        "label": "Symbols",
+        "type": "Cell",
+        "index": 31,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 401.33333333333337,
+          "height": 52,
+          "x": 16
+        },
+        "depth": 5,
+        "parentIndex": 6,
+        "ref": "e32",
+        "kind": "cell"
+      },
+      {
+        "label": "Symbols",
+        "type": "Other",
+        "index": 32,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 401.33333333333337,
+          "height": 52,
+          "x": 16
+        },
+        "depth": 6,
+        "parentIndex": 31,
+        "ref": "e33",
+        "kind": "other"
+      },
+      {
+        "label": "Symbols",
+        "type": "Button",
+        "index": 33,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 401.33333333333337,
+          "height": 52,
+          "x": 16
+        },
+        "depth": 7,
+        "parentIndex": 32,
+        "ref": "e34",
+        "kind": "button"
+      },
+      {
+        "label": "Symbols",
+        "type": "StaticText",
+        "index": 34,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 65.66666666666666,
+          "y": 417.1666666666667,
+          "height": 20.33333333333337,
+          "x": 36
+        },
+        "depth": 8,
+        "parentIndex": 33,
+        "ref": "e35",
+        "kind": "text"
+      },
+      {
+        "identifier": "chevron.forward",
+        "type": "Image",
+        "index": 35,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 7,
+          "y": 421.33333333333337,
+          "height": 12,
+          "x": 344.6666666666667
+        },
+        "depth": 8,
+        "parentIndex": 33,
+        "ref": "e36",
+        "kind": "image"
+      },
+      {
+        "label": "Glass",
+        "type": "Cell",
+        "index": 36,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 453.3333333333333,
+          "height": 52,
+          "x": 16
+        },
+        "depth": 5,
+        "parentIndex": 6,
+        "ref": "e37",
+        "kind": "cell"
+      },
+      {
+        "label": "Glass",
+        "type": "Other",
+        "index": 37,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 453.3333333333333,
+          "height": 52,
+          "x": 16
+        },
+        "depth": 6,
+        "parentIndex": 36,
+        "ref": "e38",
+        "kind": "other"
+      },
+      {
+        "label": "Glass",
+        "type": "Button",
+        "index": 38,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 358,
+          "y": 453.3333333333333,
+          "height": 52,
+          "x": 16
+        },
+        "depth": 7,
+        "parentIndex": 37,
+        "ref": "e39",
+        "kind": "button"
+      },
+      {
+        "label": "Glass",
+        "type": "StaticText",
+        "index": 39,
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 42,
+          "height": 20.33333333333337,
+          "x": 36,
+          "y": 469.16666666666663
+        },
+        "depth": 8,
+        "parentIndex": 38,
+        "ref": "e40",
+        "kind": "text"
+      },
+      {
+        "hittable": true,
+        "depth": 8,
+        "identifier": "chevron.forward",
+        "index": 40,
+        "rect": {
+          "x": 344.6666666666667,
+          "y": 473.3333333333333,
+          "width": 7,
+          "height": 12
+        },
+        "type": "Image",
+        "parentIndex": 38,
+        "enabled": true,
+        "ref": "e41",
+        "kind": "image"
+      },
+      {
+        "hittable": true,
+        "depth": 5,
+        "index": 41,
+        "rect": {
+          "height": 51.99999999999994,
+          "x": 16,
+          "y": 505.3333333333333,
+          "width": 358
+        },
+        "type": "Cell",
+        "label": "Long list",
+        "parentIndex": 6,
+        "enabled": true,
+        "ref": "e42",
+        "kind": "cell"
+      },
+      {
+        "hittable": true,
+        "depth": 6,
+        "index": 42,
+        "rect": {
+          "height": 51.99999999999994,
+          "x": 16,
+          "y": 505.3333333333333,
+          "width": 358
+        },
+        "type": "Other",
+        "label": "Long list",
+        "parentIndex": 41,
+        "enabled": true,
+        "ref": "e43",
+        "kind": "other"
+      },
+      {
+        "hittable": true,
+        "depth": 7,
+        "index": 43,
+        "rect": {
+          "height": 51.99999999999994,
+          "x": 16,
+          "y": 505.3333333333333,
+          "width": 358
+        },
+        "type": "Button",
+        "label": "Long list",
+        "parentIndex": 42,
+        "enabled": true,
+        "ref": "e44",
+        "kind": "button"
+      },
+      {
+        "hittable": true,
+        "depth": 8,
+        "index": 44,
+        "rect": {
+          "height": 20.33333333333337,
+          "x": 36,
+          "y": 521.1666666666666,
+          "width": 64
+        },
+        "type": "StaticText",
+        "label": "Long list",
+        "parentIndex": 43,
+        "enabled": true,
+        "ref": "e45",
+        "kind": "text"
+      },
+      {
+        "hittable": true,
+        "depth": 8,
+        "identifier": "chevron.forward",
+        "index": 45,
+        "rect": {
+          "height": 12,
+          "x": 344.6666666666667,
+          "y": 525.3333333333333,
+          "width": 7
+        },
+        "type": "Image",
+        "parentIndex": 43,
+        "enabled": true,
+        "ref": "e46",
+        "kind": "image"
+      },
+      {
+        "hittable": true,
+        "depth": 5,
+        "index": 46,
+        "rect": {
+          "height": 52,
+          "x": 16,
+          "y": 557.3333333333333,
+          "width": 358
+        },
+        "type": "Cell",
+        "label": "Form",
+        "parentIndex": 6,
+        "enabled": true,
+        "ref": "e47",
+        "kind": "cell"
+      },
+      {
+        "hittable": true,
+        "depth": 6,
+        "index": 47,
+        "rect": {
+          "height": 52,
+          "x": 16,
+          "y": 557.3333333333333,
+          "width": 358
+        },
+        "type": "Other",
+        "label": "Form",
+        "parentIndex": 46,
+        "enabled": true,
+        "ref": "e48",
+        "kind": "other"
+      },
+      {
+        "hittable": true,
+        "depth": 7,
+        "index": 48,
+        "rect": {
+          "height": 52,
+          "x": 16,
+          "y": 557.3333333333333,
+          "width": 358
+        },
+        "type": "Button",
+        "label": "Form",
+        "parentIndex": 47,
+        "enabled": true,
+        "ref": "e49",
+        "kind": "button"
+      },
+      {
+        "hittable": true,
+        "depth": 8,
+        "index": 49,
+        "rect": {
+          "height": 20.333333333333485,
+          "x": 36,
+          "y": 573.1666666666665,
+          "width": 39.66666666666666
+        },
+        "type": "StaticText",
+        "label": "Form",
+        "parentIndex": 48,
+        "enabled": true,
+        "ref": "e50",
+        "kind": "text"
+      },
+      {
+        "hittable": true,
+        "depth": 8,
+        "identifier": "chevron.forward",
+        "index": 50,
+        "rect": {
+          "height": 12,
+          "x": 344.6666666666667,
+          "y": 577.3333333333333,
+          "width": 7
+        },
+        "type": "Image",
+        "parentIndex": 48,
+        "enabled": true,
+        "ref": "e51",
+        "kind": "image"
+      },
+      {
+        "hittable": true,
+        "depth": 5,
+        "index": 51,
+        "rect": {
+          "height": 40.33333333333337,
+          "x": 16,
+          "y": 627,
+          "width": 358
+        },
+        "type": "Cell",
+        "label": "Summary",
+        "parentIndex": 6,
+        "enabled": true,
+        "ref": "e52",
+        "kind": "cell"
+      },
+      {
+        "hittable": true,
+        "depth": 6,
+        "index": 52,
+        "rect": {
+          "height": 40.33333333333337,
+          "x": 16,
+          "y": 627,
+          "width": 358
+        },
+        "type": "Other",
+        "label": "Summary",
+        "parentIndex": 51,
+        "enabled": true,
+        "ref": "e53",
+        "kind": "other"
+      },
+      {
+        "hittable": true,
+        "depth": 7,
+        "index": 53,
+        "rect": {
+          "height": 40.33333333333337,
+          "x": 16,
+          "y": 627,
+          "width": 358
+        },
+        "type": "StaticText",
+        "label": "Summary",
+        "parentIndex": 52,
+        "enabled": true,
+        "ref": "e54",
+        "kind": "text"
+      },
+      {
+        "hittable": true,
+        "depth": 5,
+        "index": 54,
+        "rect": {
+          "height": 52,
+          "x": 16,
+          "y": 667.3333333333334,
+          "width": 358
+        },
+        "type": "Cell",
+        "label": "Open todos",
+        "parentIndex": 6,
+        "enabled": true,
+        "ref": "e55",
+        "kind": "cell"
+      },
+      {
+        "hittable": true,
+        "depth": 6,
+        "index": 55,
+        "rect": {
+          "height": 52,
+          "x": 16,
+          "y": 667.3333333333334,
+          "width": 358
+        },
+        "type": "Other",
+        "label": "Open todos",
+        "parentIndex": 54,
+        "enabled": true,
+        "ref": "e56",
+        "kind": "other"
+      },
+      {
+        "hittable": true,
+        "depth": 7,
+        "index": 56,
+        "rect": {
+          "height": 20.333333333333258,
+          "x": 36,
+          "y": 683.1666666666667,
+          "width": 89.33333333333333
+        },
+        "type": "StaticText",
+        "label": "Open todos",
+        "parentIndex": 55,
+        "enabled": true,
+        "ref": "e57",
+        "kind": "text"
+      },
+      {
+        "hittable": true,
+        "depth": 7,
+        "index": 57,
+        "rect": {
+          "height": 20.333333333333258,
+          "x": 346.3333333333333,
+          "y": 683.1666666666667,
+          "width": 7.666666666666686
+        },
+        "type": "StaticText",
+        "label": "1",
+        "parentIndex": 55,
+        "enabled": true,
+        "ref": "e58",
+        "kind": "text"
+      },
+      {
+        "hittable": true,
+        "depth": 5,
+        "value": "0%",
+        "index": 58,
+        "rect": {
+          "height": 695.6700000000001,
+          "x": 357,
+          "y": 101,
+          "width": 30
+        },
+        "type": "Other",
+        "parentIndex": 6,
+        "enabled": true,
+        "ref": "e59",
+        "kind": "other",
+        "inheritsLabel": true
+      },
+      {
+        "hittable": true,
+        "depth": 3,
+        "identifier": "Toolbar",
+        "index": 59,
+        "rect": {
+          "height": 844,
+          "x": 0,
+          "y": 0,
+          "width": 390
+        },
+        "type": "Toolbar",
+        "label": "Toolbar",
+        "parentIndex": 2,
+        "enabled": true,
+        "ref": "e60",
+        "kind": "toolbar"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.showcase",
+    "appBundleId": "dev.simcore.showcase",
+    "visibility": {
+      "partial": true,
+      "visibleNodeCount": 60,
+      "totalNodeCount": 60,
+      "reasons": [
+        "scroll-hidden-below"
+      ]
+    },
+    "keyboard": {
+      "kind": "absent"
+    },
+    "viewport": {
+      "width": 390,
+      "height": 844
+    },
+    "presentedSurface": "unknown",
+    "snapshotQuality": {
+      "state": "healthy",
+      "backend": "tree",
+      "timing": {
+        "acquisitionMs": 225.54194927215576,
+        "presentationMs": 0.9070634841918945
+      }
+    },
+    "snapshotQualityNotes": [
+      {
+        "code": "regular-geometry-clipped",
+        "clippedNodeCount": 2,
+        "droppedNodeCount": 0
+      }
+    ],
+    "warnings": [
+      "Simulator AX snapshot unavailable (circuit-disabled); used XCTest for this app generation."
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 2,
+        "p50Ms": 368,
+        "p95Ms": 15440,
+        "maxMs": 15440,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 2
+        }
+      }
+    },
+    "refsGeneration": 469417
+  }
+}

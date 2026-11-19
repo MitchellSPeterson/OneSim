@@ -1,7 +1,7 @@
 //! One guest OS process and everything we know about it.
 
 use simcore_protocol::{
-    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, GuestMessage, HostMessage, ScrollPhase, SessionError, Viewport,
+    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, GuestMessage, HostMessage, IosVersion, ScrollPhase, SessionError, Viewport,
     ViewNode,
 };
 pub use simcore_render::{device, Device, DEFAULT_DEVICE, DEVICES};
@@ -130,6 +130,8 @@ pub struct Session {
     pub scale: f64,
     pub appearance: Appearance,
     pub dynamic_type: DynamicTypeSize,
+    /// Simulated iOS release (look + reported OS version).
+    pub ios: IosVersion,
     /// Scroll, focus, shift and press state (shared with the browser backend).
     pub inter: Interaction,
     /// React Native: frames last sent to the guest (`layout` message), to send only changes.
@@ -219,6 +221,7 @@ impl Session {
             scale: p.scale.unwrap_or(dev.scale),
             appearance: p.appearance.unwrap_or(Appearance::Light),
             dynamic_type: p.dynamic_type_size.unwrap_or_default(),
+            ios: p.os_version.unwrap_or_default(),
             inter: Interaction::default(),
             sent_frames: BTreeMap::new(),
             touch: None,
@@ -400,6 +403,9 @@ impl Session {
             .env("SIMCORE_SESSION_ID", &self.id)
             .env("SIMCORE_VIEWPORT", format!("{}x{}", self.viewport.width, self.viewport.height))
             .env("SIMCORE_DYNAMIC_TYPE", self.dynamic_type.name())
+            .env("SIMCORE_OS_VERSION", self.ios.name())
+            .env("SIMCORE_DEVICE", self.device.name)
+            .env("SIMCORE_OS_BUILD", self.ios.build())
             .env("SIMCORE_APPEARANCE", if self.appearance == Appearance::Dark { "dark" } else { "light" })
             .env("SIMCORE_PLATFORM", if self.device.android { "android" } else { "ios" })
             .env("SIMCORE_SCALE", self.scale.to_string())
@@ -545,7 +551,8 @@ impl Session {
 
     /// React Native: the keyboard (drawn while a field is focused) appeared or hid.
     fn send_keyboard(&mut self, shown: bool) -> Result<(), ApiError> {
-        let height = if shown { self.device.kb_base_h + self.device.safe_bottom } else { 0.0 };
+        let height = if shown {
+            simcore_render::look::keyboard_height(& self.device, self.ios) } else { 0.0 };
         self.send(&HostMessage::Keyboard { height })
     }
 

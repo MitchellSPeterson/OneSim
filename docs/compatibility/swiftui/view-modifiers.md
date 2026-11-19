@@ -412,6 +412,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.toolbarMinimizationSafeAreaAdjustment` | 13 | ⬜ |  |  |
 | `.toolbarOverflowMenu` | 27 | ⬜ |  |  |
 | `.toolbarRole` | 16 | ⬜ |  |  |
+| `.toolbarTitleAlignment` | 27.2 | ⬜ |  |  |
 | `.toolbarTitleDisplayMode` | 17 | ⬜ |  |  |
 | `.toolbarTitleMenu` | 16 | ⬜ |  |  |
 | `.toolbarVerticalBehavior` | 13 | ⬜ |  |  |

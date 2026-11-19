@@ -560,7 +560,14 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         android_status_bar(&mut nodes, params, cx.fonts, dark);
     }
     android_nav_handle(&mut nodes, params, dark);
-    Scene { size: params.viewport, appearance: params.appearance, nodes, unsupported_symbols: vec![], notes: cx.notes.into_iter().collect() }
+    Scene {
+        size: params.viewport,
+        appearance: params.appearance,
+        ios: params.ios,
+        nodes,
+        unsupported_symbols: vec![],
+        notes: cx.notes.into_iter().collect(),
+    }
 }
 
 /// Android status bar over the top inset: clock at the start, wifi and battery at the end (black icons on a
@@ -748,6 +755,7 @@ mod tests {
             scale: dev.scale,
             appearance: Appearance::Light,
             dynamic_type: Default::default(),
+            ios: Default::default(),
             scroll: &scroll,
             sheets: &sheets,
             focus: None,

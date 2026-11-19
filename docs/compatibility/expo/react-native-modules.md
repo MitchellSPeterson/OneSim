@@ -4,7 +4,7 @@ Part of [Expo / React Native API coverage](README.md): status legend, summary an
 
 | API | Package | Native | iOS | Android | Issue | Notes |
 |---|---|---|---|---|---|---|
-| Platform | react-native | `PlatformConstants` | ✅ | ⬜ | | Reports iOS 26.5 |
+| Platform | react-native | `PlatformConstants` | ✅ | ⬜ | | Reports the session's iOS release (`osVersion`: 27.2 or 26.5) |
 | Dimensions / PixelRatio | react-native | `DeviceInfo` | 🟡 | ⬜ | | From the session viewport |
 | Appearance / useColorScheme | react-native | `Appearance` | 🟡 | ⬜ | | From the session's dark flag |
 | I18nManager | react-native | `I18nManager` | ✅ | ⬜ | | LTR, `en_US` |

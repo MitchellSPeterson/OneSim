@@ -30,7 +30,7 @@ Mismatched major version → `protocol_version` error.
 | method | params | result |
 |---|---|---|
 | `get_capabilities` | – | `{"frameworks":["swiftui"],"platforms":["ios"],"commands":[...],"headless":true}` |
-| `create_session` | `{"framework":"swiftui","platform":"ios","app_path":"<file or dir>","root_view":"CounterView"?,"viewport":{"width":393,"height":852}?,"scale":2.0?,"appearance":"light"\|"dark"?,"dynamic_type_size":"large"?}` | `{"session_id":"s1"}` |
+| `create_session` | `{"framework":"swiftui","platform":"ios","app_path":"<file or dir>","root_view":"CounterView"?,"viewport":{"width":393,"height":852}?,"scale":2.0?,"appearance":"light"\|"dark"?,"dynamic_type_size":"large"?,"device":"iphone-18-pro"?,"os_version":"27.2"?}` | `{"session_id":"s1"}` |
 | `start_session` | `{"session_id"}` | `{"state":"running"}` (blocks until first tree or failure) |
 | `stop_session` | `{"session_id"}` | `{"state":"stopped"}` |
 | `get_session_status` | `{"session_id"}` | `{"session_id","state","framework","platform","app_path","viewport","scale","appearance","tree_version"}` |
@@ -196,7 +196,7 @@ Text styles and weights follow Apple's iOS Dynamic Type "Large" defaults (body 1
 
 ### Device profile and platform chrome (host)
 
-`create_session` accepts a `"device"` profile name (default `"iphone-17-pro"`: viewport 402×874 pt, scale 3, safe area top 62 / bottom 34). Every iPhone of the iOS 26.5 Simulator is a profile (`iphone-16`, `iphone-air`, `iphone-13-mini`, `iphone-se-3`, ...; the full list is `DEVICES` / `get_capabilities` `devices`); notch models have no `island`, the SE has a home button (classic status bar, no bottom inset, bottom-row keyboard icons). Lists, cards and titles use a 20 pt side margin on screens 414 pt or wider, else 16. Content is laid out inside the safe area. The screen background, a `navigation` bar background and a `list` background extend to the screen edges. The host draws an iOS status bar (time "9:41", battery) in the top inset. `viewport` and `scale` params still override. Profiles (geometry, safe area, island, status bar, keyboard height) live in `DEVICES` in `crates/simcore-render/src/device.rs`, shared with the Wasm build, and are listed by `get_capabilities` `devices`.
+`create_session` accepts a `"device"` profile name (default `"iphone-18-pro"`: viewport 402×874 pt, scale 3, safe area top 62 / bottom 34). Every iPhone of the iOS 26.5 and 27.2 Simulators is a profile (iOS 27 status bar and keyboard height per profile where measured, `Device::ios27`) (`iphone-16`, `iphone-air`, `iphone-13-mini`, `iphone-se-3`, ...; the full list is `DEVICES` / `get_capabilities` `devices`); notch models have no `island`, the SE has a home button (classic status bar, no bottom inset, bottom-row keyboard icons). Lists, cards and titles use a 20 pt side margin on screens 414 pt or wider, else 16. Content is laid out inside the safe area. The screen background, a `navigation` bar background and a `list` background extend to the screen edges. The host draws an iOS status bar (time "9:41", battery) in the top inset. `viewport` and `scale` params still override. Profiles (geometry, safe area, island, status bar, keyboard height) live in `DEVICES` in `crates/simcore-render/src/device.rs`, shared with the Wasm build, and are listed by `get_capabilities` `devices`.
 
 The guest reads `SIMCORE_APPEARANCE` at launch for `@Environment(\.colorScheme)`.
 
@@ -243,7 +243,7 @@ When a `text_field` is focused, the host draws the iOS keyboard for the device p
 
 ### Dynamic Island and shadows
 
-- Device profiles have `"island": {"x","y","width","height"}` (pt); the iPhone 17 Pro has one. The host draws it as a black capsule above everything, matching the iOS Simulator screenshots.
+- Device profiles have `"island": {"x","y","width","height"}` (pt); the iPhone 17 and 18 Pro have one (the 18 Pro's is 95 pt wide). The host draws it as a black capsule above everything, matching the iOS Simulator screenshots.
 - `shadow` is a true Gaussian blur, matching CALayer shadow rendering for SwiftUI's `shadow(radius:)` (radius → blur). It is computed offscreen per node and cached.
 
 ---
@@ -251,6 +251,8 @@ When a `text_field` is focused, the host draws the iOS keyboard for the device p
 ## F. v1 additions: Liquid Glass and Dynamic Type (additive)
 
 ### Dynamic Type
+
+`create_session` accepts `"os_version"` (alias `osVersion`): the simulated iOS release, `"27.2"` (default) or `"26.5"` (`"27"` / `"26"` also parse). It selects the release's look in the host (list row padding, keyboard, Liquid Glass, status bar, scroll edge, alert colors: `crates/simcore-render/src/look.rs` and per-release branches beside the code) and is passed to guests as `SIMCORE_OS_VERSION` / `SIMCORE_OS_BUILD` (React Native reports it as `Platform.Version`, `expo-device` `osVersion`), with the profile slug as `SIMCORE_DEVICE`. `status` reports `os_version`. CLI: `simcore run|expo --ios 26.5`; web: `simcore_web_set_ios(index)` (0 = 26.5, 1 = 27.2). Each release is pinned to the Simulator runtime its references were captured on (`docs/compatibility/versions.json`).
 
 `create_session` accepts `"dynamic_type_size"` (alias `dynamicTypeSize`): `xSmall|small|medium|large|xLarge|xxLarge|xxxLarge|accessibility1..accessibility5` (default `large`). CLI: `simcore run --dynamic-type SIZE`; web: `?dynamicType=SIZE` / `sim.init({dynamicType})` / `sim.setDynamicType(size)`.
 - The host resolves the point size of every text *style* (`.largeTitle` ... `.caption2`, and unstyled text = `.body`) from Apple's Dynamic Type table (iOS, 12 sizes x 11 styles; `TextStyle::size_at`). `.system(size:)` is fixed. Nav bar titles, list headers, symbols and control sizes do not scale in v1.

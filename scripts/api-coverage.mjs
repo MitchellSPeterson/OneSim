@@ -102,7 +102,7 @@ const ios = V.ios, expo = V.expo;
 writeSummary(`${dir}README.md`, [
   '| Target | Version | Used for |',
   '|---|---|---|',
-  `| iOS Simulator runtime | ${ios.runtime} (${ios.build}), ${ios.device} | Reference screenshots, look of the renderer, OS version the Expo guest reports |`,
+  ...ios.runtimes.map((r, i) => `| iOS Simulator runtime${i ? '' : ' (default)'} | ${r.runtime} (${r.build}), ${r.device} | Reference screenshots in \`${r.fixtures}\`, look of the renderer (\`--ios ${r.runtime}\`), OS version the Expo guest reports |`),
   `| iOS SDK (Xcode) | ${ios.apiSdk} | SwiftUI API inventory (\`scripts/swiftui-inventory.mjs\`) |`,
   `| Expo SDK | ${expo.sdk} (React Native ${expo.reactNative}) | Examples, native module contracts |`,
   `| Expo Go | ${expo.expoGo} | Expo reference screenshots |`,
@@ -125,19 +125,30 @@ for (const want of [`KOTLIN=${V.android.kotlin}`, `COMPOSE_RUNTIME=${V.compose.r
 }
 // The OS version the Expo guest reports to apps.
 const guest = 'frameworks/react-native/guest/modules.js', guestSrc = readFileSync(root + guest, 'utf8');
-for (const want of [`osVersion: '${ios.runtime}'`, `osBuildId: '${ios.build}'`, `systemVersion: '${ios.runtime}'`, `iPhone OS ${ios.runtime.replace(/\./g, '_')} `]) {
-  if (!guestSrc.includes(want)) drift(guest, `expected \`${want}\``);
+for (const r of ios.runtimes) {
+  if (!guestSrc.includes(`'${r.runtime}': '${r.build}'`)) drift(guest, `expected \`'${r.runtime}': '${r.build}'\` in IOS_BUILDS`);
 }
-// Reference screenshots say which runtime (and Expo Go) they were captured on.
-for (const fx of readdirSync(root + 'tests/fixtures')) {
-  let readme;
-  try { readme = readFileSync(`${root}tests/fixtures/${fx}/README.md`, 'utf8'); } catch { continue; }
-  // `*-android` fixtures come from the Android emulator, the rest from the iOS Simulator.
-  const want = fx.endsWith('-android') ? `${V.android.release} (API ${V.android.api})` : `iOS ${ios.runtime}`;
-  if (!readme.includes(want)) drift(`tests/fixtures/${fx}/README.md`, `does not say it was captured on ${want}; recapture or update the matrix`);
-  if (fx.endsWith('-android') && !readme.includes(V.android.device)) drift(`tests/fixtures/${fx}/README.md`, `expected device ${V.android.device}`);
-  for (const m of readme.matchAll(/Expo Go (\d+(?:\.\d+)*)/g)) {
-    if (!expo.expoGo.startsWith(m[1])) drift(`tests/fixtures/${fx}/README.md`, `Expo Go ${m[1]}, expected ${expo.expoGo}`);
+if (!guestSrc.includes(`: '${ios.runtimes[0].runtime}';`)) drift(guest, `default OS_VERSION should be the newest runtime, ${ios.runtimes[0].runtime}`);
+for (const [file, re] of [['crates/simcore-protocol/src/wire.rs', (r) => `Self::Ios${r.runtime.split('.')[0]} => "${r.build}"`]]) {
+  const src = readFileSync(root + file, 'utf8');
+  for (const r of ios.runtimes) if (!src.includes(re(r))) drift(file, `expected \`${re(r)}\``);
+}
+// Reference screenshots name their runtime and, for Android, the emulator device.
+const fixtureDirs = new Set(ios.runtimes.map((r) => r.fixtures));
+for (const r of ios.runtimes) {
+  for (const fx of readdirSync(root + r.fixtures)) {
+    const sub = `${r.fixtures}/${fx}`;
+    if (fixtureDirs.has(sub)) continue;
+    const path = `${sub}/README.md`;
+    let readme;
+    try { readme = readFileSync(root + path, 'utf8'); } catch { continue; }
+    const android = fx.endsWith('-android');
+    const want = android ? `${V.android.release} (API ${V.android.api})` : `iOS ${r.runtime}`;
+    if (!readme.includes(want)) drift(path, `does not say it was captured on ${want}; recapture or update the matrix`);
+    if (android && !readme.includes(V.android.device)) drift(path, `expected device ${V.android.device}`);
+    for (const m of readme.matchAll(/Expo Go (\d+(?:\.\d+)*)/g)) {
+      if (!expo.expoGo.startsWith(m[1])) drift(path, `Expo Go ${m[1]}, expected ${expo.expoGo}`);
+    }
   }
 }
 

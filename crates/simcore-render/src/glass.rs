@@ -3,10 +3,13 @@
 //! A glass node samples the pixels already painted beneath its shape and replaces them with:
 //! blurred backdrop -> lens displacement near the rim -> saturation/brightness transform -> tint ->
 //! specular rim + soft outer shadow. CPU-only, deterministic, no threads or SIMD (wasm32-wasip1 safe).
-//! Parameters are fitted to the iOS 26.5 Simulator fixtures (`tests/fixtures/showcase-ios/README.md`).
+//! Parameters are fitted per iOS release: 26.5 (`tests/fixtures/showcase-ios/README.md`) and 27.2
+//! (`tests/fixtures/ios27/showcase-ios/README.md`: no outer shadow, a dark hairline outside the edge,
+//! highlights along the top and bottom instead of the diagonal rim, a more saturated backdrop).
 
 use crate::scene::Color;
 pub use simcore_protocol::GlassVariant;
+use simcore_protocol::IosVersion;
 use tiny_skia::{Mask, Pixmap};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -43,6 +46,12 @@ pub struct Params {
     pub rim_a: f32,
     pub rim_w: f32,
     pub rim_dir: f32,
+    /// Rim direction: false = top-left / bottom-right diagonals (iOS 26), true = top and bottom edges (iOS 27).
+    pub rim_vertical: bool,
+    /// Dark hairline just outside the outline: mix toward black at its strongest (on vertical edges;
+    /// 30% of that on horizontal ones) and width (pt). iOS 27 only.
+    pub outline_a: f32,
+    pub outline_w: f32,
     /// Outer shadow: alpha, sigma (pt), dy (pt).
     pub sh_a: f32,
     pub sh_sigma: f32,
@@ -51,7 +60,7 @@ pub struct Params {
     pub mirror: bool,
 }
 
-pub fn params(variant: GlassVariant, dark: bool) -> Params {
+pub fn params(variant: GlassVariant, dark: bool, ios: IosVersion) -> Params {
     let mut p = Params {
         sigma: 3.0,
         lens_d: 30.0,
@@ -66,6 +75,9 @@ pub fn params(variant: GlassVariant, dark: bool) -> Params {
         sh_a: 0.13,
         sh_sigma: 12.0,
         sh_dy: 5.0,
+        rim_vertical: false,
+        outline_a: 0.0,
+        outline_w: 0.0,
         mirror: false,
     };
     match (variant, dark) {
@@ -92,12 +104,34 @@ pub fn params(variant: GlassVariant, dark: bool) -> Params {
         }
         _ => {}
     }
+    if ios >= IosVersion::Ios27 {
+        // No outer shadow; a dark hairline outside and highlights along the top and bottom instead.
+        (p.rim_w, p.rim_dir, p.rim_vertical, p.sh_a) = (3.0, 1.0, true, 0.0);
+        (p.outline_a, p.outline_w) = (0.4, 0.67);
+        match (variant, dark) {
+            // Least-squares fit (glass.png, back buttons): gray (242,242,247) -> (246,246,250), purple (203,48,224)
+            // -> (255,133,255), pink (255,45,85) -> (255,131,169), blue (0,136,255) -> (84,204,255); the
+            // red-tinted circle (255,56,60) -> (235,34,36).
+            (GlassVariant::Regular, false) => {
+                (p.sat, p.mul, p.add, p.tint_shift, p.rim_a) =
+                    (1.85, 0.48, 0.51, -21.0 / 255.0, 0.24)
+            }
+            // glass-dark.png, back buttons: black -> 32, purple (219,52,242) -> (245,61,255), pink (255,55,95)
+            // -> (255,63,109), blue (0,145,255) -> (0,152,255).
+            (GlassVariant::Regular, true) => {
+                (p.sat, p.mul, p.add, p.rim_a) = (1.37, 0.804, 0.127, 0.15)
+            }
+            // purple -> (237,73,255) light, (253,76,255) dark.
+            (GlassVariant::Clear, _) => (p.sat, p.add) = (1.06, 0.109),
+            _ => {}
+        }
+    }
     p
 }
 
 /// Parameters of one glass node: the variant's, with the spec's overrides.
-pub fn spec_params(spec: &GlassSpec, dark: bool) -> Params {
-    let mut p = params(spec.variant, dark);
+pub fn spec_params(spec: &GlassSpec, dark: bool, ios: IosVersion) -> Params {
+    let mut p = params(spec.variant, dark, ios);
     p.sigma = spec.blur.unwrap_or(p.sigma);
     if let Some((mul, add)) = spec.mix {
         (p.mul, p.add) = (mul, add);
@@ -106,7 +140,7 @@ pub fn spec_params(spec: &GlassSpec, dark: bool) -> Params {
         (p.sh_a, p.sh_sigma, p.sh_dy) = (a, sg, dy);
     }
     if let Some(sat) = spec.flat {
-        (p.lens_d, p.rim_a, p.sh_a, p.sat, p.tint_shift, p.mirror) = (0.0, 0.0, 0.0, sat, 0.0, true);
+        (p.lens_d, p.rim_a, p.sh_a, p.sat, p.tint_shift, p.mirror, p.outline_a) = (0.0, 0.0, 0.0, sat, 0.0, true, 0.0);
     }
     p
 }
@@ -246,16 +280,18 @@ fn mix(a: f32, b: f32, t: f32) -> f32 {
 
 /// Paint the glass for `spec` over `shape`. `snap` must come from [`snapshot`] with the same `shape`.
 #[allow(clippy::too_many_arguments)]
-pub fn draw(pm: &mut Pixmap, snap: Snapshot, shape: Shape, spec: &GlassSpec, scale: f32, dark: bool, opacity: f32, mask: Option<&Mask>) {
-    let p = spec_params(spec, dark);
+pub fn draw(pm: &mut Pixmap, snap: Snapshot, shape: Shape, spec: &GlassSpec, scale: f32, dark: bool, ios: IosVersion, opacity: f32, mask: Option<&Mask>) {
+    let p = spec_params(spec, dark, ios);
     if spec.variant == GlassVariant::Identity {
         return;
     }
     let Snapshot { x0, y0, w, h, mut rgb } = snap;
     let (pw, ph) = (pm.width() as i32, pm.height() as i32);
     let (lens_d, lens_w) = (p.lens_d * scale, (p.lens_w * scale).max(0.5));
-    let (sx0, sy0) = (shape.x.floor() as i32 - 1, shape.y.floor() as i32 - 1);
-    let (sx1, sy1) = ((shape.x + shape.w).ceil() as i32 + 1, (shape.y + shape.h).ceil() as i32 + 1);
+    let ow = p.outline_w * scale;
+    let grow = 1 + ow.ceil() as i32;
+    let (sx0, sy0) = (shape.x.floor() as i32 - grow, shape.y.floor() as i32 - grow);
+    let (sx1, sy1) = ((shape.x + shape.w).ceil() as i32 + grow, (shape.y + shape.h).ceil() as i32 + grow);
     for pl in rgb.iter_mut() {
         box_blur3(pl, w, h, p.sigma * scale);
     }
@@ -271,6 +307,19 @@ pub fn draw(pm: &mut Pixmap, snap: Snapshot, shape: Shape, spec: &GlassSpec, sca
             let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
             let (sd, nx, ny) = shape.sdf(fx, fy);
             let cov = (0.5 - sd).clamp(0.0, 1.0);
+            // Dark hairline outside the outline (over whatever is painted there).
+            if p.outline_a > 0.0 && sd > -0.5 && sd < ow + 0.5 {
+                let k = (sd + 0.5).clamp(0.0, 1.0)
+                    * (ow + 0.5 - sd).clamp(0.0, 1.0)
+                    * p.outline_a
+                    * (0.3 + 0.7 * nx.abs())
+                    * opacity
+                    * mask_data.map_or(1.0, |m| m[(y * pw + x) as usize] as f32 / 255.0);
+                let i = ((y * pw + x) * 4) as usize;
+                for ch in 0..3 {
+                    data[i + ch] = mix(data[i + ch] as f32, 0.0, k).round() as u8;
+                }
+            }
             if cov <= 0.0 {
                 continue;
             }
@@ -294,7 +343,7 @@ pub fn draw(pm: &mut Pixmap, snap: Snapshot, shape: Shape, spec: &GlassSpec, sca
             }
             // Specular rim: brightest at the outline, favouring the top-left and bottom-right.
             if d < rim_w + 1.0 {
-                let dir = (nx + ny) * -std::f32::consts::FRAC_1_SQRT_2; // -1 (bottom-right) .. 1 (top-left)
+                let dir = if p.rim_vertical { ny } else { (nx + ny) * -std::f32::consts::FRAC_1_SQRT_2 }; // -1 (bottom-right) .. 1 (top-left)
                 let k = (1.0 - d / rim_w).clamp(0.0, 1.0) * p.rim_a * (1.0 - p.rim_dir + p.rim_dir * dir.abs());
                 for v in c.iter_mut() {
                     *v = mix(*v, 255.0, k);
@@ -362,6 +411,15 @@ fn veil_at(pt: f32, bar: f32) -> f32 {
     }
 }
 
+/// iOS 27: the content under the bar is veiled almost opaquely right down to the bar's bottom edge
+/// and not at all below it (typography-scrolled(-dark).png, ios27: glyph stems at ~0.88 just above the edge).
+const EDGE27_ALPHA: f32 = 0.88;
+
+fn veil_at_27(pt: f32, bar: f32, scale: f32) -> f32 {
+    let below = ((pt - bar) * scale + 0.5).clamp(0.0, 1.0);
+    mix(mix(EDGE27_ALPHA, EDGE_TOP_ALPHA, ((bar - pt) / bar).clamp(0.0, 1.0)), 0.0, below)
+}
+
 /// Weight of the blurred backdrop at `pt`: strongest at the top, fading out below the bar.
 fn blur_at(pt: f32, bar: f32) -> f32 {
     let (rel, top, at_bar, tail) = (pt - bar, EDGE_BLUR_TOP, EDGE_BLUR_BAR, EDGE_BLUR_TAIL);
@@ -374,7 +432,8 @@ fn blur_at(pt: f32, bar: f32) -> f32 {
     }
 }
 
-pub fn draw_edge(pm: &mut Pixmap, e: &ScrollEdge, scale: f32, mask: Option<&Mask>) {
+pub fn draw_edge(pm: &mut Pixmap, e: &ScrollEdge, scale: f32, ios: IosVersion, mask: Option<&Mask>) {
+    let ios27 = ios >= IosVersion::Ios27;
     let (pw, ph) = (pm.width() as usize, pm.height() as usize);
     let rows = (((e.bar + 32.0) * scale).ceil() as usize).min(ph);
     let col = [e.color.r * 255.0, e.color.g * 255.0, e.color.b * 255.0];
@@ -415,8 +474,11 @@ pub fn draw_edge(pm: &mut Pixmap, e: &ScrollEdge, scale: f32, mask: Option<&Mask
     let data = pm.data_mut();
     for y in 0..rows {
         let pt = (y as f32 + 0.5) / scale;
-        let a = veil_at(pt, e.bar);
-        let bwt = blur_at(pt, e.bar);
+        let a = if ios27 { veil_at_27(pt, e.bar, scale) } else { veil_at(pt, e.bar) };
+        let bwt = if ios27 && pt >= e.bar {
+            0.0
+        } else { blur_at(pt, e.bar)
+        };
         if bwt > 0.0 {
             let sy = ((y as f32 + 0.5) / f as f32 - 0.5).clamp(0.0, bh as f32 - 1.0);
             let (yi, fy) = (sy.floor() as usize, sy - sy.floor());
@@ -427,11 +489,31 @@ pub fn draw_edge(pm: &mut Pixmap, e: &ScrollEdge, scale: f32, mask: Option<&Mask
                 }
             }
         }
-        // Tint: full above bar-32, gone by bar+12.
-        let t = e.tint * ((e.bar + 12.0 - pt) / 44.0).clamp(0.0, 1.0);
+        // Tint: full above bar-32, gone by bar+12. iOS 27: none on light bars; dark bars are lifted to ~8 up to their edge.
+        let t = if ios27 {
+            if e.color.r < 0.5 && pt < e.bar {
+                -8.0 / 255.0
+            } else {
+                0.0
+            }
+        } else { e.tint * ((e.bar + 12.0 - pt) / 44.0).clamp(0.0, 1.0)
+        };
         let px = |d: f32, c: usize, m: f32| {
             let v = mix(d, col[c], a) - t * 255.0;
             mix(d, v.clamp(0.0, 255.0), m)
+        };
+        // iOS 27 hairline: the device-pixel row just above the bar's bottom, 10% toward black (light) or 13% toward white (dark).
+        let hair = ios27 && y + 1 == (e.bar * scale).round() as usize;
+        let dark_bar = e.color.r < 0.5;
+        let px = |d: f32, c: usize, m: f32| {
+            let v = px(d, c, m);
+            if !hair {
+                v
+            } else if dark_bar {
+                mix(v, 255.0, 0.13 * m)
+            } else {
+                mix(v, 0.0, 0.1 * m)
+            }
         };
         // The veil is constant along the row: unmasked pixels come from a table.
         let lut: [[u8; 256]; 3] = std::array::from_fn(|c| std::array::from_fn(|d| px(d as f32, c, 1.0).round() as u8));
@@ -464,7 +546,8 @@ mod tests {
         g.radius = 20.0;
         g.glass = Some(GlassSpec { variant, tint, interactive: false, blur: None, mix: None, shadow: None, flat: None });
         let appearance = if dark { Appearance::Dark } else { Appearance::Light };
-        crate::Scene { size: (200.0, 200.0), appearance, nodes: vec![bg, g], unsupported_symbols: vec![], notes: vec![] }
+        crate::Scene { size: (200.0, 200.0), appearance,
+            ios: IosVersion::Ios26, nodes: vec![bg, g], unsupported_symbols: vec![], notes: vec![] }
     }
 
     fn center(s: &crate::Scene) -> [u8; 3] {
@@ -485,6 +568,24 @@ mod tests {
         // an opaque tint hides the backdrop: red (255,56,60) -> (239,38,41)
         let red = Color::rgba(1.0, 56.0 / 255.0, 60.0 / 255.0, 1.0);
         assert!(near(center(&scene(false, GlassVariant::Regular, Some(red))), [239, 39, 43]));
+    }
+
+    #[test]
+    fn ios27_interior_and_outline() {
+        let near = |a: [u8; 3], b: [u8; 3]| {
+            a.iter()
+                .zip(b)
+                .all(|(x, y)| (*x as i32 - y as i32).abs() <= 3)
+        };
+        let mut s = scene(false, GlassVariant::Regular, None);
+        s.ios = IosVersion::Ios27;
+        // fixtures (ios27 glass.png): purple (203,48,224) -> (255,133,255)
+        assert!(near(center(&s), [255, 133, 255]), "{:?}", center(&s));
+        let pm = render(&s, &mut Fonts::new(), 3.0);
+        let edge = pm.pixel(149, 300).unwrap(); // just left of the shape (x = 50pt = 150px)
+        assert!(edge.green() < 40, "outline {edge:?}");
+        let far = pm.pixel(140, 300).unwrap(); // no outer shadow
+        assert_eq!((far.red(), far.green(), far.blue()), (203, 48, 224));
     }
 
     #[test]

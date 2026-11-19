@@ -32,6 +32,7 @@ fn forced_fallback_uses_inter_and_phosphor() {
         scale: 1.0,
         appearance: Appearance::Light,
         dynamic_type: Default::default(),
+        ios: Default::default(),
         scroll: &scroll,
         sheets: &Default::default(),
         focus: None,

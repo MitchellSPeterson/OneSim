@@ -27,7 +27,7 @@ pub struct Interaction {
     pub sheets: HashMap<String, SheetPos>,
     /// Node id of the focused text field.
     pub focus: Option<String>,
-    /// Software keyboard shift state. Key taps and focus update it; `keyboard` does not.
+    /// Software keyboard shift state. Key taps, focus and `keyboard` text/backspace update it (auto-capitalization).
     pub shift: bool,
     /// Current tree version; the transport sets it whenever a tree arrives. Stamped on effects.
     pub version: u64,
@@ -506,6 +506,8 @@ impl Interaction {
                 return Ok(Effect::Redraw);
             }
         }
+        // Text arrives through the software keyboard, so its shift follows like for key taps.
+        self.shift = autocap(&text);
         Ok(Effect::TextInput { field, version: self.version, text })
     }
 }
@@ -611,7 +613,8 @@ mod tests {
             n.bounds = Rect { x: 0.0, y: 0.0, w: 400.0, h: 800.0 };
             n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, 0.0), max: (0.0, 500.0), snap: None, content: None });
             let nodes = if with_scroller { vec![n] } else { vec![] };
-            Scene { size: (400.0, 800.0), appearance: simcore_protocol::Appearance::Light, nodes, unsupported_symbols: vec![], notes: vec![] }
+            Scene { size: (400.0, 800.0), appearance: simcore_protocol::Appearance::Light,
+                ios: Default::default(), nodes, unsupported_symbols: vec![], notes: vec![] }
         };
         let mut it = Interaction::default();
         let ev = |kind, dy| PointerEvent { kind, x: 100.0, y: 100.0, dx: 0.0, dy };
@@ -629,7 +632,8 @@ mod tests {
             let mut n = Node::new("l", "list");
             n.bounds = Rect { x: 0.0, y: 0.0, w: 400.0, h: 800.0 };
             n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max: (0.0, 500.0), snap: Some(52.0), content: None });
-            Scene { size: (400.0, 800.0), appearance: simcore_protocol::Appearance::Light, nodes: vec![n], unsupported_symbols: vec![], notes: vec![] }
+            Scene { size: (400.0, 800.0), appearance: simcore_protocol::Appearance::Light,
+                ios: Default::default(), nodes: vec![n], unsupported_symbols: vec![], notes: vec![] }
         };
         for (start, want) in [(20.0, 0.0), (40.0, 52.0)] {
             let mut it = Interaction::default();
