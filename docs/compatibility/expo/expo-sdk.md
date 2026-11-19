@@ -5,6 +5,7 @@ Part of [Expo / React Native API coverage](README.md): status legend, summary an
 | API | Package | Native | iOS | Android | Issue | Notes |
 |---|---|---|---|---|---|---|
 | Expo modules core | expo-modules-core | `ExpoModulesCore` | ✅ | ⬜ | | |
+| Expo UI | @expo/ui | `ExpoUI` | 🟠 | 🟠 | | Host, Text, Column, Row, Button, Switch, TextInput, Slider, RNHostView and ScrollView. Basic modifiers and React callbacks. Android text fields use host keyboard events. |
 | expo/fetch | expo | `ExpoFetchModule` | ✅ | ⬜ | | |
 | Asset | expo-asset | `ExpoAsset` | 🟠 | ⬜ | | `downloadAsync` unsupported (returns the URI) |
 | Font | expo-font | `ExpoFontLoader` | 🟠 | ⬜ | | `loadAsync` unsupported: custom fonts fall back to system |

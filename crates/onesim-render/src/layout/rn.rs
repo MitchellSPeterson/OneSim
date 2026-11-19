@@ -7,7 +7,7 @@ use super::swiftui::{add_chrome, rn_nav_bar, rn_nav_height, rn_tab_bar, switch_s
 use crate::scene::{Color, Glyph, ImageRun, Node, Rect, Role, Scene, ScrollInfo, TextRun};
 use crate::text::{FontSpec, Fonts, Span, TextAlign};
 use serde_json::Value;
-use onesim_protocol::{Appearance, IosVersion, ViewKind, ViewNode};
+use onesim_protocol::{Appearance, IosVersion, ViewKind, ViewNode, EXPO_UI_HOST, EXPO_UI_RN_HOST};
 use std::collections::BTreeSet;
 use taffy::prelude::*;
 use taffy::compute_leaf_layout;
@@ -27,6 +27,11 @@ struct Text {
     spans: Vec<Span>,
     explicit_lh: bool,
     font_padding: (f32, f32),
+}
+
+enum Leaf<'a> {
+    Text(Text),
+    ExpoHost { content: &'a ViewNode, width: bool, height: bool },
 }
 
 struct Item<'a> {
@@ -190,7 +195,7 @@ pub(crate) fn tinted(pm: &tiny_skia::Pixmap, c: Color) -> Option<std::sync::Arc<
 }
 
 struct Cx<'a, 'f> {
-    tree: TaffyTree<Text>,
+    tree: TaffyTree<Leaf<'a>>,
     notes: BTreeSet<String>,
     scale: f64,
     dark: bool,
@@ -370,7 +375,14 @@ fn weight(p: &Value) -> u16 {
     }
 }
 
-impl<'a> Cx<'a, '_> {
+impl<'a, 'f> Cx<'a, 'f> {
+    fn new(params: &SceneParams, fonts: &'f mut Fonts, insets: (f64, f64)) -> Self {
+        let mut tree = TaffyTree::new();
+        tree.disable_rounding();
+        Self { tree, notes: BTreeSet::new(), scale: params.scale.max(1.0), dark: params.appearance == Appearance::Dark,
+            android: params.device.android, fonts, modals: vec![], insets, inset_top: 0.0, rot: 0.0, stack: None,
+            parent_row: false, span_lh: 0.0, safe: vec![] }
+    }
     /// `RNCSafeAreaView` / `RNSSafeAreaView` `edges` set to `additive` (or `true`) add the inset to the padding.
     fn safe_padding(&self, p: &Value, st: &mut Style) {
         let on = |side: &str| p.get("edges").and_then(|e| e.get(side)).is_some_and(|v| v.as_bool() == Some(true) || v.as_str() == Some("additive"));
@@ -502,6 +514,7 @@ impl<'a> Cx<'a, '_> {
             | "ViewManagerAdapter_ExpoImage" | "ViewManagerAdapter_SymbolModule" | "RNGestureHandlerButton" | "RNGestureHandlerRootView"
             | "ActivityIndicatorView" | "PullToRefreshView" | "SafeAreaView" | "ViewManagerAdapter_ExpoLinearGradient" | "ViewManagerAdapter_ExpoBlur_ExpoBlurView"
             | "AndroidSwitch" | "AndroidProgressBar" | "AndroidHorizontalScrollView" | "AndroidHorizontalScrollContentView" | "AndroidSwipeRefreshLayout" => {}
+            EXPO_UI_HOST | EXPO_UI_RN_HOST => {}
             // Drawn by the host from the screen's header props.
             "RNSScreenStackHeaderConfig" | "RNSScreenStackHeaderSubview" => return None,
             c if c.starts_with("ViewManagerAdapter_ExpoGlassEffect_") => {}
@@ -534,9 +547,16 @@ impl<'a> Cx<'a, '_> {
             st.position = Position::Absolute;
             st.size = taffy::Size { width: percent(1.0), height: length(0.0) };
         }
+        if component == EXPO_UI_HOST {
+            let content = children.first()?;
+            let width = props.get("matchContentsHorizontal").and_then(Value::as_bool).unwrap_or(false);
+            let height = props.get("matchContentsVertical").and_then(Value::as_bool).unwrap_or(false);
+            let id = self.tree.new_leaf_with_context(st, Leaf::ExpoHost { content, width, height }).ok()?;
+            return Some(Item::new(node, props, id, vec![]));
+        }
         if component == "RCTText" {
             let t = self.text(node, props);
-            let id = self.tree.new_leaf_with_context(st, t).ok()?;
+            let id = self.tree.new_leaf_with_context(st, Leaf::Text(t)).ok()?;
             return Some(Item::new(node, props, id, vec![]));
         }
         if input {
@@ -550,7 +570,7 @@ impl<'a> Cx<'a, '_> {
                 value.to_string()
             };
             (t.field, t.single) = (true, component != "RCTMultilineTextInputView" && props.get("multiline").and_then(Value::as_bool) != Some(true));
-            let id = self.tree.new_leaf_with_context(st, t).ok()?;
+            let id = self.tree.new_leaf_with_context(st, Leaf::Text(t)).ok()?;
             return Some(Item::new(node, props, id, vec![]));
         }
         if matches!(component.as_str(), "RCTSwitch" | "AndroidSwitch") {
@@ -566,7 +586,7 @@ impl<'a> Cx<'a, '_> {
                 explicit_lh: false,
                 font_padding: (0.0, 0.0),
             };
-            let id = self.tree.new_leaf_with_context(st, t).ok()?;
+            let id = self.tree.new_leaf_with_context(st, Leaf::Text(t)).ok()?;
             return Some(Item::new(node, props, id, vec![]));
         }
         // Native containers draw one child: a stack its top screen, a tab host the selected tab.
@@ -619,8 +639,8 @@ impl<'a> Cx<'a, '_> {
 
     /// Lay out the subtree at `id` as a root of `w` x `h` points. Core `SafeAreaView`s then get the part of the
     /// insets they overlap as padding (replacing their own, like RN's SafeAreaView shadow node) and it is laid out again.
-    fn compute(&mut self, id: NodeId, w: f64, h: f64) {
-        self.compute_pass(id, w, h);
+    fn compute(&mut self, id: NodeId, w: f64, h: f64, params: &SceneParams) {
+        self.compute_pass(id, w, h, params);
         let mut again = false;
         for s in self.safe.clone() {
             let (mut y, mut n) = (0.0, s);
@@ -643,23 +663,46 @@ impl<'a> Cx<'a, '_> {
             again = true;
         }
         if again {
-            self.compute_pass(id, w, h);
+            self.compute_pass(id, w, h, params);
         }
     }
 
-    fn compute_pass(&mut self, id: NodeId, w: f64, h: f64) {
+    fn compute_pass(&mut self, id: NodeId, w: f64, h: f64, params: &SceneParams) {
         let mut st = self.tree.style(id).cloned().unwrap_or_default();
         st.size = taffy::Size { width: length(w as f32), height: length(h as f32) };
         st.position = Position::Relative;
         let _ = self.tree.set_style(id, st);
+        self.measure(id, (Some(w), Some(h)), params);
+    }
+
+    fn measure(&mut self, id: NodeId, available: (Option<f64>, Option<f64>), params: &SceneParams) {
+        let (w, h) = (available.0.unwrap_or(params.viewport.0), available.1.unwrap_or(params.viewport.1));
         let scale = self.scale as f32;
         let fonts = &mut *self.fonts;
+        let space = |value: Option<f64>| value.map_or(AvailableSpace::MaxContent, |size| AvailableSpace::Definite(size as f32));
         let _ = self.tree.compute_layout_with_measure(
             id,
-            taffy::Size { width: AvailableSpace::Definite(w as f32), height: AvailableSpace::Definite(h as f32) },
+            taffy::Size { width: space(available.0), height: space(available.1) },
             |inp, _, t, style| {
                 compute_leaf_layout(inp, style, |_, _| 0.0, |known, avail| {
-                    let Some(t) = t else { return taffy::Size::ZERO };
+                    let t = match t {
+                        None => return taffy::Size::ZERO,
+                        Some(Leaf::Text(t)) => t,
+                        Some(Leaf::ExpoHost { content, width, height }) => {
+                            let limit = |known: Option<f32>, avail, max| {
+                                known.map(f64::from).or(match avail {
+                                    AvailableSpace::Definite(size) => Some(f64::from(size)),
+                                    _ => Some(max),
+                                })
+                            };
+                            let bounded = (limit(known.width, avail.width, w), limit(known.height, avail.height, h));
+                            let (nw, nh) = expo_embed(content, bounded, params, fonts, None);
+                            return taffy::Size {
+                                width: known.width.unwrap_or(if *width { nw as f32 } else { 0.0 }),
+                                height: known.height.unwrap_or(if *height { nh as f32 } else { 0.0 }),
+                            };
+                        }
+                    };
                     if let Some((fw, fh)) = t.fixed {
                         return taffy::Size { width: known.width.unwrap_or(fw), height: known.height.unwrap_or(fh) };
                     }
@@ -682,6 +725,67 @@ impl<'a> Cx<'a, '_> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub(super) struct Embedded {
+    pub size: (f64, f64),
+    nodes: Vec<Node>,
+}
+
+impl Embedded {
+    pub fn place(&self, origin: (f64, f64), parent: Option<usize>, opacity: f32, out: &mut Vec<Node>) {
+        let base = out.len();
+        out.extend(self.nodes.iter().cloned().map(|mut node| {
+            node.parent = node.parent.and_then(|p| p.checked_sub(1)).map(|p| p + base).or(parent);
+            node.bounds.x += origin.0;
+            node.bounds.y += origin.1;
+            node.opacity *= opacity;
+            node
+        }));
+    }
+}
+
+pub(super) fn embedded(
+    root: &ViewNode,
+    available: (Option<f64>, Option<f64>),
+    params: &SceneParams,
+    fonts: &mut Fonts,
+) -> Embedded {
+    let mut cx = Cx::new(params, fonts, (0.0, 0.0));
+    let mut result = Embedded { size: (0.0, 0.0), nodes: vec![] };
+    let Some(item) = cx.build(root) else { return result };
+    let mut style = cx.tree.style(item.id).cloned().unwrap_or_default();
+    let size = |prop, limit: Option<f64>| {
+        limit.filter(|_| item.props.get(prop).and_then(Value::as_bool) != Some(true)).map_or(auto(), |x| length(x as f32))
+    };
+    style.size.width = size("matchContentsHorizontal", available.0);
+    style.size.height = size("matchContentsVertical", available.1);
+    style.max_size.width = available.0.map_or(auto(), |x| length(x as f32));
+    style.max_size.height = available.1.map_or(auto(), |y| length(y as f32));
+    let _ = cx.tree.set_style(item.id, style);
+    cx.measure(item.id, available, params);
+    if let Ok(layout) = cx.tree.layout(item.id) {
+        result.size = (f64::from(layout.size.width), f64::from(layout.size.height));
+    }
+    // The painter takes a parent index. Use a temporary parent and discard it before returning.
+    result.nodes.push(Node::new("embedded", "layout"));
+    paint(&mut cx, &item, (0.0, 0.0), 0, 1.0, params, &mut result.nodes);
+    result.nodes.remove(0);
+    result
+}
+
+fn expo_embed(
+    content: &ViewNode,
+    available: (Option<f64>, Option<f64>),
+    params: &SceneParams,
+    fonts: &mut Fonts,
+    place: Option<(Rect, usize, f32, &mut Vec<Node>)>,
+) -> (f64, f64) {
+    match content.kind {
+        ViewKind::Compose { .. } => super::compose::embedded(content, available, params, fonts, place),
+        _ => super::swiftui::embedded(content, available, params, fonts, place),
+    }
+}
+
 fn is_text_input(component: &str) -> bool {
     matches!(component, "RCTSinglelineTextInputView" | "RCTMultilineTextInputView" | "AndroidTextInput")
 }
@@ -695,8 +799,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     let dark = params.appearance == Appearance::Dark;
     let android = params.device.android;
     let insets = if android { (params.device.safe_top, params.device.safe_bottom) } else { insets(h) };
-    let mut cx = Cx { tree: TaffyTree::new(), notes: BTreeSet::new(), scale: params.scale.max(1.0), dark, android, fonts, modals: vec![], insets, inset_top: 0.0, rot: 0.0, stack: None, parent_row: false, span_lh: 0.0, safe: vec![] };
-    cx.tree.disable_rounding();
+    let mut cx = Cx::new(params, fonts, insets);
     let bg = if dark { 0.0 } else { 1.0 };
     let mut screen = Node::new("root", "screen");
     screen.bounds = Rect { x: 0.0, y: 0.0, w, h };
@@ -704,10 +807,10 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     let mut nodes = vec![screen];
     if let Some(item) = cx.build(root) {
         // The surface root fills the viewport.
-        cx.compute(item.id, w, h);
+        cx.compute(item.id, w, h, params);
         paint(&mut cx, &item, (0.0, 0.0), 0, 1.0, params, &mut nodes);
         for m in std::mem::take(&mut cx.modals) {
-            cx.compute(m.id, w, h);
+            cx.compute(m.id, w, h, params);
             let first = nodes.len();
             paint(&mut cx, &m, (0.0, 0.0), 0, 1.0, params, &mut nodes);
             if m.props.get("transparent").and_then(Value::as_bool) != Some(true) {
@@ -834,7 +937,10 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
     }
     let me = out.len();
     let mut extras: Vec<Node> = vec![];
-    let ctx = cx.tree.get_node_context(it.id).cloned();
+    let ctx = cx.tree.get_node_context(it.id).and_then(|leaf| match leaf {
+        Leaf::Text(text) => Some(text.clone()),
+        _ => None,
+    });
     let a11y = p.get("accessibilityLabel").and_then(Value::as_str).map(str::to_owned);
     if component == "ViewManagerAdapter_SymbolModule" {
         n.kind = "image";
@@ -1062,6 +1168,21 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
     if let Some(bh) = bar_h {
         cx.inset_top = cx.insets.0 + bh;
     }
+    if let Some(Leaf::ExpoHost { content, .. }) = cx.tree.get_node_context(it.id) {
+        let bounds = Rect {
+            x: x + f64::from(l.padding.left + l.border.left),
+            y: y + f64::from(l.padding.top + l.border.top),
+            w: (w - f64::from(l.padding.left + l.padding.right + l.border.left + l.border.right)).max(0.0),
+            h: (h - f64::from(l.padding.top + l.padding.bottom + l.border.top + l.border.bottom)).max(0.0),
+        };
+        let mut node = Node::new(format!("{}#content", it.node.id), "expo_ui_content");
+        node.parent = Some(me);
+        node.inspect = false;
+        let idx = out.len();
+        out.push(node);
+        let (w, h) = expo_embed(content, (Some(bounds.w), Some(bounds.h)), params, cx.fonts, Some((bounds, idx, eff, out)));
+        out[idx].bounds = Rect { w, h, ..bounds };
+    }
     for k in &it.kids {
         paint(cx, k, (ox, oy), me, eff, params, out);
     }
@@ -1219,7 +1340,8 @@ fn android_switch(cx: &mut Cx<'_, '_>, n: &mut Node, p: &Value, label: Option<St
 
 fn text_field(cx: &mut Cx, n: &mut Node, it: &Item, me: usize, l: &taffy::Layout, params: &SceneParams) -> Vec<Node> {
     let p = it.props;
-    let Some(t) = cx.tree.get_node_context(it.id).cloned() else { return vec![] };
+    let Some(Leaf::Text(t)) = cx.tree.get_node_context(it.id) else { return vec![] };
+    let t = t.clone();
     let value = p.get("__simcoreText").and_then(Value::as_str).unwrap_or("");
     let placeholder = p.get("placeholder").and_then(Value::as_str).unwrap_or("");
     let (x, y, w, h) = (n.bounds.x, n.bounds.y, n.bounds.w, n.bounds.h);

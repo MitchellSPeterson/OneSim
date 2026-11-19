@@ -8,5 +8,6 @@
             </intent-filter>
         </activity>
         <activity android:name="com.example.showcase.ShowcaseActivity" android:exported="true" />
+        <activity android:name="com.example.input.InputActivity" android:exported="true" />
     </application>
 </manifest>

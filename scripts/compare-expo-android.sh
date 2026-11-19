@@ -46,3 +46,4 @@ shot scroll-scrolled --click Scroll --click Jump
 shot image --click Image
 shot visuals --click Visuals
 python3 scripts/compare_ios.py "$fixtures" "$out/onesim" "$out"
+scripts/compare-expo-ui.sh android

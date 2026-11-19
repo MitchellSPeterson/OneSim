@@ -63,10 +63,13 @@ jobs:
           npm ci --prefix examples/expo-showcase
           npm ci --prefix examples/expo-router-stack
           npm ci --prefix examples/expo-default
+          npm ci --prefix examples/expo-ui
       - name: iOS pixel-diff gate (every state < 2%)
         run: scripts/compare-ios.sh
       - name: iOS pixel-diff gate, fallback fonts/symbols (every state < 3.5%)
         run: SIMCORE_FALLBACK=1 scripts/compare-ios.sh
+      - name: Android pixel-diff gate, Expo vs the Android 17 emulator
+        run: scripts/compare-expo-android.sh
       - name: Upload iOS and Android comparison sheets
         if: always()
         uses: actions/upload-artifact@v4

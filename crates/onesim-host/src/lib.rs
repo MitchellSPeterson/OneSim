@@ -384,9 +384,13 @@ impl Host {
                 return Ok(out);
             }
         }
-        // An `Alert.alert` button: a SwiftUI-style action the guest maps to the alert callback.
-        if hit.is_some_and(|n| n.action.is_some()) {
+        // Native actions and sliders hosted inside React Native use the same interaction as standalone views.
+        let hosted_scroll = ev.kind == PointerKind::Drag
+            && scene.scroll_target(ev.x, ev.y).is_some_and(|i| scene.nodes[i].tag.is_none());
+        if hosted_scroll || hit.is_some_and(|n| n.action.is_some() || n.role == Role::Slider) {
+            let focus = s.inter.focus.clone();
             let effect = s.inter.pointer(scene, ev);
+            s.inter.focus = focus;
             let out = (s.inter.hit.clone(), s.inter.acted);
             s.send_effect(effect)?;
             self.scene(id)?;
@@ -420,7 +424,7 @@ impl Host {
         let mut target = hit;
         match ev.kind {
             PointerKind::Drag => {
-                if let Some(n) = hit {
+                if let Some(n) = hit.filter(|n| n.tag.is_some()) {
                     const STEPS: u32 = 8;
                     s.send(&touch(TouchPhase::Start, n))?;
                     for i in 1..=STEPS {
@@ -433,18 +437,18 @@ impl Host {
             }
             PointerKind::Down => {
                 s.touch = hit.and_then(|n| n.tag);
-                if let Some(n) = hit {
+                if let Some(n) = hit.filter(|n| n.tag.is_some()) {
                     s.send(&touch(TouchPhase::Start, n))?;
                 }
             }
             PointerKind::Up => {
                 target = s.touch.take().and_then(|t| scene.nodes.iter().find(|n| n.tag == Some(t))).or(hit);
-                if let Some(n) = target {
+                if let Some(n) = target.filter(|n| n.tag.is_some()) {
                     s.send_and_settle(&touch(TouchPhase::End, n))?;
                 }
             }
             _ => {
-                if let Some(n) = hit {
+                if let Some(n) = hit.filter(|n| n.tag.is_some()) {
                     s.send(&touch(TouchPhase::Start, n))?;
                     s.send_and_settle(&touch(TouchPhase::End, n))?;
                 }
@@ -488,7 +492,13 @@ impl Host {
         self.get(id)?.require_running()?;
         let (scene, version, _) = self.scene(id)?;
         let s = self.get(id)?;
-        if s.is_rn() {
+        let native_drag = if phase == DragPhase::Begin {
+            scene.hit_test(x, y).is_some_and(|i| scene.nodes[i].role == Role::Slider)
+                || scene.scroll_target(x, y).is_some_and(|i| scene.nodes[i].tag.is_none())
+        } else {
+            s.inter.has_drag_target()
+        };
+        if s.is_rn() && !native_drag {
             let (phase, tag) = match phase {
                 DragPhase::Begin => {
                     s.touch = scene.hit_test(x, y).and_then(|i| scene.nodes[i].tag);

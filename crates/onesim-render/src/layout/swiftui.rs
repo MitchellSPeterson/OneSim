@@ -200,11 +200,12 @@ struct Lay {
     kids: Vec<(f64, f64, Lay)>,
     /// Hit/paint bounds growth (left, top, right, bottom) beyond `size`.
     infl: (f64, f64, f64, f64),
+    embedded: Option<super::rn::Embedded>,
 }
 
 impl Lay {
     fn new(size: Size, node: Option<Node>, kids: Vec<(f64, f64, Lay)>) -> Self {
-        Self { size, node: node.map(Box::new), kids, infl: (0.0, 0.0, 0.0, 0.0) }
+        Self { size, node: node.map(Box::new), kids, infl: (0.0, 0.0, 0.0, 0.0), embedded: None }
     }
 }
 
@@ -272,6 +273,7 @@ struct NavBar<'a> {
 
 struct Ctx<'a> {
     fonts: &'a mut Fonts,
+    params: &'a SceneParams<'a>,
     dark: bool,
     dts: DynamicTypeSize,
     scale: f64,
@@ -351,6 +353,7 @@ pub struct SceneParams<'a> {
 fn ctx<'a>(params: &'a SceneParams, fonts: &'a mut Fonts) -> Ctx<'a> {
     Ctx {
         fonts,
+        params,
         dark: params.appearance == Appearance::Dark,
         dts: params.dynamic_type,
         scale: params.scale.max(1.0),
@@ -447,6 +450,23 @@ pub(crate) fn rn_alerts(params: &SceneParams, fonts: &mut Fonts, layers: &[Layer
             flatten(lay, 0.0, 0.0, Some(0), 1.0, out);
         }
     }
+}
+
+pub(super) fn embedded(
+    root: &ViewNode,
+    available: (Option<f64>, Option<f64>),
+    params: &SceneParams,
+    fonts: &mut Fonts,
+    place: Option<(Rect, usize, f32, &mut Vec<Node>)>,
+) -> (f64, f64) {
+    let mut cx = ctx(params, fonts);
+    let env = Env { size: onesim_protocol::TextStyle::Body.size_at(params.dynamic_type) as f32, ..Env::new() };
+    let laid = cx.view(root, Prop { w: available.0, h: available.1 }, env);
+    let size = (laid.size.w, laid.size.h);
+    if let Some((bounds, parent, opacity, out)) = place {
+        flatten(laid, bounds.x, bounds.y, Some(parent), opacity, out);
+    }
+    size
 }
 
 pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
@@ -556,6 +576,9 @@ fn flatten(lay: Lay, x: f64, y: f64, mut parent: Option<usize>, mut opacity: f32
         n.opacity = opacity;
         out.push(*n);
         parent = Some(out.len() - 1);
+    }
+    if let Some(embedded) = lay.embedded {
+        embedded.place((x, y), parent, opacity, out);
     }
     for (dx, dy, k) in lay.kids {
         flatten(k, x + dx, y + dy, parent, opacity, out);
@@ -985,6 +1008,13 @@ impl Ctx<'_> {
                 n.fill = Some(if self.dark { rgba(84, 84, 88, 0.6) } else { rgba(60, 60, 67, 0.29) });
                 Lay::new(size, Some(n), vec![])
             }
+            ViewKind::Rn { component, .. } if component == onesim_protocol::EXPO_UI_RN_HOST => {
+                let limit = |axis: Option<f64>| axis.filter(|n| n.is_finite());
+                let embedded = super::rn::embedded(v, (limit(p.w), limit(p.h)), self.params, self.fonts);
+                let mut laid = Lay::new(Size { w: embedded.size.0, h: embedded.size.1 }, None, vec![]);
+                laid.embedded = Some(embedded);
+                laid
+            }
             ViewKind::Empty | ViewKind::Rn { .. } | ViewKind::Compose { .. } => Lay::new(Size::default(), Some(Node::new(&v.id, "empty")), vec![]),
             // Only the root's presentation layer is drawn (see `layout`); nested, it is transparent.
             ViewKind::Presentation { content, .. } => self.view(content, p, env),
@@ -996,12 +1026,18 @@ impl Ctx<'_> {
             }
             ViewKind::Toggle { is_on, action, label, disabled } => self.toggle(v, *is_on, *action, label, *disabled, p, env),
             ViewKind::Stepper { label, decrement, increment } => self.stepper(v, label, *decrement, *increment, p, env),
-            ViewKind::TextField { placeholder, text, field, secure } => {
+            ViewKind::TextField { placeholder, text, field, secure, disabled } => {
+                let mut l = self.text_field(v, placeholder, if *secure { "" } else { text }, *field, p, env);
+                if *disabled {
+                    if let Some(n) = l.node.as_mut() {
+                        n.field = None;
+                        n.disabled = true;
+                    }
+                }
                 if !*secure || text.is_empty() {
-                    return self.text_field(v, placeholder, text, *field, p, env);
+                    return l;
                 }
                 // SecureField: one bullet (a dot) per character.
-                let mut l = self.text_field(v, placeholder, "", *field, p, env);
                 let fg = env.fg.unwrap_or_else(|| self.semantic(Semantic::Primary));
                 let (d, pitch, x0) = SECURE_BULLET;
                 let y = (l.size.h - d) / 2.0;

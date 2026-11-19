@@ -7,7 +7,7 @@
 
 use super::swiftui::SceneParams;
 use crate::chrome::{android_nav_handle, android_status_bar};
-use crate::scene::{Color, Node, Rect, Role, Scene, Shadow, TextRun};
+use crate::scene::{Color, Node, Rect, Role, Scene, ScrollInfo, Shadow, TextRun};
 use crate::text::{android_glyph_size, FontSpec, Fonts, TextAlign};
 use serde_json::Value;
 use onesim_protocol::{Appearance, ViewKind, ViewNode};
@@ -88,6 +88,8 @@ enum Deco {
     Alpha(f32),
     Click { action: Option<u64>, role: Role, label: Option<String> },
     Text(TextRun),
+    Control(Box<Node>),
+    Embedded(super::rn::Embedded),
     /// The component's own node (`Box`, `Column`, `Row`).
     Core(&'static str),
 }
@@ -113,6 +115,7 @@ struct Cx<'a> {
     notes: BTreeSet<String>,
     /// Device px per dp.
     density: f32,
+    params: Option<&'a SceneParams<'a>>,
 }
 
 fn color(v: Option<&Value>) -> Option<Color> {
@@ -185,6 +188,17 @@ impl Cx<'_> {
         let Some(m) = mods.get(i) else { return self.core(n, c) };
         let id = format!("{}#m{i}", n.id);
         let next = |cx: &mut Self, c: C| cx.chain(n, mods, i + 1, c);
+        if let Some(vertical) = m.get("scroll").and_then(Value::as_bool) {
+            let inner = next(self, if vertical { C { max_h: INF, ..c } } else { C { max_w: INF, ..c } });
+            let (w, h) = c.size(inner.w, inner.h);
+            let (mx, my) = if vertical { (0.0, (inner.h - h).max(0.0)) } else { ((inner.w - w).max(0.0), 0.0) };
+            let want = self.params.and_then(|p| p.scroll.get(&n.id)).copied().unwrap_or_default();
+            let offset = (want.0.clamp(0.0, mx), want.1.clamp(0.0, my));
+            let mut node = Node::new(&n.id, "compose_scroll");
+            node.clip_radius = Some(0.0);
+            node.scroll = Some(ScrollInfo { max: (mx, my), offset, vertical, snap: None, content: Some((inner.w, inner.h)) });
+            return Laid { id: n.id.clone(), w, h, deco: Deco::Control(Box::new(node)), kids: vec![(-offset.0, -offset.1, inner)] };
+        }
         // Size modifiers: target constraints coerced into the incoming ones (`enforceIncoming`).
         let sized = |cx: &mut Self, min_w: Option<f64>, max_w: Option<f64>, min_h: Option<f64>, max_h: Option<f64>| {
             let t = C { min_w: min_w.unwrap_or(0.0), max_w: max_w.unwrap_or(INF), min_h: min_h.unwrap_or(0.0), max_h: max_h.unwrap_or(INF) };
@@ -318,9 +332,19 @@ impl Cx<'_> {
 
     /// The component itself, under all of its modifiers.
     fn core(&mut self, n: &ViewNode, c: C) -> Laid {
+        if let ViewKind::Rn { component, .. } = &n.kind {
+            if let Some(params) = self.params.filter(|_| component == onesim_protocol::EXPO_UI_RN_HOST) {
+                let available = (c.max_w.is_finite().then_some(c.max_w), c.max_h.is_finite().then_some(c.max_h));
+                let subtree = super::rn::embedded(n, available, params, self.fonts);
+                let (w, h) = c.size(subtree.size.0, subtree.size.1);
+                return Laid { id: n.id.clone(), w, h, deco: Deco::Embedded(subtree), kids: vec![] };
+            }
+        }
         let (component, props, children) = parts(n);
         match component {
             "Text" => self.text(n, props, c),
+            "TextField" => self.field(n, props, c),
+            "Slider" => self.slider(n, props, c),
             "Column" => self.linear(n, props, children, c, true),
             "Row" => self.linear(n, props, children, c, false),
             "Box" => self.boxed(n, props, children, c),
@@ -329,6 +353,92 @@ impl Cx<'_> {
                 self.boxed(n, props, children, c)
             }
         }
+    }
+
+    fn field(&mut self, n: &ViewNode, p: &Value, c: C) -> Laid {
+        let text = p.get("text").and_then(Value::as_str).unwrap_or_default();
+        let placeholder = p.get("placeholder").and_then(Value::as_str).unwrap_or_default();
+        let plain = p.get("plain").and_then(Value::as_bool) == Some(true);
+        let disabled = p.get("enabled").and_then(Value::as_bool) == Some(false);
+        let focused = !disabled && self.params.is_some_and(|params| params.focus == Some(n.id.as_str()));
+        let value = if text.is_empty() {
+            placeholder.to_owned()
+        } else if p.get("secure").and_then(Value::as_bool) == Some(true) {
+            "•".repeat(text.chars().count())
+        } else {
+            text.to_owned()
+        };
+        let pad = if plain { 0.0 } else { self.px(16.0) };
+        let mut text_props = p.clone();
+        text_props["text"] = Value::String(value);
+        let mut label = self.text(n, &text_props, c.loose().shrink(pad * 2.0, 0.0));
+        let caret_x = if text.is_empty() { 0.0 } else { label.w };
+        if let Deco::Text(run) = &mut label.deco {
+            if text.is_empty() && !plain {
+                run.color.a *= 0.65;
+            }
+        }
+        label.id = format!("{}#text", n.id);
+        let (w, h) = c.size(
+            if plain { label.w.max(self.px(1.0)) } else { self.px(280.0) },
+            if plain { label.h } else { self.px(56.0) },
+        );
+        let mut node = Node::new(&n.id, "text_field");
+        node.role = Role::TextField;
+        node.field = p.get("field").and_then(Value::as_u64).filter(|_| !disabled);
+        node.value = Some(text.to_owned());
+        node.label = if placeholder.is_empty() { Some(text.to_owned()) } else { Some(placeholder.to_owned()) };
+        node.focused = focused;
+        node.disabled = disabled;
+        node.clip_radius = Some(0.0);
+        if !plain {
+            node.fill = Some(Color::rgba(0.91, 0.88, 0.92, 1.0));
+            node.radius = self.px(4.0);
+        }
+        let mut kids = vec![(pad, (h - label.h) / 2.0, label)];
+        if focused {
+            let width = self.px(2.0);
+            let height = self.px(18.0).min(h);
+            let accent = Color::rgba(0.40, 0.31, 0.64, 1.0);
+            let caret = Laid { id: format!("{}#caret", n.id), w: width, h: height, deco: Deco::Background(accent, Shape::Rect), kids: vec![] };
+            kids.push(((pad + caret_x).min((w - width).max(0.0)), (h - height) / 2.0, caret));
+        }
+        Laid { id: n.id.clone(), w, h, deco: Deco::Control(Box::new(node)), kids }
+    }
+
+    fn slider(&self, n: &ViewNode, p: &Value, c: C) -> Laid {
+        let (lo, hi) = (f(p, "min").unwrap_or(0.0), f(p, "max").unwrap_or(1.0));
+        let value = f(p, "value").unwrap_or(lo);
+        let disabled = p.get("enabled").and_then(Value::as_bool) == Some(false);
+        let w = if c.max_w.is_finite() { c.max_w } else { self.px(200.0) };
+        let (w, h) = c.size(w, self.px(48.0));
+        let tw = self.px(4.0).min(w);
+        let th = self.px(44.0).min(h);
+        let fraction = if lo < hi { ((value - lo) / (hi - lo)).clamp(0.0, 1.0) } else { 0.0 };
+        let x = self.px(fraction * (w - tw));
+        let track_h = self.px(16.0).min(h);
+        let track_y = (h - track_h) / 2.0;
+        let gap = self.px(6.0);
+        let active = color(p.get("activeColor")).unwrap_or(Color::rgba(0.40, 0.31, 0.64, 1.0));
+        let inactive = color(p.get("inactiveColor")).unwrap_or(Color::rgba(0.91, 0.87, 0.97, 1.0));
+        let background = |part: &str, w, h, color| Laid {
+            id: format!("{}#{part}", n.id), w, h,
+            deco: Deco::Background(color, Shape::Corners(self.px(8.0))), kids: vec![],
+        };
+        let end = (x + tw + gap).min(w);
+        let mut node = Node::new(&n.id, "slider");
+        node.role = Role::Slider;
+        node.range = Some((lo, hi, tw));
+        node.field = p.get("field").and_then(Value::as_u64).filter(|_| !disabled && lo < hi);
+        node.value = Some(value.to_string());
+        node.disabled = disabled;
+        node.opacity = if disabled { 0.38 } else { 1.0 };
+        let kids = vec![
+            (0.0, track_y, background("active", (x - gap).max(0.0), track_h, active)),
+            (end, track_y, background("inactive", w - end, track_h, inactive)),
+            (x, (h - th) / 2.0, background("thumb", tw, th, active)),
+        ];
+        Laid { id: n.id.clone(), w, h, deco: Deco::Control(Box::new(node)), kids }
     }
 
     fn text(&mut self, n: &ViewNode, p: &Value, c: C) -> Laid {
@@ -525,6 +635,17 @@ fn flatten(l: &Laid, x: f64, y: f64, parent: usize, opacity: f32, out: &mut Vec<
             n.role = Role::Text;
             n.text = Some(t.clone());
         }
+        Deco::Control(control) => {
+            let (bounds, parent) = (n.bounds, n.parent);
+            n = (**control).clone();
+            n.bounds = bounds;
+            n.parent = parent;
+            op *= n.opacity;
+        }
+        Deco::Embedded(embedded) => {
+            embedded.place((x, y), Some(parent), opacity, out);
+            return;
+        }
         Deco::Core(k) => {
             n.kind = k;
             n.inspect = true;
@@ -538,11 +659,29 @@ fn flatten(l: &Laid, x: f64, y: f64, parent: usize, opacity: f32, out: &mut Vec<
     }
 }
 
+pub(super) fn embedded(
+    root: &ViewNode,
+    available: (Option<f64>, Option<f64>),
+    params: &SceneParams,
+    fonts: &mut Fonts,
+    place: Option<(Rect, usize, f32, &mut Vec<Node>)>,
+) -> (f64, f64) {
+    let mut cx = Cx { fonts, notes: BTreeSet::new(), density: params.device.scale as f32, params: Some(params) };
+    let laid = cx.measure(root, C {
+        min_w: 0.0, max_w: available.0.unwrap_or(INF),
+        min_h: 0.0, max_h: available.1.unwrap_or(INF),
+    });
+    if let Some((bounds, parent, opacity, out)) = place {
+        flatten(&laid, bounds.x, bounds.y, parent, opacity, out);
+    }
+    (laid.w, laid.h)
+}
+
 /// Lay out a Compose tree full screen (edge to edge) and add the Android system bars.
 pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
     let (w, h) = params.viewport;
     let dark = params.appearance == Appearance::Dark;
-    let mut cx = Cx { fonts, notes: BTreeSet::new(), density: params.device.scale as f32 };
+    let mut cx = Cx { fonts, notes: BTreeSet::new(), density: params.device.scale as f32, params: Some(params) };
     let bg = if dark { 0.0 } else { 1.0 };
     let mut screen = Node::new("root", "screen");
     screen.bounds = Rect { x: 0.0, y: 0.0, w, h };
@@ -581,7 +720,7 @@ mod tests {
 
     fn lay_at(v: Value, c: C, density: f32) -> Laid {
         let mut fonts = Fonts::with_fallback(true);
-        let mut cx = Cx { fonts: &mut fonts, notes: BTreeSet::new(), density };
+        let mut cx = Cx { fonts: &mut fonts, notes: BTreeSet::new(), density, params: None };
         cx.measure(&node(v), c)
     }
 

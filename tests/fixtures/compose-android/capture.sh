@@ -39,4 +39,9 @@ tap "$(ref Filled)"; tap "$(ref Compose)"; tap 927 668; shot showcase-changed
 $AD settings appearance dark >/dev/null
 launch com.example.showcase.ShowcaseActivity; shot showcase-dark
 $AD settings appearance light >/dev/null
+launch com.example.input.InputActivity; shot input
+$AD fill "$(ref Name)" NameHello --settle >/dev/null
+$AD keyboard dismiss >/dev/null
+$AD swipe 226 822 532 822 >/dev/null
+shot input-changed
 demo exit

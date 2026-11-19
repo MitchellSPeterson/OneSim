@@ -43,6 +43,7 @@ object Guest {
     private val root = LayoutNode("Box")
     private var version = 0L
     private var actions: Map<Long, () -> Unit> = emptyMap()
+    private var inputs: Map<Long, (String) -> Unit> = emptyMap()
     private var lastTree = ""
 
     private fun send(line: String) {
@@ -56,11 +57,13 @@ object Guest {
     /** Serialize; with `force` a tree is sent even when unchanged (the host waits for one after each action). */
     private fun emit(force: Boolean) {
         val acts = HashMap<Long, () -> Unit>()
+        val fields = HashMap<Long, (String) -> Unit>()
         val sb = StringBuilder()
-        root.toJson("root", acts, sb)
+        root.toJson("root", acts, fields, sb)
         val tree = sb.toString()
         // Callbacks can change while their wire IDs stay the same.
         actions = acts
+        inputs = fields
         if (!force && tree == lastTree) return
         lastTree = tree
         version++
@@ -148,15 +151,16 @@ object Guest {
                 val type = Regex(""""type"\s*:\s*"(\w+)"""").find(line)?.groupValues?.get(1)
                 fun num(key: String) = Regex(""""$key"\s*:\s*(\d+)""").find(line)?.groupValues?.get(1)?.toLong()
                 when (type) {
-                    "action" -> {
-                        val id = num("id")
+                    "action", "text_input" -> {
                         val v = num("version")
-                        val handler = if (v == version) actions[id] else null
                         val before = version
                         try {
-                            handler?.invoke()
+                            if (v == version) {
+                                if (type == "action") actions[num("id")]?.invoke()
+                                else textInput(line)?.let { inputs[num("field")]?.invoke(it) }
+                            }
                         } catch (t: Throwable) {
-                            error("onClick threw: ${t.stackTraceToString()}")
+                            error("Input callback threw: ${t.stackTraceToString()}")
                         }
                         pump()
                         // The write observer may already have sent the new tree; otherwise send one (even unchanged).
@@ -175,5 +179,19 @@ object Guest {
             recomposer.cancel()
         }
         exitProcess(0)
+    }
+
+    private fun textInput(line: String): String? {
+        val text = Regex("""\"text"\s*:\s*"((?:[^"\\]|\\.)*)"""").find(line)?.groupValues?.get(1) ?: return null
+        return Regex("""\\(u[0-9a-fA-F]{4}|["\\/bfnrt])""").replace(text) { match ->
+            when (val escape = match.groupValues[1]) {
+                "b" -> "\b"
+                "f" -> "\u000c"
+                "n" -> "\n"
+                "r" -> "\r"
+                "t" -> "\t"
+                else -> if (escape.startsWith('u')) escape.drop(1).toInt(16).toChar().toString() else escape
+            }
+        }
     }
 }

@@ -13,4 +13,6 @@ shot compose-showcase showcase
 shot compose-showcase showcase-dark    --dark
 # Switch has no label: tap its center (353,254 dp).
 shot compose-showcase showcase-changed --click Filled --click Compose --click 353,254
+shot compose-input input
+shot compose-input input-changed --click Name --type Hello --key enter --drag 86,313,117,0
 python3 scripts/compare_ios.py tests/fixtures/compose-android "$out/onesim" "$out"
