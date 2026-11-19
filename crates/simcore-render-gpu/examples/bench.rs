@@ -18,6 +18,7 @@ fn stats(mut v: Vec<f64>) -> (f64, f64, f64) {
 
 fn main() {
     let frames: usize = std::env::args().nth(1).and_then(|a| a.parse().ok()).unwrap_or(100);
+    assert!(frames > 0, "expected at least one measured frame");
     let mut gpu = match GpuRenderer::new_headless() {
         Ok(g) => g,
         Err(e) => {
@@ -39,18 +40,26 @@ fn main() {
         };
         time(&mut cpu, &mut fonts);
         let gpu_cold = time(&mut gpu, &mut fonts);
+        let (_, _, (cold_hits, cold_misses)) = gpu.encode_profile();
         let c: Vec<f64> = (0..frames).map(|_| time(&mut cpu, &mut fonts)).collect();
-        let g: Vec<f64> = (0..frames).map(|_| time(&mut gpu, &mut fonts)).collect();
+        let mut g = Vec::with_capacity(frames);
+        let mut stages: [Vec<f64>; 4] = std::array::from_fn(|_| Vec::with_capacity(frames));
+        let (mut hits, mut misses) = (0, 0);
+        for _ in 0..frames {
+            g.push(time(&mut gpu, &mut fonts));
+            let (build, vello, (h, m)) = gpu.encode_profile();
+            let ft = gpu.diagnostics().last_frame;
+            for (samples, sample) in stages.iter_mut().zip([build, vello, ft.gpu, ft.readback]) {
+                samples.push(sample.as_secs_f64() * 1e3);
+            }
+            hits += h;
+            misses += m;
+        }
         let (c50, c95, c99) = stats(c);
         let (g50, g95, g99) = stats(g);
-        let ft = gpu.diagnostics().last_frame;
-        println!(
-            "{name:<22} {c50:>8.1} {c95:>8.1} {c99:>8.1} | {g50:>8.1} {g95:>8.1} {g99:>8.1} {gpu_cold:>8.1} | {:>5.1}x   (last gpu frame: encode {:.1} gpu {:.1} readback {:.1} ms)",
-            c50 / g50,
-            ft.encode.as_secs_f64() * 1e3,
-            ft.gpu.as_secs_f64() * 1e3,
-            ft.readback.as_secs_f64() * 1e3
-        );
+        println!("{name:<22} {c50:>8.2} {c95:>8.2} {c99:>8.2} | {g50:>8.2} {g95:>8.2} {g99:>8.2} {gpu_cold:>8.2} | {:>5.1}x", c50 / g50);
+        let [build, vello, wait, readback] = stages.map(|samples| stats(samples).0);
+        println!("  gpu stage p50 (ms): list {build:.2}, Vello {vello:.2}, wait {wait:.2}, readback {readback:.2}; sprite hits/misses: first {cold_hits}/{cold_misses}, next {frames} {hits}/{misses}");
     }
     println!("ms per capture; gpu cold = first frame incl. sprite generation and atlas allocation");
 }

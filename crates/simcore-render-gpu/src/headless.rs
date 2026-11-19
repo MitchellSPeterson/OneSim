@@ -33,6 +33,8 @@ pub struct GpuRenderer {
     target: Option<Target>,
     frames: u64,
     last: FrameTimings,
+    build_time: Duration,
+    vello_time: Duration,
 }
 
 impl GpuRenderer {
@@ -47,7 +49,7 @@ impl GpuRenderer {
         if std::env::var("SIMCORE_GPU_GLASS").is_ok_and(|v| v == "cpu") {
             exec.disable_gpu_glass("disabled by SIMCORE_GPU_GLASS=cpu");
         }
-        Ok(Self { exec, builder: Builder::new(), readback: Readback::default(), adapter: name, target: None, frames: 0, last: FrameTimings::default() })
+        Ok(Self { exec, builder: Builder::new(), readback: Readback::default(), adapter: name, target: None, frames: 0, last: FrameTimings::default(), build_time: Duration::ZERO, vello_time: Duration::ZERO })
     }
 
     /// Route every backdrop op through the CPU path (read back, `apply_backdrop_op`, upload). Also selectable with
@@ -64,6 +66,11 @@ impl GpuRenderer {
     /// Cached sprites and bitmaps currently held (bounded by [`simcore_render::CACHE_MAX_ENTRIES`]).
     pub fn cache_len(&self) -> usize {
         self.builder.cache_len()
+    }
+
+    /// Display-list build time, Vello submission time, and sprite cache hits/misses for the last capture.
+    pub fn encode_profile(&self) -> (Duration, Duration, (usize, usize)) {
+        (self.build_time, self.vello_time, self.builder.sprite_cache_counts())
     }
 
     fn ensure_target(&mut self, w: u32, h: u32) -> &wgpu::Texture {
@@ -84,9 +91,12 @@ impl GpuRenderer {
     }
 
     fn frame(&mut self, scene: &Scene, fonts: &mut Fonts, scale: f64, pw: u32, ph: u32, timings: &mut FrameTimings) -> Result<Frame, RenderError> {
+        let start = Instant::now();
         let dl = self.builder.build(scene, fonts, scale);
+        self.build_time = start.elapsed();
         let target = self.ensure_target(pw, ph).clone();
         let stats = self.exec.execute(&dl, &target)?;
+        self.vello_time = stats.vello;
         timings.gpu += stats.fallback.gpu;
         timings.readback += stats.fallback.readback;
         let data = self

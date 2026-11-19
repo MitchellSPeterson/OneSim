@@ -48,6 +48,8 @@ pub struct Builder {
     sprites: HashMap<u64, SpriteEntry>,
     bitmaps: HashMap<usize, BitmapEntry>,
     next_bitmap: u64,
+    sprite_lookups: usize,
+    sprite_misses: usize,
 }
 
 /// `x, y, w, h` (points, scene space) to a device-pixel rounded rect; `r` in points, clamped to half the size.
@@ -99,6 +101,11 @@ impl Builder {
         self.sprites.values().filter(|e| e.off.is_some()).count() + self.bitmaps.len()
     }
 
+    /// Sprite cache hits and misses while building the last display list.
+    pub fn sprite_cache_counts(&self) -> (usize, usize) {
+        (self.sprite_lookups - self.sprite_misses, self.sprite_misses)
+    }
+
     /// Forget every resource, as after the executor lost its device: the next list re-sends what it uses.
     /// The executor must clear its table too.
     pub fn reset(&mut self) {
@@ -109,6 +116,8 @@ impl Builder {
     /// Lower `scene` at `scale` device pixels per point.
     pub fn build(&mut self, scene: &Scene, fonts: &mut Fonts, scale: f64) -> DisplayList {
         self.frame += 1;
+        self.sprite_lookups = 0;
+        self.sprite_misses = 0;
         let s = scale as f32;
         let sd = scale;
         let (pw, ph) = ((scene.size.0 * scale).round().max(1.0) as u32, (scene.size.1 * scale).round().max(1.0) as u32);
@@ -221,14 +230,16 @@ impl Builder {
         let key = sprite_key(n, fonts, scale, layer)?;
         let id = key.hash & !BITMAP_ID_BIT;
         let now = self.frame;
-        let e = self.sprites.entry(id).or_insert_with(|| SpriteEntry {
-            off: node_sprite(n, fonts, scale, layer).map(|sp| {
+        self.sprite_lookups += 1;
+        let e = self.sprites.entry(id).or_insert_with(|| {
+            self.sprite_misses += 1;
+            let off = node_sprite(n, fonts, scale, layer).map(|sp| {
                 let off = (sp.x - key.anchor.0, sp.y - key.anchor.1);
                 let (width, height) = (sp.pixmap.width(), sp.pixmap.height());
                 added.push(Resource { id, width, height, rgba: sp.pixmap.take() });
                 off
-            }),
-            last_used: now,
+            });
+            SpriteEntry { off, last_used: now }
         });
         e.last_used = now;
         e.off.map(|(dx, dy)| Op::Sprite { id, x: key.anchor.0 + dx, y: key.anchor.1 + dy })

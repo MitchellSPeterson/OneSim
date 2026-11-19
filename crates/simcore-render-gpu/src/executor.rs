@@ -36,6 +36,8 @@ pub struct ExecStats {
     pub backdrops: (u64, u64),
     /// Time the CPU fallback spent waiting for the GPU and copying the frame out (zero otherwise).
     pub fallback: FrameTimings,
+    /// CPU time spent encoding and submitting Vello passes. Measured on native only.
+    pub vello: std::time::Duration,
 }
 
 #[derive(Default)]
@@ -245,14 +247,20 @@ impl Executor {
 
     /// Render the current Vello scene into the target; with `to_acc`, then copy the whole frame into the
     /// accumulation texture. `acc_in_scene`: the scene draws the accumulation texture.
-    fn render_vello(&mut self, (w, h): (u32, u32), acc_in_scene: bool, to_acc: bool) -> Result<(), RenderError> {
+    fn render_vello(&mut self, (w, h): (u32, u32), acc_in_scene: bool, to_acc: bool, _stats: &mut ExecStats) -> Result<(), RenderError> {
         if let (true, Some(acc)) = (acc_in_scene, self.acc.as_ref()) {
             self.vello.mark_override_image_dirty(&acc.img);
         }
         let tgt = self.tgt.as_ref().ok_or_else(|| RenderError::Other("no target".into()))?;
+        #[cfg(feature = "native")]
+        let start = std::time::Instant::now();
         self.vello
             .render_to_texture(&self.device, &self.queue, &self.scene, &tgt.view, &RenderParams { base_color: Color::TRANSPARENT, width: w, height: h, antialiasing_method: AaConfig::Area })
             .map_err(|e| self.map_error(format!("Vello render: {e}")))?;
+        #[cfg(feature = "native")]
+        {
+            _stats.vello += start.elapsed();
+        }
         if let (true, Some(t), Some(a)) = (to_acc, self.tgt.as_ref(), self.acc.as_ref()) {
             let mut enc = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("simcore-accumulate") });
             enc.copy_texture_to_texture(t.tex.as_image_copy(), a.tex.as_image_copy(), wgpu::Extent3d { width: w, height: h, depth_or_array_layers: 1 });
@@ -381,7 +389,7 @@ impl Executor {
                         self.scene.pop_layer();
                     }
                     if dirty || !rendered {
-                        self.render_vello((w, h), acc_in_scene, true)?;
+                        self.render_vello((w, h), acc_in_scene, true, &mut stats)?;
                         rendered = true;
                     }
                     // Whatever follows reads the accumulation: this pass's result must reach it.
@@ -405,7 +413,7 @@ impl Executor {
             self.scene.pop_layer();
         }
         if dirty || !rendered {
-            self.render_vello((w, h), acc_in_scene, false)?;
+            self.render_vello((w, h), acc_in_scene, false, &mut stats)?;
         }
         self.check_errors()?;
         stats.backdrops = (self.backdrops.0 - before.0, self.backdrops.1 - before.1);
