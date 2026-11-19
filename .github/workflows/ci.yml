@@ -13,7 +13,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --workspace
-      - name: Expo API coverage doc matches the guest module registry
+      - name: Compatibility docs (coverage summaries, guest module registry, pinned versions)
         run: node scripts/api-coverage.mjs --check
       - run: cargo build -p simcore-render --examples --features window
       - run: cargo test --workspace

@@ -1,17 +1,17 @@
-name: API request (Expo / React Native)
-description: An Expo or React Native API is missing, partial, or unsupported in SimCore.
+name: API request (Expo / React Native / SwiftUI / Compose)
+description: An Expo, React Native, SwiftUI or Jetpack Compose API is missing, partial, or unsupported in SimCore.
 title: "[API] <package>: <API>"
 labels: ["api"]
 body:
   - type: markdown
     attributes:
       value: |
-        Check [docs/expo-api-coverage.md](https://github.com/MitchellSPeterson/SimCore/blob/main/docs/expo-api-coverage.md) first. Once this issue exists, link it in that row's **Issue** column.
+        Check [docs/compatibility](https://github.com/MitchellSPeterson/SimCore/blob/main/docs/compatibility/README.md) first. Once this issue exists, link it in that row's **Issue** column.
   - type: input
     id: package
     attributes:
       label: Package
-      placeholder: expo-file-system
+      placeholder: expo-file-system, SwiftUI, androidx.compose.material3
     validations:
       required: true
   - type: input
