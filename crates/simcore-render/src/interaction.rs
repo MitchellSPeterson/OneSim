@@ -36,6 +36,7 @@ pub struct Interaction {
     /// Whether the last `pointer` was an action (control fired or keyboard key tapped).
     pub acted: bool,
     pressed: Option<String>,
+    slider_drag: Option<String>,
     /// Finger currently scrolling (or holding) a scroller.
     drag: Option<Drag>,
     /// Finger down inside a sheet, before it is clear whether it drags the sheet or scrolls its content.
@@ -245,9 +246,12 @@ impl Interaction {
             return None;
         }
         let n = scene.hit_test(ev.x, ev.y).map(|i| &scene.nodes[i]).filter(|n| n.role == Role::Slider)?;
+        self.slide_to(n, if ev.kind == PointerKind::Drag { ev.x + ev.dx } else { ev.x })
+    }
+
+    fn slide_to(&mut self, n: &crate::Node, x: f64) -> Option<Effect> {
         let ((lo, hi, thumb), field) = (n.range?, n.field?);
-        let end = if ev.kind == PointerKind::Drag { ev.x + ev.dx } else { ev.x };
-        let frac = ((end - n.bounds.x - thumb / 2.0) / (n.bounds.w - thumb).max(1.0)).clamp(0.0, 1.0);
+        let frac = ((x - n.bounds.x - thumb / 2.0) / (n.bounds.w - thumb).max(1.0)).clamp(0.0, 1.0);
         self.pressed = None;
         self.hit = Some(n.id.clone());
         self.acted = true;
@@ -283,6 +287,25 @@ impl Interaction {
     /// past the edges; on release it carries on with the finger's velocity (see `tick`).
     pub fn drag(&mut self, scene: &Scene, phase: DragPhase, x: f64, y: f64, t: f64) -> Effect {
         self.forget_gone(scene);
+        if phase == DragPhase::Begin {
+            self.slider_drag = scene
+                .hit_test(x, y)
+                .map(|i| &scene.nodes[i])
+                .filter(|n| n.role == Role::Slider && n.range.is_some() && n.field.is_some())
+                .map(|n| n.id.clone());
+            if self.slider_drag.is_some() {
+                self.drag = None;
+                self.pending = None;
+                self.sheet_drag = None;
+                return Effect::None;
+            }
+        } else if let Some(id) = &self.slider_drag {
+            let target = scene.nodes.iter().find(|n| n.id == *id && n.role == Role::Slider);
+            if phase == DragPhase::End {
+                self.slider_drag = None;
+            }
+            return target.and_then(|n| self.slide_to(n, x)).unwrap_or(Effect::None);
+        }
         if let Some(e) = self.sheet_gesture(scene, phase, x, y, t) {
             return e;
         }
@@ -623,6 +646,22 @@ mod tests {
         // Back to a screen without it (the pop), then a new screen reusing the id starts at the top.
         it.pointer(&screen(false), ev(PointerKind::Click, 0.0));
         assert!(it.scroll.is_empty() && !it.live());
+    }
+
+    #[test]
+    fn slider_tracks_the_finger_even_outside_its_bounds() {
+        let mut n = crate::Node::new("slider", "slider");
+        n.bounds = crate::Rect { x: 10.0, y: 10.0, w: 100.0, h: 20.0 };
+        n.role = Role::Slider;
+        n.range = Some((0.0, 10.0, 20.0));
+        n.field = Some(4);
+        let scene = Scene { size: (120.0, 100.0), appearance: simcore_protocol::Appearance::Light, ios: Default::default(), nodes: vec![n], unsupported_symbols: vec![], notes: vec![] };
+        let mut it = Interaction { version: 3, ..Default::default() };
+        assert_eq!(it.drag(&scene, DragPhase::Begin, 40.0, 20.0, 0.0), Effect::None);
+        assert_eq!(it.drag(&scene, DragPhase::Move, 60.0, 50.0, 16.0), Effect::TextInput { field: 4, version: 3, text: "5".into() });
+        it.version = 4;
+        assert_eq!(it.drag(&scene, DragPhase::End, 130.0, 50.0, 32.0), Effect::TextInput { field: 4, version: 4, text: "10".into() });
+        assert!(it.slider_drag.is_none() && it.scroll.is_empty());
     }
 
     #[test]

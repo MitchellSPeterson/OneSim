@@ -8,9 +8,14 @@ description = "SimCore session manager and external API (docs/protocol.md sectio
 [dependencies]
 simcore-protocol = { path = "../simcore-protocol" }
 simcore-render = { path = "../simcore-render" }
+simcore-render-gpu = { path = "../simcore-render-gpu", optional = true }
 serde.workspace = true
 serde_json.workspace = true
 base64 = "0.22"
 log = "0.4"
 tungstenite = "0.30.0"
 libc = "0.2.191"
+
+[features]
+# GPU renderer (wgpu + Vello); off by default so CPU-only builds need no GPU stack.
+gpu = ["dep:simcore-render-gpu"]

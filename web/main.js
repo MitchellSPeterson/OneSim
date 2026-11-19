@@ -1,9 +1,12 @@
 // SimCore in the browser: draws the framebuffer of web/simcore.js's driver to a <canvas> and turns
 // DOM events (pointer, wheel, drag, keyboard, resize) into points-space input.
 import { load } from "./simcore.js";
+import { Presenter, preferredRenderer } from "./renderer.js";
 
-const canvas = document.getElementById("screen");
-const ctx = canvas.getContext("2d");
+// Input listeners sit on the stage, not the canvas: the presenter may swap the canvas element when it
+// falls back from WebGPU to the 2D context (web/renderer.js).
+const stage = document.getElementById("stage");
+const diag = document.getElementById("diag");
 const q = new URLSearchParams(location.search);
 const num = (k) => (q.has(k) && Number.isFinite(Number(q.get(k))) && Number(q.get(k)) > 0 ? Number(q.get(k)) : null);
 
@@ -18,6 +21,9 @@ async function main() {
   const sim = await load(await fetch("app.wasm"));
   const vp = viewportFromUrl(sim.devices);
   const dark = q.has("dark") ? q.get("dark") !== "0" : matchMedia("(prefers-color-scheme: dark)").matches;
+  const presenter = new Presenter({ sim, stage, canvas: document.getElementById("screen"), preference: preferredRenderer(q), diag });
+  if (q.has("diag")) diag.hidden = false;
+  await presenter.start(); // before init: the first frame is made in the chosen form
   const dpr = () => window.devicePixelRatio || 1;
 
   // Fit the canvas into the window keeping the aspect ratio; render at the physical resolution
@@ -26,15 +32,11 @@ async function main() {
   function fit() {
     const w = sim.width || vp.width, h = sim.height || vp.height; // before init() the sim has no size yet
     cssScale = Math.min(innerWidth / w, innerHeight / h);
-    canvas.style.width = `${w * cssScale}px`;
-    canvas.style.height = `${h * cssScale}px`;
+    presenter.canvas.style.width = `${w * cssScale}px`;
+    presenter.canvas.style.height = `${h * cssScale}px`;
     return vp.scale ?? Math.min(4, Math.max(1, Math.round(cssScale * dpr() * 4) / 4));
   }
-  function present() {
-    const { width, height, data } = sim.frameView(); // putImageData copies it out at once
-    if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
-    ctx.putImageData(new ImageData(data, width, height), 0, 0);
-  }
+  const present = () => presenter.present();
   // Run an input/environment change, then show the new frame.
   // Animation clock: after any input, run frames while momentum/bounce is moving.
   let ticking = false;
@@ -61,21 +63,21 @@ async function main() {
   });
 
   const toPoints = (e) => {
-    const r = canvas.getBoundingClientRect();
+    const r = presenter.canvas.getBoundingClientRect();
     return [((e.clientX - r.left) * sim.width) / r.width, ((e.clientY - r.top) * sim.height) / r.height];
   };
 
   // Pointer: down/up are taps; moving past a small threshold turns the gesture into a drag-scroll
   // (rubber band at the edges, momentum and bounce after lifting).
   let drag = null; // { id, x, y: touch-down point, scrolling }
-  canvas.addEventListener("pointerdown", (e) => {
+  stage.addEventListener("pointerdown", (e) => {
     if (e.button > 0) return;
-    canvas.setPointerCapture(e.pointerId);
+    stage.setPointerCapture(e.pointerId);
     const [x, y] = toPoints(e);
     drag = { id: e.pointerId, cx: e.clientX, cy: e.clientY, x, y, scrolling: false };
     act(() => sim.pointer("down", x, y));
   });
-  canvas.addEventListener("pointermove", (e) => {
+  stage.addEventListener("pointermove", (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     if (!drag.scrolling && Math.hypot(e.clientX - drag.cx, e.clientY - drag.cy) < 8) return;
     if (!drag.scrolling) sim.drag("begin", drag.x, drag.y, e.timeStamp);
@@ -94,11 +96,11 @@ async function main() {
     if (wasScroll) act(() => sim.drag("end", x, y, e.timeStamp));
     else if (e.type === "pointerup") act(() => sim.pointer("up", x, y)); // a cancelled touch is no tap
   };
-  canvas.addEventListener("pointerup", lift);
-  canvas.addEventListener("pointercancel", lift);
+  stage.addEventListener("pointerup", lift);
+  stage.addEventListener("pointercancel", lift);
 
   // Wheel: CSS pixels -> points; positive deltaY reveals later content, like native.
-  canvas.addEventListener("wheel", (e) => {
+  stage.addEventListener("wheel", (e) => {
     e.preventDefault();
     const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? sim.height : 1 / cssScale;
     const [x, y] = toPoints(e);
@@ -120,7 +122,12 @@ async function main() {
     ready: true,
     lastTreeText: () => sim.lastTreeText(),
     inspect: () => sim.inspect(),
-    setViewport: (w, h) => { const r = act(() => sim.setViewport(w, h)); act(() => sim.setScale(fit())); return r; },
+    setViewport: (w, h) => act(() => {
+      const changed = sim.setViewport(w, h);
+      const scale = fit();
+      if (scale !== sim.scale) sim.setScale(scale);
+      return changed;
+    }),
     setAppearance: (mode) => act(() => sim.setAppearance(mode)),
     setDark: (d) => act(() => sim.setAppearance(d ? "dark" : "light")),
     pointer: (kind, x, y) => act(() => sim.pointer(["down", "up", "click"][kind] ?? kind, x, y)), // points
@@ -131,6 +138,16 @@ async function main() {
     click: (label) => act(() => sim.clickLabel(label)),
     find: (label) => sim.find(label),
     sim,
+  };
+  // Which backend is showing and why: mode "gpu" | "cpu", `reason` = why it is CPU when WebGPU was not used.
+  window.simcoreRenderer = {
+    get mode() { return presenter.mode; },
+    get reason() { return presenter.reason; },
+    get requested() { return presenter.preference; },
+    get info() { return presenter.info; },
+    get frames() { return presenter.frames; },
+    get canvas() { return presenter.canvas; },
+    fallback: (reason = "forced") => presenter.fallback(reason),
   };
 }
 

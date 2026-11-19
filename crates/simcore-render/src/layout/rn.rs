@@ -991,7 +991,7 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
         n.kind = "text";
         n.role = Role::Text;
         n.label = Some(t.text.clone());
-        let run = TextRun { text: t.text, font: t.spec, color: t.color, strike: t.strike, offset_x: 0.0, spans: t.spans };
+        let mut run = TextRun { text: t.text, font: t.spec, color: t.color, strike: t.strike, offset_x: 0.0, spans: t.spans };
         let (b, pd) = (l.border, l.padding);
         // A lineHeight below the font's own line height puts the glyphs higher in the line box than centering
         // (UIKit's maximumLineHeight drops the surplus ascent; fitted to the iOS 26.5 "Welcome to Expo" title: 0.55 x surplus).
@@ -999,6 +999,16 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
         let lift = if !cx.android && num(p, "lineHeight").is_some_and(|l| l > 0.0 && l < nat) { -(nat - t.spec.line_height as f64) * 0.55 } else { 0.0 };
         let (ix, iy) = ((b.left + pd.left) as f64, (b.top + pd.top + t.font_padding.0) as f64 + lift);
         let (iw, ih) = (w - ix - (b.right + pd.right) as f64, h - iy - (b.bottom + pd.bottom + t.font_padding.1) as f64);
+        // Yoga measures paragraphs in points. Match those advances for line caps, soft wrapping in
+        // plain fixed-pitch paragraphs, and rich text with its natural pitch.
+        let font = &mut run.font;
+        font.inter_point_tracking = !cx.android && (font.lines.is_some()
+            || if font.fixed_pitch {
+                let hard_lines = run.text.matches('\n').count() + 1;
+                run.spans.is_empty() && ih >= f64::from(font.line_height) + f64::from(font.pitch) * hard_lines as f64
+            } else {
+                run.spans.len() > 1
+            });
         if (ix, iy, iw, ih) == (0.0, 0.0, w, h) {
             n.text = Some(run);
             out.push(n);

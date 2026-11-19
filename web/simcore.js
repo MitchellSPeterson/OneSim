@@ -165,6 +165,17 @@ export class SimCore {
     if (mode !== "dark" && mode !== "light") throw new Error("appearance must be 'dark' or 'light'");
     return this.wasm.simcore_web_set_dark(mode === "dark" ? 1 : 0) === 0;
   }
+  /** Whether this build of app.wasm can emit display lists for the GPU presenter. */
+  get supportsDisplayList() { return typeof this.wasm.simcore_web_set_output === "function"; }
+  /** Select what the runtime draws: 0 (or "pixels") = RGBA framebuffer, 1 (or "displaylist") = encoded display list. Resets the resource table. */
+  setOutput(mode) {
+    const m = mode === "displaylist" ? 1 : mode === "pixels" ? 0 : mode;
+    if (this.wasm.simcore_web_set_output(m) !== 0) throw new Error(`unknown output mode ${mode}`);
+  }
+  /** Latest display list bytes (output mode 1): a view into Wasm memory, valid until the next draw. */
+  displayList() {
+    return new Uint8Array(this.mem, this.wasm.simcore_web_dl_ptr(), this.wasm.simcore_web_dl_len());
+  }
   setScale(scale) { this.scale = scale; this.wasm.simcore_web_set_scale(scale); }
 
   /** Current frame: RGBA bytes (a copy) and pixel size. */

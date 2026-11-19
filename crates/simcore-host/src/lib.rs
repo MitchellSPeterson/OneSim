@@ -5,6 +5,7 @@
 //! `simcore-fake-guest` (a bin of this crate) is such an executable.
 
 mod events;
+mod renderer;
 mod rpc;
 mod session;
 mod ws;
@@ -13,7 +14,7 @@ use base64::Engine;
 use serde::Serialize;
 use serde_json::{json, Value};
 use simcore_protocol::*;
-use simcore_render::{build_scene, render_png, Fonts, Role, Scene, SceneParams};
+use simcore_render::{build_scene, Fonts, Role, Scene, SceneParams};
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::time::{Duration, Instant};
@@ -47,7 +48,12 @@ pub struct Host {
     sessions: HashMap<String, Session>,
     next_id: u64,
     fonts: Option<Fonts>,
+    renderer: renderer::RendererSlot,
     greeted: bool,
+}
+
+fn rn_touch_message(phase: TouchPhase, n: &simcore_render::Node, x: f64, y: f64, timestamp: f64) -> HostMessage {
+    HostMessage::Touch { phase, tag: n.tag.unwrap_or(0), x, y, lx: x - n.bounds.x, ly: y - n.bounds.y, timestamp }
 }
 
 impl Default for Host {
@@ -76,7 +82,19 @@ pub const COMMANDS: &[&str] = &[
 
 impl Host {
     pub fn new() -> Self {
-        Self { sessions: HashMap::new(), next_id: 1, fonts: None, greeted: false }
+        Self { sessions: HashMap::new(), next_id: 1, fonts: None, renderer: renderer::RendererSlot::new(), greeted: false }
+    }
+
+    /// Choose the screenshot backend (default: `SIMCORE_RENDERER`, where `auto` means CPU headless).
+    /// Here `Auto` tries the GPU and falls back to CPU, recording why in [`Host::renderer_diagnostics`].
+    pub fn set_renderer(&mut self, pref: simcore_render::BackendPref) {
+        self.renderer.set(pref);
+    }
+
+    /// Active backend, adapter, limitations, fallback reason and last-frame timings. Errors on an invalid
+    /// `SIMCORE_RENDERER` or an unavailable explicit `gpu`.
+    pub fn renderer_diagnostics(&mut self) -> Result<simcore_render::Diagnostics, ApiError> {
+        self.renderer.diagnostics().map_err(|e| err(ErrorCode::RuntimeError, e))
     }
 
     /// React Native live mode for the calls that follow (`Session::settle`); restore `true` afterwards.
@@ -398,16 +416,7 @@ impl Host {
         let s = self.get(id)?;
         let hit = scene.hit_test(ev.x, ev.y).map(|i| &scene.nodes[i]);
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64() * 1000.0);
-        let touch_at = |phase, n: &simcore_render::Node, x: f64, y: f64, timestamp: f64| HostMessage::Touch {
-            phase,
-            tag: n.tag.unwrap_or(0),
-            x,
-            y,
-            lx: x - n.bounds.x,
-            ly: y - n.bounds.y,
-            timestamp,
-        };
-        let touch = |phase, n: &simcore_render::Node| touch_at(phase, n, ev.x, ev.y, now);
+        let touch = |phase, n: &simcore_render::Node| rn_touch_message(phase, n, ev.x, ev.y, now);
         let mut target = hit;
         match ev.kind {
             PointerKind::Drag => {
@@ -416,10 +425,10 @@ impl Host {
                     s.send(&touch(TouchPhase::Start, n))?;
                     for i in 1..=STEPS {
                         let f = f64::from(i) / f64::from(STEPS);
-                        s.send(&touch_at(TouchPhase::Move, n, ev.x + ev.dx * f, ev.y + ev.dy * f, now + 16.0 * f64::from(i)))?;
+                        s.send(&rn_touch_message(TouchPhase::Move, n, ev.x + ev.dx * f, ev.y + ev.dy * f, now + 16.0 * f64::from(i)))?;
                     }
                     let end = now + 16.0 * f64::from(STEPS + 1);
-                    s.send_and_settle(&touch_at(TouchPhase::End, n, ev.x + ev.dx, ev.y + ev.dy, end))?;
+                    s.send_and_settle(&rn_touch_message(TouchPhase::End, n, ev.x + ev.dx, ev.y + ev.dy, end))?;
                 }
             }
             PointerKind::Down => {
@@ -454,6 +463,51 @@ impl Host {
         let out = (target.map(|n| n.id.clone()), ev.kind != PointerKind::Down && target.is_some());
         let _ = self.scene(id); // settle and push the new layout
         Ok(out)
+    }
+
+    /// Live viewers (native window): lay out the current tree and hand the scene, the shared fonts and the tree
+    /// version to `f`. Pair React Native sessions with `set_settle(id, false)` so this never waits for the guest.
+    pub fn with_frame<R>(&mut self, id: &str, f: impl FnOnce(&Scene, &mut Fonts, u64) -> R) -> Result<R, ApiError> {
+        let (scene, version, _) = self.scene(id)?;
+        let fonts = self.fonts.get_or_insert_with(Fonts::new);
+        Ok(f(&scene, fonts, version))
+    }
+
+    /// Advance scroll momentum and bounces by `dt` seconds. Returns whether anything is still moving (call
+    /// again next frame); false means the scene is at rest.
+    pub fn tick(&mut self, id: &str, dt: f64) -> Result<bool, ApiError> {
+        let (scene, ..) = self.scene(id)?;
+        Ok(self.get(id)?.inter.tick(&scene, dt))
+    }
+
+    /// One phase of a live finger drag (`t_ms` is the event time): the content follows the finger and carries on
+    /// with its release velocity (see [`Host::tick`]); sheets follow too. Returns whether the scene changed.
+    /// React Native receives each phase on the same Fabric target and supplies its own gesture behavior.
+    pub fn drag(&mut self, id: &str, phase: simcore_render::DragPhase, x: f64, y: f64, t_ms: f64) -> Result<bool, ApiError> {
+        use simcore_render::DragPhase;
+        self.get(id)?.require_running()?;
+        let (scene, version, _) = self.scene(id)?;
+        let s = self.get(id)?;
+        if s.is_rn() {
+            let (phase, tag) = match phase {
+                DragPhase::Begin => {
+                    s.touch = scene.hit_test(x, y).and_then(|i| scene.nodes[i].tag);
+                    (TouchPhase::Start, s.touch)
+                }
+                DragPhase::Move => (TouchPhase::Move, s.touch),
+                DragPhase::End => (TouchPhase::End, s.touch.take()),
+            };
+            if let Some(n) = tag.and_then(|tag| scene.nodes.iter().find(|n| n.tag == Some(tag))) {
+                s.send(&rn_touch_message(phase, n, x, y, t_ms))?;
+            }
+            // Later trees arrive through render.updated, so the live caller never waits for a commit.
+            return Ok(false);
+        }
+        s.inter.version = version;
+        let effect = s.inter.drag(&scene, phase, x, y, t_ms);
+        let changed = effect != simcore_render::Effect::None;
+        s.send_effect(effect)?;
+        Ok(changed)
     }
 
     /// Keyboard input for the focused text field. The host computes the new text and sends it
@@ -512,7 +566,11 @@ impl Host {
             return Err(err(ErrorCode::BadRequest, "screenshot size must be between 1 and 8192 pixels"));
         }
         let fonts = self.fonts.get_or_insert_with(Fonts::new);
-        let png = render_png(&scene, fonts, scale).map_err(|e| err(ErrorCode::RuntimeError, e))?;
+        let png = self
+            .renderer
+            .capture(&scene, fonts, scale)
+            .and_then(|f| f.encode_png())
+            .map_err(|e| err(ErrorCode::RuntimeError, e))?;
         Ok((px(scene.size.0), px(scene.size.1), png, version))
     }
 
