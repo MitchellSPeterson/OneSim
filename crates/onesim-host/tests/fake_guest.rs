@@ -95,11 +95,12 @@ fn crash_is_isolated() {
 fn json_api_basics() {
     let mut host = Host::new();
     let mut out = Vec::new();
+    let guest = serde_json::Value::from(GUEST); // JSON-escaped: Windows paths have backslashes
     let input = format!(
         r#"{{"id":1,"method":"get_capabilities"}}
 {{"id":2,"method":"hello","params":{{"protocol_version":2}}}}
 {{"id":3,"method":"hello","params":{{"protocol_version":1}}}}
-{{"id":4,"method":"create_session","params":{{"framework":"swiftui","app_path":"{GUEST}"}}}}
+{{"id":4,"method":"create_session","params":{{"framework":"swiftui","app_path":{guest}}}}}
 {{"id":5,"method":"send_keyboard_event","params":{{"session_id":"s1","event":{{}}}}}}
 {{"id":6,"method":"shutdown"}}
 "#
