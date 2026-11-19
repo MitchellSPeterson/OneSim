@@ -122,7 +122,12 @@ async function main() {
     ready: true,
     lastTreeText: () => sim.lastTreeText(),
     inspect: () => sim.inspect(),
-    setViewport: (w, h) => { const r = act(() => sim.setViewport(w, h)); act(() => sim.setScale(fit())); return r; },
+    setViewport: (w, h) => act(() => {
+      const changed = sim.setViewport(w, h);
+      const scale = fit();
+      if (scale !== sim.scale) sim.setScale(scale);
+      return changed;
+    }),
     setAppearance: (mode) => act(() => sim.setAppearance(mode)),
     setDark: (d) => act(() => sim.setAppearance(d ? "dark" : "light")),
     pointer: (kind, x, y) => act(() => sim.pointer(["down", "up", "click"][kind] ?? kind, x, y)), // points
