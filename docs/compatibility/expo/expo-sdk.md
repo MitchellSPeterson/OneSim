@@ -23,8 +23,8 @@ Part of [Expo / React Native API coverage](README.md): status legend, summary an
 | Location | expo-location | `ExpoLocation` | 🟡 | ⬜ | | Foreground only (default Apple Park); background, geocoding, geofencing, heading unsupported |
 | Web browser | expo-web-browser | `ExpoWebBrowser` | ⛔ | ⬜ | | Blocks `expo-auth-session` |
 | Camera | expo-camera | `ExpoCamera` | ⛔ | ⬜ | | |
-| File system | expo-file-system | `FileSystem`, `ExponentFileSystem` | 🟠 | ⬜ | [#8](https://github.com/MitchellSPeterson/SimCore/issues/8) | Per-session sandbox (Documents, Caches, empty Bundle), kept across reloads; downloads, uploads, pickers, preview, watcher unsupported |
-| Secure store | expo-secure-store | `ExpoSecureStore` | 🟡 | ⬜ | [#9](https://github.com/MitchellSPeterson/SimCore/issues/9) | Per-session store, kept across reloads; `modules.simulate securestore` seeds keys (`null` deletes); no biometrics |
+| File system | expo-file-system | `FileSystem`, `ExponentFileSystem` | 🟠 | ⬜ | [#8](https://github.com/MitchellSPeterson/OneSim/issues/8) | Per-session sandbox (Documents, Caches, empty Bundle), kept across reloads; downloads, uploads, pickers, preview, watcher unsupported |
+| Secure store | expo-secure-store | `ExpoSecureStore` | 🟡 | ⬜ | [#9](https://github.com/MitchellSPeterson/OneSim/issues/9) | Per-session store, kept across reloads; `modules.simulate securestore` seeds keys (`null` deletes); no biometrics |
 | SQLite | expo-sqlite | | ⬜ | ⬜ | | |
 | Notifications | expo-notifications | | ⬜ | ⬜ | | |
 | Image picker | expo-image-picker | | ⬜ | ⬜ | | |

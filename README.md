@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/MitchellSPeterson/SimCore/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/MitchellSPeterson/SimCore/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/MitchellSPeterson/OneSim/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/MitchellSPeterson/OneSim/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue"></a>
 </p>
 
@@ -32,7 +32,7 @@
 On macOS with Rust stable and the Swift toolchain from Xcode or Command Line Tools, clone the repository and run the counter.
 
 ```sh
-git clone https://github.com/MitchellSPeterson/SimCore.git OneSim
+git clone https://github.com/MitchellSPeterson/OneSim.git OneSim
 cd OneSim
 cargo run -p onesim-cli -- run \
   examples/swiftui-counter \
@@ -81,7 +81,7 @@ OneSim tests its renderer against screenshots from the iOS Simulator and Android
 
 ## Contributing
 
-Start with the [contributor guide](CONTRIBUTING.md). For a missing API, check the [coverage tables](docs/compatibility/README.md) and open an [API request](https://github.com/MitchellSPeterson/SimCore/issues/new?template=api-request.yml).
+Start with the [contributor guide](CONTRIBUTING.md). For a missing API, check the [coverage tables](docs/compatibility/README.md) and open an [API request](https://github.com/MitchellSPeterson/OneSim/issues/new?template=api-request.yml).
 
 ## License
 

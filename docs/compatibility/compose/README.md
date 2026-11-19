@@ -11,7 +11,7 @@ covered by their type's row). They are generated from AndroidX's published API s
 per library; the versions are in the [support matrix](../README.md#versions).
 
 Pick any row to work on: open an
-[API request issue](https://github.com/MitchellSPeterson/SimCore/issues/new?template=api-request.yml) for it
+[API request issue](https://github.com/MitchellSPeterson/OneSim/issues/new?template=api-request.yml) for it
 (or take an existing one), and link the issue in the row's **Issue** column.
 
 | Status | Meaning | Score |

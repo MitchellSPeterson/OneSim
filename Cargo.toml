@@ -6,7 +6,7 @@ members = ["crates/*"]
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/MitchellSPeterson/SimCore"
+repository = "https://github.com/MitchellSPeterson/OneSim"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

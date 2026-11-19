@@ -1,6 +1,6 @@
 # Expo showcase on Android
 
-Captured on the Android 17 (API 37) Pixel 10a emulator at 1080 × 2424 pixels and 2.625× density. The screenshots use Expo Go 58.0.5. [Issue #12](https://github.com/MitchellSPeterson/SimCore/issues/12)
+Captured on the Android 17 (API 37) Pixel 10a emulator at 1080 × 2424 pixels and 2.625× density. The screenshots use Expo Go 58.0.5. [Issue #12](https://github.com/MitchellSPeterson/OneSim/issues/12)
 
 Start Metro for `examples/expo-showcase` with `npm ci` and `CI=1 npx expo start --port 8081`. Install the pinned Expo Go version and finish its onboarding. Use `adb reverse tcp:8081 tcp:8081` to expose Metro to the emulator at `exp://127.0.0.1:8081`.
 
