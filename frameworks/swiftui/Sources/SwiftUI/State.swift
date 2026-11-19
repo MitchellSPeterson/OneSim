@@ -240,9 +240,11 @@ struct _TapView<Content: View>: View, _Primitive {
     let content: Content, count: Int, action: () -> Void
     func _emit(_ path: String) -> Node {
         let rt = _Runtime.shared
+        // A `GestureMask` without `.subviews` turns this off like any other gesture.
+        if rt.gesturesOff { return _eval(content, path) }
         if count > 1 {
             let node = _eval(content, path)
-            guard !rt.disabled && !rt.gesturesOff else { return node }
+            guard !rt.disabled else { return node }
             let g = TapGesture(count: count).onEnded(action)
             return _attachGesture([node], path, .normal) { g._recognizer($0) }[0]
         }

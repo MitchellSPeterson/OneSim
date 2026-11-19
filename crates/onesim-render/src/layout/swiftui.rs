@@ -892,7 +892,7 @@ impl Ctx<'_> {
             Modifier::Gesture(g) => {
                 let inner = self.mods(v, rest, p, env);
                 let mut n = Node::new(format!("{}#gesture{}", v.id, rest.len()), "gesture");
-                n.gesture = Some((g.key.clone(), g.pans));
+                n.gesture = Some(g.clone());
                 n.inspect = false;
                 // Touches land where an `.offset` moved the content, so the gesture frame moves with it.
                 let (dx, dy) = moved_by(&inner);

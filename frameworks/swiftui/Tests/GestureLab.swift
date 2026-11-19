@@ -25,6 +25,9 @@ struct GestureLab: View {
     @State private var custom = 0
     @State private var masked = ""
     @GestureState private var held = false
+    @State private var combo = ""
+    @State private var only = ""
+    @State private var hidden = 0
 
     var body: some View {
         VStack {
@@ -77,6 +80,7 @@ struct GestureLab: View {
                 .padding()
                 .highPriorityGesture(DragGesture().onEnded { _ in nested += "H" })
                 .simultaneousGesture(TapGesture().onEnded { nested += "s" })
+            VStack {
             Text("Custom \(custom)")
                 .gesture(AnyGesture(DoubleTap().onEnded { custom += 1 }))
             HStack {
@@ -84,6 +88,18 @@ struct GestureLab: View {
                     .gesture(TapGesture().onEnded { masked += "c" })
             }
             .gesture(TapGesture().onEnded { masked += "p" }, including: .subviews)
+            Text("Combo \(combo)")
+                .gesture(DragGesture().onEnded { _ in combo += "d" })
+                .onLongPressGesture(minimumDuration: 0.3, perform: { combo += "L" }, onPressingChanged: { if $0 { combo += "+" } })
+            HStack {
+                Text("Only \(only)")
+                    .gesture(TapGesture().onEnded { only += "c" })
+                Text("button").onTapGesture { only += "b" }
+            }
+            .gesture(TapGesture().onEnded { only += "p" }, including: .gesture)
+            Text("Hidden \(hidden)")
+                .gesture(TapGesture().onEnded { hidden += 1 }, isEnabled: false)
+            }
         }
     }
 }

@@ -178,7 +178,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.headerProminence` | 15 | ⬜ |  |  |
 | `.help` | 14 | ⬜ |  |  |
 | `.hidden` | 13 | ⬜ |  |  |
-| `.highPriorityGesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
+| `.highPriorityGesture` | 13 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | Wins only once it commits; it never holds back a gesture that commits first |
 | `.hoverEffect` | 13.4 | ⬜ |  |  |
 | `.hoverEffectDisabled` | 17 | ⬜ |  |  |
 | `.hueRotation` | 13 | ⬜ |  |  |
@@ -277,7 +277,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.onScrollTargetVisibilityChange` | 18 | ⬜ |  |  |
 | `.onScrollVisibilityChange` | 18 | ⬜ |  |  |
 | `.onSubmit` | 15 | ⬜ |  |  |
-| `.onTapGesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | `count: 1` is a plain button node (button accessibility) |
+| `.onTapGesture` | 13 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | `count: 1` is a plain button node (button accessibility); a double tap does not hold back a single tap on the same view |
 | `.opacity` | 13 | ✅ |  |  |
 | `.overlay` | 13 | ✅ |  |  |
 | `.overlayArrangementEdge` | 13 | ⬜ |  |  |

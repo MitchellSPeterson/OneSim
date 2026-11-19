@@ -269,7 +269,7 @@ final class _DragR: _GestureRecognizer<DragGesture.Value> {
             let dt = CGFloat((time - a.0) / 1000)
             v = CGSize(width: (p.x - a.1.x) / dt, height: (p.y - a.1.y) / dt)
         }
-        // Where a flick would carry on to (UIScrollView-like deceleration, ~0.25 s of the release velocity).
+        // ponytail: where a flick would carry on to, as 0.25 s of the release velocity (not UIKit's deceleration curve).
         let pe = CGPoint(x: p.x + v.width / 4, y: p.y + v.height / 4)
         value = DragGesture.Value(time: _date(time), location: p, startLocation: start, velocity: v, predictedEndLocation: pe)
         changed = true
@@ -395,7 +395,8 @@ final class _PressingR: _WrapR<Bool, Bool> {
     override func _feed(_ t: _Touch, _ q: _Queue) {
         super._feed(t, q)
         let p = pressing
-        if status == .tentative && !on { on = true; q.actions.append { p(true) } }
+        // A zero-duration press succeeds at touch down: it still presses first.
+        if !on && (status == .tentative || (status == .ended && t.phase == .start)) { on = true; q.actions.append { p(true) } }
         if (status == .ended || status == .failed) && on { on = false; q.resets.append { p(false) } }
     }
     override func _cancel(_ q: _Queue) {
@@ -850,19 +851,13 @@ func _handleTouch(_ phase: _Touch.Phase, _ time: Double, _ points: [CGPoint], _ 
     let order = s.exclusive
     var run: Set<Int> = Set(s.candidates.indices.filter { s.candidates[$0].kind == .simultaneous })
     if s.winner == nil {
-        // The first exclusive gesture still in the running decides; it wins once it commits. A touch that ends with
-        // the leader undecided goes to the first that did succeed.
-        for i in order where s.candidates[i].r.status != .failed {
-            if _decided(s.candidates[i].r.status) { s.winner = i }
-            break
-        }
-        if s.winner == nil && (phase == .end || phase == .cancel) {
-            s.winner = order.first { _decided(s.candidates[$0].r.status) }
-        }
+        // The first exclusive gesture to commit wins (higher priority first when several commit on one event); the
+        // others are cancelled. Until then, undecided gestures show their progress (a long press's pressing state).
+        s.winner = order.first { _decided(s.candidates[$0].r.status) }
         if let w = s.winner {
             for i in order where i != w { s.candidates[i].r.cancel(queues[i]) }
-        } else if let lead = order.first(where: { s.candidates[$0].r.status != .failed }) {
-            run.insert(lead)   // a tentative leader shows its progress (pressing)
+        } else {
+            run.formUnion(order.filter { s.candidates[$0].r.status != .failed })
         }
     }
     if let w = s.winner { run.insert(w) }

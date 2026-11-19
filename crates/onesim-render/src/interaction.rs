@@ -89,7 +89,7 @@ const LIVE_HOLD_MS: f64 = 50.0;
 /// Synthesized two-finger gestures start with the fingers this far apart (pt), side by side.
 const FINGER_GAP: f64 = 100.0;
 
-/// Wall-clock milliseconds (0 where there is no clock).
+/// Wall-clock milliseconds. ponytail: 0 on wasm32-unknown-unknown (no clock); only the GPU presenter builds there and it sends no input.
 fn now_ms() -> f64 {
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     return 0.0;
@@ -415,9 +415,9 @@ impl Interaction {
         self.hit = Some(scene.nodes[inner].id.clone());
         let nodes = targets.iter().map(|&i| &scene.nodes[i]);
         Some(Touch {
-            pans: nodes.clone().any(|n| n.gesture.as_ref().is_some_and(|g| g.1)),
+            pans: nodes.clone().any(|n| n.gesture.as_ref().is_some_and(|g| g.pans)),
             targets: nodes
-                .map(|n| GestureTarget { key: n.gesture.as_ref().map(|g| g.0.clone()).unwrap_or_default(), frame: [n.bounds.x, n.bounds.y, n.bounds.w, n.bounds.h] })
+                .map(|n| GestureTarget { key: n.gesture.as_ref().map(|g| g.key.clone()).unwrap_or_default(), frame: [n.bounds.x, n.bounds.y, n.bounds.w, n.bounds.h] })
                 .collect(),
             start: (x, y),
             points: vec![[x, y]],
@@ -552,7 +552,7 @@ impl Interaction {
                     }
                 }
                 t += FRAME_MS;
-                // Handed to a scroller: release it like a resting finger (no fling).
+                // Handed to a scroller: release it like a resting finger (no fling). ponytail: a whole `drag` never flings.
                 let e = self.drag(scene, DragPhase::End, x + ev.dx, y + ev.dy, if self.touch.is_some() { t } else { t + 1000.0 });
                 if let Effect::Gesture(e) = e {
                     out.extend(e);

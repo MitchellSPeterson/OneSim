@@ -228,8 +228,8 @@ pub struct Node {
     pub caret: Option<f64>,
     pub scroll: Option<ScrollInfo>,
     pub sheet: Option<SheetInfo>,
-    /// SwiftUI gestures on this view (protocol section L): the guest's key, and whether one follows a moving finger.
-    pub gesture: Option<(String, bool)>,
+    /// SwiftUI gestures on this view (protocol section L).
+    pub gesture: Option<onesim_protocol::GestureMod>,
     /// False for layout-only helper nodes (clip/opacity layers); hidden from inspection.
     pub inspect: bool,
 }

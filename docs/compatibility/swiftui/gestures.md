@@ -17,4 +17,4 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `SimultaneousGesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
 | `SpatialEventGesture` | 13 | ⬜ |  |  |
 | `SpatialTapGesture` | 16 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | Named coordinate spaces are global |
-| `TapGesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
+| `TapGesture` | 13 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | Never waits for another tap gesture: with a double and a single tap on one view, both fire |

@@ -130,6 +130,7 @@ pub extern "C" fn simcore_runtime_set_text_callback(on_text: TextCb) {
     STATE.with(|s| s.borrow_mut().on_text = on_text);
 }
 
+/// Optional section L gesture callback (same ctx as the action callback); `dispatch` calls it for touch effects.
 #[no_mangle]
 pub extern "C" fn simcore_runtime_set_gesture_callback(on_gesture: GestureCb) {
     STATE.with(|s| s.borrow_mut().on_gesture = on_gesture);

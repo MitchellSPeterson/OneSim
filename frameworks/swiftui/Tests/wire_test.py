@@ -467,6 +467,16 @@ k = gkeys(t, "Custom "); taps(k, 15000); t = taps(k, 15100); assert txt(t, "Cust
 
 k = gkeys(t, "Masked "); assert len(k) == 1, "including: .subviews drops the parent's own gesture"
 t = taps(k, 16000); assert txt(t, "Masked ") == "Masked c", txt(t, "Masked ")
+k = gkeys(t, "Combo "); assert len(k) == 2, k  # inner drag leads, outer long press
+t = touch(k, "start", 18000, (120, 210)); assert txt(t, "Combo ") == "Combo +", "pressing shows while the drag leads: " + txt(t, "Combo ")
+t = touch(k, "move", 18400, (121, 210)); assert txt(t, "Combo ") == "Combo +L", "a long press under a still drag fires while held: " + txt(t, "Combo ")
+touch(k, "end", 18500, (121, 210))
+touch(k, "start", 19000, (120, 210)); touch(k, "move", 19016, (160, 210)); t = touch(k, "end", 19032, (160, 210))
+assert txt(t, "Combo ") == "Combo +L+d", txt(t, "Combo ")
+only = gview(t, "Only ")
+assert len(gkeys(t, "Only ")) == 1 and not any(m.get("kind") == "button" for m in walk(only)), "including: .gesture drops subview gestures and taps"
+t = taps(gkeys(t, "Only "), 20000); assert txt(t, "Only ") == "Only p", txt(t, "Only ")
+assert not any("gesture" in x for m in walk(t["root"]) if "Hidden 0" in alltexts(m) for x in m.get("modifiers", [])), "isEnabled: false"
 t = touch(["stale#g0"], "start", 17000, (1, 1)); t = touch(["stale#g0"], "end", 17050, (1, 1))  # unknown keys: no-op
 finish(p)
 print("PASS")
