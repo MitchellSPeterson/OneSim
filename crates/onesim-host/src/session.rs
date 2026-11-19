@@ -536,7 +536,7 @@ impl Session {
         let frames: BTreeMap<String, [f64; 4]> = scene
             .nodes
             .iter()
-            .filter(|n| n.tag.is_some())
+            .filter(|n| n.tag.is_some() || n.kind == "expo_ui_content")
             .map(|n| (n.id.clone(), [n.bounds.x, n.bounds.y, n.bounds.w, n.bounds.h]))
             .collect();
         let changed: BTreeMap<_, _> = frames.iter().filter(|(k, v)| self.sent_frames.get(*k) != Some(*v)).map(|(k, v)| (k.clone(), *v)).collect();
@@ -635,7 +635,10 @@ impl Session {
     /// Deliver an interaction effect to the guest (no-op for `None`/`Redraw`).
     pub fn send_effect(&mut self, e: Effect) -> Result<(), ApiError> {
         match e {
-            Effect::Action { id, version } => self.send_and_wait_tree(&HostMessage::Action { id, version }).map(drop),
+            Effect::Action { id, version } => {
+                let m = HostMessage::Action { id, version };
+                if self.is_rn() && !self.settle { self.send(&m) } else { self.send_and_wait_tree(&m).map(drop) }
+            }
             Effect::TextInput { field, version, text } => {
                 let m = HostMessage::TextInput { field, version, text };
                 if self.is_rn() { self.send_and_settle(&m).map(drop) } else { self.send_and_wait_tree(&m).map(drop) }

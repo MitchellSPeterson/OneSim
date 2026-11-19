@@ -8,7 +8,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  # Pick the gates from the changed paths (scripts/affected.sh holds the mapping). Pushes to main run all of them.
+  # Skipped jobs count as passed, so branch protection should require the `ci` job at the end, not the others.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.affected.outputs.rust }}
+      swiftui: ${{ steps.affected.outputs.swiftui }}
+      compose: ${{ steps.affected.outputs.compose }}
+      expo: ${{ steps.affected.outputs.expo }}
+      web: ${{ steps.affected.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: affected
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'origin/main' }}
+        run: |
+          if [ "${{ github.event_name }}" = push ] && [ "${{ github.ref }}" = refs/heads/main ]; then
+            scripts/affected.sh --all --github-output
+          else
+            scripts/affected.sh --base "$BASE" --github-output
+          fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Compatibility docs (coverage summaries, guest module registry, pinned versions)
+        run: node scripts/api-coverage.mjs --check
+
+  rust:
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,20 +48,65 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --workspace
-      - name: Compatibility docs (coverage summaries, guest module registry, pinned versions)
-        run: node scripts/api-coverage.mjs --check
       - run: cargo build -p onesim-render --examples --features window
       - run: cargo test --workspace
         env:
           SIMCORE_SKIP_GPU_TESTS: '1'
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo clippy -p onesim-cli --features window --all-targets -- -D warnings
+      - name: Render showcase fixtures (light + dark PNGs)
+        run: cargo run -q -p onesim-render --example showcase -- --out target/showcase-render
+      - name: Navigation, text input and scroll through the fake guest
+        run: |
+          ln -sf "$PWD/target/debug/onesim-fake-guest" target/debug/fake-nav-guest
+          cargo run -q -p onesim-cli -- run target/debug/fake-nav-guest \
+            --click Todos --click "New todo" --type "Buy milk" --key backspace --click Add --inspect \
+            --screenshot target/showcase-render/ci-todos.png | grep -q '"Buy mil"'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: showcase-render
+          path: target/showcase-render
+
+  swiftui:
+    needs: changes
+    if: needs.changes.outputs.swiftui == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: SwiftUI wire test (build, 1100 actions, memory, isolation of stdout)
         run: frameworks/swiftui/Tests/wire_test.sh
       - name: End-to-end headless counter
         run: |
           cargo run -q -p onesim-cli -- run examples/swiftui-counter --root-view CounterView \
             --click Increment --inspect | grep -q '"Count: 1"'
+      - name: Install Pillow for screenshot comparisons
+        run: python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
+      - name: iOS pixel-diff gate, SwiftUI states (every state < 2%)
+        run: scripts/compare-ios.sh
+        env:
+          SIMCORE_ONLY: swiftui
+      - name: iOS pixel-diff gate, SwiftUI states, fallback fonts/symbols (every state < 3.5%)
+        run: scripts/compare-ios.sh
+        env:
+          SIMCORE_ONLY: swiftui
+          SIMCORE_FALLBACK: '1'
+      - name: Upload iOS comparison sheets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-comparison-swiftui
+          path: target/compare/
+
+  compose:
+    needs: changes
+    if: needs.changes.outputs.compose == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -43,18 +119,21 @@ jobs:
         run: python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
       - name: Android pixel-diff gate, Compose vs the Android 17 emulator (every state < 2%)
         run: scripts/compare-android.sh
-      - name: Render showcase fixtures (light + dark PNGs)
-        run: cargo run -q -p onesim-render --example showcase -- --out target/showcase-render
-      - uses: actions/upload-artifact@v4
+      - name: Upload Android comparison sheets
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: showcase-render
-          path: target/showcase-render
-      - name: Navigation, text input and scroll through the fake guest
-        run: |
-          ln -sf "$PWD/target/debug/onesim-fake-guest" target/debug/fake-nav-guest
-          cargo run -q -p onesim-cli -- run target/debug/fake-nav-guest \
-            --click Todos --click "New todo" --type "Buy milk" --key backspace --click Add --inspect \
-            --screenshot target/showcase-render/ci-todos.png | grep -q '"Buy mil"'
+          name: android-comparison-compose
+          path: target/compare/
+
+  expo:
+    needs: changes
+    if: needs.changes.outputs.expo == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -63,19 +142,31 @@ jobs:
           npm ci --prefix examples/expo-showcase
           npm ci --prefix examples/expo-router-stack
           npm ci --prefix examples/expo-default
-      - name: iOS pixel-diff gate (every state < 2%)
+          npm ci --prefix examples/expo-ui
+      - name: Install Pillow for screenshot comparisons
+        run: python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
+      - name: iOS pixel-diff gate, Expo states (every state < 2%)
         run: scripts/compare-ios.sh
-      - name: iOS pixel-diff gate, fallback fonts/symbols (every state < 3.5%)
-        run: SIMCORE_FALLBACK=1 scripts/compare-ios.sh
+        env:
+          SIMCORE_ONLY: expo
+      - name: iOS pixel-diff gate, Expo states, fallback fonts/symbols (every state < 3.5%)
+        run: scripts/compare-ios.sh
+        env:
+          SIMCORE_ONLY: expo
+          SIMCORE_FALLBACK: '1'
+      - name: Android pixel-diff gate, Expo vs the Android 17 emulator
+        run: scripts/compare-expo-android.sh
       - name: Upload iOS and Android comparison sheets
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-comparison
+          name: comparison-expo
           path: target/compare/
 
   web:
     # Build the two Wasm modules, verify CPU pixel parity, and exercise the browser presenter.
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: macos-latest
     env:
       SWIFT_VERSION: 6.4.2
@@ -138,8 +229,10 @@ jobs:
           path: target/compare-web/
 
   portable:
-    # Linux and Windows: the host, CLI and renderer, plus headless SwiftUI, Compose and Expo guests.
+    # Linux and Windows: the host, CLI and renderer, plus headless SwiftUI and Compose guests.
     # Apple's fonts and symbols exist only on macOS, so these runners always use the bundled Inter + Phosphor fallback.
+    needs: changes
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.swiftui == 'true' || needs.changes.outputs.compose == 'true' || needs.changes.outputs.expo == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -198,3 +291,12 @@ jobs:
         with:
           name: ios-comparison-linux
           path: target/compare/
+
+  # The one check to require in branch protection: fails if any gate failed, passes if the rest passed or were skipped.
+  ci:
+    needs: [changes, rust, swiftui, compose, expo, web, portable]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" = false ]

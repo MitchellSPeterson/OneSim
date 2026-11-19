@@ -4,7 +4,36 @@
 
 For a missing framework API, check the [coverage table](docs/compatibility/README.md), then open an [API request](https://github.com/MitchellSPeterson/OneSim/issues/new?template=api-request.yml) or pick up the issue linked from that row. Keep the issue link in the coverage row.
 
+## Pick up a coverage batch
+
+Missing APIs are grouped into batches by platform and area, as sub-issues of four parents: [SwiftUI (iOS)](https://github.com/MitchellSPeterson/OneSim/issues/30), [Expo / React Native (iOS)](https://github.com/MitchellSPeterson/OneSim/issues/31), [Expo / React Native (Android)](https://github.com/MitchellSPeterson/OneSim/issues/32) and [Jetpack Compose (Android)](https://github.com/MitchellSPeterson/OneSim/issues/33). Each batch is one pull request into `main`, and its acceptance criteria are the checklist.
+
+1. Pick a batch with no open blockers and no assignee, then assign yourself:
+
+   ```sh
+   gh api --paginate 'repos/MitchellSPeterson/OneSim/issues?labels=ready-for-human&state=open&assignee=none&per_page=100' \
+     --jq '.[] | select(.issue_dependencies_summary.blocked_by == 0) | "#\(.number) \(.title)"'
+   ```
+
+2. Branch from `main` and start from a fresh context (a new agent session, or `/clear`).
+3. Build it test-first. With the agent skills, run `/implement #<issue>`: it runs `/tdd`, the test suite and `/code-review`. Behaviour without a visible result needs a test that fails if it breaks.
+4. For new UI, [add a visual reference](#add-a-visual-reference) and keep it under the [visual fidelity rule](#visual-fidelity-rule).
+5. Open a pull request with `Closes #<issue>` and before/after screenshots. CI runs the gates the change touches (every gate when it touches shared code such as `crates/`), and every gate on `main`. Merging closes the issue and unblocks the batches that wait on it.
+
+Found an API that isn't in any table? Add a ⬜ row and open a new issue instead of growing the batch. Leave blocking links as they are.
+
 ## Run the checks
+
+To run only the checks your branch needs, use `scripts/affected.sh`. It diffs against `origin/main` and maps the changed paths to the SwiftUI, Compose, Expo and web gates, the same way CI does. A SwiftUI-only change skips the Android and Expo comparisons. Changes to `crates/`, the protocol or the comparison tooling run everything.
+
+```sh
+scripts/affected.sh        # list the affected groups
+scripts/affected.sh --run  # run their gates
+```
+
+`SIMCORE_ONLY=swiftui` or `SIMCORE_ONLY=expo` limits `scripts/compare-ios.sh` to one framework's states.
+
+The full set of checks:
 
 From the repository root, run the Rust and Swift checks. The Swift wire test requires macOS and exercises guest messages, memory use, and stdout isolation.
 

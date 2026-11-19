@@ -1,7 +1,7 @@
 # compose-android ground-truth fixtures
 
-Real Jetpack Compose (material3 1.4.0, compose-bom 2026.09.00) running `examples/compose-counter` and
-`examples/compose-showcase` unmodified, built as one APK by `frameworks/compose/reference-app` and captured on the
+Real Jetpack Compose (material3 1.4.0, compose-bom 2026.09.00) running `examples/compose-counter`,
+`examples/compose-showcase`, and `examples/compose-input` unmodified, built as one APK by `frameworks/compose/reference-app` and captured on the
 Android 17 (API 37) Pixel 10a emulator through agent-device (T3 device tools). `scripts/compare-android.sh` renders the
 same states on OneSim and requires every state to differ in < 2% of pixels (`scripts/compare_ios.py`).
 
@@ -17,6 +17,8 @@ same states on OneSim and requires every state to differ in < 2% of pixels (`scr
 | showcase | showcase | launch (light) |
 | showcase-changed | showcase | Filled, Compose FAB ("Tapped 2 times"), switch off (927,668 px = 353,254 dp) |
 | showcase-dark | showcase | launch with system dark theme |
+| input | input | launch with two text fields and a stepped slider |
+| input-changed | input | enter NameHello in the first field, dismiss the keyboard, and drag the slider to 75 |
 
 No `counter-dark`: the counter's `MaterialTheme` has no dark scheme, so only the status-bar icons change.
 

@@ -2,6 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
+/// A Fabric view whose single child is a SwiftUI or Compose subtree.
+pub const EXPO_UI_HOST: &str = "ViewManagerAdapter_ExpoUI_HostView";
+/// A React Native subtree placed inside a SwiftUI or Compose layout.
+pub const EXPO_UI_RN_HOST: &str = "ViewManagerAdapter_ExpoUI_RNHostView";
+
 /// Float that may be the string `"inf"` on the wire.
 pub mod inf {
     use serde::{Deserialize, Deserializer, Serializer};
@@ -624,6 +629,8 @@ pub enum ViewKind {
         /// `SecureField`: drawn as bullets.
         #[serde(default, skip_serializing_if = "is_false")]
         secure: bool,
+        #[serde(default, skip_serializing_if = "is_false")]
+        disabled: bool,
     },
     /// `Picker`; `selected` indexes `options`. Menu style: `open` shows the options as a `menu` layer.
     Picker {

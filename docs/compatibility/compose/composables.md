@@ -21,7 +21,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `BasicAlertDialog` | material3 | ⬜ |  |  |
 | `BasicSecureTextField` | foundation | ⬜ |  |  |
 | `BasicText` | foundation | 🟠 | | String only (no AnnotatedString); overflow always clips; no minLines |
-| `BasicTextField` | foundation | ⬜ |  |  |
+| `BasicTextField` | foundation | 🟠 |  | String value and change callback, host keyboard input. |
 | `BasicTooltipBox` | foundation | ⬜ |  | Experimental |
 | `BottomAppBar` | material3 | ⬜ |  |  |
 | `BottomSheet` | material3 | ⬜ |  | Experimental |
@@ -180,7 +180,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `ShortNavigationBar` | material3 | ⬜ |  |  |
 | `ShortNavigationBarItem` | material3 | ⬜ |  |  |
 | `SingleChoiceSegmentedButtonRow` | material3 | ⬜ |  |  |
-| `Slider` | material3 | ⬜ |  |  |
+| `Slider` | material3 | 🟠 |  | Value range, steps, tap and drag. |
 | `SmallExtendedFloatingActionButton` | material3 | ⬜ |  |  |
 | `SmallFloatingActionButton` | material3 | ⬜ |  |  |
 | `Snackbar` | material3 | ⬜ |  |  |
@@ -197,7 +197,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `TabRow` | material3 | ⬜ |  | Deprecated |
 | `Text` | material3 | 🟠 | | String only (no AnnotatedString); overflow always clips; custom fonts render as Roboto |
 | `TextButton` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state |
-| `TextField` | material3 | ⬜ |  |  |
+| `TextField` | material3 | 🟠 |  | Filled string field, enabled and read-only state, host keyboard input. |
 | `TimeInput` | material3 | ⬜ |  |  |
 | `TimePicker` | material3 | ⬜ |  |  |
 | `TimePickerDialog` | material3 | ⬜ |  |  |
