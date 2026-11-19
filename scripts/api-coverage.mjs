@@ -107,7 +107,7 @@ writeSummary(`${dir}README.md`, [
   `| Expo SDK | ${expo.sdk} (React Native ${expo.reactNative}) | Examples, native module contracts |`,
   `| Expo Go | ${expo.expoGo} | Expo reference screenshots |`,
   `| Jetpack Compose | ${Object.entries(V.compose).map(([l, v]) => `${l} ${v}`).join(', ')} | Compose API inventory (\`scripts/compose-inventory.mjs\`) |`,
-  `| Android | ${Object.keys(V.android).length ? Object.entries(V.android).map(([k, v]) => `${k} ${v}`).join(', ') : 'none yet (no Android host)'} | |`,
+  `| Android | ${V.android.release} (API ${V.android.api}) emulator, ${V.android.device}; Kotlin ${V.android.kotlin} | Device profile and insets of Compose sessions, Compose guest compiler (\`frameworks/compose/scripts/toolchain.sh\`) |`,
 ].join('\n'), 'versions');
 const drift = (path, msg) => errors.push(`${path}: ${msg} (docs/compatibility/versions.json)`);
 const bare = (spec) => String(spec).replace(/^[~^=]/, '');
@@ -118,6 +118,11 @@ for (const ex of readdirSync(root + 'examples')) {
   if (deps.expo && bare(deps.expo) !== expo.sdk) drift(`examples/${ex}/package.json`, `expo ${deps.expo}, expected ~${expo.sdk}`);
   if (deps['react-native'] && bare(deps['react-native']) !== expo.reactNative) drift(`examples/${ex}/package.json`, `react-native ${deps['react-native']}, expected ${expo.reactNative}`);
 }
+// The Compose guest's toolchain compiles with the pinned Kotlin and runs the pinned Compose runtime.
+const tc = 'frameworks/compose/scripts/toolchain.sh', tcSrc = readFileSync(root + tc, 'utf8');
+for (const want of [`KOTLIN=${V.android.kotlin}`, `COMPOSE_RUNTIME=${V.compose.runtime}`]) {
+  if (!tcSrc.includes(want)) drift(tc, `expected \`${want}\``);
+}
 // The OS version the Expo guest reports to apps.
 const guest = 'frameworks/react-native/guest/modules.js', guestSrc = readFileSync(root + guest, 'utf8');
 for (const want of [`osVersion: '${ios.runtime}'`, `osBuildId: '${ios.build}'`, `systemVersion: '${ios.runtime}'`, `iPhone OS ${ios.runtime.replace(/\./g, '_')} `]) {
@@ -127,7 +132,10 @@ for (const want of [`osVersion: '${ios.runtime}'`, `osBuildId: '${ios.build}'`, 
 for (const fx of readdirSync(root + 'tests/fixtures')) {
   let readme;
   try { readme = readFileSync(`${root}tests/fixtures/${fx}/README.md`, 'utf8'); } catch { continue; }
-  if (!readme.includes(`iOS ${ios.runtime}`)) drift(`tests/fixtures/${fx}/README.md`, `does not say it was captured on iOS ${ios.runtime}; recapture or update the matrix`);
+  // `*-android` fixtures come from the Android emulator, the rest from the iOS Simulator.
+  const want = fx.endsWith('-android') ? `${V.android.release} (API ${V.android.api})` : `iOS ${ios.runtime}`;
+  if (!readme.includes(want)) drift(`tests/fixtures/${fx}/README.md`, `does not say it was captured on ${want}; recapture or update the matrix`);
+  if (fx.endsWith('-android') && !readme.includes(V.android.device)) drift(`tests/fixtures/${fx}/README.md`, `expected device ${V.android.device}`);
   for (const m of readme.matchAll(/Expo Go (\d+(?:\.\d+)*)/g)) {
     if (!expo.expoGo.startsWith(m[1])) drift(`tests/fixtures/${fx}/README.md`, `Expo Go ${m[1]}, expected ${expo.expoGo}`);
   }

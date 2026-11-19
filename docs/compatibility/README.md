@@ -8,7 +8,7 @@ framework's README has the status legend, a per-area summary and how to add or c
 |---|---|---|
 | [SwiftUI](swiftui/README.md) | 9% (121/1379) | — |
 | [Expo / React Native](expo/README.md) | 58% (59.5/102) | 0% (0/94) |
-| [Jetpack Compose](compose/README.md) | — | 0% (0/2181) |
+| [Jetpack Compose](compose/README.md) | — | 10% (216.5/2181) |
 <!-- coverage:end -->
 
 ## Frameworks
@@ -30,7 +30,7 @@ source is [versions.json](versions.json); this table is generated from it.
 | Expo SDK | 58.0.26 (React Native 0.88.1) | Examples, native module contracts |
 | Expo Go | 58.0.7 | Expo reference screenshots |
 | Jetpack Compose | runtime 1.13.0-beta01, ui 1.13.0-beta01, ui-graphics 1.13.0-beta01, ui-text 1.13.0-beta01, ui-unit 1.13.0-beta01, ui-geometry 1.13.0-beta01, ui-tooling-preview 1.13.0-beta01, foundation-layout 1.13.0-beta01, foundation 1.13.0-beta01, animation-core 1.13.0-beta01, animation 1.13.0-beta01, material3 1.5.0-beta01, navigation-compose 2.10.0-rc01, activity-compose 1.13.0-rc01 | Compose API inventory (`scripts/compose-inventory.mjs`) |
-| Android | none yet (no Android host) | |
+| Android | Android 17 (API 37) emulator, Pixel 10a; Kotlin 2.4.21 | Device profile and insets of Compose sessions, Compose guest compiler (`frameworks/compose/scripts/toolchain.sh`) |
 <!-- versions:end -->
 
 `node scripts/api-coverage.mjs --check` (CI) fails when something pinned in the repo disagrees with the matrix:

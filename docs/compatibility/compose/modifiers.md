@@ -5,8 +5,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | API | Library | Android | Issue | Notes |
 |---|---|---|---|---|
 | `Modifier.absoluteOffset` | foundation-layout | ⬜ |  |  |
-| `Modifier.absolutePadding` | foundation-layout | ⬜ |  |  |
-| `Modifier.alpha` | ui | ⬜ |  |  |
+| `Modifier.absolutePadding` | foundation-layout | ✅ | |  |
+| `Modifier.alpha` | ui | ✅ | |  |
 | `Modifier.anchoredDraggable` | foundation | ⬜ |  |  |
 | `Modifier.animateBounds` | animation | ⬜ |  |  |
 | `Modifier.animateContentSize` | animation | ⬜ |  |  |
@@ -15,26 +15,26 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Modifier.appendTextContextMenuComponents` | foundation | ⬜ |  |  |
 | `Modifier.approachLayout` | ui | ⬜ |  |  |
 | `Modifier.aspectRatio` | foundation-layout | ⬜ |  |  |
-| `Modifier.background` | foundation | ⬜ |  |  |
+| `Modifier.background` | foundation | ✅ | |  |
 | `Modifier.basicMarquee` | foundation | ⬜ |  |  |
 | `Modifier.blur` | ui | ⬜ |  |  |
-| `Modifier.border` | foundation | ⬜ |  |  |
+| `Modifier.border` | foundation | ✅ | |  |
 | `Modifier.bringIntoViewRequester` | foundation | ⬜ |  |  |
 | `Modifier.bringIntoViewResponder` | foundation | ⬜ |  | Deprecated |
 | `Modifier.captionBarPadding` | foundation-layout | ⬜ |  |  |
 | `Modifier.carouselParallaxScrollEffect` | material3 | ⬜ |  | Experimental |
 | `Modifier.clearAndSetSemantics` | ui | ⬜ |  |  |
-| `Modifier.clickable` | foundation | ⬜ |  |  |
-| `Modifier.clip` | ui | ⬜ |  |  |
+| `Modifier.clickable` | foundation | 🟠 | | Taps only; no ripple, press state or onClickLabel |
+| `Modifier.clip` | ui | ✅ | |  |
 | `Modifier.clipScrollableContainer` | foundation | ⬜ |  |  |
 | `Modifier.clipToBounds` | ui | ⬜ |  |  |
-| `Modifier.combinedClickable` | foundation | ⬜ |  |  |
+| `Modifier.combinedClickable` | foundation | 🟠 | | onClick only; long and double clicks are not delivered |
 | `Modifier.composed` | ui | ⬜ |  |  |
 | `Modifier.consumeWindowInsets` | foundation-layout | ⬜ |  |  |
 | `Modifier.contentReceiver` | foundation | ⬜ |  | Experimental |
 | `Modifier.contentType` | ui | ⬜ |  |  |
-| `Modifier.defaultMinSize` | foundation-layout | ⬜ |  |  |
-| `Modifier.displayCutoutPadding` | foundation-layout | ⬜ |  |  |
+| `Modifier.defaultMinSize` | foundation-layout | ✅ | |  |
+| `Modifier.displayCutoutPadding` | foundation-layout | 🟠 | | Top (status bar) and bottom (navigation bar) insets only |
 | `Modifier.dragAndDropSource` | foundation | ⬜ |  |  |
 | `Modifier.dragAndDropTarget` | foundation | ⬜ |  |  |
 | `Modifier.draggable` | foundation | ⬜ |  |  |
@@ -44,9 +44,9 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Modifier.drawWithContent` | ui | ⬜ |  |  |
 | `Modifier.dropShadow` | ui | ⬜ |  |  |
 | `Modifier.excludeFromSystemGesture` | foundation | ⬜ |  | Deprecated |
-| `Modifier.fillMaxHeight` | foundation-layout | ⬜ |  |  |
-| `Modifier.fillMaxSize` | foundation-layout | ⬜ |  |  |
-| `Modifier.fillMaxWidth` | foundation-layout | ⬜ |  |  |
+| `Modifier.fillMaxHeight` | foundation-layout | ✅ | |  |
+| `Modifier.fillMaxSize` | foundation-layout | ✅ | |  |
+| `Modifier.fillMaxWidth` | foundation-layout | ✅ | |  |
 | `Modifier.filterTextContextMenuComponents` | foundation | ⬜ |  |  |
 | `Modifier.fitInside` | foundation-layout | ⬜ |  |  |
 | `Modifier.fitOutside` | foundation-layout | ⬜ |  |  |
@@ -61,8 +61,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Modifier.graphicsLayer` | ui, foundation | ⬜ |  |  |
 | `Modifier.handwritingDetector` | foundation | ⬜ |  |  |
 | `Modifier.handwritingHandler` | foundation | ⬜ |  |  |
-| `Modifier.height` | foundation-layout | ⬜ |  |  |
-| `Modifier.heightIn` | foundation-layout | ⬜ |  |  |
+| `Modifier.height` | foundation-layout | ✅ | |  |
+| `Modifier.heightIn` | foundation-layout | ✅ | |  |
 | `Modifier.horizontalScroll` | foundation | ⬜ |  |  |
 | `Modifier.hoverable` | foundation | ⬜ |  |  |
 | `Modifier.imeNestedScroll` | foundation-layout | ⬜ |  | Experimental |
@@ -76,14 +76,14 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Modifier.layoutId` | ui | ⬜ |  |  |
 | `Modifier.magnifier` | foundation | ⬜ |  |  |
 | `Modifier.mandatorySystemGesturesPadding` | foundation-layout | ⬜ |  |  |
-| `Modifier.minimumInteractiveComponentSize` | material3 | ⬜ |  |  |
+| `Modifier.minimumInteractiveComponentSize` | material3 | ✅ | |  |
 | `Modifier.modifierLocalConsumer` | ui | ⬜ |  |  |
 | `Modifier.modifierLocalProvider` | ui | ⬜ |  |  |
 | `Modifier.motionEventSpy` | ui | ⬜ |  |  |
-| `Modifier.navigationBarsPadding` | foundation-layout | ⬜ |  |  |
+| `Modifier.navigationBarsPadding` | foundation-layout | 🟠 | | Top (status bar) and bottom (navigation bar) insets only |
 | `Modifier.nestedScroll` | ui | ⬜ |  |  |
 | `Modifier.nonInteractiveScrollbar` | material3 | ⬜ |  |  |
-| `Modifier.offset` | foundation-layout | ⬜ |  |  |
+| `Modifier.offset` | foundation-layout | ✅ | |  |
 | `Modifier.onConsumedWindowInsetsChanged` | foundation-layout | ⬜ |  |  |
 | `Modifier.onFirstVisible` | ui | ⬜ |  | Deprecated |
 | `Modifier.onFocusChanged` | ui | ⬜ |  |  |
@@ -101,7 +101,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Modifier.onSizeChanged` | ui | ⬜ |  |  |
 | `Modifier.onVisibilityChanged` | ui | ⬜ |  |  |
 | `Modifier.overscroll` | foundation | ⬜ |  |  |
-| `Modifier.padding` | foundation-layout | ⬜ |  |  |
+| `Modifier.padding` | foundation-layout | ✅ | |  |
 | `Modifier.paddingFrom` | foundation-layout | ⬜ |  |  |
 | `Modifier.paddingFromBaseline` | foundation-layout | ⬜ |  |  |
 | `Modifier.paint` | ui | ⬜ |  |  |
@@ -114,28 +114,28 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Modifier.progressSemantics` | foundation | ⬜ |  |  |
 | `Modifier.pullToRefresh` | material3 | ⬜ |  |  |
 | `Modifier.recalculateWindowInsets` | foundation-layout | ⬜ |  |  |
-| `Modifier.requiredHeight` | foundation-layout | ⬜ |  |  |
+| `Modifier.requiredHeight` | foundation-layout | ✅ | |  |
 | `Modifier.requiredHeightIn` | foundation-layout | ⬜ |  |  |
-| `Modifier.requiredSize` | foundation-layout | ⬜ |  |  |
+| `Modifier.requiredSize` | foundation-layout | ✅ | |  |
 | `Modifier.requiredSizeIn` | foundation-layout | ⬜ |  |  |
-| `Modifier.requiredWidth` | foundation-layout | ⬜ |  |  |
+| `Modifier.requiredWidth` | foundation-layout | ✅ | |  |
 | `Modifier.requiredWidthIn` | foundation-layout | ⬜ |  |  |
 | `Modifier.rotate` | ui | ⬜ |  |  |
-| `Modifier.safeContentPadding` | foundation-layout | ⬜ |  |  |
-| `Modifier.safeDrawingPadding` | foundation-layout | ⬜ |  |  |
+| `Modifier.safeContentPadding` | foundation-layout | 🟠 | | Top (status bar) and bottom (navigation bar) insets only |
+| `Modifier.safeDrawingPadding` | foundation-layout | 🟠 | | Top (status bar) and bottom (navigation bar) insets only |
 | `Modifier.safeGesturesPadding` | foundation-layout | ⬜ |  |  |
 | `Modifier.scale` | ui | ⬜ |  |  |
 | `Modifier.scrollable` | foundation | ⬜ |  |  |
 | `Modifier.scrollable2D` | foundation | ⬜ |  |  |
 | `Modifier.scrollableArea` | foundation | ⬜ |  |  |
-| `Modifier.selectable` | foundation | ⬜ |  |  |
+| `Modifier.selectable` | foundation | 🟠 | | Taps only; no ripple |
 | `Modifier.selectableGroup` | foundation | ⬜ |  |  |
 | `Modifier.semantics` | ui | ⬜ |  |  |
 | `Modifier.sensitiveContent` | ui | ⬜ |  |  |
-| `Modifier.shadow` | ui | ⬜ |  |  |
-| `Modifier.size` | foundation-layout | ⬜ |  |  |
-| `Modifier.sizeIn` | foundation-layout | ⬜ |  |  |
-| `Modifier.statusBarsPadding` | foundation-layout | ⬜ |  |  |
+| `Modifier.shadow` | ui | 🟠 | | Ambient + spot shadow fitted to Android 17; ambientColor/spotColor ignored |
+| `Modifier.size` | foundation-layout | ✅ | |  |
+| `Modifier.sizeIn` | foundation-layout | ✅ | |  |
+| `Modifier.statusBarsPadding` | foundation-layout | 🟠 | | Top (status bar) and bottom (navigation bar) insets only |
 | `Modifier.styleable` | foundation | ⬜ |  |  |
 | `Modifier.styleAppearance` | foundation | ⬜ |  | Experimental |
 | `Modifier.styleBorderPadding` | foundation | ⬜ |  | Experimental |
@@ -145,25 +145,25 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Modifier.stylePlacement` | foundation | ⬜ |  | Experimental |
 | `Modifier.styleResolver` | foundation | ⬜ |  | Experimental |
 | `Modifier.stylusHoverIcon` | ui | ⬜ |  |  |
-| `Modifier.systemBarsPadding` | foundation-layout | ⬜ |  |  |
+| `Modifier.systemBarsPadding` | foundation-layout | 🟠 | | Top (status bar) and bottom (navigation bar) insets only |
 | `Modifier.systemGestureExclusion` | foundation | ⬜ |  |  |
 | `Modifier.systemGesturesPadding` | foundation-layout | ⬜ |  |  |
 | `Modifier.testTag` | ui | ⬜ |  |  |
-| `Modifier.toggleable` | foundation | ⬜ |  |  |
+| `Modifier.toggleable` | foundation | 🟠 | | Taps only; no ripple |
 | `Modifier.toolingGraphicsLayer` | ui | ⬜ |  |  |
 | `Modifier.transformable` | foundation | ⬜ |  |  |
 | `Modifier.triStateToggleable` | foundation | ⬜ |  |  |
 | `Modifier.verticalScroll` | foundation | ⬜ |  |  |
 | `Modifier.visible` | foundation-layout | ⬜ |  |  |
 | `Modifier.waterfallPadding` | foundation-layout | ⬜ |  |  |
-| `Modifier.width` | foundation-layout | ⬜ |  |  |
-| `Modifier.widthIn` | foundation-layout | ⬜ |  |  |
+| `Modifier.width` | foundation-layout | ✅ | |  |
+| `Modifier.widthIn` | foundation-layout | ✅ | |  |
 | `Modifier.windowInsetsBottomHeight` | foundation-layout | ⬜ |  |  |
 | `Modifier.windowInsetsEndWidth` | foundation-layout | ⬜ |  |  |
-| `Modifier.windowInsetsPadding` | foundation-layout | ⬜ |  |  |
+| `Modifier.windowInsetsPadding` | foundation-layout | 🟠 | | Top (status bar) and bottom (navigation bar) insets only |
 | `Modifier.windowInsetsStartWidth` | foundation-layout | ⬜ |  |  |
 | `Modifier.windowInsetsTopHeight` | foundation-layout | ⬜ |  |  |
-| `Modifier.wrapContentHeight` | foundation-layout | ⬜ |  |  |
-| `Modifier.wrapContentSize` | foundation-layout | ⬜ |  |  |
-| `Modifier.wrapContentWidth` | foundation-layout | ⬜ |  |  |
+| `Modifier.wrapContentHeight` | foundation-layout | ✅ | |  |
+| `Modifier.wrapContentSize` | foundation-layout | ✅ | |  |
+| `Modifier.wrapContentWidth` | foundation-layout | ✅ | |  |
 | `Modifier.zIndex` | ui | ⬜ |  |  |

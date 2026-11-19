@@ -351,7 +351,7 @@ impl Conn {
             "session.get" => Ok(srv.entry(&args::<P>(p)?.session_id)?.snapshot()),
             "session.destroy" => srv.destroy(&args::<P>(p)?.session_id),
             "device.list" => Ok(json!({"devices": DEVICES.iter().map(|d| json!({
-                "name": d.name, "displayName": display_name(d.name), "viewport": d.viewport, "scale": d.scale,
+                "name": d.name, "displayName": display_name(d.name), "platform": if d.android { "android" } else { "ios" }, "viewport": d.viewport, "scale": d.scale,
                 "safeArea": {"top": d.safe_top, "bottom": d.safe_bottom}})).collect::<Vec<_>>()})),
             "events.subscribe" => {
                 let a: P = args(p)?;
@@ -381,7 +381,7 @@ impl Conn {
             "protocolVersion": API_VERSION,
             "server": {"name": "simcore", "version": env!("CARGO_PKG_VERSION")},
             "capabilities": {
-                "frameworks": ["swiftui", "react-native"], "platforms": ["ios"], "methods": METHODS, "events": EVENTS,
+                "frameworks": ["swiftui", "react-native", "compose"], "platforms": ["ios", "android"], "methods": METHODS, "events": EVENTS,
                 "devices": DEVICES.iter().map(|d| d.name).collect::<Vec<_>>(), "screenshotFormats": ["png"],
                 "fonts": simcore_render::fonts_capability(), "symbols": simcore_render::symbols_capability(),
             }

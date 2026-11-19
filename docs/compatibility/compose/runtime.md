@@ -4,154 +4,154 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 
 | API | Library | Android | Issue | Notes |
 |---|---|---|---|---|
-| `AbstractApplier` | runtime | ⬜ |  |  |
-| `Applier` | runtime | ⬜ |  |  |
-| `asContextElement` | runtime | ⬜ |  |  |
-| `asDoubleState` | runtime | ⬜ |  |  |
-| `asFloatState` | runtime | ⬜ |  |  |
-| `asIntState` | runtime | ⬜ |  |  |
-| `asLongState` | runtime | ⬜ |  |  |
-| `AutoboxingStateValueProperty` | runtime | ⬜ |  |  |
-| `BroadcastFrameClock` | runtime | ⬜ |  |  |
-| `CancellationHandle` | runtime | ⬜ |  |  |
-| `clearCompositionErrors` | runtime | ⬜ |  |  |
-| `collectAsState` | runtime | ⬜ |  |  |
-| `Composable` | runtime | ⬜ |  |  |
-| `ComposableOpenTarget` | runtime | ⬜ |  |  |
-| `ComposableTarget` | runtime | ⬜ |  |  |
-| `ComposableTargetMarker` | runtime | ⬜ |  |  |
-| `ComposeCompilerApi` | runtime | ⬜ |  |  |
-| `ComposeNode` | runtime | ⬜ |  |  |
-| `ComposeNodeLifecycleCallback` | runtime | ⬜ |  |  |
-| `Composer` | runtime | ⬜ |  |  |
-| `ComposeRuntimeFlags` | runtime | ⬜ |  | Experimental |
-| `Composition` | runtime | ⬜ |  |  |
-| `CompositionContext` | runtime | ⬜ |  |  |
-| `CompositionLocal` | runtime | ⬜ |  |  |
-| `CompositionLocalAccessorScope` | runtime | ⬜ |  |  |
-| `CompositionLocalContext` | runtime | ⬜ |  |  |
-| `CompositionLocalMap` | runtime | ⬜ |  |  |
-| `compositionLocalOf` | runtime | ⬜ |  |  |
-| `CompositionLocalProvider` | runtime | ⬜ |  |  |
-| `compositionLocalWithComputedDefaultOf` | runtime | ⬜ |  |  |
-| `compositionLocalWithHostDefaultOf` | runtime | ⬜ |  |  |
-| `CompositionServiceKey` | runtime | ⬜ |  |  |
-| `CompositionServices` | runtime | ⬜ |  |  |
-| `computedStateOf` | runtime | ⬜ |  |  |
-| `ControlledComposition` | runtime | ⬜ |  |  |
-| `currentComposer` | runtime | ⬜ |  |  |
-| `currentCompositeKeyHash` | runtime | ⬜ |  | Deprecated |
-| `currentCompositeKeyHashCode` | runtime | ⬜ |  |  |
-| `currentCompositionErrors` | runtime | ⬜ |  | Deprecated |
-| `currentCompositionLocalContext` | runtime | ⬜ |  |  |
-| `currentRecomposeScope` | runtime | ⬜ |  |  |
-| `DefaultMonotonicFrameClock` | runtime | ⬜ |  | Deprecated |
-| `derivedStateOf` | runtime | ⬜ |  |  |
-| `disableHotReloadMode` | runtime | ⬜ |  |  |
-| `DisallowComposableCalls` | runtime | ⬜ |  |  |
-| `DisposableEffect` | runtime | ⬜ |  |  |
-| `DisposableEffectResult` | runtime | ⬜ |  |  |
-| `DisposableEffectScope` | runtime | ⬜ |  |  |
-| `DontMemoize` | runtime | ⬜ |  |  |
-| `DoubleState` | runtime | ⬜ |  |  |
-| `EmptyCompositeKeyHashCode` | runtime | ⬜ |  |  |
-| `ExperimentalComposeApi` | runtime | ⬜ |  |  |
-| `ExperimentalComposeRuntimeApi` | runtime | ⬜ |  |  |
-| `ExplicitGroupsComposable` | runtime | ⬜ |  |  |
-| `FloatState` | runtime | ⬜ |  |  |
-| `getValue` | runtime | ⬜ |  |  |
-| `HostDefaultKey` | runtime | ⬜ |  |  |
-| `HostDefaultProvider` | runtime | ⬜ |  |  |
-| `InternalComposeApi` | runtime | ⬜ |  |  |
-| `InternalComposeTracingApi` | runtime | ⬜ |  |  |
-| `IntState` | runtime | ⬜ |  |  |
-| `invalidateGroupsWithKey` | runtime | ⬜ |  |  |
-| `key` | runtime | ⬜ |  |  |
-| `LaunchedEffect` | runtime | ⬜ |  |  |
-| `LocalHostDefaultProvider` | runtime | ⬜ |  |  |
-| `LongState` | runtime | ⬜ |  |  |
-| `MonotonicFrameClock` | runtime | ⬜ |  |  |
-| `movableContentOf` | runtime | ⬜ |  |  |
-| `movableContentWithReceiverOf` | runtime | ⬜ |  |  |
-| `MutableDoubleState` | runtime | ⬜ |  |  |
-| `mutableDoubleStateOf` | runtime | ⬜ |  |  |
-| `MutableFloatState` | runtime | ⬜ |  |  |
-| `mutableFloatStateOf` | runtime | ⬜ |  |  |
-| `MutableIntState` | runtime | ⬜ |  |  |
-| `mutableIntStateOf` | runtime | ⬜ |  |  |
-| `MutableLongState` | runtime | ⬜ |  |  |
-| `mutableLongStateOf` | runtime | ⬜ |  |  |
-| `MutableSnapshot` | runtime | ⬜ |  |  |
-| `MutableState` | runtime | ⬜ |  |  |
-| `mutableStateListOf` | runtime | ⬜ |  |  |
-| `mutableStateMapOf` | runtime | ⬜ |  |  |
-| `mutableStateOf` | runtime | ⬜ |  |  |
-| `mutableStateSetOf` | runtime | ⬜ |  |  |
-| `MutableVector` | runtime | ⬜ |  |  |
-| `mutableVectorOf` | runtime | ⬜ |  |  |
-| `neverEqualPolicy` | runtime | ⬜ |  |  |
-| `NoLiveLiterals` | runtime | ⬜ |  |  |
-| `NonRestartableComposable` | runtime | ⬜ |  |  |
-| `NonSkippableComposable` | runtime | ⬜ |  |  |
-| `ObserverHandle` | runtime | ⬜ |  |  |
-| `PausableComposition` | runtime | ⬜ |  |  |
-| `PausableMonotonicFrameClock` | runtime | ⬜ |  |  |
-| `PausedComposition` | runtime | ⬜ |  |  |
-| `produceState` | runtime | ⬜ |  |  |
-| `ProduceStateScope` | runtime | ⬜ |  |  |
-| `ProvidableCompositionLocal` | runtime | ⬜ |  |  |
-| `ProvidedValue` | runtime | ⬜ |  |  |
-| `readable` | runtime | ⬜ |  |  |
-| `ReadOnlyComposable` | runtime | ⬜ |  |  |
-| `Recomposer` | runtime | ⬜ |  |  |
-| `RecomposerErrorInformation` | runtime | ⬜ |  |  |
-| `RecomposerInfo` | runtime | ⬜ |  |  |
-| `RecomposeScope` | runtime | ⬜ |  |  |
-| `referentialEqualityPolicy` | runtime | ⬜ |  |  |
-| `remember` | runtime | ⬜ |  |  |
-| `rememberCompositionContext` | runtime | ⬜ |  |  |
-| `rememberCoroutineScope` | runtime | ⬜ |  |  |
-| `RememberObserver` | runtime | ⬜ |  |  |
-| `rememberUpdatedState` | runtime | ⬜ |  |  |
-| `ReusableComposeNode` | runtime | ⬜ |  |  |
-| `ReusableComposition` | runtime | ⬜ |  |  |
-| `ReusableContent` | runtime | ⬜ |  |  |
-| `ReusableContentHost` | runtime | ⬜ |  |  |
-| `setValue` | runtime | ⬜ |  |  |
-| `ShouldPauseCallback` | runtime | ⬜ |  |  |
-| `SideEffect` | runtime | ⬜ |  |  |
-| `simulateHotReload` | runtime | ⬜ |  |  |
-| `SkippableUpdater` | runtime | ⬜ |  |  |
-| `Snapshot` | runtime | ⬜ |  |  |
-| `SnapshotApplyConflictException` | runtime | ⬜ |  |  |
-| `SnapshotApplyResult` | runtime | ⬜ |  |  |
-| `SnapshotContextElement` | runtime | ⬜ |  |  |
-| `snapshotFlow` | runtime | ⬜ |  |  |
-| `SnapshotFlowManager` | runtime | ⬜ |  | Experimental |
-| `SnapshotMutableState` | runtime | ⬜ |  |  |
-| `SnapshotMutationPolicy` | runtime | ⬜ |  |  |
-| `SnapshotStateList` | runtime | ⬜ |  |  |
-| `SnapshotStateMap` | runtime | ⬜ |  |  |
-| `SnapshotStateObserver` | runtime | ⬜ |  |  |
-| `SnapshotStateSet` | runtime | ⬜ |  |  |
-| `State` | runtime | ⬜ |  |  |
-| `StateFactoryMarker` | runtime | ⬜ |  |  |
-| `StateObject` | runtime | ⬜ |  |  |
-| `StateRecord` | runtime | ⬜ |  |  |
-| `staticCompositionLocalOf` | runtime | ⬜ |  |  |
-| `staticCompositionLocalWithComputedDefaultOf` | runtime | ⬜ |  |  |
-| `structuralEqualityPolicy` | runtime | ⬜ |  |  |
-| `toInt` | runtime | ⬜ |  |  |
-| `toLong` | runtime | ⬜ |  |  |
-| `toMutableStateList` | runtime | ⬜ |  |  |
-| `toMutableStateMap` | runtime | ⬜ |  |  |
-| `toString` | runtime | ⬜ |  |  |
-| `Updater` | runtime | ⬜ |  |  |
-| `ViewTreeHostDefaultKey` | runtime | ⬜ |  |  |
-| `withCompositionLocal` | runtime | ⬜ |  |  |
-| `withCompositionLocals` | runtime | ⬜ |  |  |
-| `withCurrent` | runtime | ⬜ |  |  |
-| `withFrameMillis` | runtime | ⬜ |  |  |
-| `withFrameNanos` | runtime | ⬜ |  |  |
-| `withRunningRecomposer` | runtime | ⬜ |  |  |
-| `writable` | runtime | ⬜ |  |  |
+| `AbstractApplier` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `Applier` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `asContextElement` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `asDoubleState` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `asFloatState` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `asIntState` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `asLongState` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `AutoboxingStateValueProperty` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `BroadcastFrameClock` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `CancellationHandle` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `clearCompositionErrors` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `collectAsState` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `Composable` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ComposableOpenTarget` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ComposableTarget` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ComposableTargetMarker` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ComposeCompilerApi` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ComposeNode` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ComposeNodeLifecycleCallback` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `Composer` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ComposeRuntimeFlags` | runtime | ✅ | | Experimental. Real androidx.compose.runtime (JVM build), unmodified |
+| `Composition` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `CompositionContext` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `CompositionLocal` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `CompositionLocalAccessorScope` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `CompositionLocalContext` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `CompositionLocalMap` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `compositionLocalOf` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `CompositionLocalProvider` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `compositionLocalWithComputedDefaultOf` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `compositionLocalWithHostDefaultOf` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `CompositionServiceKey` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `CompositionServices` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `computedStateOf` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ControlledComposition` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `currentComposer` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `currentCompositeKeyHash` | runtime | ✅ | | Deprecated. Real androidx.compose.runtime (JVM build), unmodified |
+| `currentCompositeKeyHashCode` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `currentCompositionErrors` | runtime | ✅ | | Deprecated. Real androidx.compose.runtime (JVM build), unmodified |
+| `currentCompositionLocalContext` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `currentRecomposeScope` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `DefaultMonotonicFrameClock` | runtime | ✅ | | Deprecated. Real androidx.compose.runtime (JVM build), unmodified |
+| `derivedStateOf` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `disableHotReloadMode` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `DisallowComposableCalls` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `DisposableEffect` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `DisposableEffectResult` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `DisposableEffectScope` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `DontMemoize` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `DoubleState` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `EmptyCompositeKeyHashCode` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ExperimentalComposeApi` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ExperimentalComposeRuntimeApi` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ExplicitGroupsComposable` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `FloatState` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `getValue` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `HostDefaultKey` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `HostDefaultProvider` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `InternalComposeApi` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `InternalComposeTracingApi` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `IntState` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `invalidateGroupsWithKey` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `key` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `LaunchedEffect` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `LocalHostDefaultProvider` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `LongState` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `MonotonicFrameClock` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `movableContentOf` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `movableContentWithReceiverOf` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `MutableDoubleState` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `mutableDoubleStateOf` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `MutableFloatState` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `mutableFloatStateOf` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `MutableIntState` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `mutableIntStateOf` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `MutableLongState` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `mutableLongStateOf` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `MutableSnapshot` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `MutableState` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `mutableStateListOf` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `mutableStateMapOf` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `mutableStateOf` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `mutableStateSetOf` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `MutableVector` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `mutableVectorOf` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `neverEqualPolicy` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `NoLiveLiterals` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `NonRestartableComposable` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `NonSkippableComposable` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ObserverHandle` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `PausableComposition` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `PausableMonotonicFrameClock` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `PausedComposition` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `produceState` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ProduceStateScope` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ProvidableCompositionLocal` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ProvidedValue` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `readable` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ReadOnlyComposable` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `Recomposer` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `RecomposerErrorInformation` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `RecomposerInfo` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `RecomposeScope` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `referentialEqualityPolicy` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `remember` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `rememberCompositionContext` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `rememberCoroutineScope` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `RememberObserver` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `rememberUpdatedState` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ReusableComposeNode` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ReusableComposition` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ReusableContent` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ReusableContentHost` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `setValue` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ShouldPauseCallback` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `SideEffect` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `simulateHotReload` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `SkippableUpdater` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `Snapshot` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `SnapshotApplyConflictException` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `SnapshotApplyResult` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `SnapshotContextElement` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `snapshotFlow` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `SnapshotFlowManager` | runtime | ✅ | | Experimental. Real androidx.compose.runtime (JVM build), unmodified |
+| `SnapshotMutableState` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `SnapshotMutationPolicy` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `SnapshotStateList` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `SnapshotStateMap` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `SnapshotStateObserver` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `SnapshotStateSet` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `State` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `StateFactoryMarker` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `StateObject` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `StateRecord` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `staticCompositionLocalOf` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `staticCompositionLocalWithComputedDefaultOf` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `structuralEqualityPolicy` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `toInt` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `toLong` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `toMutableStateList` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `toMutableStateMap` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `toString` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `Updater` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `ViewTreeHostDefaultKey` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `withCompositionLocal` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `withCompositionLocals` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `withCurrent` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `withFrameMillis` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `withFrameNanos` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `withRunningRecomposer` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |
+| `writable` | runtime | ✅ | | Real androidx.compose.runtime (JVM build), unmodified |

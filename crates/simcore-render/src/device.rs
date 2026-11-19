@@ -40,6 +40,9 @@ pub struct Device {
     pub key_pitch: f64,
     /// Keyboard height above the bottom safe inset (measured 335 total with a 34pt inset).
     pub kb_base_h: f64,
+    /// Android phone (Material status bar and gesture-navigation handle; `safe_top`/`safe_bottom` are the
+    /// status-bar and navigation-bar insets an edge-to-edge app draws under). Units are dp.
+    pub android: bool,
 }
 
 pub const DEFAULT_DEVICE: &str = "iphone-17-pro";
@@ -65,6 +68,7 @@ const C_17_PRO: Device = Device {
     suggestions: true,
     key_pitch: 53.9,
     kb_base_h: 301.0,
+    android: false,
 };
 const C_16: Device = Device {
     suggestions: false,
@@ -159,11 +163,32 @@ const C_SE: Device = Device {
     ..C_17_PRO
 };
 
+/// Pixel 10a (Android 17 emulator AVD): 1080x2424 px at 420 dpi = 411.43 x 923.43 dp, density 2.625.
+/// Insets measured on the emulator (`dumpsys window`): status bar 142 px, gesture navigation bar 63 px.
+const C_PIXEL_10A: Device = Device {
+    name: "pixel-10a",
+    viewport: vp(1080.0 / 2.625, 2424.0 / 2.625),
+    scale: 2.625,
+    safe_top: 142.0 / 2.625,
+    safe_bottom: 63.0 / 2.625,
+    island: None,
+    // Measured on the emulator: clock text box centred at (57.9, 26.9) dp, 14 sp; battery nub ends at 382.9 dp.
+    status_bar: sb((57.9, 26.9), 14.0, (382.9, 0.0), 1.0),
+    home_button: false,
+    suggestions: false,
+    key_pitch: 53.9,
+    kb_base_h: 280.0,
+    android: true,
+};
+
+/// Default device of Android (Compose) sessions.
+pub const DEFAULT_ANDROID_DEVICE: &str = "pixel-10a";
+
 const fn named(name: &'static str, d: Device) -> Device {
     Device { name, ..d }
 }
 
-/// Every iPhone the iOS 26.5 Simulator ships; the default comes first.
+/// Every iPhone the iOS 26.5 Simulator ships (the default first), then the Android phones.
 pub const DEVICES: &[Device] = &[
     C_17_PRO,
     named("iphone-17", C_17_PRO),
@@ -196,6 +221,7 @@ pub const DEVICES: &[Device] = &[
     named("iphone-11", C_11),
     named("iphone-se-3", C_SE),
     named("iphone-se-2", C_SE),
+    C_PIXEL_10A,
 ];
 
 pub fn device(name: &str) -> Option<&'static Device> {
@@ -209,7 +235,8 @@ mod tests {
     #[test]
     fn names_unique_and_default_first() {
         assert_eq!(DEVICES[0].name, DEFAULT_DEVICE);
-        assert_eq!(DEVICES.len(), 31);
+        assert_eq!(DEVICES.len(), 32);
+        assert_eq!(DEVICES.iter().filter(|d| d.android).map(|d| d.name).collect::<Vec<_>>(), [DEFAULT_ANDROID_DEVICE]);
         for (i, d) in DEVICES.iter().enumerate() {
             assert!(DEVICES[..i].iter().all(|o| o.name != d.name), "duplicate {}", d.name);
         }
