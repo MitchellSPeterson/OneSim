@@ -58,3 +58,12 @@ pub fn diff_pct(a: &[u8], b: &[u8], tol: u8) -> f64 {
     let n = pa.iter().zip(pb).filter(|(x, y)| x.iter().zip(*y).any(|(p, q)| p.abs_diff(*q) > tol)).count();
     100.0 * n as f64 / (a.len() / 4) as f64
 }
+
+/// Headless CI exercises the pure builder tests without probing native GPU hardware.
+pub fn skip_native_gpu() -> bool {
+    let skip = std::env::var("SIMCORE_SKIP_GPU_TESTS").is_ok_and(|v| v == "1");
+    if skip {
+        println!("SKIP: native GPU tests disabled by SIMCORE_SKIP_GPU_TESTS=1");
+    }
+    skip
+}

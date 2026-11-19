@@ -11,12 +11,16 @@ use simcore_render_gpu::GpuRenderer;
 use std::sync::Arc;
 
 fn gpu() -> Option<GpuRenderer> {
+    if common::skip_native_gpu() {
+        return None;
+    }
     match GpuRenderer::new_headless() {
         Ok(g) => Some(g),
-        Err(e) => {
-            println!("SKIP: no GPU adapter ({e})");
+        Err(e) if e.starts_with("no GPU adapter:") => {
+            println!("SKIP: {e}");
             None
         }
+        Err(e) => panic!("GPU initialization failed: {e}"),
     }
 }
 
@@ -212,21 +216,33 @@ fn resize_between_frames() {
 }
 
 #[test]
-fn caches_stay_bounded_over_200_frames() {
+fn rapid_updates_and_resizes_keep_resources_bounded() {
     let Some(mut g) = gpu() else { return };
+    const FRAMES: usize = 1_050;
     let mut fonts = Fonts::new();
     let mut peak = 0;
-    for i in 0..200 {
-        // Every frame has text no earlier frame had: without eviction the cache would hold 200 sprites.
-        let mut t = node("t", 5.0 + (i as f64) * 0.37, 10.0, 100.0, 24.0);
+    for i in 0..FRAMES {
+        // New text every frame with regularly changing viewport, DPR, appearance and backdrop.
+        let mut t = node("t", 6.0 + (i % 19) as f64 * 0.37, 10.0, 100.0, 24.0);
         t.text = Some(text(&format!("frame {i}"), false));
-        let sc = scene(false, vec![t]);
-        g.capture(&sc, &mut fonts, 2.0).expect("capture");
+        let mut gl = glass_node("glass", 10.0, 38.0, 70.0, 24.0, 12.0, spec(GlassVariant::Regular));
+        gl.fill = Some(Color::rgba(0.2, 0.5, 1.0, 0.15));
+        let mut sc = scene(i / 12 % 2 == 1, vec![t, gl]);
+        let (size, scale) = [((120.0, 90.0), 1.0), ((112.0, 82.0), 2.0), ((120.0, 90.0), 3.0)][i / 9 % 3];
+        sc.size = size;
+        let frame = g.capture(&sc, &mut fonts, scale).expect("capture");
+        assert_eq!((frame.width, frame.height), ((size.0 * scale) as u32, (size.1 * scale) as u32));
+        if i % 73 == 0 || i == FRAMES - 1 {
+            let cpu = simcore_render::render(&sc, &mut fonts, scale);
+            let d = diff_pct(&frame.rgba, cpu.data(), 8);
+            assert!(d < 0.5, "frame {i}: {d}%");
+        }
         peak = peak.max(g.cache_len());
     }
-    println!("peak cache entries over 200 frames: {peak}");
-    assert!(peak <= 125, "cache grew to {peak}");
-    assert_eq!(g.diagnostics().frames, 200);
+    println!("peak executor image resources over {FRAMES} frames: {peak}");
+    assert!(peak <= simcore_render::CACHE_TTL_FRAMES as usize + 1, "cache grew to {peak}");
+    assert_eq!(g.diagnostics().frames, FRAMES as u64);
+    assert_eq!(g.backdrop_counts(), (FRAMES as u64, 0));
 }
 
 #[test]

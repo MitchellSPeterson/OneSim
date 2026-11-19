@@ -65,7 +65,7 @@ impl GpuRenderer {
 
     /// Cached sprites and bitmaps currently held (bounded by [`simcore_render::CACHE_MAX_ENTRIES`]).
     pub fn cache_len(&self) -> usize {
-        self.builder.cache_len()
+        self.exec.resource_count()
     }
 
     /// Display-list build time, Vello submission time, and sprite cache hits/misses for the last capture.

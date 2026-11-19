@@ -6,10 +6,13 @@ use common::{build, diff_pct, trees};
 use simcore_protocol::Appearance;
 use simcore_render::display::{DisplayList, Op, RRect, Resource, Sampling};
 use simcore_render::glass::{GlassSpec, GlassVariant, ScrollEdge};
-use simcore_render::{Builder, Color, Fonts, Glyph, Node, Rect, Scene, CACHE_TTL_FRAMES};
+use simcore_render::{Builder, Color, Fonts, Glyph, Node, Rect, RenderError, Scene, CACHE_TTL_FRAMES};
 use simcore_render_gpu::{read_texture, target_usage, wgpu, Executor};
 
 fn executor() -> Option<Executor> {
+    if common::skip_native_gpu() {
+        return None;
+    }
     let instance = wgpu::Instance::default();
     let adapter = match pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions::default())) {
         Ok(a) => a,
@@ -215,4 +218,30 @@ fn glass_op_without_backdrop_work_still_defines_every_pixel() {
     let spec = GlassSpec { variant: GlassVariant::Clear, tint: None, interactive: false, blur: None, mix: None, shadow: None, flat: None };
     let only = DisplayList { ops: vec![Op::Glass { shape: rr(4.0, 4.0, 20.0, 20.0, 6.0), spec, opacity: 1.0, halo_radius: 6.0 }], ..empty };
     let _ = pixels(&mut ex, &only, &tex);
+}
+
+#[test]
+fn destroyed_device_reports_loss_and_the_scene_can_be_replayed() {
+    let Some(mut ex) = executor() else { return };
+    let mut builder = Builder::new();
+    let mut fonts = Fonts::new();
+    let scene = showcase("home", false, &mut fonts);
+    let first = builder.build(&scene, &mut fonts, 1.0);
+    let tex = target(&ex, first.width, first.height);
+    let before = pixels(&mut ex, &first, &tex);
+
+    ex.device().destroy();
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while ex.check_errors().is_ok() && std::time::Instant::now() < until {
+        let _ = ex.device().poll(wgpu::PollType::Poll);
+        std::thread::yield_now();
+    }
+    assert!(matches!(ex.execute(&first, &tex), Err(RenderError::DeviceLost(_))));
+    drop((ex, tex));
+
+    let mut fresh = executor().expect("adapter after device destruction");
+    builder.reset();
+    let replay = builder.build(&scene, &mut fonts, 1.0);
+    let tex = target(&fresh, replay.width, replay.height);
+    assert_eq!(pixels(&mut fresh, &replay, &tex), before);
 }
