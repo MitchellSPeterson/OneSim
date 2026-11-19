@@ -136,6 +136,9 @@ pub struct Session {
     pub sent_frames: BTreeMap<String, [f64; 4]>,
     /// React Native: tag the current touch started on.
     pub touch: Option<u64>,
+    /// React Native: `false` (live viewers, set per call by the v2 API) skips every wait for the guest:
+    /// inputs return once sent and snapshots take one layout pass; later trees come as `render.updated`.
+    pub settle: bool,
     /// When the host last wrote to the guest: its reaction (new trees) is due within the quiet window.
     last_sent: Instant,
     state: State,
@@ -219,6 +222,7 @@ impl Session {
             inter: Interaction::default(),
             sent_frames: BTreeMap::new(),
             touch: None,
+            settle: true,
             last_sent: Instant::now(),
             params: p,
             state: State::Created,
@@ -594,6 +598,10 @@ impl Session {
     /// at `ACTION_TIMEOUT`). React Native commits a press in several trees: the state update, then
     /// Pressability's delayed `pressOut` (130 ms minimum press duration), so the first tree is not final.
     pub fn send_and_settle(&mut self, msg: &HostMessage) -> Result<bool, ApiError> {
+        if !self.settle {
+            self.send(msg)?;
+            return Ok(false);
+        }
         let changed = self.send_and_wait_tree(msg)?;
         // Trees may keep coming (an endless animation): the tail after the first tree is bounded, long
         // enough for a 350 ms navigation transition and Pressability's delayed `pressOut`.
