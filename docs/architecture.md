@@ -1,27 +1,27 @@
-[SimCore](../README.md) / [Documentation](README.md)
+[OneSim](../README.md) / [Documentation](README.md)
 
 # Architecture
 
-SimCore separates app execution from rendering. Each native session runs app code in a guest process. The Rust host receives the guest’s view tree, lays it out, and sends input back to the guest.
+OneSim separates app execution from rendering. Each native session runs app code in a guest process. The Rust host receives the guest’s view tree, lays it out, and sends input back to the guest.
 
 ## A SwiftUI session
 
 ```text
 client (DemoKit, CI, agent)
-   │  A: JSON-lines API (`simcore serve`)            docs/protocol.md §A
+   │  A: JSON-lines API (`onesim serve`)            docs/protocol.md §A
    ▼
-simcore-host ── sessions, build, process supervision
-   │  uses simcore-render: layout (SwiftUI semantics) → Scene → render, hit test, inspect
+onesim-host ── sessions, build, process supervision
+   │  uses onesim-render: layout (SwiftUI semantics) → Scene → render, hit test, inspect
    │  B: JSON-lines guest wire over child stdin/stdout  §B
    ▼
 app process (one per session)
    Swift app code  ──import SwiftUI──▶  frameworks/swiftui (our "SwiftUI" module)
                                           │ C: C ABI  §C
                                           ▼
-                                       libsimcore_runtime.a (Rust)
+                                       libonesim_runtime.a (Rust)
 ```
 
-The Swift compiler resolves `import SwiftUI` to [SimCore’s SwiftUI module](compatibility/swiftui/guest.md). The module evaluates views with Swift’s own generics, closures, and property wrappers. It submits a normalized view tree to the host through the Rust guest runtime. The host lays out the tree, renders it with the selected backend, and routes actions back to Swift closures. See the [protocol reference](protocol.md) for the messages at each boundary.
+The Swift compiler resolves `import SwiftUI` to [OneSim’s SwiftUI module](compatibility/swiftui/guest.md). The module evaluates views with Swift’s own generics, closures, and property wrappers. It submits a normalized view tree to the host through the Rust guest runtime. The host lays out the tree, renders it with the selected backend, and routes actions back to Swift closures. See the [protocol reference](protocol.md) for the messages at each boundary.
 
 ## Framework guests
 
@@ -30,14 +30,14 @@ The Swift compiler resolves `import SwiftUI` to [SimCore’s SwiftUI module](com
 | Language semantics (generics, closures, property wrappers) | Swift module | Swift compiler already does this; Rust never interprets Swift. |
 | State registry, view identity, action table | Swift module | State is tied to Swift values/closures. |
 | Normalized view tree | Swift → JSON | Framework-specific but language-neutral. |
-| Layout | `simcore-render::layout` | SwiftUI proposes sizes, React Native uses Yoga flexbox semantics via taffy, and Compose measures and places content under constraints. All three emit the same scene type. |
-| Compose execution | [Compose guest](../frameworks/compose/README.md) (JVM) | The AndroidX Compose runtime composes the app. SimCore’s `ui`, `foundation`, and `material3` libraries reduce it to layout nodes and modifier chains. |
+| Layout | `onesim-render::layout` | SwiftUI proposes sizes, React Native uses Yoga flexbox semantics via taffy, and Compose measures and places content under constraints. All three emit the same scene type. |
+| Compose execution | [Compose guest](../frameworks/compose/README.md) (JVM) | The AndroidX Compose runtime composes the app. OneSim’s `ui`, `foundation`, and `material3` libraries reduce it to layout nodes and modifier chains. |
 | React Native execution | [React Native guest](../frameworks/react-native/README.md) (Node.js) | The guest loads the Metro bundle unchanged and implements `nativeFabricUIManager` and TurboModules while Fabric reconciles the UI. |
-| Scene, rasterization, hit testing, and inspection | `simcore-render` | The renderer handles all three frameworks. It draws nodes in paint order so Liquid Glass can sample the pixels already drawn behind it. |
-| Display-list building | `simcore-render::Builder` | Resolves paint order, clips, transforms, and device coordinates. CPU-rasterized sprites carry shaped text and symbols to the GPU. Resource IDs allow reuse across frames. |
-| GPU execution | `simcore-render-gpu::Executor` | Vello handles vector and image drawing. wgpu compute passes composite Liquid Glass, its halo and scroll edges against the accumulated frame. |
-| Presentation and recovery | `simcore-cli`, `simcore-web-gpu`, `web/renderer.js` | Own the swap chain or canvas, resize, scheduling and fallback. The host retains the session and scene when a presenter changes. |
-| Sessions and the external API | `simcore-host` and `simcore-cli` | Each session has its own process. If a guest exits unexpectedly, the host marks that session `crashed`. |
+| Scene, rasterization, hit testing, and inspection | `onesim-render` | The renderer handles all three frameworks. It draws nodes in paint order so Liquid Glass can sample the pixels already drawn behind it. |
+| Display-list building | `onesim_render::Builder` | Resolves paint order, clips, transforms, and device coordinates. CPU-rasterized sprites carry shaped text and symbols to the GPU. Resource IDs allow reuse across frames. |
+| GPU execution | `onesim_render_gpu::Executor` | Vello handles vector and image drawing. wgpu compute passes composite Liquid Glass, its halo and scroll edges against the accumulated frame. |
+| Presentation and recovery | `onesim-cli`, `onesim-web-gpu`, `web/renderer.js` | Own the swap chain or canvas, resize, scheduling and fallback. The host retains the session and scene when a presenter changes. |
+| Sessions and the external API | `onesim-host` and `onesim-cli` | Each session has its own process. If a guest exits unexpectedly, the host marks that session `crashed`. |
 
 ## Design choices
 
@@ -49,14 +49,14 @@ The Swift compiler resolves `import SwiftUI` to [SimCore’s SwiftUI module](com
 
 | Directory | Responsibility |
 | --- | --- |
-| [`simcore-cli`](../crates/simcore-cli) | The `simcore` command, including `run`, `expo`, `window`, and `serve`. |
-| [`simcore-host`](../crates/simcore-host) | Sessions, guest builds, and process supervision. |
-| [`simcore-render`](../crates/simcore-render) | Layout, rasterization, hit testing, and inspection. |
-| [`simcore-render-gpu`](../crates/simcore-render-gpu) | wgpu and Vello executor, GPU captures, and native presentation. |
-| [`simcore-protocol`](../crates/simcore-protocol) | Shared wire and API types. |
-| [`simcore-runtime`](../crates/simcore-runtime) | Rust guest static library and C ABI. |
-| [`simcore-web`](../crates/simcore-web) | In-process runtime and renderer for WebAssembly. |
-| [`simcore-web-gpu`](../crates/simcore-web-gpu) | WebGPU canvas presenter. |
+| [`onesim-cli`](../crates/onesim-cli) | The `onesim` command, including `run`, `expo`, `window`, and `serve`. |
+| [`onesim-host`](../crates/onesim-host) | Sessions, guest builds, and process supervision. |
+| [`onesim-render`](../crates/onesim-render) | Layout, rasterization, hit testing, and inspection. |
+| [`onesim-render-gpu`](../crates/onesim-render-gpu) | wgpu and Vello executor, GPU captures, and native presentation. |
+| [`onesim-protocol`](../crates/onesim-protocol) | Shared wire and API types. |
+| [`onesim-runtime`](../crates/onesim-runtime) | Rust guest static library and C ABI. |
+| [`onesim-web`](../crates/onesim-web) | In-process runtime and renderer for WebAssembly. |
+| [`onesim-web-gpu`](../crates/onesim-web-gpu) | WebGPU canvas presenter. |
 | [`frameworks`](../frameworks) | SwiftUI, React Native, and Compose guest implementations. |
 
 ## Fonts and symbols

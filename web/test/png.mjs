@@ -13,7 +13,7 @@ function chunk(type, data) {
   return out;
 }
 
-/** `{width, height, data}` (RGBA, as SimCore.framebuffer()) -> PNG bytes. */
+/** `{width, height, data}` (RGBA, as OneSim.framebuffer()) -> PNG bytes. */
 export function encodePng({ width, height, data }) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4);

@@ -1,7 +1,7 @@
 {
-  "name": "@simcore/sdk",
+  "name": "@onesim/sdk",
   "version": "0.2.0",
-  "description": "TypeScript client for the SimCore JSON-RPC API (docs/api.md)",
+  "description": "TypeScript client for the OneSim JSON-RPC API (docs/api.md)",
   "type": "module",
   "exports": "./src/index.ts",
   "types": "./src/index.ts",

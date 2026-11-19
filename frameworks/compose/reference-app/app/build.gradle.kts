@@ -11,7 +11,7 @@ android {
         minSdk = 26
         targetSdk = 36
     }
-    // Compile the SimCore examples unmodified.
+    // Compile the OneSim examples unmodified.
     sourceSets["main"].kotlin.directories += listOf("../../../../examples/compose-counter", "../../../../examples/compose-showcase")
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }

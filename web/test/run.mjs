@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Headless harness for the browser backend (Node >= 20, no dependencies). Loads app.wasm with the
-// same driver as the browser (web/simcore.js) and drives it like `simcore run`.
+// same driver as the browser (web/onesim.js) and drives it like `onesim run`.
 //
 //   node web/test/run.mjs [--wasm target/web/app.wasm] [--width W] [--height H] [--scale S] [--dark] [--dynamic-type SIZE]
 //        [--click LABEL|X,Y] [--type TEXT] [--key backspace|enter] [--scroll X,Y,DX,DY] [--drag X,Y,DX,DY] ...   (in order)
@@ -10,7 +10,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
-import { load } from "../simcore.js";
+import { load } from "../onesim.js";
 import { encodePng } from "./png.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));

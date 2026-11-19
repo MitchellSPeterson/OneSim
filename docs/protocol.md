@@ -1,15 +1,17 @@
-# SimCore Protocol (v1)
+# OneSim Protocol (v1)
 
 Three boundaries. All JSON is UTF-8; "JSON lines" = one JSON object per `\n`-terminated line.
 
 ```
-client ──(A: external API, JSON lines over `simcore serve` stdin/stdout)──▶ simcore host
+client ──(A: external API, JSON lines over `onesim serve` stdin/stdout)──▶ onesim host
 host   ──(B: guest wire, JSON lines over child process pipes)──▶ app process (guest)
-guest  ──(C: C ABI, libsimcore_runtime.a)──▶ Swift compatibility module
+guest  ──(C: C ABI, libonesim_runtime.a)──▶ Swift compatibility module
 ```
 
 The host owns layout, rendering, hit testing, screenshots and UI inspection.
 The guest (one OS process per session) owns app code execution and state.
+
+The `SIMCORE_*` environment variables, guest property names, and C ABI symbols retain their original names for compatibility.
 
 ---
 
@@ -24,7 +26,7 @@ Error codes: `bad_request`, `not_found` (unknown session), `invalid_state`,
 `protocol_version`.
 
 First request MUST be `hello`: params `{"protocol_version": 1}` → result
-`{"protocol_version": 1, "server": "simcore", "version": "<crate version>"}`.
+`{"protocol_version": 1, "server": "onesim", "version": "<crate version>"}`.
 Mismatched major version → `protocol_version` error.
 
 | method | params | result |
@@ -114,7 +116,7 @@ centered in it.
 
 ---
 
-## C. C ABI (`crates/simcore-runtime`, header `simcore_runtime.h`)
+## C. C ABI (`crates/onesim-runtime`, header `simcore_runtime.h`)
 
 ```c
 #include <stdint.h>
@@ -196,7 +198,7 @@ Text styles and weights follow Apple's iOS Dynamic Type "Large" defaults (body 1
 
 ### Device profile and platform chrome (host)
 
-`create_session` accepts a `"device"` profile name (default `"iphone-18-pro"`: viewport 402×874 pt, scale 3, safe area top 62 / bottom 34). Every iPhone of the iOS 26.5 and 27.2 Simulators is a profile (iOS 27 status bar and keyboard height per profile where measured, `Device::ios27`) (`iphone-16`, `iphone-air`, `iphone-13-mini`, `iphone-se-3`, ...; the full list is `DEVICES` / `get_capabilities` `devices`); notch models have no `island`, the SE has a home button (classic status bar, no bottom inset, bottom-row keyboard icons). Lists, cards and titles use a 20 pt side margin on screens 414 pt or wider, else 16. Content is laid out inside the safe area. The screen background, a `navigation` bar background and a `list` background extend to the screen edges. The host draws an iOS status bar (time "9:41", battery) in the top inset. `viewport` and `scale` params still override. Profiles (geometry, safe area, island, status bar, keyboard height) live in `DEVICES` in `crates/simcore-render/src/device.rs`, shared with the Wasm build, and are listed by `get_capabilities` `devices`.
+`create_session` accepts a `"device"` profile name (default `"iphone-18-pro"`: viewport 402×874 pt, scale 3, safe area top 62 / bottom 34). Every iPhone of the iOS 26.5 and 27.2 Simulators is a profile (iOS 27 status bar and keyboard height per profile where measured, `Device::ios27`) (`iphone-16`, `iphone-air`, `iphone-13-mini`, `iphone-se-3`, ...; the full list is `DEVICES` / `get_capabilities` `devices`); notch models have no `island`, the SE has a home button (classic status bar, no bottom inset, bottom-row keyboard icons). Lists, cards and titles use a 20 pt side margin on screens 414 pt or wider, else 16. Content is laid out inside the safe area. The screen background, a `navigation` bar background and a `list` background extend to the screen edges. The host draws an iOS status bar (time "9:41", battery) in the top inset. `viewport` and `scale` params still override. Profiles (geometry, safe area, island, status bar, keyboard height) live in `DEVICES` in `crates/onesim-render/src/device.rs`, shared with the Wasm build, and are listed by `get_capabilities` `devices`.
 
 The guest reads `SIMCORE_APPEARANCE` at launch for `@Environment(\.colorScheme)`.
 
@@ -216,8 +218,8 @@ New modifier: `{"imageScale": "small"|"medium"|"large"}` (inherited). `Font` als
 Symbol rendering is a **host native-API capability**. On macOS hosts, symbols are rasterized from the system's SF Symbols, and nothing Apple-licensed is shipped in the repo. `get_capabilities` lists `"symbols": "system"|"bundled"|"placeholder"` and `"fonts": "system"|"bundled"`.
 
 **Fallback chain (open-licensed; nothing Apple-licensed is bundled).** When Apple's resources are unavailable (non-macOS host) or `SIMCORE_FALLBACK=1` is set in the host process's environment (so macOS CI can test this path), the host uses:
-- Fonts `"bundled"`: **Inter** (`assets/fonts/InterVariable.ttf`, SIL OFL 1.1, `assets/fonts/OFL.txt`), embedded in `simcore-render`, variable `wght` axis, with per-size letter-spacing (`inter_tracking_em`) fitted to the iOS/SF widths in `tests/fixtures/showcase-ios`. The SF path (`/System/Library/Fonts/SFNS.ttf`) is unchanged.
-- Symbols `"bundled"`: **Phosphor Icons** (`assets/symbols/phosphor/{regular,bold,fill}`, MIT, `LICENSE`), rendered with resvg into the same alpha-mask pipeline as AppKit symbols. `crates/simcore-render/src/symbols_map.rs` maps SF Symbol name to Phosphor icon (~270 names). A `.fill` suffix selects the fill style, weight semibold or heavier the bold style, otherwise regular; `.circle` variants map to Phosphor's `*-circle` icons where they exist. The layout box approximates AppKit's (ink = icon units x 1.25 x pt / 256 x imageScale, plus a margin), so it differs from AppKit per glyph by a few percent.
+- Fonts `"bundled"`: **Inter** (`assets/fonts/InterVariable.ttf`, SIL OFL 1.1, `assets/fonts/OFL.txt`), embedded in `onesim-render`, variable `wght` axis, with per-size letter-spacing (`inter_tracking_em`) fitted to the iOS/SF widths in `tests/fixtures/showcase-ios`. The SF path (`/System/Library/Fonts/SFNS.ttf`) is unchanged.
+- Symbols `"bundled"`: **Phosphor Icons** (`assets/symbols/phosphor/{regular,bold,fill}`, MIT, `LICENSE`), rendered with resvg into the same alpha-mask pipeline as AppKit symbols. `crates/onesim-render/src/symbols_map.rs` maps SF Symbol name to Phosphor icon (~270 names). A `.fill` suffix selects the fill style, weight semibold or heavier the bold style, otherwise regular; `.circle` variants map to Phosphor's `*-circle` icons where they exist. The layout box approximates AppKit's (ink = icon units x 1.25 x pt / 256 x imageScale, plus a margin), so it differs from AppKit per glyph by a few percent.
 - A name missing from the table (or any name when `"symbols"` is `"placeholder"`) draws the placeholder below and reports `unsupported_symbol`.
 
 `Color` rgba gains an optional `"dark": [r, g, b]` (0..1): in dark appearance the host uses it instead of `r,g,b` (alpha unchanged), so adaptive system colors (`.red`, `.pink`, `.green`, `.blue`, ...) follow iOS 26 in dark mode.
@@ -252,9 +254,9 @@ When a `text_field` is focused, the host draws the iOS keyboard for the device p
 
 ### Dynamic Type
 
-`create_session` accepts `"os_version"` (alias `osVersion`): the simulated iOS release, `"27.2"` (default) or `"26.5"` (`"27"` / `"26"` also parse). It selects the release's look in the host (list row padding, keyboard, Liquid Glass, status bar, scroll edge, alert colors: `crates/simcore-render/src/look.rs` and per-release branches beside the code) and is passed to guests as `SIMCORE_OS_VERSION` / `SIMCORE_OS_BUILD` (React Native reports it as `Platform.Version`, `expo-device` `osVersion`), with the profile slug as `SIMCORE_DEVICE`. `status` reports `os_version`. CLI: `simcore run|expo --ios 26.5`; web: `simcore_web_set_ios(index)` (0 = 26.5, 1 = 27.2). Each release is pinned to the Simulator runtime its references were captured on (`docs/compatibility/versions.json`).
+`create_session` accepts `"os_version"` (alias `osVersion`): the simulated iOS release, `"27.2"` (default) or `"26.5"` (`"27"` / `"26"` also parse). It selects the release's look in the host (list row padding, keyboard, Liquid Glass, status bar, scroll edge, alert colors: `crates/onesim-render/src/look.rs` and per-release branches beside the code) and is passed to guests as `SIMCORE_OS_VERSION` / `SIMCORE_OS_BUILD` (React Native reports it as `Platform.Version`, `expo-device` `osVersion`), with the profile slug as `SIMCORE_DEVICE`. `status` reports `os_version`. CLI: `onesim run|expo --ios 26.5`; web: `simcore_web_set_ios(index)` (0 = 26.5, 1 = 27.2). Each release is pinned to the Simulator runtime its references were captured on (`docs/compatibility/versions.json`).
 
-`create_session` accepts `"dynamic_type_size"` (alias `dynamicTypeSize`): `xSmall|small|medium|large|xLarge|xxLarge|xxxLarge|accessibility1..accessibility5` (default `large`). CLI: `simcore run --dynamic-type SIZE`; web: `?dynamicType=SIZE` / `sim.init({dynamicType})` / `sim.setDynamicType(size)`.
+`create_session` accepts `"dynamic_type_size"` (alias `dynamicTypeSize`): `xSmall|small|medium|large|xLarge|xxLarge|xxxLarge|accessibility1..accessibility5` (default `large`). CLI: `onesim run --dynamic-type SIZE`; web: `?dynamicType=SIZE` / `sim.init({dynamicType})` / `sim.setDynamicType(size)`.
 - The host resolves the point size of every text *style* (`.largeTitle` ... `.caption2`, and unstyled text = `.body`) from Apple's Dynamic Type table (iOS, 12 sizes x 11 styles; `TextStyle::size_at`). `.system(size:)` is fixed. Nav bar titles, list headers, symbols and control sizes do not scale in v1.
 - Above 34pt the host uses leading `1.12 x size + 2.6` (measured: 53pt body -> 62pt lines) and per-size tracking fitted to the fixtures.
 - Verified against `typography-scrolled.json`: that fixture was captured at `accessibility-extra-extra-extra-large`, which is `accessibility5` (60/58/53/43pt for large title / title / body / caption), not accessibility3.
@@ -311,7 +313,7 @@ System chrome uses the same effect:
   `Detent` is `{"kind":"medium"|"large"}`, `{"kind":"fraction","value"}` (of the large detent's height) or `{"kind":"height","value"}` (points); any order, the host sorts by height and starts at the smallest. Empty = large only. `dismiss` is a guest action that clears the binding (the guest then runs `onDismiss`); a sheet without it is `interactiveDismissDisabled`. `presentationDetents` / `presentationDragIndicator` / `interactiveDismissDisabled` are lifted off the sheet content's top node by the guest and never appear as modifiers. `actions` are buttons in source order; the host orders them. A dialog gets a Cancel button appended when the app gave none; its `dismiss` is that button's action id (tapping outside the popover cancels), and `anchor` is the id of the view the `.confirmationDialog` modifier is attached to. Tapping any alert/dialog button runs its action id and the guest clears the binding. The guest evaluates presented content under `<path>/sheet`, `<path>/cover` and `<path>/alert`, so its `@State` lives only while shown; `onDismiss` fires through the lifecycle machinery when the layer stops being evaluated (dismiss(), a swipe, or app code clearing the binding). A host that receives `presentation` nested below the root ignores the layer.
 - Layer ids are `layer<i>` (index in `layers`). The host keeps a detent and a drag position per sheet layer id, like scroll offsets, in `Interaction::sheets`, and passes them to layout as `SceneParams::sheets`.
 - Pointer event kind `"drag"`: `{"kind":"drag","x","y","dx","dy"}` is one whole finger gesture from (x, y) by (dx, dy) points (CLI `--drag X,Y,DX,DY`; the web test harness too). A touch UI uses `Interaction::drag` (begin/move/end) directly. A drag inside a sheet card moves the sheet unless the sheet is at its largest detent over content that can still scroll that way (then the content scrolls). On release the sheet settles at the nearest detent (after projecting 0.15 s of finger velocity), or, dragged below the dismiss line (25% of the way from the smallest detent to the screen bottom), runs its `dismiss` action. Sheets cannot be dragged above their largest detent. No animation: settled states only.
-- Host rendering (`SHEET_*`, `ALERT_*`, `POPOVER_*` constants at the top of `crates/simcore-render/src/layout/swiftui.rs`, all measured on the iOS 26.5 simulator):
+- Host rendering (`SHEET_*`, `ALERT_*`, `POPOVER_*` constants at the top of `crates/onesim-render/src/layout/swiftui.rs`, all measured on the iOS 26.5 simulator):
   - A black scrim (0.20 light / 0.46 dark) dims `content`; a `scrim` node marks the modal boundary: only nodes of the topmost layer can be tapped or scrolled. Prominent tints in what lies under a layer desaturate to gray.
   - **Sheet**: at its largest detent a full-width card from the top safe inset (62pt; 10pt lower per sheet under it, which also share a single dim) to the bottom, top radius 40, grouped background (elevated in dark). Below its largest detent it floats: inset 8pt at the sides and bottom, top radius 36, Liquid Glass fill, list backgrounds transparent over it. Its content is the large-sheet layout (402 wide) scaled by 0.96 about the card's top center (rows 355 x 49.9, text 0.96x), as the simulator reports. A sheet up over a screen flattens that screen's back-button glass to a barely visible disc; alerts keep it. The optional drag indicator is 34.7x5 at 4.67pt below the top.
   - **Cover**: opaque system background edge to edge (no scrim), content placed like the root.
@@ -337,7 +339,7 @@ It loads the app bundle from Metro and runs React Native's own Fabric renderer; 
   point, `up` → touch `end` on the same target, `click` = both. After `end` the call waits for
   the next tree (2 s); a tap that changes nothing is not an error. `drag` → touch `start` at
   (x, y), 8 `move`s along (dx, dy) (timestamps 16 ms apart), `end`, all on the start's target.
-- CLI: `simcore expo [--platform ios|android] [--url URL] [--device NAME] [--headless] [--appearance light|dark] [--screenshot out.png] [--click X,Y ...]`.
+- CLI: `onesim expo [--platform ios|android] [--url URL] [--device NAME] [--headless] [--appearance light|dark] [--screenshot out.png] [--click X,Y ...]`.
 
 ### Guest launch env
 
@@ -382,7 +384,7 @@ Android dispatches `keyboardDidShow` and `keyboardDidHide` as simulated focus no
 - `{"type":"reload"}` — full reload (fresh JS global).
 - `environment` → Appearance `appearanceChanged`, Dimensions `didUpdateDimensions`.
 
-Unsupported native modules: stderr `SimCore: <Module> is not supported (method: <m>)` plus one
+Unsupported native modules: stderr `OneSim: <Module> is not supported (method: <m>)` plus one
 `{"type":"error"}` per module (surfaced by `get_errors`). Nothing reports fake success.
 
 ### Milestone 1 additions (TextInput, ScrollView, Image, Switch, Modal)
@@ -426,7 +428,7 @@ its existing focus + software-keyboard machinery.
 - `contentOffset` prop sets the initial offset.
 
 **Image** (`RCTImageView`). The guest downloads `source[0].uri` (http(s), `data:`, Metro
-assets) with Node `fetch` into `$TMPDIR/simcore-images/<sha1(uri)>.<ext>` and adds
+assets) with Node `fetch` into `$TMPDIR/onesim-images/<sha1(uri)>.<ext>` and adds
 `props.__simcoreImage = {"path","width","height"}` (pixels) to the node, dispatching
 `topLoadStart`, `topLoad` `{source:{uri,width,height}}`, `topLoadEnd` (or `topError`
 `{error}`). Host decodes PNG/JPEG from `path` and draws with `resizeMode`
@@ -513,7 +515,7 @@ JS-driven push/pop needs no message. The guest spaces appear events by 350 ms
   after every (re)load; host → guest `{"type":"simulate","module","state"}`. Event lines add
   `navigation.changed` (`{route,params,stack}`, Expo Router pathnames), `module.unsupported`,
   `module.called`.
-- The v2 JSON-RPC/WebSocket API (`simcore serve --listen ADDR`) is specified in `docs/api.md`.
+- The v2 JSON-RPC/WebSocket API (`onesim serve --listen ADDR`) is specified in `docs/api.md`.
 
 ### `Alert.alert` (AlertManager)
 
@@ -552,11 +554,11 @@ JS-driven push/pop needs no message. The guest spaces appear events by 350 ms
 ## K. v1 additions: Jetpack Compose on Android (additive, protocol version stays 1)
 
 Guest: a JVM process running the app's Kotlin code compiled with the Kotlin Compose compiler plugin against the
-**real** `androidx.compose.runtime` (composition, snapshots, recomposition) and SimCore's own reimplementation of
+**real** `androidx.compose.runtime` (composition, snapshots, recomposition) and OneSim's own reimplementation of
 `androidx.compose.ui` / `foundation` / `material3` / `activity-compose` (`frameworks/compose`). Material components
 are built in Kotlin out of the ui primitives below, as in AndroidX, so the wire only carries **layout primitives
 plus a modifier chain**; the host lays them out with Compose's constraint-based measure/place model
-(`simcore-render::layout::compose`).
+(`onesim-render::layout::compose`).
 
 ### API
 
@@ -564,7 +566,7 @@ plus a modifier chain**; the host lays them out with Compose's constraint-based 
   = a `.kt` file or a directory of them. `root_view` names a top-level `@Composable` function with no parameters;
   without it the guest launches the app's `ComponentActivity` subclass (`onCreate` → `setContent { … }`).
 - Default device for compose sessions: `pixel-10a` (Android).
-- CLI: `simcore run <dir with .kt files> [--root-view Name]` picks compose automatically.
+- CLI: `onesim run <dir with .kt files> [--root-view Name]` picks compose automatically.
 
 ### Guest launch env
 

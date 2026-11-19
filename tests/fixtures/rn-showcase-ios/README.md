@@ -1,7 +1,7 @@
 # rn-showcase-ios ground-truth fixtures
 
 `examples/expo-showcase` (plain React Native, Expo SDK 58) running in **Expo Go 58.0.7** on the iPhone 17 Pro simulator, iOS 26.5
-(402 x 874 pt, scale 3, PNGs 1206 x 2622). Compared by `scripts/compare-ios.sh` (RN block) against `simcore expo`.
+(402 x 874 pt, scale 3, PNGs 1206 x 2622). Compared by `scripts/compare-ios.sh` (RN block) against `onesim expo`.
 
 ## Capture steps
 1. `cd examples/expo-showcase && npm install && CI=1 npx expo start --port 8095` (Expo Go 58 must be installed on the sim; `npx expo start --ios` installs it).
@@ -12,8 +12,8 @@
    Taps are agent-device `press X Y` in points; typing is `agent-device type Hello` (if the runner watchdog trips, relaunch Expo Go and redo).
 5. `home-dark`: `agent-device settings appearance dark`, wait, screenshot, then back to light. The app follows `useColorScheme` (black bg, white text).
 
-## States and SimCore equivalents (`simcore expo --url http://localhost:PORT ...`)
-| state | iOS capture | SimCore |
+## States and OneSim equivalents (`onesim expo --url http://localhost:PORT ...`)
+| state | iOS capture | OneSim |
 |---|---|---|
 | home | launch | (none) |
 | layout / text / controls | press row (60,145) / (60,197) / (60,249) (7 home rows: ... Image, Visuals, Refresh) | `--click Layout` / `--click Text` / `--click Controls` |
@@ -28,7 +28,7 @@
 | visuals / visuals-dark | press Visuals row (60,405); -dark in dark appearance | `--click Visuals` (`--dark` first for -dark) |
 | refresh-pulled / -dark | press Refresh row (60,457), `agent-device scroll up 0.5 --duration-ms 1000` (pulls ~145 pt past the top: onRefresh, title "Refreshing", spinner stays), wait ~1 s; -dark in dark appearance | `--click Refresh --scroll 200,300,0,-150` (`--dark` first for -dark) |
 
-## App facts SimCore must match
+## App facts OneSim must match
 - Root `paddingTop: 62` (iPhone 17 Pro inset), no safe-area lib; Expo Go adds no chrome with the Tools button off. `StatusBar` style follows scheme.
 - Plain system font (SF Pro), explicit sizes; Home title 34 bold, rows 52 pt with 1 pt hairline, chevron is a ">" glyph, #C7C7CC.
 - Header row: 44 pt tall at y=62 ("Back" link blue 17pt left, title gray 17pt semibold, Scroll also "Jump" right). Labels (`accessibilityLabel`): rows Layout/Text/Controls/Scroll/Image, Back, Increment, Count (the "Count: N" text; opens the reset alert), Alpha, Beta (Switch), "Type here" (TextInput), Jump.

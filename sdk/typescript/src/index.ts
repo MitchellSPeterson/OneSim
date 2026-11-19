@@ -1,4 +1,4 @@
-// SimCore TypeScript SDK: JSON-RPC 2.0 over WebSocket (docs/api.md). Zero dependencies; erasable TS only.
+// OneSim TypeScript SDK: JSON-RPC 2.0 over WebSocket (docs/api.md). Zero dependencies; erasable TS only.
 
 // ---------- types ----------
 export type Framework = "expo" | "react-native" | "swiftui";
@@ -130,15 +130,15 @@ export interface ClientOptions {
 }
 
 // ---------- errors ----------
-export class SimCoreError extends Error {
-  /** SimCore `error.data.code` (bad_request, not_found, ...) or a client-side code: timeout, disconnected, closed, connect_failed. */
+export class OneSimError extends Error {
+  /** OneSim `error.data.code` (bad_request, not_found, ...) or a client-side code: timeout, disconnected, closed, connect_failed. */
   code: string;
   rpcCode?: number;
   sessionId?: string;
   details?: unknown;
   constructor(code: string, message: string, extra: { rpcCode?: number; sessionId?: string; details?: unknown } = {}) {
     super(message);
-    this.name = "SimCoreError";
+    this.name = "OneSimError";
     this.code = code;
     this.rpcCode = extra.rpcCode;
     this.sessionId = extra.sessionId;
@@ -153,7 +153,7 @@ function normalizeUrl(url: string): string {
   const u = new URL(url);
   if (u.protocol === "http:") u.protocol = "ws:";
   else if (u.protocol === "https:") u.protocol = "wss:";
-  else if (u.protocol !== "ws:" && u.protocol !== "wss:") throw new SimCoreError("bad_request", `unsupported url scheme ${u.protocol}`);
+  else if (u.protocol !== "ws:" && u.protocol !== "wss:") throw new OneSimError("bad_request", `unsupported url scheme ${u.protocol}`);
   return u.toString();
 }
 
@@ -168,7 +168,7 @@ type Pending = { resolve: (v: any) => void; reject: (e: Error) => void; timer: R
 type Listener = { name: EventName | "*"; handler: (e: SimEvent) => void };
 
 // ---------- client ----------
-export class SimCoreClient {
+export class OneSimClient {
   capabilities?: Capabilities;
   private url: string;
   private opts: ClientOptions;
@@ -187,7 +187,7 @@ export class SimCoreClient {
 
   /** Open the socket and run `initialize`. Called lazily by every request; safe to call repeatedly. */
   connect(): Promise<void> {
-    if (this.closed) return Promise.reject(new SimCoreError("closed", "client is closed"));
+    if (this.closed) return Promise.reject(new OneSimError("closed", "client is closed"));
     // ponytail: first connect fails fast; after a drop we retry 6x (~3 s of backoff) before giving up.
     this.conn ??= this.open(this.everConnected ? 6 : 0).catch((e) => {
       this.conn = null;
@@ -202,12 +202,12 @@ export class SimCoreClient {
         const ws = await new Promise<WebSocket>((resolve, reject) => {
           const s = new WebSocket(this.url);
           s.onopen = () => resolve(s);
-          s.onerror = () => reject(new SimCoreError("connect_failed", `cannot connect to ${this.url}`));
+          s.onerror = () => reject(new OneSimError("connect_failed", `cannot connect to ${this.url}`));
         });
         this.attach(ws);
         const init = await this.rpc("initialize", {
           protocolVersion: "2.0",
-          client: { name: this.opts.clientName ?? "simcore-sdk", version: this.opts.clientVersion ?? "0.2.0" },
+          client: { name: this.opts.clientName ?? "onesim-sdk", version: this.opts.clientVersion ?? "0.2.0" },
         });
         this.capabilities = init.capabilities;
         this.everConnected = true;
@@ -233,7 +233,7 @@ export class SimCoreClient {
       this.conn = null;
       for (const p of this.pending.values()) {
         clearTimeout(p.timer);
-        p.reject(new SimCoreError("disconnected", "connection lost"));
+        p.reject(new OneSimError("disconnected", "connection lost"));
       }
       this.pending.clear();
       if (!this.closed && [...this.sessions.values()].some((s) => s.hasListeners)) this.reconnectForever();
@@ -261,19 +261,19 @@ export class SimCoreClient {
     clearTimeout(p.timer);
     if (m.error) {
       const d = m.error.data ?? {};
-      p.reject(new SimCoreError(d.code ?? "runtime_error", m.error.message, { rpcCode: m.error.code, sessionId: d.sessionId, details: d.details }));
+      p.reject(new OneSimError(d.code ?? "runtime_error", m.error.message, { rpcCode: m.error.code, sessionId: d.sessionId, details: d.details }));
     } else p.resolve(m.result);
   }
 
   /** Raw send on the current socket (no connect, no handshake). */
   rpc(method: string, params: unknown, timeoutMs = this.opts.timeoutMs ?? 60_000): Promise<any> {
     const ws = this.ws;
-    if (!ws) return Promise.reject(new SimCoreError("disconnected", "not connected"));
+    if (!ws) return Promise.reject(new OneSimError("disconnected", "not connected"));
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new SimCoreError("timeout", `${method} timed out after ${timeoutMs} ms`));
+        reject(new OneSimError("timeout", `${method} timed out after ${timeoutMs} ms`));
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
       try {
@@ -281,7 +281,7 @@ export class SimCoreClient {
       } catch {
         this.pending.delete(id);
         clearTimeout(timer);
-        reject(new SimCoreError("disconnected", "send failed"));
+        reject(new OneSimError("disconnected", "send failed"));
       }
     });
   }
@@ -331,7 +331,7 @@ export class SimCoreClient {
     this.conn = null;
     for (const p of this.pending.values()) {
       clearTimeout(p.timer);
-      p.reject(new SimCoreError("closed", "client closed"));
+      p.reject(new OneSimError("closed", "client closed"));
     }
     this.pending.clear();
     ws?.close();
@@ -346,12 +346,12 @@ export class SimCoreClient {
 // ---------- session ----------
 export class Session {
   readonly id: string;
-  private client: SimCoreClient;
+  private client: OneSimClient;
   private listeners = new Set<Listener>();
   private lastSeq = 0;
   private wantReplay = false;
 
-  constructor(client: SimCoreClient, id: string) {
+  constructor(client: OneSimClient, id: string) {
     this.client = client;
     this.id = id;
   }
@@ -430,7 +430,7 @@ export class Session {
       }, { replay });
       const timer = setTimeout(() => {
         off();
-        reject(new SimCoreError("timeout", `no ${name} event within ${timeoutMs} ms`, { sessionId: this.id }));
+        reject(new OneSimError("timeout", `no ${name} event within ${timeoutMs} ms`, { sessionId: this.id }));
       }, timeoutMs);
     });
   }

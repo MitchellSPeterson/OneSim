@@ -7,7 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 
-// iOS Expo Go sends console warnings to the debugger (Fusebox), SimCore to LogBox's toast: keep the core SafeAreaView
+// iOS Expo Go sends console warnings to the debugger (Fusebox), OneSim to LogBox's toast: keep the core SafeAreaView
 // deprecation warning (RN 0.88) off the screenshots.
 LogBox.ignoreLogs(['SafeAreaView has been deprecated']);
 

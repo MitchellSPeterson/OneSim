@@ -1,7 +1,7 @@
 # swiftui-tabs-ios ground-truth fixtures
 
 `examples/swiftui-tabs` built against Apple's SwiftUI and run on the iPhone 17 Pro simulator, iOS 26.5 (402 x 874 pt, scale 3,
-PNGs 1206 x 2622). Compared by `scripts/compare-ios.sh` (SwiftUI TabView block) against `simcore run examples/swiftui-tabs`.
+PNGs 1206 x 2622). Compared by `scripts/compare-ios.sh` (SwiftUI TabView block) against `onesim run examples/swiftui-tabs`.
 
 ## Capture steps
 1. `scripts/build-ios-sim.sh examples/swiftui-tabs target/ios/Tabs.app dev.simcore.tabs`
@@ -12,7 +12,7 @@ PNGs 1206 x 2622). Compared by `scripts/compare-ios.sh` (SwiftUI TabView block) 
 4. `snapshot --json > <name>.json` beside a PNG records the accessibility frames.
 
 ## States
-| state | iOS capture | SimCore |
+| state | iOS capture | OneSim |
 |---|---|---|
 | tabs-home | launch | (none) |
 | tabs-home-dark | dark, launch | `--dark` |
@@ -20,7 +20,7 @@ PNGs 1206 x 2622). Compared by `scripts/compare-ios.sh` (SwiftUI TabView block) 
 | tabs-pushed | launch, press Apple row (200,193) | `--click Apple` |
 | tabs-settings-dark | dark, launch, press Settings tab (287,822) | `--dark --click 287,822` |
 
-## Facts SimCore must match (points)
+## Facts OneSim must match (points)
 - Same floating glass tab bar as `../rn-router-ios` (NativeTabs): a11y TabBar frame 0,791 402x83; with three tabs the
   items are 94x54 at x 68 / 154 / 240 (a11y y 795; drawn 797 in the PNGs), capsule 274 wide.
 - Tab bars draw the `.fill` variant of each symbol (a11y names `home`, `favorite`, `gearshape.fill`); selected = accent symbol and title

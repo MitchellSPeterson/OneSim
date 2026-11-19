@@ -1,0 +1,14 @@
+[package]
+name = "onesim-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "C ABI guest runtime linked into OneSim Swift apps"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+libc = "0.2"
+serde_json = { workspace = true, features = ["raw_value"] }

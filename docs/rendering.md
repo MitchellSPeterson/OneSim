@@ -1,23 +1,23 @@
 # Rendering backends
 
 Layout, hit testing and input are backend independent: the host builds one `Scene` and a `Renderer`
-(`crates/simcore-render/src/backend.rs`) turns it into pixels.
+(`crates/onesim-render/src/backend.rs`) turns it into pixels.
 
 | backend | what | availability |
 |---|---|---|
 | `cpu` | tiny-skia + cosmic-text, the deterministic reference (all pixel-diff gates use it) | always |
-| `gpu` | wgpu + Vello (`crates/simcore-render-gpu`), render to texture and read back once per frame; Liquid Glass and scroll edges run as compute passes on an accumulation texture (`SIMCORE_GPU_GLASS=cpu` forces the CPU backdrop path) | `--features gpu` and a usable adapter |
+| `gpu` | wgpu + Vello (`crates/onesim-render-gpu`), render to texture and read back once per frame; Liquid Glass and scroll edges run as compute passes on an accumulation texture (`SIMCORE_GPU_GLASS=cpu` forces the CPU backdrop path) | `--features gpu` and a usable adapter |
 
-The GPU backend lowers a `Scene` to an internal `DisplayList` in device pixels using `simcore_render::Builder`.
-`simcore_render_gpu::Executor` runs that list into a texture. Its inputs include CPU-rasterized text, glyph and symbol
+The GPU backend lowers a `Scene` to an internal `DisplayList` in device pixels using `onesim_render::Builder`.
+`onesim_render_gpu::Executor` runs that list into a texture. Its inputs include CPU-rasterized text, glyph and symbol
 sprites. Native and browser presenters blit the texture directly. Headless GPU capture reads it back once after rendering
 unless the frame needs a CPU backdrop pass. The executor builds for `wasm32-unknown-unknown` with
 `--no-default-features`.
 
 ## Migrating to v0.3
 
-1. Keep your existing app source and headless screenshot commands. Set `--renderer cpu` for deterministic captures
-   when a shared environment might set `SIMCORE_RENDERER`.
+1. Use `onesim` in CLI scripts. Headless captures default to the CPU. Set `--renderer cpu` to override a shared
+   `SIMCORE_RENDERER` setting.
 2. Build with `--features window` for native preview. Unset `SIMCORE_RENDERER` or choose `--renderer auto` to try the
    GPU first. Build with `--features gpu` if you only need opt-in headless GPU captures.
 3. Rebuild and deploy the complete `target/web/` directory for browser preview. `app.wasm` and `gpu/` share a versioned
@@ -63,8 +63,8 @@ renderer: cpu (fallback: GPU renderer unavailable: no adapter)
 ## Building with the GPU backend
 
 ```
-cargo build -p simcore-cli --features gpu
-simcore run App.swift --renderer gpu --screenshot out.png
+cargo build -p onesim-cli --features gpu
+onesim run App.swift --renderer gpu --screenshot out.png
 ```
 
 The default build has no GPU dependencies. Native GPU builds honor wgpu's `WGPU_BACKEND` override
@@ -72,8 +72,8 @@ for adapter selection.
 
 ## Window
 
-`simcore window <app>` (SwiftUI, Compose) and `simcore expo --url <metro> --window` open a live session in a native
-window. Build with `cargo build -p simcore-cli --features window` (winit + softbuffer; implies `gpu`). Default builds
+`onesim window <app>` (SwiftUI, Compose) and `onesim expo --url <metro> --window` open a live session in a native
+window. Build with `cargo build -p onesim-cli --features window` (winit + softbuffer; implies `gpu`). Default builds
 do not have it. The other options (`--device`, `--dark`, `--click` ... applied before the window opens) are those of `run`.
 
 The window fits a fixed device viewport to the monitor. Render scale is the physical window width divided by the viewport
@@ -84,14 +84,14 @@ touches on the original Fabric target. Pointer moves and wheel events coalesce b
 
 **Backend.** `--renderer` / `SIMCORE_RENDERER`: unset or `auto` is GPU first here (interactive, not headless), CPU when
 no adapter; `gpu` fails at startup instead of falling back; `cpu` is tiny-skia through softbuffer. The GPU path is
-`simcore_render_gpu::WindowRenderer`: the executor draws the display list into an offscreen `Rgba8Unorm` storage texture,
+`onesim_render_gpu::WindowRenderer`: the executor draws the display list into an offscreen `Rgba8Unorm` storage texture,
 a fullscreen-triangle pass copies it to the swap chain (`Fifo` vsync, frame latency 2). The 8-bit values are already sRGB,
 so a non-sRGB surface format is used (an sRGB one is viewed as its non-sRGB twin): no second gamma. Failures: an outdated
 or lost swap chain is reconfigured and the frame retried (three in a row move to the CPU presenter); a lost device or any
 other GPU error switches to the CPU presenter, the session keeps running, and the reason is in the title and on stderr.
 An occluded swap chain skips GPU paint and is probed at most four times a second, including during momentum.
 
-**Frame scheduler** (`crates/simcore-cli/src/window/scheduler.rs`, pure and unit tested). Invalidations are input,
+**Frame scheduler** (`crates/onesim-cli/src/window/scheduler.rs`, pure and unit tested). Invalidations are input,
 resize / scale change, appearance, renderer switch and guest trees (`render.updated` events wake the loop; a tree no newer
 than the one already drawn is ignored). They coalesce into one draw, at most one per display refresh interval. While
 momentum or a bounce is in flight (`Host::tick`) the scheduler keeps drawing every interval and stops when it ends. With
@@ -102,7 +102,7 @@ live mode (no waiting for the guest after the first layout), so their animations
 |---|---|
 | Cmd+R / F5 | switch GPU and CPU presenters live (same session and scene) |
 | Cmd+D | toggle dark appearance |
-| Cmd+S | write `simcore-window.png` (the window as presented) |
+| Cmd+S | write `onesim-window.png` (the window as presented) |
 
 **Diagnostics.** The title and a stderr line give backend, adapter, surface format and any fallback reason.
 `SIMCORE_FRAME_STATS=1` prints one line per second:

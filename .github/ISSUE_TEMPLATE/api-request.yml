@@ -1,5 +1,5 @@
 name: API request (Expo / React Native / SwiftUI / Compose)
-description: An Expo, React Native, SwiftUI or Jetpack Compose API is missing, partial, or unsupported in SimCore.
+description: An Expo, React Native, SwiftUI or Jetpack Compose API is missing, partial, or unsupported in OneSim.
 title: "[API] <package>: <API>"
 labels: ["api"]
 body:
@@ -40,9 +40,9 @@ body:
     id: usage
     attributes:
       label: What the app does with it
-      description: A minimal snippet, the SimCore diagnostic you saw (`SimCore: X is not supported ...`), and what a preview should show.
+      description: A minimal snippet, the OneSim diagnostic you saw (`OneSim: X is not supported ...`), and what a preview should show.
   - type: textarea
     id: approach
     attributes:
       label: Implement or simulate?
-      description: Should SimCore run it for real (e.g. a file system in a sandbox dir) or simulate it with host-controlled state (`modules.simulate`)? Optional.
+      description: Should OneSim run it for real (e.g. a file system in a sandbox dir) or simulate it with host-controlled state (`modules.simulate`)? Optional.

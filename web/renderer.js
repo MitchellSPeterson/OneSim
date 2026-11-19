@@ -1,7 +1,7 @@
 // Presentation backends for web/main.js: WebGPU first, CPU (putImageData) as the always-available fallback.
 //
 // The runtime (app.wasm) can produce either RGBA pixels (output mode 0) or an encoded display list (mode 1,
-// executed by gpu/simcore_web_gpu_bg.wasm on a WebGPU canvas). State machine:
+// executed by gpu/onesim_web_gpu_bg.wasm on a WebGPU canvas). State machine:
 //
 //   start --(renderer=cpu | no navigator.gpu | no display-list export)--> cpu
 //   start --(GPU init ok)--> gpu --(render throws | device lost | init-time failure)--> cpu   (one way)
@@ -19,7 +19,7 @@ export function preferredRenderer(q) {
 }
 
 export class Presenter {
-  /** `sim`: the SimCore driver; `stage`: element holding the canvas; `canvas`: the initial canvas. */
+  /** `sim`: the OneSim driver; `stage`: element holding the canvas; `canvas`: the initial canvas. */
   constructor({ sim, stage, canvas, preference = "auto", diag = null, log = console }) {
     Object.assign(this, { sim, stage, canvas, preference, diag, log });
     this.mode = "cpu";
@@ -37,8 +37,8 @@ export class Presenter {
     if (!navigator.gpu) return this.#report("cpu", "WebGPU unavailable (navigator.gpu missing)");
     if (!this.sim.supportsDisplayList) return this.#report("cpu", "app.wasm has no display-list output (rebuild with scripts/build-web.sh)");
     try {
-      const m = await import("./gpu/simcore_web_gpu.js");
-      await m.default({ module_or_path: new URL("./gpu/simcore_web_gpu_bg.wasm", import.meta.url) });
+      const m = await import("./gpu/onesim_web_gpu.js");
+      await m.default({ module_or_path: new URL("./gpu/onesim_web_gpu_bg.wasm", import.meta.url) });
       this.tainted = true;
       this.gpu = await m.init(this.canvas);
       this.sim.setOutput(1);
@@ -74,7 +74,7 @@ export class Presenter {
   fallback(reason) {
     clearInterval(this.watch);
     if (this.gpu) { try { this.gpu.free(); } catch { /* already unusable */ } this.gpu = null; }
-    try { this.sim.setOutput(0); } catch (e) { this.log.error("simcore: cannot switch runtime to CPU output", e); }
+    try { this.sim.setOutput(0); } catch (e) { this.log.error("onesim: cannot switch runtime to CPU output", e); }
     if (this.tainted) this.#freshCanvas();
     this.ctx = null;
     this.mode = "cpu";
@@ -113,7 +113,7 @@ export class Presenter {
     const text = mode === "gpu"
       ? `renderer: WebGPU (${info.adapter || "adapter"}, ${info.backend}${info.limitations ? `; ${info.limitations}` : ""})`
       : `renderer: CPU${reason ? ` - ${reason}` : ""}`;
-    (reason && this.preference !== "cpu" ? this.log.warn : this.log.info).call(this.log, `simcore: ${text}`);
+    (reason && this.preference !== "cpu" ? this.log.warn : this.log.info).call(this.log, `onesim: ${text}`);
     if (this.diag) this.diag.textContent = text;
     this.info = info;
   }

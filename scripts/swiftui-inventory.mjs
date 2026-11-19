@@ -4,7 +4,7 @@
 //   node scripts/swiftui-inventory.mjs
 // One row per public top-level type, View/Scene/Shape modifier, Text/Image method and EnvironmentValues
 // property available on iOS. Status, Issue and Notes of rows already in the folder are kept; new rows get ✅ when
-// SimCore's module (frameworks/swiftui/Sources/SwiftUI) declares the same name in the same scope, else ⬜.
+// OneSim's module (frameworks/swiftui/Sources/SwiftUI) declares the same name in the same scope, else ⬜.
 // The SDK version used is written to docs/compatibility/versions.json (`ios.apiSdk`).
 // Afterwards run `node scripts/api-coverage.mjs` to refresh the summary.
 import { execFileSync } from 'node:child_process';
@@ -52,7 +52,7 @@ function* decls(src) {
 
 const keyOf = (d) => (d.kind === 'type' ? d.name : d.scope === 'EnvironmentValues' ? `\\.${d.name}` : d.scope === 'View' ? `.${d.name}` : `${d.scope}.${d.name}`);
 
-// SimCore's module: which keys it declares.
+// OneSim's module: which keys it declares.
 const ours = new Set();
 const ourDir = root + 'frameworks/swiftui/Sources/SwiftUI/';
 for (const f of readdirSync(ourDir).filter((f) => f.endsWith('.swift'))) {
@@ -120,7 +120,7 @@ for (const s of SECTIONS) {
     const has = ours.has(k);
     const row = kept.get(k) || { status: has ? '✅' : '⬜', issue: '', notes: '' };
     if (!row.notes && v.deprecated) row.notes = v.deprecated;
-    if (row.status === '⬜' && has) warnings.push(`${k}: marked ⬜ but SimCore declares it`);
+    if (row.status === '⬜' && has) warnings.push(`${k}: marked ⬜ but OneSim declares it`);
     return `| \`${k}\` | ${v.since.toFixed(1).replace(/\.0$/, '')} | ${row.status} | ${row.issue} | ${row.notes} |`;
   }), ''].join('\n'));
 }
@@ -128,6 +128,6 @@ const matrixPath = root + 'docs/compatibility/versions.json';
 const matrix = JSON.parse(readFileSync(matrixPath, 'utf8'));
 matrix.ios.apiSdk = sdk.match(/iPhoneOS([\d.]+)\.sdk/)[1];
 writeFileSync(matrixPath, JSON.stringify(matrix, null, 2) + '\n');
-console.log(`${api.size} APIs (${[...api.keys()].filter((k) => ours.has(k)).length} declared by SimCore) from ${sdk}`);
+console.log(`${api.size} APIs (${[...api.keys()].filter((k) => ours.has(k)).length} declared by OneSim) from ${sdk}`);
 for (const s of SECTIONS) console.log(`  ${s}: ${[...api.values()].filter((v) => v.section === s).length}`);
 if (warnings.length) console.warn(warnings.join('\n'));

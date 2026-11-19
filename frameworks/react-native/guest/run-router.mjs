@@ -7,7 +7,7 @@ import { root, run, sleep, startHost, startMetro, walk } from './lib.mjs';
 
 const ports = { tabs: Number(process.argv[2]) || 8211, stack: Number(process.argv[3]) || 8212 };
 const W = 402, H = 874;
-// `error` messages that are known diagnostics (SimCore: X is not supported); none today.
+// `error` messages that are known diagnostics (OneSim: X is not supported); none today.
 const ALLOWED_ERRORS = [];
 
 const find = (n, pred) => { let r; walk(n, (v) => { if (!r && pred(v)) r = v; }); return r; };

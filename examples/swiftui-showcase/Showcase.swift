@@ -1,7 +1,7 @@
 import SwiftUI
 
 // A multi-screen app exercising a broad SwiftUI surface. It must compile
-// unchanged against Apple's SwiftUI (iOS 26+) and SimCore's SwiftUI module.
+// unchanged against Apple's SwiftUI (iOS 26+) and OneSim's SwiftUI module.
 
 struct TodoItem: Identifiable {
     let id: Int

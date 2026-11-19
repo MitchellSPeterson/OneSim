@@ -1,6 +1,6 @@
 package androidx.compose.ui.tooling.preview
 
-/** Marker read by Android Studio; SimCore accepts and ignores it. */
+/** Marker read by Android Studio; OneSim accepts and ignores it. */
 @Retention(AnnotationRetention.BINARY)
 @Target(AnnotationTarget.ANNOTATION_CLASS, AnnotationTarget.FUNCTION)
 @Repeatable
