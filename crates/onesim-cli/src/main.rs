@@ -37,6 +37,9 @@ enum Cmd {
         /// Metro dev server (default http://localhost:8081).
         #[arg(long)]
         url: Option<String>,
+        /// Target platform (defaults to iOS).
+        #[arg(long, default_value = "ios", value_parser = ["ios", "android"])]
+        platform: String,
         /// Accepted for symmetry with other runners: there is no window, every run is headless.
         #[arg(long)]
         headless: bool,
@@ -155,13 +158,13 @@ fn main() -> Result<()> {
             let framework = if is_kotlin(&app_path) { "compose" } else { "swiftui" };
             run(&matches, "run", CreateSessionParams { app_path, root_view, ..params(framework) }, opts, None)
         }
-        Cmd::Expo { url, appearance, opts, .. } => {
+        Cmd::Expo { url, platform, appearance, opts, .. } => {
             let appearance = match appearance.as_deref() {
                 None | Some("light") => None,
                 Some("dark") => Some(Appearance::Dark),
                 Some(a) => bail!("unknown --appearance {a:?} (light, dark)"),
             };
-            run(&matches, "expo", CreateSessionParams { metro_url: url, ..params("react-native") }, opts, appearance)
+            run(&matches, "expo", CreateSessionParams { metro_url: url, platform, ..params("react-native") }, opts, appearance)
         }
     }
 }
@@ -198,9 +201,15 @@ fn params(framework: &str) -> CreateSessionParams {
 /// Create a session from the shared options, drive it in command-line order, then shut down.
 fn run(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: Opts, appearance: Option<Appearance>) -> Result<()> {
     let steps = steps(matches.subcommand_matches(name).expect("subcommand"));
+    let defaults = if p.platform == "android" || p.framework == "compose" {
+        onesim_host::device(onesim_render::DEFAULT_ANDROID_DEVICE).expect("default Android device")
+    } else {
+        onesim_host::device(onesim_render::DEFAULT_DEVICE).expect("default iOS device")
+    };
+    let viewport = o.device.as_deref().and_then(onesim_host::device).unwrap_or(defaults).viewport;
     p.viewport = match (o.width, o.height) {
         (None, None) => None,
-        (w, h) => Some(Viewport { width: w.unwrap_or(402.0), height: h.unwrap_or(874.0) }),
+        (w, h) => Some(Viewport { width: w.unwrap_or(viewport.width), height: h.unwrap_or(viewport.height) }),
     };
     p.scale = o.scale;
     p.appearance = Some(appearance.unwrap_or(if o.dark { Appearance::Dark } else { Appearance::Light }));

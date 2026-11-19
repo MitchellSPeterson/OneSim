@@ -279,7 +279,7 @@ const C_PIXEL_10A: Device = Device {
     android: true,
 };
 
-/// Default device of Android (Compose) sessions.
+/// Default device of Android sessions.
 pub const DEFAULT_ANDROID_DEVICE: &str = "pixel-10a";
 
 const fn named(name: &'static str, d: Device) -> Device {

@@ -330,21 +330,24 @@ It loads the app bundle from Metro and runs React Native's own Fabric renderer; 
 
 ### API
 
-- `create_session` accepts `"framework": "react-native"` (alias `"expo"`) and `"metro_url"`
-  (alias `metroUrl`, default `http://localhost:8081`); `app_path` is not used.
+- `create_session` accepts `"framework": "react-native"` (alias `"expo"`), `"platform": "ios"`
+  (default) or `"android"`, and `"metro_url"` (alias `metroUrl`, default `http://localhost:8081`).
+  The guest loads its app from Metro. Android defaults to the `pixel-10a` profile and reports
+  `os_version: "17"`. Devices must match the platform selected at session creation.
 - `get_capabilities.frameworks` includes `"react-native"`.
 - `send_pointer_event` on an RN session: `down` → touch `start` on the deepest node at the
   point, `up` → touch `end` on the same target, `click` = both. After `end` the call waits for
   the next tree (2 s); a tap that changes nothing is not an error. `drag` → touch `start` at
   (x, y), 8 `move`s along (dx, dy) (timestamps 16 ms apart), `end`, all on the start's target.
-- CLI: `onesim expo [--url URL] [--device NAME] [--headless] [--appearance light|dark] [--screenshot out.png] [--click X,Y ...]`.
+- CLI: `onesim expo [--platform ios|android] [--url URL] [--device NAME] [--headless] [--appearance light|dark] [--screenshot out.png] [--click X,Y ...]`.
 
 ### Guest launch env
 
-`SIMCORE_METRO_URL`, `SIMCORE_VIEWPORT=393x852`, `SIMCORE_APPEARANCE`, `SIMCORE_SESSION_ID`,
-`SIMCORE_SCALE` (default 3). Optional: `SIMCORE_HMR=1` (connect Metro `/hot`), `SIMCORE_DEBUG=1`.
-Bundle: `GET <metro>/` with `expo-platform: ios` → manifest `launchAsset.url`
-(fallback `/index.bundle?platform=ios&dev=true&minify=false`).
+`SIMCORE_METRO_URL`, `SIMCORE_PLATFORM` (`ios` or `android`), `SIMCORE_VIEWPORT`, `SIMCORE_APPEARANCE`,
+`SIMCORE_SESSION_ID`, `SIMCORE_SCALE`, and `SIMCORE_INSETS=top,bottom` (profile insets used on Android).
+Optional: `SIMCORE_HMR=1` (connect Metro `/hot`), `SIMCORE_DEBUG=1`.
+The guest loads `launchAsset.url` from the Expo manifest at `GET <metro>/` with `expo-platform` set
+to the session platform. Plain Metro uses `/index.bundle?platform=<platform>&dev=true&minify=false`.
 
 ### ViewNode kind `rn`
 
@@ -360,6 +363,16 @@ Bundle: `GET <metro>/` with `expo-platform: ios` → manifest `launchAsset.url`
   laid out as a View and reported once as `unsupported_component: <name>`.
 - Layout follows Yoga (column, `flexShrink: 0`, `alignContent: flex-start`, border-box);
   default text: system 14pt, black. Scene node ids are reactTags, so hit tests return tags.
+
+Android uses density-independent pixels and Roboto. Its Fabric names include `AndroidTextInput`,
+`AndroidSwitch` (`on`, `enabled`, `trackTintColor`, `thumbTintColor`), `AndroidProgressBar`,
+`AndroidHorizontalScrollView` with `AndroidHorizontalScrollContentView`, and
+`AndroidSwipeRefreshLayout` wrapping a scroller. The guest responds to existing focus, text input,
+scroll, and touch messages for these nodes. A switch tap dispatches `topChange` with `value`.
+The Android status bar and navigation handle are drawn over the edge-to-edge surface.
+`__simcoreStatusBarStyle` (`default`, `dark-content`, or `light-content`) and
+`__simcoreStatusBarHidden` (boolean) are optional Android `RootView` props from `StatusBarManager`.
+Android dispatches `keyboardDidShow` and `keyboardDidHide` as simulated focus notifications.
 
 ### Host → guest (additions)
 
@@ -394,8 +407,9 @@ its existing focus + software-keyboard machinery.
   {screenX, screenY, width, height}, duration: 0, easing: "keyboard", isEventFromThisApp: true}`
   (window coordinates; hidden frame = `screenY` at the window bottom). `duration: 0` because the
   host renders settled states (`KeyboardAvoidingView` skips LayoutAnimation).
-- Host → guest `{"type":"submit","tag"}` on return → `topSubmitEditing` `{text}`; then blur
-  unless `multiline`.
+- Host → guest `{"type":"submit","tag"}` on return → `topSubmitEditing` `{text}`.
+  `submitBehavior: "submit"` retains focus and `"blurAndSubmit"` blurs. With no explicit behavior,
+  single-line inputs blur and multiline inputs retain focus.
 - Guest → host `{"type":"focus_request","tag":<u64>|null}` when JS calls the `focus` / `blur`
   commands (null = blur); host focuses/unfocuses that field and shows/hides the keyboard.
   `setTextAndSelection` / `setNativeProps({text})` update the guest's text and re-emit.

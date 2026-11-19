@@ -17,7 +17,8 @@ const { Worker, isMainThread, parentPort, workerData } = require('node:worker_th
 
 Error.stackTraceLimit = 60;
 const ROOT_TAG = 1;
-const TEXT_INPUTS = new Set(['RCTSinglelineTextInputView', 'RCTMultilineTextInputView']);
+const TEXT_INPUTS = new Set(['RCTSinglelineTextInputView', 'RCTMultilineTextInputView', 'AndroidTextInput']);
+const SCROLL_VIEWS = new Set(['RCTScrollView', 'AndroidHorizontalScrollView']);
 // Native views of third-party libraries the host draws/understands (viewName on the wire). Expo module views are
 // `ViewManagerAdapter_<Module>[_<View>]`.
 const NATIVE_VIEWS = new Set(['RNSScreen', 'RNSModalScreen', 'RNSScreenStack', 'RNSScreenStackHeaderConfig', 'RNSScreenStackHeaderSubview', 'RNSScreenContainer',
@@ -31,7 +32,7 @@ const EXPO_VIEWS = {
   SymbolModule: { events: [], props: ['name', 'type', 'scale', 'tintColor', 'animated', 'weight', 'colors', 'resizeMode', 'animationSpec'] },
   ExpoGlassEffect_GlassView: { events: [], props: ['glassEffectStyle', 'tintColor', 'isInteractive', 'colorScheme', 'borderRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius', 'borderTopLeftRadius', 'borderTopRightRadius', 'borderTopStartRadius', 'borderTopEndRadius', 'borderBottomStartRadius', 'borderBottomEndRadius', 'borderCurve'] },
   ExpoGlassEffect_GlassContainer: { events: [], props: ['spacing'] },
-  ExpoLinearGradient: { events: [], props: ['colors', 'startPoint', 'endPoint', 'locations'] },
+  ExpoLinearGradient: { events: [], props: ['colors', 'startPoint', 'endPoint', 'locations', 'borderRadii'] },
   ExpoBlur_ExpoBlurView: { events: [], props: ['tint', 'intensity'] },
 };
 function expoViewConfig(key) {
@@ -47,7 +48,9 @@ function expoViewConfig(key) {
 const REFRESH_PULL = 100;
 const NAV_MS = process.env.SIMCORE_NAV_MS != null ? Number(process.env.SIMCORE_NAV_MS) : 350;
 // Safe-area insets of portrait iPhones by logical height (Dynamic Island 62, notch/DI 59 or 47, X-style notch 44, home-button 20).
-const insetsFor = (h) => ({ top: h >= 874 ? 62 : h >= 852 ? 59 : h >= 812 ? (h >= 844 ? 47 : 44) : 20, left: 0, right: 0, bottom: h >= 812 ? 34 : 0 });
+const insetsFor = (h) => cfg.platform === 'android'
+  ? cfg.androidInsets
+  : { top: h >= 874 ? 62 : h >= 852 ? 59 : h >= 812 ? (h >= 844 ? 47 : 44) : 20, left: 0, right: 0, bottom: h >= 812 ? 34 : 0 };
 const NAV_KIND = { RNSScreenStack: 'stacks', RNSTabsHostIOS: 'tabs', RNCSafeAreaProvider: 'providers', RNSScreenStackHeaderConfig: 'headers' };
 const EXPO_IMAGE = 'ViewManagerAdapter_ExpoImage';
 const isNativeView = (n) => NATIVE_VIEWS.has(n) || /^ViewManagerAdapter_/.test(n);
@@ -97,6 +100,7 @@ const arg = (n) => { const i = process.argv.indexOf(n); return i > 0 ? process.a
 
 const cfg = {
   metro: (arg('--url') || process.env.SIMCORE_METRO_URL || 'http://localhost:8081').replace(/\/+$/, ''),
+  platform: env.SIMCORE_PLATFORM === 'android' ? 'android' : 'ios',
   appearance: process.env.SIMCORE_APPEARANCE === 'dark' ? 'dark' : 'light',
   scale: Number(process.env.SIMCORE_SCALE) || 3,
   session: process.env.SIMCORE_SESSION_ID || '',
@@ -105,8 +109,13 @@ const cfg = {
   dataDir: workerData && workerData.dataDir, // per-session sandbox (documents, caches, secure store): survives reloads, removed on exit
 };
 {
-  const m = /^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$/.exec(process.env.SIMCORE_VIEWPORT || '393x852');
-  cfg.width = m ? +m[1] : 393; cfg.height = m ? +m[2] : 852;
+  const android = cfg.platform === 'android';
+  const fallback = android ? [1080 / 2.625, 2424 / 2.625] : [393, 852];
+  const m = /^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$/.exec(env.SIMCORE_VIEWPORT || '');
+  [cfg.width, cfg.height] = m ? m.slice(1).map(Number) : fallback;
+  const [top, bottom] = env.SIMCORE_INSETS ? env.SIMCORE_INSETS.split(',').map(Number) : [142 / 2.625, 24];
+  cfg.androidInsets = { top, bottom, left: 0, right: 0 };
+  if (android && !env.SIMCORE_SCALE) cfg.scale = 2.625;
 }
 
 const sendEvent = (name, detail) => send({ type: 'event', name, detail: detail || {} });
@@ -547,7 +556,8 @@ class Runtime {
         }, m.phase === 'move' ? 8 : 2);
         if (m.phase === 'end') {
           const t = this.nodes.get(m.tag); // latest committed props
-          if (t && t.viewName === 'RCTSwitch' && !t.props.disabled) this.dispatch(t, 'topChange', { value: !t.props.value, target: m.tag }, 2);
+          if (t?.viewName === 'RCTSwitch' && !t.props.disabled) this.dispatch(t, 'topChange', { value: !t.props.value, target: m.tag }, 2);
+          if (t?.viewName === 'AndroidSwitch' && t.props.enabled !== false) this.dispatch(t, 'topChange', { value: !t.props.on, target: m.tag }, 2);
         }
         break;
       }
@@ -580,7 +590,10 @@ class Runtime {
         if (!n || !TEXT_INPUTS.has(n.viewName)) return;
         const st = this.input(n);
         this.dispatch(n, 'topSubmitEditing', { text: st.text, eventCount: st.eventCount, target: m.tag }, 2);
-        if (n.viewName === 'RCTSinglelineTextInputView' && n.props.submitBehavior !== 'submit') { this.blur(m.tag); send({ type: 'focus_request', tag: null }); }
+        const single = n.viewName !== 'RCTMultilineTextInputView' && !n.props.multiline;
+        if (n.props.submitBehavior === 'blurAndSubmit' || (single && !n.props.submitBehavior)) {
+          this.blur(m.tag); send({ type: 'focus_request', tag: null });
+        }
         break;
       }
       case 'scroll': {
@@ -593,8 +606,11 @@ class Runtime {
         else if (m.phase === 'scroll') {
           this.dispatch(n, 'topScroll', ev, 8);
           // Overscroll past the top beyond UIRefreshControl's trigger distance starts a refresh.
-          const rc = m.y <= -REFRESH_PULL && n.children.map((c) => this.nodes.get(c.reactTag) || c).find((c) => c.viewName === 'PullToRefreshView');
-          if (rc && !rc.props.refreshing) this.dispatch(rc, 'topRefresh', {}, 2);
+          const rc = m.y <= -REFRESH_PULL && (n.children.map((c) => this.nodes.get(c.reactTag) || c).find((c) => c.viewName === 'PullToRefreshView')
+            || this.nodes.get(this.parents.get(n.reactTag)));
+          if (rc && ['PullToRefreshView', 'AndroidSwipeRefreshLayout'].includes(rc.viewName) && !rc.props.refreshing && rc.props.enabled !== false) {
+            this.dispatch(rc, 'topRefresh', {}, 2);
+          }
         }
         else if (m.phase === 'end') {
           if (!last || last[0] !== m.x || last[1] !== m.y) this.dispatch(n, 'topScroll', ev, 8); // programmatic scrollTo reply
@@ -630,7 +646,7 @@ class Runtime {
     this.dispatch(n, 'topEndEditing', { text: this.input(n).text, target: tag }, 2);
     this.dispatch(n, 'topBlur', { target: tag }, 2);
   }
-  // KeyboardObserver: the iOS keyboard notifications for the keyboard the host shows (height > 0) or hides (0).
+  // KeyboardObserver: notifications for keyboard focus (height > 0) or dismissal (0).
   // duration 0: OneSim renders settled states, so KeyboardAvoidingView jumps to its final layout (no LayoutAnimation).
   keyboard(height) {
     const { width, height: H } = this.window, from = this.kbFrame;
@@ -640,7 +656,10 @@ class Runtime {
     this.kbFrame = to;
     const ev = { startCoordinates: from || off, endCoordinates: to || off, duration: 0, easing: 'keyboard', isEventFromThisApp: true };
     const what = to ? 'Show' : 'Hide';
-    for (const n of [`keyboardWillChangeFrame`, `keyboardWill${what}`, `keyboardDidChangeFrame`, `keyboardDid${what}`]) this.emit(n, ev);
+    const events = cfg.platform === 'android'
+      ? [`keyboardDid${what}`]
+      : ['keyboardWillChangeFrame', `keyboardWill${what}`, 'keyboardDidChangeFrame', `keyboardDid${what}`];
+    for (const n of events) this.emit(n, ev);
   }
   // Fabric view commands (names/args from the *NativeComponent / *Commands specs).
   command(n, name, args) {
@@ -653,7 +672,10 @@ class Runtime {
         if (typeof text === 'string' && count >= st.eventCount) { st.text = text; this.scheduleEmit(); }
         return;
       }
-    } else if (n.viewName === 'RCTScrollView') {
+    } else if (n.viewName === 'AndroidSwitch' && name === 'setNativeValue') {
+      this.fabric.setNativeProps(n, { on: args[0] });
+      return;
+    } else if (SCROLL_VIEWS.has(n.viewName)) {
       if (name === 'scrollTo') return send({ type: 'scroll_to', tag, x: args[0] || 0, y: args[1] || 0 });
       if (name === 'scrollToEnd') return send({ type: 'scroll_to', tag, x: 'end', y: 'end' });
       if (name === 'flashScrollIndicators' || name === 'zoomToRect') return;
@@ -799,15 +821,19 @@ class Runtime {
         ev('didCompleteNetworkResponse', id, flags.timedOut ? 'Request timed out' : String(e && (e.cause && e.cause.message || e.message) || e), !!flags.timedOut);
       } finally { live.delete(id); node.clearTimeout(flags.timer); }
     };
+    const start = (id, q, onId) => {
+      const flags = {};
+      live.set(id, flags);
+      if (q.timeout > 0) flags.timer = node.setTimeout(() => { flags.timedOut = true; flags.abort && flags.abort(); }, q.timeout);
+      onId?.(id);
+      node.setImmediate(this.guard(() => run(id, q, flags)));
+    };
     return {
       addListener: () => {}, removeListeners: () => {},
-      sendRequest: (q, cb) => {
-        const id = ++next, flags = {};
-        live.set(id, flags);
-        if (q.timeout > 0) flags.timer = node.setTimeout(() => { flags.timedOut = true; flags.abort && flags.abort(); }, q.timeout);
-        cb(id);
-        node.setImmediate(this.guard(() => run(id, q, flags)));
-      },
+      sendRequest: cfg.platform === 'android'
+        ? (method, url, id, headers, data, responseType, incrementalUpdates, timeout) =>
+          start(id, { method, url, headers: Object.fromEntries(headers), data, responseType, incrementalUpdates, timeout })
+        : (q, cb) => start(++next, q, cb),
       abortRequest: (id) => { const f = live.get(id); if (f) { f.aborted = true; f.abort && f.abort(); } },
       clearCookies: (cb) => cb(false), // no cookie jar: nothing to clear
     };
@@ -998,7 +1024,7 @@ class Runtime {
     const u = new URL(this.scriptURL);
     const hmr = this.getCallable('HMRClient');
     const entry = (u.pathname.match(/([^/]+)\.bundle/) || [0, 'index'])[1];
-    if (hmr) this.guard(() => hmr.setup('ios', entry, u.hostname, Number(u.port) || (u.protocol === 'https:' ? 443 : 80), true, u.protocol.replace(':', '')))();
+    if (hmr) this.guard(() => hmr.setup(cfg.platform, entry, u.hostname, Number(u.port) || (u.protocol === 'https:' ? 443 : 80), true, u.protocol.replace(':', '')))();
   }
 }
 
@@ -1006,7 +1032,7 @@ class Runtime {
 async function resolveBundleUrl() {
   const o = new URL(cfg.metro);
   try {
-    const r = await node.fetch(cfg.metro + '/', { headers: { 'expo-platform': 'ios', accept: 'application/expo+json,application/json' } });
+    const r = await node.fetch(cfg.metro + '/', { headers: { 'expo-platform': cfg.platform, accept: 'application/expo+json,application/json' } });
     if (r.ok && /json/.test(r.headers.get('content-type') || '')) {
       const manifest = await r.json();
       const u = new URL(manifest.launchAsset.url);
@@ -1019,7 +1045,7 @@ async function resolveBundleUrl() {
       return { url: u.toString(), manifest };
     }
   } catch (_) { /* not an Expo server */ }
-  return { url: `${cfg.metro}/index.bundle?platform=ios&dev=true&minify=false`, manifest: null };
+  return { url: `${cfg.metro}/index.bundle?platform=${cfg.platform}&dev=true&minify=false`, manifest: null };
 }
 
 // Worker entry.

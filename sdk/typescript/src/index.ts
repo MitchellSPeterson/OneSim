@@ -11,6 +11,7 @@ export type Target = Point | { label: string } | { element: string };
 
 export interface CreateSessionOptions {
   framework: Framework;
+  platform?: "ios" | "android";
   device?: string;
   appearance?: Appearance;
   dynamicTypeSize?: string;

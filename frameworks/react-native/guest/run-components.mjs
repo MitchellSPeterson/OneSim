@@ -8,6 +8,9 @@ import zlib from 'node:zlib';
 import { onCleanup, root, run, startHost, startMetro, walk, textOf } from './lib.mjs';
 
 const port = Number(process.argv[2]) || 8214;
+const android = process.env.SIMCORE_PLATFORM === 'android';
+const inputName = android ? 'AndroidTextInput' : 'RCTSinglelineTextInputView';
+const switchName = android ? 'AndroidSwitch' : 'RCTSwitch';
 const png = (w, h) => { // 8-bit RGB, all-grey; enough for a header + valid zlib stream
   const crcT = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
   const crc = (b) => { let c = 0xffffffff; for (const x of b) c = crcT[(c ^ x) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
@@ -36,8 +39,8 @@ run(async () => {
   const imgs = () => find('RCTImageView');
   const img = (w, ht) => imgs().some((i) => i.props.__simcoreImage?.width === w && i.props.__simcoreImage?.height === ht);
 
-  await until(() => { const r = rows(); return find('RCTSwitch')[0] && focusReq() && scrollTo() && r.net && r.post && r.xhr && r.sizes && r.l1 && r.l2 && r.shown; }, 'static rows, switch, focus_request, scroll_to');
-  const r = rows(), plain = find('RCTSinglelineTextInputView')[2];
+  await until(() => { const r = rows(); return find(switchName)[0] && focusReq() && scrollTo() && r.net && r.post && r.xhr && r.sizes && r.l1 && r.l2 && r.shown; }, 'static rows, switch, focus_request, scroll_to');
+  const r = rows(), plain = find(inputName)[2];
   const must = (cond, name) => { if (!cond) throw new Error('check failed: ' + name + '; rows=' + JSON.stringify(rows())); ok(name); };
   if (plain) must(plain.props.__simcoreText === 'abc', 'defaultValue -> __simcoreText');
   must(r.net === 'packager-status:running', 'fetch(metro/status)');
@@ -50,24 +53,27 @@ run(async () => {
   must(r.shown === 'yes', 'Modal topShow');
   must(scrollTo().y === 50 && scrollTo().x === 0, 'scrollTo command -> scroll_to');
 
-  const [input, upper] = find('RCTSinglelineTextInputView'), [sv, fl] = find('RCTScrollView'), sw = find('RCTSwitch')[0];
+  const [input, upper] = find(inputName), [sv, fl] = find('RCTScrollView'), sw = find(switchName)[0];
   const tag = +input.id;
   if (focusReq().tag !== tag) throw new Error('focus_request tag ' + JSON.stringify(focusReq()));
   ok('ref.focus() -> focus_request');
   h.send({ type: 'focus', tag });
   await until(() => rows().foc === 'focus', 'onFocus'); ok('focus -> onFocus');
   h.send({ type: 'keyboard', height: 335 }); // 852 - 335 = 517
-  await until(() => rows().kb === 'WillShow:335@517:false,DidShow:335@517:true,', 'keyboard show events'); ok('keyboard -> keyboardWillShow/DidShow (height, screenY, Keyboard.isVisible)');
+  const didShow = 'DidShow:335@517:true,', didHide = 'DidHide:335@852:false,';
+  const show = android ? didShow : 'WillShow:335@517:false,' + didShow;
+  const hide = android ? didHide : 'WillHide:335@852:true,' + didHide;
+  await until(() => rows().kb === show, 'keyboard show events'); ok('keyboard show events (height, screenY, Keyboard.isVisible)');
   h.tap('dismiss');
   await until(() => h.other.some((m) => m.type === 'focus_request' && m.tag === null), 'Keyboard.dismiss'); ok('Keyboard.dismiss() -> focus_request null');
   h.send({ type: 'text_input', field: tag, version: 1, text: 'Hello' }); h.send({ type: 'text_input', field: +upper.id, version: 1, text: 'abc' });
-  const cur = (t) => find('RCTSinglelineTextInputView').find((v) => v.id === t.id);
+  const cur = (t) => find(inputName).find((v) => v.id === t.id);
   await until(() => rows().text === 'Hello' && cur(input).props.__simcoreText === 'Hello', 'onChangeText'); ok('text_input -> onChangeText + __simcoreText');
   await until(() => rows().up === 'ABC' && cur(upper).props.__simcoreText === 'ABC', 'controlled rewrite'); ok('controlled value rewrite via setTextAndSelection');
   h.send({ type: 'submit', tag });
   await until(() => rows().sub === 'Hello' && rows().foc === 'blur', 'submit'); ok('submit -> onSubmitEditing + blur');
   h.send({ type: 'keyboard', height: 0 });
-  await until(() => rows().kb.endsWith('DidShow:335@517:true,WillHide:335@852:true,DidHide:335@852:false,'), 'keyboard hide events'); ok('keyboard 0 -> keyboardWillHide/DidHide');
+  await until(() => rows().kb === show + hide, 'keyboard hide events'); ok('keyboard hide events');
   h.send({ type: 'layout', frames: { [sv.id]: [0, 300, 393, 200], [fl.id]: [0, 500, 393, 200] } });
   await until(() => rows().fl === '393x200', 'FlatList onLayout'); ok('layout -> FlatList onLayout');
   for (const [phase, y] of [['begin', 0], ['scroll', 120], ['end', 120]]) h.send({ type: 'scroll', tag: +sv.id, phase, x: 0, y, contentWidth: 393, contentHeight: 1000, width: 393, height: 200 });
@@ -75,6 +81,23 @@ run(async () => {
   await until(() => rows().y === '120' && rows().fy === '340', 'onScroll'); ok('scroll -> onScroll (ScrollView + FlatList)');
   h.send({ type: 'touch', phase: 'start', tag: +sw.id, x: 10, y: 10 }); h.send({ type: 'touch', phase: 'end', tag: +sw.id, x: 10, y: 10 });
   await until(() => rows().sw === 'true', 'Switch'); ok('Switch tap -> onValueChange');
+
+  if (android) {
+    must(rows().platform === 'android 37 Pixel 10a', 'Android Platform constants');
+    must(rows().dimensions === '393x852@2.625', 'Android dimensions and pixel density');
+    h.send({ type: 'environment', appearance: 'light', viewport: { width: 400, height: 850 } });
+    await until(() => rows().dimensions === '400x850@2.625', 'Android dimensions change');
+    must(find('AndroidProgressBar').length === 1, 'Android ActivityIndicator');
+    const horizontal = find('AndroidHorizontalScrollView')[0];
+    must(horizontal && find('AndroidHorizontalScrollContentView').length === 1, 'Android horizontal ScrollView');
+    h.tap('Jump horizontal');
+    await until(() => scrollTo()?.tag === +horizontal.id, 'horizontal scroll_to');
+    must(scrollTo().x === 60 && scrollTo().y === 0, 'horizontal scrollTo offsets');
+    h.send({ type: 'scroll', tag: +horizontal.id, phase: 'end', x: 60, y: 0, contentWidth: 1000, contentHeight: 40, width: 400, height: 40 });
+    await until(() => rows().x === '60', 'horizontal onScroll');
+    console.log('OK: Android core component checks passed');
+    return;
+  }
 
   // Alert.alert (examples/expo-showcase, Controls): an `alert` presentation layer; its button's action runs the callback.
   await startMetro(join(root, 'examples/expo-showcase'), port + 1);

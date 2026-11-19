@@ -6,8 +6,9 @@
 //! constraints flow down, sizes flow up, parents place children. Units are dp (= scene points).
 
 use super::swiftui::SceneParams;
-use crate::scene::{Color, Glyph, Node, Rect, Role, Scene, Shadow, TextRun};
-use crate::text::{FontSpec, Fonts, TextAlign};
+use crate::chrome::{android_nav_handle, android_status_bar};
+use crate::scene::{Color, Node, Rect, Role, Scene, Shadow, TextRun};
+use crate::text::{android_glyph_size, FontSpec, Fonts, TextAlign};
 use serde_json::Value;
 use onesim_protocol::{Appearance, ViewKind, ViewNode};
 use std::collections::BTreeSet;
@@ -112,12 +113,6 @@ struct Cx<'a> {
     notes: BTreeSet<String>,
     /// Device px per dp.
     density: f32,
-}
-
-/// Android draws text at a whole-pixel size (measured on the emulator: 22 sp at 2.625x renders and measures
-/// as 57 px, not 57.75), so glyphs are a little smaller than `sp * density`. Returns the size in dp.
-fn android_glyph_size(sp: f32, density: f32) -> f32 {
-    if density > 0.0 { (sp * density + 1e-3).floor() / density } else { sp }
 }
 
 fn color(v: Option<&Value>) -> Option<Color> {
@@ -568,70 +563,6 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         unsupported_symbols: vec![],
         notes: cx.notes.into_iter().collect(),
     }
-}
-
-/// Android status bar over the top inset: clock at the start, wifi and battery at the end (black icons on a
-/// light app, white in dark theme: `enableEdgeToEdge`'s default auto contrast). Geometry measured on the
-/// Android 17 Pixel 10a emulator in demo mode (tests/fixtures/compose-android/capture.sh).
-// ponytail: no cellular signal glyph (the emulator reference hides it).
-fn android_status_bar(nodes: &mut Vec<Node>, params: &SceneParams, fonts: &mut Fonts, dark: bool) {
-    let dev = params.device;
-    let top = dev.safe_top;
-    let fg = if dark { Color::rgba(1.0, 1.0, 1.0, 1.0) } else { Color::rgba(0.0, 0.0, 0.0, 1.0) };
-    let mut bar = Node::new("statusbar", "statusbar");
-    bar.bounds = Rect { x: 0.0, y: 0.0, w: params.viewport.0, h: top };
-    bar.parent = Some(0);
-    bar.inspect = false;
-    let p = nodes.len();
-    nodes.push(bar);
-    let mut add = |id: &str, kind: &'static str, bounds: Rect, f: &dyn Fn(&mut Node)| {
-        let mut n = Node::new(id, kind);
-        n.bounds = bounds;
-        n.parent = Some(p);
-        n.inspect = false;
-        f(&mut n);
-        nodes.push(n);
-    };
-
-    let mut spec = FontSpec::new(android_glyph_size(dev.status_bar.font as f32, dev.scale as f32), 20.0, 400, TextAlign::Leading);
-    spec.pitch = 20.0;
-    spec.tracking = 0.0;
-    spec.android = true;
-    let (tw, th) = fonts.measure("9:41", &spec, None, &[]);
-    let (cx0, cy0) = dev.status_bar.time;
-    let run = TextRun { text: "9:41".into(), font: spec, color: fg, strike: false, offset_x: 0.0, spans: vec![] };
-    add("statusbar#time", "text", Rect { x: cx0 - tw / 2.0, y: cy0 - th / 2.0, w: tw.ceil(), h: th }, &|n| n.text = Some(run.clone()));
-
-    // Battery: a horizontal 23.8x12.9 dp pill with a 1.6x6.5 dp terminal nub, right edge at `icons.0`.
-    let (right, _) = dev.status_bar.icons;
-    let cy = cy0 + 0.6;
-    add("statusbar#battery-tip", "battery", Rect { x: right - 1.6, y: cy - 3.25, w: 1.6, h: 6.5 }, &|n| {
-        n.fill = Some(fg);
-        n.radius = 0.6;
-    });
-    let body = Rect { x: right - 1.6 - 1.1 - 23.8, y: cy - 6.45, w: 23.8, h: 12.9 };
-    add("statusbar#battery", "battery", body, &|n| {
-        n.fill = Some(fg);
-        n.radius = 3.2;
-    });
-    add("statusbar#wifi", "wifi", Rect { x: body.x - 6.2 - 16.0, y: cy0 - 5.6, w: 16.0, h: 11.8 }, &|n| n.glyph = Some((Glyph::AndroidWifi, fg)));
-}
-
-/// Gesture navigation handle centred in the bottom inset (60% black on light apps, 92% white on dark).
-fn android_nav_handle(nodes: &mut Vec<Node>, params: &SceneParams, dark: bool) {
-    let (w, h) = params.viewport;
-    let inset = params.device.safe_bottom;
-    if inset <= 0.0 {
-        return;
-    }
-    let mut bar = Node::new("navigation_handle", "navigation_handle");
-    let (bw, bh) = (108.0, 4.0);
-    bar.bounds = Rect { x: (w - bw) / 2.0, y: h - inset / 2.0 - bh / 2.0, w: bw, h: bh };
-    bar.parent = Some(0);
-    bar.radius = bh / 2.0;
-    bar.fill = Some(if dark { Color::rgba(1.0, 1.0, 1.0, 0.92) } else { Color::rgba(0.0, 0.0, 0.0, 0.6) });
-    bar.inspect = false;
-    nodes.push(bar);
 }
 
 #[cfg(test)]

@@ -19,6 +19,7 @@
   "expo": {
     "sdk": "58.0.26",
     "expoGo": "58.0.7",
+    "expoGoAndroid": "58.0.5",
     "reactNative": "0.88.1"
   },
   "compose": {

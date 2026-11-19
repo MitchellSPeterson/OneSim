@@ -44,7 +44,8 @@ pub fn look(v: IosVersion) -> &'static Look {
     }
 }
 
-/// Total software keyboard height (panel incl. the bottom safe inset) on `dev` under release `v`.
+/// Total software keyboard height, including the bottom safe inset.
 pub fn keyboard_height(dev: &crate::Device, v: IosVersion) -> f64 {
-    dev.kb_base_for(v) + dev.safe_bottom
+    let base = if dev.android { dev.kb_base_h } else { dev.kb_base_for(v) };
+    base + dev.safe_bottom
 }

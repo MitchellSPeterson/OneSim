@@ -2,7 +2,8 @@
 
 OneSim runs a real, unmodified Expo app's JavaScript from Metro. React and React Native's
 own Fabric renderer (bundled in the app) do reconciliation; OneSim implements the *native*
-side that RN's JavaScript expects on iOS with the new architecture (bridgeless).
+side that RN's JavaScript expects with the new architecture (bridgeless). The host defaults
+to iOS. Pass `--platform android` for the Pixel 10a preview.
 
 ```
 Metro ──bundle──▶ guest/host.js (Node worker)
@@ -15,9 +16,17 @@ Run it:
 ```
 cd examples/expo-counter && npm install && CI=1 npx expo start --port 8081 &
 onesim expo --url http://localhost:8081 --screenshot out.png
+onesim expo --platform android --url http://localhost:8081 --screenshot android.png
 node frameworks/react-native/guest/run-standalone.mjs   # guest-only check: tap increments the counter
 node frameworks/react-native/guest/run-components.mjs   # core components (TextInput, scroll, Image, fetch, Switch, Modal) against examples/expo-components
+SIMCORE_PLATFORM=android node frameworks/react-native/guest/run-components.mjs
 ```
+
+The Android preview loads Metro's Android bundle and renders edge-to-edge with Roboto,
+Pixel 10a insets, and Android system bars. Text fields accept host keyboard input and
+report focus, editing, and submit events. The on-screen Android keyboard and native
+dialogs remain open. The default Expo Router template requires the Android
+`ExpoRouter` native module, which is still pending.
 
 ## Decisions
 

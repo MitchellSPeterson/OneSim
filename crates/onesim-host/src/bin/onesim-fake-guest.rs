@@ -134,22 +134,31 @@ fn run_nav() {
     }
 }
 
-fn rn_tree(count: u32, frames: usize, text: &str, log: &str) -> serde_json::Value {
+fn rn_tree(count: u32, frames: usize, text: &str, log: &str, android: bool) -> serde_json::Value {
     let raw = |id: &str, t: &str| json!({"kind": "rn", "id": id, "component": "RCTRawText", "props": {"text": t}, "children": []});
+    let mut props = json!({"placeholder": "Name", "__simcoreText": text, "fontSize": 17});
+    let input = if android {
+        props["multiline"] = json!(true);
+        props["submitBehavior"] = json!("submit");
+        "AndroidTextInput"
+    } else {
+        "RCTSinglelineTextInputView"
+    };
     json!({"kind": "rn", "id": "1", "component": "RootView", "props": {}, "children": [
         {"kind": "rn", "id": "2", "component": "RCTView", "props": {"flex": 1, "alignItems": "center", "justifyContent": "center"}, "children": [
             {"kind": "rn", "id": "3", "component": "RCTText", "props": {}, "children": [raw("4", &format!("Count: {count} frames:{frames}"))]},
             {"kind": "rn", "id": "5", "component": "RCTView", "props": {"padding": 12, "borderRadius": 8, "backgroundColor": 0xFF0080FFu32}, "children": [
                 {"kind": "rn", "id": "6", "component": "RCTText", "props": {"color": 0xFFFFFFFFu32}, "children": [raw("7", "Press")]}]},
-            {"kind": "rn", "id": "8", "component": "RCTSinglelineTextInputView", "props": {"placeholder": "Name", "__simcoreText": text, "fontSize": 17}, "children": []},
+            {"kind": "rn", "id": "8", "component": input, "props": props, "children": []},
             {"kind": "rn", "id": "10", "component": "RCTText", "props": {}, "children": [raw("11", &format!("Log:{log}"))]}]}]})
 }
 
 fn run_rn() {
+    let android = std::env::var("SIMCORE_PLATFORM").as_deref() == Ok("android");
     let (mut count, mut frames, mut version, mut moves) = (0u32, 0usize, 1u64, 0u32);
     let (mut text, mut log) = (String::new(), String::new());
     send(json!({"type": "hello", "protocol": 1}));
-    send(json!({"type": "tree", "version": version, "root": rn_tree(count, frames, &text, &log)}));
+    send(json!({"type": "tree", "version": version, "root": rn_tree(count, frames, &text, &log, android)}));
     send_boot_extras();
     for line in std::io::stdin().lock().lines() {
         let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line.unwrap_or_default()) else { continue };
@@ -179,7 +188,7 @@ fn run_rn() {
             _ => continue,
         }
         version += 1;
-        send(json!({"type": "tree", "version": version, "root": rn_tree(count, frames, &text, &log)}));
+        send(json!({"type": "tree", "version": version, "root": rn_tree(count, frames, &text, &log, android)}));
     }
 }
 

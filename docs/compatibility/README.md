@@ -10,7 +10,7 @@ Use the coverage tables to check an API before running your app in OneSim. Selec
 | Framework | iOS | Android |
 |---|---|---|
 | [SwiftUI](swiftui/README.md) | 9% (121/1382) | — |
-| [Expo / React Native](expo/README.md) | 58% (59.5/102) | 0% (0/94) |
+| [Expo / React Native](expo/README.md) | 58% (59.5/102) | 15% (14.5/94) |
 | [Jetpack Compose](compose/README.md) | — | 10% (216.5/2181) |
 <!-- coverage:end -->
 
@@ -26,9 +26,9 @@ source is [versions.json](versions.json); this table is generated from it.
 | iOS Simulator runtime | 26.5 (23F77), iPhone 17 Pro | Reference screenshots in `tests/fixtures`, look of the renderer (`--ios 26.5`), OS version the Expo guest reports |
 | iOS SDK (Xcode) | 27.2 | SwiftUI API inventory (`scripts/swiftui-inventory.mjs`) |
 | Expo SDK | 58.0.26 (React Native 0.88.1) | Examples, native module contracts |
-| Expo Go | 58.0.7 | Expo reference screenshots |
+| Expo Go | iOS 58.0.7, Android 58.0.5 | Expo reference screenshots |
 | Jetpack Compose | runtime 1.13.0-beta01, ui 1.13.0-beta01, ui-graphics 1.13.0-beta01, ui-text 1.13.0-beta01, ui-unit 1.13.0-beta01, ui-geometry 1.13.0-beta01, ui-tooling-preview 1.13.0-beta01, foundation-layout 1.13.0-beta01, foundation 1.13.0-beta01, animation-core 1.13.0-beta01, animation 1.13.0-beta01, material3 1.5.0-beta01, navigation-compose 2.10.0-rc01, activity-compose 1.13.0-rc01 | Compose API inventory (`scripts/compose-inventory.mjs`) |
-| Android | Android 17 (API 37) emulator, Pixel 10a; Kotlin 2.4.21 | Device profile and insets of Compose sessions, Compose guest compiler (`frameworks/compose/scripts/toolchain.sh`) |
+| Android | Android 17 (API 37) emulator, Pixel 10a; Kotlin 2.4.21 | Expo and Compose device profile, Compose guest compiler (`frameworks/compose/scripts/toolchain.sh`) |
 <!-- versions:end -->
 
 `node scripts/api-coverage.mjs --check` (CI) fails when something pinned in the repo disagrees with the matrix:

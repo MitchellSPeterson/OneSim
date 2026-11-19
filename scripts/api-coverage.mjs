@@ -105,9 +105,9 @@ writeSummary(`${dir}README.md`, [
   ...ios.runtimes.map((r, i) => `| iOS Simulator runtime${i ? '' : ' (default)'} | ${r.runtime} (${r.build}), ${r.device} | Reference screenshots in \`${r.fixtures}\`, look of the renderer (\`--ios ${r.runtime}\`), OS version the Expo guest reports |`),
   `| iOS SDK (Xcode) | ${ios.apiSdk} | SwiftUI API inventory (\`scripts/swiftui-inventory.mjs\`) |`,
   `| Expo SDK | ${expo.sdk} (React Native ${expo.reactNative}) | Examples, native module contracts |`,
-  `| Expo Go | ${expo.expoGo} | Expo reference screenshots |`,
+  `| Expo Go | iOS ${expo.expoGo}, Android ${expo.expoGoAndroid} | Expo reference screenshots |`,
   `| Jetpack Compose | ${Object.entries(V.compose).map(([l, v]) => `${l} ${v}`).join(', ')} | Compose API inventory (\`scripts/compose-inventory.mjs\`) |`,
-  `| Android | ${V.android.release} (API ${V.android.api}) emulator, ${V.android.device}; Kotlin ${V.android.kotlin} | Device profile and insets of Compose sessions, Compose guest compiler (\`frameworks/compose/scripts/toolchain.sh\`) |`,
+  `| Android | ${V.android.release} (API ${V.android.api}) emulator, ${V.android.device}; Kotlin ${V.android.kotlin} | Expo and Compose device profile, Compose guest compiler (\`frameworks/compose/scripts/toolchain.sh\`) |`,
 ].join('\n'), 'versions');
 const drift = (path, msg) => errors.push(`${path}: ${msg} (docs/compatibility/versions.json)`);
 const bare = (spec) => String(spec).replace(/^[~^=]/, '');
@@ -129,6 +129,10 @@ for (const r of ios.runtimes) {
   if (!guestSrc.includes(`'${r.runtime}': '${r.build}'`)) drift(guest, `expected \`'${r.runtime}': '${r.build}'\` in IOS_BUILDS`);
 }
 if (!guestSrc.includes(`: '${ios.runtimes[0].runtime}';`)) drift(guest, `default OS_VERSION should be the newest runtime, ${ios.runtimes[0].runtime}`);
+const androidRelease = V.android.release.replace('Android ', '');
+for (const want of [`const ANDROID_API_LEVEL = ${V.android.api};`, `const ANDROID_RELEASE = '${androidRelease}';`]) {
+  if (!guestSrc.includes(want)) drift(guest, `expected \`${want}\``);
+}
 for (const [file, re] of [['crates/onesim-protocol/src/wire.rs', (r) => `Self::Ios${r.runtime.split('.')[0]} => "${r.build}"`]]) {
   const src = readFileSync(root + file, 'utf8');
   for (const r of ios.runtimes) if (!src.includes(re(r))) drift(file, `expected \`${re(r)}\``);
@@ -146,22 +150,31 @@ for (const r of ios.runtimes) {
     const want = android ? `${V.android.release} (API ${V.android.api})` : `iOS ${r.runtime}`;
     if (!readme.includes(want)) drift(path, `does not say it was captured on ${want}; recapture or update the matrix`);
     if (android && !readme.includes(V.android.device)) drift(path, `expected device ${V.android.device}`);
+    const expoGo = android ? expo.expoGoAndroid : expo.expoGo;
     for (const m of readme.matchAll(/Expo Go (\d+(?:\.\d+)*)/g)) {
-      if (!expo.expoGo.startsWith(m[1])) drift(path, `Expo Go ${m[1]}, expected ${expo.expoGo}`);
+      if (!expoGo.startsWith(m[1])) drift(path, `Expo Go ${m[1]}, expected ${expoGo}`);
     }
   }
 }
 
-// Cross-check: every registry module has a row, and the row's iOS status agrees with the registry.
+// Cross-check iOS registry modules and Android-only names against their coverage rows.
 const stub = new Proxy(() => ({}), { get: (t, p) => (p === 'modules' ? { WorkletsModule() {}, ReanimatedModule() {} } : stub) });
 const createRegistry = createRequire(import.meta.url)(root + 'frameworks/react-native/guest/modules.js');
 const dataDir = mkdtempSync(join(tmpdir(), 'onesim-coverage-')); // the file-system / secure-store modules need a sandbox dir
-const registry = createRegistry(stub, new Proxy({}, { get: (t, p) => (p === 'expo' ? { NativeModule: class {}, SharedObject: class {} } : p === 'cfg' ? { dataDir } : stub) })).list();
+const registry = (platform) => createRegistry(stub, new Proxy({
+  expo: { NativeModule: class {}, SharedObject: class {} },
+  cfg: { dataDir, platform },
+}, { get: (t, p) => t[p] ?? stub })).list();
+const iosModules = registry('ios');
+const iosNames = new Set(iosModules.map((m) => m.name));
+const androidOnly = registry('android').filter((m) => !iosNames.has(m.name));
 rmSync(dataDir, { recursive: true, force: true });
-for (const m of registry) {
-  const row = rowsOf.expo.find((r) => r.native.includes(m.name));
-  if (!row) errors.push(`registry module ${m.name} (${m.package || 'react-native'}, ${m.status}) has no row in ${dir}expo/: add its name in backticks to a row's Native column`);
-  else if (!ALLOWED[m.status].includes(row.iOS)) errors.push(`${row.path}:${row.line}: ${row.api} says iOS ${row.iOS}, but registry module ${m.name} is ${m.status}`);
+for (const [platform, modules] of [['iOS', iosModules], ['Android', androidOnly]]) {
+  for (const m of modules) {
+    const row = rowsOf.expo.find((r) => r.native.includes(m.name));
+    if (!row) errors.push(`registry module ${m.name} (${m.package || 'react-native'}, ${m.status}) has no row in ${dir}expo/: add its name in backticks to a row's Native column`);
+    else if (!ALLOWED[m.status].includes(row[platform])) errors.push(`${row.path}:${row.line}: ${row.api} says ${platform} ${row[platform]}, but registry module ${m.name} is ${m.status}`);
+  }
 }
 
 if (errors.length) { console.error('\n' + errors.join('\n')); process.exit(1); }

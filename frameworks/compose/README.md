@@ -11,7 +11,7 @@ cargo run -p onesim-cli -- run path/to/ui --root-view Greeting    # a @Composabl
 ## How it works
 
 - **Toolchain** (`scripts/toolchain.sh`): downloads the pinned Kotlin compiler (it bundles the Compose compiler
-  plugin) and the real `androidx.compose.runtime` desktop/JVM jars into `~/.cache/simcore/compose`
+  plugin) and the real `androidx.compose.runtime` desktop/JVM jars into `~/.cache/onesim/compose`
   (`SIMCORE_COMPOSE_TOOLCHAIN`). Only Java 17+ is needed.
 - **Real runtime, own UI layer.** Composition, `remember`, snapshots, recomposition and effects are AndroidX's own
   code. Everything above it (`androidx.compose.ui`, `foundation`, `foundation.layout`, `material3`,
@@ -36,4 +36,4 @@ a real APK of the same sources (`reference-app/`, material3 1.4.0) on the Androi
 (`tests/fixtures/compose-android`); every state must differ in < 2% of pixels, like iOS.
 
 Not yet: `Icon`/`Image`, text fields, lazy lists and scrolling, navigation, dialogs, animations, ripples,
-`AnnotatedString`, custom fonts, resources (`R.string`, `painterResource`), `ViewModel`, Expo / React Native on Android.
+`AnnotatedString`, custom fonts, resources (`R.string`, `painterResource`), `ViewModel`.

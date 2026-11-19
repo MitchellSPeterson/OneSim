@@ -34,7 +34,7 @@ Use `--ios 26.5 --device iphone-17-pro` to match the older iOS reference device.
 
 To see all CLI options, run `cargo run -p onesim-cli -- run --help`.
 
-## Run an Expo app on iOS
+## Run an Expo app
 
 Expo requires Node.js and npm. Start Metro from the Expo counter directory.
 
@@ -48,6 +48,13 @@ From the repository root in a second terminal, load the bundle from Metro.
 
 ```sh
 cargo run -p onesim-cli -- expo --url http://localhost:8081 --screenshot expo-counter.png
+```
+
+To run the Android bundle on the Pixel 10a preview, use the same Metro server.
+
+```sh
+cargo run -p onesim-cli -- expo --platform android --url http://localhost:8081 \
+  --click Increment --screenshot expo-counter-android.png
 ```
 
 See [Expo / React Native compatibility](compatibility/expo/README.md) for supported components and device modules.
