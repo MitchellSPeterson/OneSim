@@ -1,134 +1,76 @@
-# SimCore
+<h1 align="center">SimCore</h1>
 
-Rust-powered preview runtime for mobile UI code. Runs real SwiftUI source (unchanged `import SwiftUI`) and unmodified Expo / React Native apps, and renders them headlessly, with no iOS Simulator, no Chromium, and no GPU required.
+<p align="center">
+  <strong>A headless preview runtime for mobile UI</strong><br>
+  Run SwiftUI, Expo / React Native, and Jetpack Compose apps from source.<br>
+  Drive interactions, inspect the UI tree, and capture PNGs on a CPU.
+</p>
 
-```
-$ simcore run examples/swiftui-counter --root-view CounterView --click Increment --screenshot out.png
-```
+<p align="center">
+  <a href="https://github.com/MitchellSPeterson/SimCore/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/MitchellSPeterson/SimCore/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue"></a>
+</p>
 
-| Framework | iOS | Android |
-|---|---|---|
-| SwiftUI | ✅ v0.1: navigation, tabs, lists, forms and controls (pickers, sliders, progress), presentations, shapes, text styles, SF Symbols, Liquid Glass, software keyboard, `@State`/`@Binding`/`ObservableObject`/`@AppStorage` ([API coverage](docs/compatibility/swiftui/README.md)) | n/a |
-| Expo / React Native | 🧪 v0.2 preview: core components, Fast Refresh, Expo Router native stack and tabs, Reanimated, simulated device modules ([API coverage](docs/compatibility/expo/README.md)) | 🔜 coming ([API coverage](docs/compatibility/expo/README.md)) |
-| Jetpack Compose | n/a | 🧪 preview: real Compose runtime, Material 3 buttons, cards, surfaces, Scaffold, top app bars, switches, layouts and modifiers, Pixel 10a device ([API coverage](docs/compatibility/compose/README.md)) |
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="docs/README.md">Documentation</a> ·
+  <a href="docs/compatibility/README.md">Compatibility</a> ·
+  <a href="docs/roadmap.md">Roadmap</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
 
-Beyond SwiftUI, we will reimplement the Apple frameworks apps reach for (Charts, SpriteKit, SceneKit, RealityKit, ARKit, MapKit, StoreKit, MusicKit, PencilKit, WidgetKit, UIKit, CoreGraphics, Metal, Vision); see the [roadmap](docs/roadmap.md#apple-frameworks-beyond-swiftui).
+<p align="center">
+  <a href="docs/ios-comparison.md#comparison-gallery"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/ios-comparison/cmp-glass-dark.png">
+    <img src="docs/ios-comparison/cmp-glass.png" width="680" alt="Liquid Glass rendered by the iOS Simulator and SimCore, with a pixel diff on the right">
+  </picture></a><br>
+  <sub>Liquid Glass in the iOS 26.5 Simulator and SimCore, followed by the pixel diff.</sub>
+</p>
 
-Milestones: [docs/roadmap.md](docs/roadmap.md).
+## Quick start
 
-Rendered output stays within 2% of the iOS Simulator pixel-for-pixel, for both supported releases (iOS 27.2 on the iPhone 18 Pro, the default, and iOS 26.5 on the iPhone 17 Pro; `--ios`), across every reference state including SF Symbols, Liquid Glass and the software keyboard, on the [showcase app](examples/swiftui-showcase/Showcase.swift). See [docs/ios-comparison.md](docs/ios-comparison.md).
-
-![SimCore vs iOS Simulator](docs/ios-comparison/cmp-controls-changed.png)
-
-## How it works
-
-Your app compiles with `swiftc` against SimCore's own `SwiftUI` module, which shadows Apple's. The app runs as its own process and sends a normalized view tree to the host through a small Rust staticlib over a C ABI. The host lays the tree out with SwiftUI semantics, rasterizes it with tiny-skia and cosmic-text, hit-tests input, and routes button actions back to Swift closures. Details: [docs/architecture.md](docs/architecture.md), [docs/protocol.md](docs/protocol.md), [docs/compatibility/swiftui/guest.md](docs/compatibility/swiftui/guest.md).
-
-## In the browser (WebAssembly)
-
-The same unmodified SwiftUI source runs in a browser tab. The app and SimCore's SwiftUI module compile to WebAssembly together with the Rust renderer into one module, which draws to a `<canvas>` and needs only a static file server. Setup: [docs/web.md](docs/web.md).
-
-```sh
-scripts/build-web.sh examples/swiftui-showcase && python3 -m http.server -d target/web 8000   # or: ... swiftui-counter CounterView
-node web/test/run.mjs --suite showcase   # headless check; scripts/compare-web.sh = pixel parity vs native
-```
-
-It is the full app, not a screenshot: pointer, wheel/drag scrolling, text fields with the on-canvas keyboard (and your physical keyboard), `@main App`, `?device=`/`?width=&height=&scale=`/`?dark=1`.
-
-## Expo / React Native (preview)
-
-SimCore loads an unmodified Expo app's bundle from Metro, runs React Native's own Fabric renderer in a Node guest, and implements the iOS native side (views, TurboModules, Expo modules) in the guest and the Rust host. Unsupported native APIs fail loudly (`SimCore: X is not supported`) instead of faking success.
+On macOS with Rust stable and the Swift toolchain from Xcode or Command Line Tools, clone the repository and run the counter.
 
 ```sh
-cd examples/expo-counter && npm install && CI=1 npx expo start --port 8081 &
-cargo run -p simcore-cli -- expo --url http://localhost:8081 --screenshot out.png
+git clone https://github.com/MitchellSPeterson/SimCore.git
+cd SimCore
+cargo run -p simcore-cli -- run \
+  examples/swiftui-counter \
+  --root-view CounterView \
+  --click Increment \
+  --screenshot counter.png --inspect
 ```
 
-Which APIs work today, per platform, with an overall percentage: [docs/compatibility/expo/README.md](docs/compatibility/expo/README.md). Details: [frameworks/react-native/README.md](frameworks/react-native/README.md), [docs/protocol.md](docs/protocol.md) §H.
+SimCore compiles the SwiftUI example, taps **Increment**, and saves `counter.png`. The printed UI tree contains `Count: 1`. This runs without an iOS Simulator, Chromium, or a GPU.
 
-## Jetpack Compose on Android (preview)
+For Expo, Compose, browser builds, and CLI input options, see the [getting-started guide](docs/getting-started.md).
 
-Unmodified Compose apps (`ComponentActivity` + `setContent { }`) build with the Kotlin Compose compiler against the real
-`androidx.compose.runtime` and SimCore's own `ui` / `foundation` / `material3`, and render as a Pixel 10a. Needs Java 17+;
-the Kotlin compiler and runtime jars are downloaded on first use. Details: [frameworks/compose/README.md](frameworks/compose/README.md),
-[docs/protocol.md](docs/protocol.md) §K.
+## Framework support
 
-```sh
-cargo run -p simcore-cli -- run examples/compose-counter --click Increment --screenshot counter.png
-```
+| Framework | Target | What you can run |
+| --- | --- | --- |
+| [SwiftUI](docs/compatibility/swiftui/README.md) | iOS 27.2 and 26.5, WebAssembly | Navigation, tabs, forms, sheets, Dynamic Type, SF Symbols, and Liquid Glass. |
+| [Expo / React Native](docs/compatibility/expo/README.md) | iOS preview | Metro bundles with Fabric, Fast Refresh, Expo Router, and simulated device modules. Android support is planned. |
+| [Jetpack Compose](docs/compatibility/compose/README.md) | Android 17 preview | The AndroidX Compose runtime with Material 3 controls and layouts on a Pixel 10a profile. |
 
-**Expo on Android is coming.** The same Expo apps will render as Android (Material) through an Android host; the coverage doc tracks every API for Android from zero so the work can be picked up row by row.
+SimCore runs each framework’s supported UI code in a guest process and renders it on a shared Rust host. SwiftUI can also run in the browser, where the app and renderer compile to a single WebAssembly module. [Architecture](docs/architecture.md) · [Browser guide](docs/web.md)
 
-## Requirements
+## Visual fidelity
 
-macOS with the Swift toolchain (Xcode or Command Line Tools) and Rust stable. Node.js for Expo / React Native apps.
+SimCore tests its renderer against screenshots from the iOS Simulator and Android emulator. The comparison scripts check each state on the two supported iOS versions and on Android 17. See the [iOS results and known gaps](docs/ios-comparison.md) and the [Android reference fixtures](tests/fixtures/compose-android/README.md).
 
-## Build
+## Documentation
 
-```sh
-cargo build --workspace
-cargo test --workspace
-frameworks/swiftui/Tests/wire_test.sh   # Swift side: build, drive 1100 actions, memory check
-```
-
-## Use
-
-Headless driver:
-
-```sh
-cargo run -p simcore-cli -- run examples/swiftui-counter --root-view CounterView \
-  --click Increment --click Increment --screenshot counter.png --inspect
-cargo run -p simcore-cli -- run examples/swiftui-app-entry --dark --screenshot app.png   # @main App entry
-cargo run -p simcore-cli -- run examples/swiftui-showcase --click Todos --click "New todo" --type "Buy milk" \
-  --click Add --screenshot todos.png      # --click/--type/--key/--scroll run in order
-```
-
-JSON-lines API for tools such as DemoKit (protocol §A):
-
-```sh
-cargo run -p simcore-cli -- serve <<'EOF2'
-{"id":1,"method":"hello","params":{"protocol_version":1}}
-{"id":2,"method":"create_session","params":{"framework":"swiftui","app_path":"examples/swiftui-counter","root_view":"CounterView"}}
-{"id":3,"method":"start_session","params":{"session_id":"s1"}}
-{"id":4,"method":"send_pointer_event","params":{"session_id":"s1","event":{"kind":"click","x":196,"y":440}}}
-{"id":5,"method":"capture_screenshot","params":{"session_id":"s1","path":"out.png"}}
-{"id":6,"method":"shutdown"}
-EOF2
-```
-
-Renderer only, no Swift (milestone 1):
-
-```sh
-cargo run -p simcore-render --example counter                                  # writes a PNG
-cargo run -p simcore-render --example counter --features window -- --window    # native window
-```
-
-## Entry points
-
-- `--root-view Name`: SimCore generates `main` for a source tree that only declares views.
-- `@main struct MyApp: App { var body: some Scene { WindowGroup { ContentView() } } }`: used as-is.
-
-## Layout
-
-| Path | What |
-|---|---|
-| `crates/simcore-protocol` | Wire and API types (serde) |
-| `crates/simcore-render` | Scene, SwiftUI layout, raster, hit testing, inspection |
-| `crates/simcore-host` | Sessions, build, process-per-session supervision |
-| `crates/simcore-cli` | `simcore` binary (`run`, `serve`) |
-| `crates/simcore-runtime` | Guest staticlib, C ABI linked into the app |
-| `frameworks/swiftui` | SimCore's `SwiftUI` module and C bridge |
-| `frameworks/react-native` | Node guest for Expo / React Native: Fabric UIManager, native-module registry (`guest/modules.js`) |
-| `frameworks/compose` | Jetpack Compose engine (preview): Kotlin guest, `ui`/`foundation`/`material3` on the real Compose runtime |
-
-## Fonts and symbols fallback
-
-On macOS the host uses the system SF Pro and SF Symbols. Elsewhere, or with `SIMCORE_FALLBACK=1`, it uses bundled open-licensed substitutes that look close to iOS: Inter ([SIL OFL 1.1](assets/fonts/OFL.txt)) and Phosphor Icons ([MIT](assets/symbols/phosphor/LICENSE)), mapped from SF Symbol names. `get_capabilities` reports `"fonts"` and `"symbols"`; see [docs/protocol.md](docs/protocol.md) section E. `SIMCORE_FALLBACK=1 scripts/compare-ios.sh` measures it.
+- [Run an app and capture a screenshot](docs/getting-started.md)
+- [Build a SwiftUI app for the browser](docs/web.md)
+- [Automate sessions and UI input](docs/api.md)
+- [See how the renderer and guests fit together](docs/architecture.md)
+- [Find every guide and reference](docs/README.md)
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Good first work: any ⬜ / 🟠 / ⛔ row in [docs/compatibility/expo/README.md](docs/compatibility/expo/README.md) or [docs/compatibility/swiftui/README.md](docs/compatibility/swiftui/README.md); open an [API request](https://github.com/MitchellSPeterson/SimCore/issues/new?template=api-request.yml) for it and link it in the row.
+Start with the [contributor guide](CONTRIBUTING.md). For a missing API, check the [coverage tables](docs/compatibility/README.md) and open an [API request](https://github.com/MitchellSPeterson/SimCore/issues/new?template=api-request.yml).
 
 ## License
 
-MIT (bundled assets keep their own licenses, see above)
+SimCore is [MIT-licensed](LICENSE). The bundled fonts and icons retain their [own licenses](docs/architecture.md#fonts-and-symbols).

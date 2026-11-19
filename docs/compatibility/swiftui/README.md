@@ -1,7 +1,8 @@
+[Documentation](../../README.md) / [API compatibility](../README.md)
+
 # SwiftUI API coverage
 
-What a SwiftUI app can use under SimCore today, and what is still to do. The area files list **every** public
-SwiftUI API available on iOS: one row per top-level type, `View`/`Scene`/`Shape` modifier, `Text`/`Image` method
+The area files list every public SwiftUI API available on iOS, with one row per top-level type, `View`/`Scene`/`Shape` modifier, `Text`/`Image` method
 and `EnvironmentValues` property (overloads share a row; nested types and static members such as `.title` or
 `.borderedProminent` are covered by their parent's row). They are generated from Apple's `SwiftUI` and
 `SwiftUICore` interfaces in the iOS SDK listed in the [support matrix](../README.md#versions). **Since** is the iOS version that introduced the API. Pick any ⬜ / 🟠 row to work on: open an

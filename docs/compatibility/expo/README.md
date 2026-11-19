@@ -1,6 +1,8 @@
+[Documentation](../../README.md) / [API compatibility](../README.md)
+
 # Expo / React Native API coverage
 
-What an Expo app can use under SimCore today, per platform, and what is still to do. One row per API
+The tables track Expo and React Native support on iOS and Android, with one row per API
 (component, native module or library). Pick any ⬜ / 🟠 / ⛔ row to work on: open an
 [API request issue](https://github.com/MitchellSPeterson/SimCore/issues/new?template=api-request.yml) for it
 (or take an existing one), and link the issue in the row's **Issue** column.
