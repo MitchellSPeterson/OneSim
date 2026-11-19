@@ -5,7 +5,7 @@
 
 use super::swiftui::{add_chrome, rn_nav_bar, rn_nav_height, rn_tab_bar, switch_style, NavBack, SceneParams, TabBar, TabBarItem, KNOB, SWITCH, TAB_BAR_INSET};
 use crate::scene::{Color, Glyph, ImageRun, Node, Rect, Role, Scene, ScrollInfo, TextRun};
-use crate::text::{android_glyph_size, FontSpec, Fonts, Span, TextAlign};
+use crate::text::{FontSpec, Fonts, Span, TextAlign};
 use serde_json::Value;
 use simcore_protocol::{Appearance, IosVersion, ViewKind, ViewNode};
 use std::collections::BTreeSet;
@@ -26,6 +26,7 @@ struct Text {
     fixed: Option<(f32, f32)>,
     spans: Vec<Span>,
     explicit_lh: bool,
+    font_padding: (f32, f32),
 }
 
 struct Item<'a> {
@@ -402,7 +403,7 @@ impl<'a> Cx<'a, '_> {
 
     fn line_h(&self, size: f32) -> f32 {
         let s = self.scale as f32;
-        let ratio = if self.android { 1.17 } else { 1.1934 };
+        let ratio = if self.android { 2400.0 / 2048.0 } else { 1.1934 };
         (size * ratio * s).ceil() / s
     }
 
@@ -458,11 +459,23 @@ impl<'a> Cx<'a, '_> {
             Some("right") => TextAlign::Trailing,
             _ => TextAlign::Leading,
         };
-        let glyph_size = if self.android { android_glyph_size(size, self.scale as f32) } else { size };
-        let mut spec = FontSpec::new(glyph_size, self.line_h(size), weight(p), align);
+        let density = self.scale as f32;
+        // React Native's Android TextAttributes rounds the effective font size up in pixels.
+        let glyph_size = if self.android { (size * density).ceil() / density } else { size };
+        let mut spec = FontSpec::new(glyph_size, self.line_h(glyph_size), weight(p), align);
+        let mut font_padding = (0.0, 0.0);
         if self.android {
             spec.android = true;
             spec.tracking = num(p, "letterSpacing").map_or(0.0, |spacing| spacing as f32 / size);
+            // Roboto's Android 17 font extents, rounded per edge like FontMetricsInt.
+            // The extra top placement also accounts for the bundled renderer's baseline.
+            if p.get("includeFontPadding").and_then(Value::as_bool) != Some(false) {
+                let px = glyph_size * density;
+                let height = (px * (2146.0 / 2048.0)).ceil() + (px * (555.0 / 2048.0)).ceil();
+                let extra = (height - (spec.line_height * density).round()).max(0.0);
+                let top = (px * 0.15).round().min(extra);
+                font_padding = (top / density, (extra - top) / density);
+            }
         }
         spec.mono = p.get("fontFamily").and_then(Value::as_str).is_some_and(|f| f.contains("mono"));
         spec.pitch = spec.line_height; // RN lines are one font line height apart (SwiftUI's 22/17 leading does not apply)
@@ -475,7 +488,7 @@ impl<'a> Cx<'a, '_> {
         let color = self.color(p.get("color")).unwrap_or(Color::rgba(0.0, 0.0, 0.0, 1.0));
         let spans = runs(&text, &spans, &spec, color);
         let strike = p.get("textDecorationLine").and_then(Value::as_str).is_some_and(|d| d.contains("line-through"));
-        Text { text, spec, color, strike, field: false, single: false, fixed: None, spans, explicit_lh: !self.android && num(p, "lineHeight").is_some() }
+        Text { text, spec, color, strike, field: false, single: false, fixed: None, spans, explicit_lh: !self.android && num(p, "lineHeight").is_some(), font_padding }
     }
 
     fn build(&mut self, node: &'a ViewNode) -> Option<Item<'a>> {
@@ -551,6 +564,7 @@ impl<'a> Cx<'a, '_> {
                 fixed: Some(if component == "AndroidSwitch" { (38.0, 24.0) } else { (SWITCH.0 as f32, SWITCH.1 as f32) }),
                 spans: vec![],
                 explicit_lh: false,
+                font_padding: (0.0, 0.0),
             };
             let id = self.tree.new_leaf_with_context(st, t).ok()?;
             return Some(Item::new(node, props, id, vec![]));
@@ -660,7 +674,7 @@ impl<'a> Cx<'a, '_> {
                     // Yoga rounds text sizes up to the pixel grid.
                     let up = |x: f64| (x as f32 * scale).ceil() / scale;
                     // iOS paragraphs with an explicit lineHeight come out one device pixel taller (measured on iOS 26.5).
-                    let extra = if t.explicit_lh { 1.0 / scale } else { 0.0 };
+                    let extra = if t.explicit_lh { 1.0 / scale } else { t.font_padding.0 + t.font_padding.1 };
                     taffy::Size { width: known.width.unwrap_or(up(mw)), height: known.height.unwrap_or(up(mh) + extra) }
                 })
             },
@@ -900,6 +914,9 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
         n.kind = "refresh";
     }
     if component == "ViewManagerAdapter_ExpoLinearGradient" {
+        if let Some(radii) = p.get("borderRadii").and_then(Value::as_array).filter(|_| cx.android) {
+            n.radius = radii.iter().filter_map(Value::as_f64).fold(n.radius, f64::max);
+        }
         let stops: Vec<Color> = p.get("colors").and_then(Value::as_array).into_iter().flatten().filter_map(|c| cx.color(Some(c))).collect();
         let pt = |k: &str, d: [f32; 2]| p.get(k).and_then(Value::as_array).filter(|a| a.len() == 2).map_or(d, |a| [a[0].as_f64().unwrap_or(0.0) as f32, a[1].as_f64().unwrap_or(0.0) as f32]);
         let (a, b) = (pt("startPoint", [0.5, 0.0]), pt("endPoint", [0.5, 1.0]));
@@ -909,7 +926,13 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
         }
     }
     if component == "ViewManagerAdapter_ExpoBlur_ExpoBlurView" {
-        n.glass = Some(blur_spec(prop_str(p, "tint").as_deref().unwrap_or("default"), num(p, "intensity").unwrap_or(50.0), cx.dark));
+        let tint = p.get("tint").and_then(Value::as_str).unwrap_or("default");
+        let intensity = num(p, "intensity").unwrap_or(50.0);
+        if cx.android {
+            n.fill = Some(android_blur_tint(tint, intensity));
+        } else {
+            n.glass = Some(blur_spec(tint, intensity, cx.dark));
+        }
     }
     if matches!(component.as_str(), "RCTImageView" | "ViewManagerAdapter_ExpoImage") {
         n.kind = "image";
@@ -974,8 +997,8 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
         // (UIKit's maximumLineHeight drops the surplus ascent; fitted to the iOS 26.5 "Welcome to Expo" title: 0.55 x surplus).
         let nat = cx.line_h(t.spec.size) as f64;
         let lift = if !cx.android && num(p, "lineHeight").is_some_and(|l| l > 0.0 && l < nat) { -(nat - t.spec.line_height as f64) * 0.55 } else { 0.0 };
-        let (ix, iy) = ((b.left + pd.left) as f64, (b.top + pd.top) as f64 + lift);
-        let (iw, ih) = (w - ix - (b.right + pd.right) as f64, h - iy - (b.bottom + pd.bottom) as f64);
+        let (ix, iy) = ((b.left + pd.left) as f64, (b.top + pd.top + t.font_padding.0) as f64 + lift);
+        let (iw, ih) = (w - ix - (b.right + pd.right) as f64, h - iy - (b.bottom + pd.bottom + t.font_padding.1) as f64);
         if (ix, iy, iw, ih) == (0.0, 0.0, w, h) {
             n.text = Some(run);
             out.push(n);
@@ -1082,6 +1105,29 @@ const REFRESH_TINT: (Color, Color) = (Color { r: 174.0 / 255.0, g: 174.0 / 255.0
 /// fraction, taken as linear), drawn as a flat glass: backdrop blur sigma (pt), saturation, then `c * mul + add`.
 /// Fitted on iOS 26.5 per style at full intensity (`default` from its 50% capture).
 // ponytail: all `system*Material` thicknesses share systemMaterial's fit, `extraLight` is `light`, `prominent` is `regular`.
+/// Expo Blur's Android overlay for the default blur method or a missing blur target.
+fn android_blur_tint(tint: &str, intensity: f64) -> Color {
+    let (gray, opacity) = match tint {
+        "dark" | "systemMaterialDark" => (25, 0.69),
+        "light" | "extraLight" | "systemMaterialLight" | "systemUltraThinMaterialLight" | "systemThickMaterialLight" => (249, 0.78),
+        "regular" => (179, 0.82),
+        "systemUltraThinMaterial" => (191, 0.44),
+        "systemThinMaterial" => (199, 0.97),
+        "systemThinMaterialLight" => (199, 0.78),
+        "systemThickMaterial" => (153, 0.97),
+        "systemChromeMaterial" => (255, 0.75),
+        "systemChromeMaterialLight" => (255, 0.97),
+        "systemUltraThinMaterialDark" => (37, 0.55),
+        "systemThinMaterialDark" => (37, 0.70),
+        "systemThickMaterialDark" => (37, 0.90),
+        "systemChromeMaterialDark" => (0, 0.75),
+        _ => (255, 0.44),
+    };
+    let g = gray as f32 / 255.0;
+    let a = (255.0 * intensity.clamp(0.0, 100.0) / 100.0 * opacity).floor() as f32 / 255.0;
+    Color::rgba(g, g, g, a)
+}
+
 fn blur_spec(tint: &str, intensity: f64, dark: bool) -> crate::glass::GlassSpec {
     // (sigma, mul, sat, add rgb 0...255)
     const LIGHT: (f32, f32, f32, [f32; 3]) = (28.0, 0.72, 1.67, [76.0, 78.0, 64.0]);

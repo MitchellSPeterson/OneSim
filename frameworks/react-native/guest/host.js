@@ -32,7 +32,7 @@ const EXPO_VIEWS = {
   SymbolModule: { events: [], props: ['name', 'type', 'scale', 'tintColor', 'animated', 'weight', 'colors', 'resizeMode', 'animationSpec'] },
   ExpoGlassEffect_GlassView: { events: [], props: ['glassEffectStyle', 'tintColor', 'isInteractive', 'colorScheme', 'borderRadius', 'borderBottomLeftRadius', 'borderBottomRightRadius', 'borderTopLeftRadius', 'borderTopRightRadius', 'borderTopStartRadius', 'borderTopEndRadius', 'borderBottomStartRadius', 'borderBottomEndRadius', 'borderCurve'] },
   ExpoGlassEffect_GlassContainer: { events: [], props: ['spacing'] },
-  ExpoLinearGradient: { events: [], props: ['colors', 'startPoint', 'endPoint', 'locations'] },
+  ExpoLinearGradient: { events: [], props: ['colors', 'startPoint', 'endPoint', 'locations', 'borderRadii'] },
   ExpoBlur_ExpoBlurView: { events: [], props: ['tint', 'intensity'] },
 };
 function expoViewConfig(key) {

@@ -3,10 +3,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 : "${AGENT_DEVICE:?set AGENT_DEVICE to the agent-device command returned by device_open}"
-url=${EXPO_ANDROID_LAUNCH_URL:-exp://127.0.0.1:8081}
+url=${EXPO_ANDROID_LAUNCH_URL:-exp://127.0.0.1:8081?__expo_disable_fab=1&__expo_disable_auto_launch=1&__expo_disable_onboarding=1}
 out=tests/fixtures/expo-android
 
-launch() { "$AGENT_DEVICE" open host.exp.exponent "$url" --relaunch >/dev/null; }
+launch() { "$AGENT_DEVICE" open host.exp.exponent "$url" >/dev/null; }
 ref() {
   local result
   for _ in $(seq 40); do
@@ -25,13 +25,20 @@ tap() {
   target=$(ref "$1")
   "$AGENT_DEVICE" press "$target" --settle >/dev/null
 }
-shot() { "$AGENT_DEVICE" screenshot "$out/$1.png" >/dev/null; }
+shot() {
+  "$AGENT_DEVICE" screenshot "$out/$1.png" >/dev/null
+  echo "captured $1"
+}
 
 launch
 "$AGENT_DEVICE" settings appearance light >/dev/null
 trap '"$AGENT_DEVICE" settings appearance light >/dev/null' EXIT
-ref Controls >/dev/null
+ref Showcase >/dev/null
 shot home
+"$AGENT_DEVICE" settings appearance dark >/dev/null
+ref Showcase >/dev/null
+shot home-dark
+"$AGENT_DEVICE" settings appearance light >/dev/null
 tap Controls
 shot controls
 tap Increment
@@ -47,7 +54,3 @@ shot image
 tap Back
 tap Visuals
 shot visuals
-"$AGENT_DEVICE" settings appearance dark >/dev/null
-launch
-ref Controls >/dev/null
-shot home-dark

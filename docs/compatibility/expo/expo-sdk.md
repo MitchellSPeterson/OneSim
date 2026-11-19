@@ -33,8 +33,8 @@ Part of [Expo / React Native API coverage](README.md): status legend, summary an
 | Audio | expo-audio | | ⬜ | ⬜ | | |
 | Video | expo-video | | ⬜ | ⬜ | | |
 | Sensors | expo-sensors | | ⬜ | ⬜ | | |
-| Blur | expo-blur | `ExpoBlur` | 🟠 | ⬜ | | Fitted to iOS 26.5 for `default`/`light`/`dark`/`systemMaterial`; other `system*Material` thicknesses reuse `systemMaterial`; intensity treated as linear |
-| Linear gradient | expo-linear-gradient | `ExpoLinearGradient` | ✅ | ⬜ | | `colors`, `locations`, `start`/`end` |
+| Blur | expo-blur | `ExpoBlur` | 🟠 | 🟠 | | Fitted to iOS 26.5 for `default`/`light`/`dark`/`systemMaterial`. Android draws the tint used by the default blur method. Target-based blur is pending. |
+| Linear gradient | expo-linear-gradient | `ExpoLinearGradient` | ✅ | 🟠 | | `colors`, `locations`, `start`/`end`. Android supports uniform corner rounding. |
 | Localization | expo-localization | `ExpoLocalization` | ✅ | ⬜ | | Fixed en-US / USD / US units / gregorian; time zone from the host `TZ` (else America/Los_Angeles); no change events |
 | Crypto | expo-crypto | `ExpoCrypto` | ✅ | ⬜ | | Digest (SHA-1/256/384/512, MD5), random bytes, UUID |
 | Crypto AES | expo-crypto/aes | `ExpoCryptoAES` | ⛔ | ⬜ | | The classes exist so `expo-crypto` imports; every call rejects as unsupported |

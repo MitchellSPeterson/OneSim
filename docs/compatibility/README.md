@@ -10,7 +10,7 @@ Use the coverage tables to check an API before running your app in SimCore. Sele
 | Framework | iOS | Android |
 |---|---|---|
 | [SwiftUI](swiftui/README.md) | 9% (121/1382) | — |
-| [Expo / React Native](expo/README.md) | 58% (59.5/102) | 14% (13.5/94) |
+| [Expo / React Native](expo/README.md) | 58% (59.5/102) | 15% (14.5/94) |
 | [Jetpack Compose](compose/README.md) | — | 10% (216.5/2181) |
 <!-- coverage:end -->
 

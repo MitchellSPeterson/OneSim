@@ -52,9 +52,10 @@ Run these checks with Python 3 and Pillow. The Compose comparison also requires 
 scripts/compare-ios.sh
 SIMCORE_FALLBACK=1 scripts/compare-ios.sh
 scripts/compare-android.sh
+scripts/compare-expo-android.sh
 ```
 
-The iOS commands run both releases by default. Set `SIMCORE_IOS=27.2` to check one release locally. Install the Expo example dependencies to include the React Native and Expo Router screenshots. See the [iOS comparison results](docs/ios-comparison.md) for examples and known gaps.
+The iOS commands run both releases by default. Set `SIMCORE_IOS=27.2` to check one release locally. Install the Expo example dependencies to include the React Native and Expo Router screenshots. The Android Expo command requires `npm ci` in `examples/expo-showcase`. See the [iOS comparison results](docs/ios-comparison.md) for examples and known gaps.
 
 Fix the rendering when a state fails. Use `SIMCORE_MAX_DIFF` only for local investigation. Keep the checked-in thresholds and states.
 

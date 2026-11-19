@@ -17,8 +17,8 @@ The tables track Expo and React Native support on iOS and Android, with one row 
 | — | Not applicable on this platform (left out of the percentage) | |
 
 **Android** is in early preview. Run `simcore expo --platform android` to load the Android Metro bundle
-on the Pixel 10a profile. The Android column tracks core controls and native modules. Emulator reference
-capture and pixel verification are pending. [Android host tracking issue #12](https://github.com/MitchellSPeterson/SimCore/issues/12)
+on the Pixel 10a profile. The Android column tracks core controls and native modules.
+The showcase is compared against Pixel 10a emulator captures at the 2% threshold. [Android Expo reference guide](../../../tests/fixtures/expo-android/README.md) · [Android host tracking issue #12](https://github.com/MitchellSPeterson/SimCore/issues/12)
 
 ## Coverage
 
@@ -27,9 +27,9 @@ capture and pixel verification are pending. [Android host tracking issue #12](ht
 |---|---|---|
 | [Core components](core-components.md) | 77% (10/13) | 42% (5/12) |
 | [React Native modules](react-native-modules.md) | 59% (16/27) | 26% (6/23) |
-| [Expo SDK](expo-sdk.md) | 53% (28/53) | 5% (2.5/50) |
+| [Expo SDK](expo-sdk.md) | 53% (28/53) | 7% (3.5/50) |
 | [Navigation, animation and community libraries](libraries.md) | 61% (5.5/9) | 0% (0/9) |
-| **Total** | **58% (59.5/102)** | **14% (13.5/94)** |
+| **Total** | **58% (59.5/102)** | **15% (14.5/94)** |
 <!-- coverage:end -->
 
 Refresh with `node scripts/api-coverage.mjs`; CI runs it with `--check`, which also fails when a module in
