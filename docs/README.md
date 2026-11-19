@@ -2,12 +2,14 @@
 
 # OneSim documentation
 
-OneSim runs SwiftUI, Expo / React Native, and Jetpack Compose UI code. Preview SwiftUI in a browser, capture screenshots and inspect views from the headless CLI, or drive interactions from your own tools through the session API.
+OneSim runs SwiftUI, Expo / React Native, and Jetpack Compose UI code. Open a native preview, run SwiftUI in a browser, or drive sessions from the CLI or API.
 
 | I want to… | Start here |
 | --- | --- |
 | Run an example, send input, and save a PNG | [Getting started](getting-started.md) |
+| Open a native preview window | [Native window quick start](getting-started.md#preview-an-app-in-a-native-window) |
 | Preview SwiftUI in a browser tab | [Browser guide](web.md) |
+| Choose a renderer or diagnose a fallback | [Rendering backends](rendering.md) |
 | Check whether OneSim supports an API | [Compatibility and supported versions](compatibility/README.md) |
 | Compare OneSim’s output with iOS or Android | [iOS comparison results](ios-comparison.md) · [Android reference fixtures](../tests/fixtures/compose-android/README.md) |
 | Drive sessions from a test runner or another tool | [JSON-RPC API](api.md) · [TypeScript SDK](../sdk/typescript/README.md) · [DemoKit integration example](../examples/demokit-integration/README.md) |

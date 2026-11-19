@@ -70,9 +70,36 @@ cargo run -p onesim-cli -- run examples/compose-counter \
 
 The PNG uses the Pixel 10a profile. See the [Compose guest guide](../frameworks/compose/README.md) for build and runtime details.
 
+## Preview an app in a native window
+
+Build with the `window` feature and open the SwiftUI showcase.
+
+```sh
+cargo run -p onesim-cli --features window -- window examples/swiftui-showcase
+```
+
+For an Expo app, start Metro as above and pass `--window` to `expo`.
+
+```sh
+cargo run -p onesim-cli --features window -- expo --url http://localhost:8081 --window
+```
+
+The window tries the GPU first. Its title shows the active backend. Use `--renderer cpu` to start on the CPU, or press Cmd+R or F5 to switch during the session.
+
+## Capture a screenshot with the GPU
+
+Headless captures default to CPU rendering. Build with the `gpu` feature and pass `--renderer gpu` to require a usable adapter.
+
+```sh
+cargo run -p onesim-cli --features gpu -- run examples/swiftui-showcase \
+  --renderer gpu --screenshot showcase.png
+```
+
+Use `--renderer auto` to allow CPU fallback. See the backend selection guide for diagnostics and recovery. [Rendering backends](rendering.md)
+
 ## Preview SwiftUI in a browser
 
-Install the Swift toolchain and its matching WebAssembly SDK, then build the showcase and serve it locally. Follow the [browser guide](web.md) for setup and input options.
+Build and serve the complete browser bundle. OneSim tries WebGPU first and falls back to Canvas 2D when needed. Open the preview with `?diag` to see the active backend. [Browser guide](web.md)
 
 ## Drive OneSim from another process
 

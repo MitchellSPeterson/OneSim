@@ -11,7 +11,7 @@ client (DemoKit, CI, agent)
    │  A: JSON-lines API (`onesim serve`)            docs/protocol.md §A
    ▼
 onesim-host ── sessions, build, process supervision
-   │  uses onesim-render: layout (SwiftUI semantics) → Scene → tiny-skia raster, hit test, inspect
+   │  uses onesim-render: layout (SwiftUI semantics) → Scene → render, hit test, inspect
    │  B: JSON-lines guest wire over child stdin/stdout  §B
    ▼
 app process (one per session)
@@ -21,7 +21,7 @@ app process (one per session)
                                        libonesim_runtime.a (Rust)
 ```
 
-The Swift compiler resolves `import SwiftUI` to [OneSim’s SwiftUI module](compatibility/swiftui/guest.md). The module evaluates views with Swift’s own generics, closures, and property wrappers. It submits a normalized view tree to the host through the Rust guest runtime. The host lays out the tree, rasterizes it with tiny-skia and cosmic-text, and routes actions back to Swift closures. See the [protocol reference](protocol.md) for the messages at each boundary.
+The Swift compiler resolves `import SwiftUI` to [OneSim’s SwiftUI module](compatibility/swiftui/guest.md). The module evaluates views with Swift’s own generics, closures, and property wrappers. It submits a normalized view tree to the host through the Rust guest runtime. The host lays out the tree, renders it with the selected backend, and routes actions back to Swift closures. See the [protocol reference](protocol.md) for the messages at each boundary.
 
 ## Framework guests
 
@@ -34,24 +34,29 @@ The Swift compiler resolves `import SwiftUI` to [OneSim’s SwiftUI module](comp
 | Compose execution | [Compose guest](../frameworks/compose/README.md) (JVM) | The AndroidX Compose runtime composes the app. OneSim’s `ui`, `foundation`, and `material3` libraries reduce it to layout nodes and modifier chains. |
 | React Native execution | [React Native guest](../frameworks/react-native/README.md) (Node.js) | The guest loads the Metro bundle unchanged and implements `nativeFabricUIManager` and TurboModules while Fabric reconciles the UI. |
 | Scene, rasterization, hit testing, and inspection | `onesim-render` | The renderer handles all three frameworks. It draws nodes in paint order so Liquid Glass can sample the pixels already drawn behind it. |
+| Display-list building | `onesim_render::Builder` | Resolves paint order, clips, transforms, and device coordinates. CPU-rasterized sprites carry shaped text and symbols to the GPU. Resource IDs allow reuse across frames. |
+| GPU execution | `onesim_render_gpu::Executor` | Vello handles vector and image drawing. wgpu compute passes composite Liquid Glass, its halo and scroll edges against the accumulated frame. |
+| Presentation and recovery | `onesim-cli`, `onesim-web-gpu`, `web/renderer.js` | Own the swap chain or canvas, resize, scheduling and fallback. The host retains the session and scene when a presenter changes. |
 | Sessions and the external API | `onesim-host` and `onesim-cli` | Each session has its own process. If a guest exits unexpectedly, the host marks that session `crashed`. |
 
 ## Design choices
 
-- The CPU renderer uses tiny-skia and cosmic-text to produce deterministic screenshots for CI. The scene type can support another rendering backend.
-- Native guests communicate over JSON lines. The [browser build](web.md) links the SwiftUI app, guest runtime, and renderer together and calls guest functions in-process.
+- The CPU renderer uses tiny-skia and cosmic-text to produce deterministic screenshots for CI. Native windows and browser previews prefer GPU rendering when available. [Renderer behavior](rendering.md)
+- Native guests communicate over JSON lines. The [browser build](web.md) links the SwiftUI app, guest runtime, and CPU renderer together and calls guest functions in-process. A second WebAssembly module runs the shared display list on WebGPU.
 - The SwiftUI guest re-evaluates the root view after each state change.
 
 ## Repository layout
 
 | Directory | Responsibility |
 | --- | --- |
-| [`onesim-cli`](../crates/onesim-cli) | The `onesim` command, including `run`, `expo`, and `serve`. |
+| [`onesim-cli`](../crates/onesim-cli) | The `onesim` command, including `run`, `expo`, `window`, and `serve`. |
 | [`onesim-host`](../crates/onesim-host) | Sessions, guest builds, and process supervision. |
 | [`onesim-render`](../crates/onesim-render) | Layout, rasterization, hit testing, and inspection. |
+| [`onesim-render-gpu`](../crates/onesim-render-gpu) | wgpu and Vello executor, GPU captures, and native presentation. |
 | [`onesim-protocol`](../crates/onesim-protocol) | Shared wire and API types. |
 | [`onesim-runtime`](../crates/onesim-runtime) | Rust guest static library and C ABI. |
 | [`onesim-web`](../crates/onesim-web) | In-process runtime and renderer for WebAssembly. |
+| [`onesim-web-gpu`](../crates/onesim-web-gpu) | WebGPU canvas presenter. |
 | [`frameworks`](../frameworks) | SwiftUI, React Native, and Compose guest implementations. |
 
 ## Fonts and symbols

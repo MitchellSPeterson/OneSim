@@ -29,7 +29,7 @@ pub const METHODS: &[&str] = &[
     "initialize", "session.create", "session.list", "session.get", "session.destroy",
     "runtime.load", "runtime.reload", "runtime.pause", "runtime.resume", "runtime.stop", "runtime.status",
     "input.tap", "input.press", "input.type", "input.key", "input.scroll", "input.swipe",
-    "render.screenshot", "render.frame", "render.tree", "render.inspect",
+    "render.screenshot", "render.frame", "render.backend", "render.tree", "render.inspect",
     "device.list", "device.set", "device.rotate", "device.appearance", "device.keyboard",
     "modules.list", "modules.simulate", "events.subscribe", "events.unsubscribe",
 ];
@@ -93,6 +93,7 @@ struct P {
     from: Option<Pt>,
     to: Option<Pt>,
     format: Option<String>,
+    renderer: Option<String>,
     scale: Option<f64>,
     width: Option<u32>,
     height: Option<u32>,
@@ -512,6 +513,21 @@ fn session_call(srv: &Server, en: &Arc<Entry>, method: &str, a: P) -> R {
             } else {
                 json!({"format": "png", "width": w, "height": h_, "data": b64(png)})
             })
+        }
+        "render.backend" => {
+            let pref = a.renderer.as_deref().map(|r| r.parse::<onesim_render::BackendPref>().map_err(bad)).transpose()?;
+            let d = en.with(|h| {
+                if let Some(p) = pref {
+                    h.set_renderer(p);
+                }
+                h.renderer_diagnostics()
+            })?;
+            let ms = |d: std::time::Duration| d.as_secs_f64() * 1000.0;
+            Ok(json!({
+                "backend": d.backend, "adapter": d.adapter, "limitations": d.limitations,
+                "fallbackReason": d.fallback_reason, "frames": d.frames,
+                "lastFrameMs": {"encode": ms(d.last_frame.encode), "gpu": ms(d.last_frame.gpu), "readback": ms(d.last_frame.readback)},
+            }))
         }
         "render.tree" => en.with(|h| h.inspect(sid)).map(|(v, root)| json!({"treeVersion": v, "root": root})),
         "render.inspect" => {

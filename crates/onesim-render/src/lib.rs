@@ -8,8 +8,11 @@ pub mod layout {
     pub mod rn;
     pub mod swiftui;
 }
+pub mod backend;
 mod chrome;
 mod device;
+pub mod display;
+mod display_build;
 pub mod glass;
 mod image;
 mod interaction;
@@ -20,7 +23,9 @@ mod symbols;
 mod symbols_map;
 mod text;
 
-pub use raster::{render, render_png};
+pub use backend::{BackendKind, BackendPref, CpuRenderer, Diagnostics, Frame, FrameTimings, RenderError, Renderer};
+pub use display_build::{Builder, CACHE_MAX_ENTRIES, CACHE_TTL_FRAMES};
+pub use raster::{apply_backdrop, apply_backdrop_op, clip_chain, clip_radius, needs_backdrop, node_sprite, render, render_png, sprite_key, Sprite, SpriteKey, SpriteLayer};
 pub use symbols::{capability as symbols_capability, SymbolMask, SymbolMetrics, SymbolSpec};
 pub use chrome::{autocap, ChromeParams};
 pub use device::{device, Device, StatusBar, DEFAULT_ANDROID_DEVICE, DEFAULT_DEVICE, DEVICES};

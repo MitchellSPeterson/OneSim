@@ -1,6 +1,7 @@
 use crate::scene::{Color, Glyph, Scene, Shadow, SymbolRun};
 use crate::symbols;
 use crate::text::{FontSpec, Fonts};
+use onesim_protocol::IosVersion;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Range;
@@ -451,13 +452,14 @@ fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: 
 }
 
 /// Tint an SF Symbol's alpha mask with `sy.color`, centred in `b` (points) and cropped to it.
-fn draw_symbol(pm: &mut Pixmap, sy: &SymbolRun, b: (f32, f32, f32, f32), op: f32, s: f32, mask: Option<&Mask>) {
+/// Returns the tile and its device-pixel origin.
+fn symbol_tile(sy: &SymbolRun, b: (f32, f32, f32, f32), op: f32, s: f32) -> Option<(i32, i32, Pixmap)> {
     let (wpx, hpx) = ((sy.size.0 as f32 * s).round().max(1.0) as u32, (sy.size.1 as f32 * s).round().max(1.0) as u32);
-    let Some(m) = symbols::mask(&sy.spec, wpx, hpx, s as f64) else { return };
+    let m = symbols::mask(&sy.spec, wpx, hpx, s as f64)?;
     let (bx, by) = ((b.0 * s).round() as i32, (b.1 * s).round() as i32);
     let (bw, bh) = ((b.2 * s).round() as i32, (b.3 * s).round() as i32);
     let (x0, y0) = (bx + (bw - wpx as i32) / 2, by + (bh - hpx as i32) / 2);
-    let Some(mut tmp) = Pixmap::new(wpx, hpx) else { return };
+    let mut tmp = Pixmap::new(wpx, hpx)?;
     let c = sy.color;
     let k = c.a * op;
     let (r, g, bl) = (c.r * 255.0, c.g * 255.0, c.b * 255.0);
@@ -471,7 +473,13 @@ fn draw_symbol(pm: &mut Pixmap, sy: &SymbolRun, b: (f32, f32, f32, f32), op: f32
         let ch = |v: f32| ((v * a).round() as u8).min(al);
         *px = tiny_skia::PremultipliedColorU8::from_rgba(ch(r), ch(g), ch(bl), al).unwrap_or(*px);
     }
-    pm.draw_pixmap(x0, y0, tmp.as_ref(), &PixmapPaint::default(), Transform::identity(), mask);
+    Some((x0, y0, tmp))
+}
+
+fn draw_symbol(pm: &mut Pixmap, sy: &SymbolRun, b: (f32, f32, f32, f32), op: f32, s: f32, mask: Option<&Mask>) {
+    if let Some((x0, y0, tmp)) = symbol_tile(sy, b, op, s) {
+        pm.draw_pixmap(x0, y0, tmp.as_ref(), &PixmapPaint::default(), Transform::identity(), mask);
+    }
 }
 
 /// Separable gaussian blur of an `f32` coverage plane (exact kernel, truncated at 3 sigma).
@@ -542,15 +550,30 @@ thread_local! {
     static SHADOWS: RefCell<HashMap<ShadowKey, Rc<Pixmap>>> = RefCell::new(HashMap::new());
 }
 
+/// A shadow in device pixels: the shape's `x, y, w, h`, its corner radius, gaussian sigma, offset and straight RGBA.
+struct DevShadow {
+    b: (f32, f32, f32, f32),
+    radius: f32,
+    sigma: f32,
+    dx: f32,
+    dy: f32,
+    rgba: [u8; 4],
+}
+
 /// SwiftUI `shadow(radius:)` is a gaussian with sigma = radius (fitted to simulator renders).
 fn draw_shadow(pm: &mut Pixmap, n: &crate::scene::Node, sh: &Shadow, b: (f32, f32, f32, f32), s: f32, mask: Option<&Mask>) {
     let (id, op, radius) = (n.id.as_str(), n.opacity, n.radius.max(n.clip_radius.unwrap_or(0.0)) as f32);
-    let sigma = (sh.radius as f32 * s).max(0.5);
-    let pad = (sigma * 3.0).ceil() + 2.0;
-    let (px, py) = (b.0 * s + sh.dx as f32 * s, b.1 * s + sh.dy as f32 * s);
-    let (fx, fy) = (px - px.floor(), py - py.floor());
     let rgba = [sh.color.r, sh.color.g, sh.color.b, sh.color.a * op].map(|v| (v * 255.0).round() as u8);
-    let key = (id.to_string(), [(b.2 * s).to_bits(), (b.3 * s).to_bits(), (radius * s).to_bits(), sigma.to_bits(), fx.to_bits(), fy.to_bits(), 0], rgba);
+    let dev = DevShadow { b: (b.0 * s, b.1 * s, b.2 * s, b.3 * s), radius: radius * s, sigma: (sh.radius as f32 * s).max(0.5), dx: sh.dx as f32 * s, dy: sh.dy as f32 * s, rgba };
+    draw_shadow_dev(pm, id, &dev, mask);
+}
+
+fn draw_shadow_dev(pm: &mut Pixmap, id: &str, sh: &DevShadow, mask: Option<&Mask>) {
+    let DevShadow { b, radius, sigma, rgba, .. } = *sh;
+    let pad = (sigma * 3.0).ceil() + 2.0;
+    let (px, py) = (b.0 + sh.dx, b.1 + sh.dy);
+    let (fx, fy) = (px - px.floor(), py - py.floor());
+    let key = (id.to_string(), [b.2.to_bits(), b.3.to_bits(), radius.to_bits(), sigma.to_bits(), fx.to_bits(), fy.to_bits(), 0], rgba);
     let img = SHADOWS.with(|c| {
         let mut c = c.borrow_mut();
         if c.len() > 256 {
@@ -558,9 +581,9 @@ fn draw_shadow(pm: &mut Pixmap, n: &crate::scene::Node, sh: &Shadow, b: (f32, f3
         }
         c.entry(key)
             .or_insert_with(|| {
-                let (w, h) = ((b.2 * s + 2.0 * pad).ceil() as u32 + 1, (b.3 * s + 2.0 * pad).ceil() as u32 + 1);
+                let (w, h) = ((b.2 + 2.0 * pad).ceil() as u32 + 1, (b.3 + 2.0 * pad).ceil() as u32 + 1);
                 let mut cov = Pixmap::new(w.max(1), h.max(1)).expect("shadow size");
-                if let Some(p) = rrect(pad + fx, pad + fy, b.2 * s, b.3 * s, radius * s) {
+                if let Some(p) = rrect(pad + fx, pad + fy, b.2, b.3, radius) {
                     let mut white = Paint::default();
                     white.set_color_rgba8(255, 255, 255, 255);
                     cov.fill_path(&p, &white, FillRule::Winding, Transform::identity(), None);
@@ -626,6 +649,346 @@ fn paint(c: Color, opacity: f32) -> Paint<'static> {
     p
 }
 
+/// One paint operation of a text node, in device pixels.
+enum TextOp {
+    /// Glyph pixel run blended with straight-alpha `c`.
+    Blend(i32, i32, u32, u32, [u8; 4]),
+    /// Underline / strikethrough rule (non-antialiased).
+    Rule(f32, f32, f32, f32, [u8; 4]),
+}
+
+fn apply_text_op(pm: &mut Pixmap, op: &TextOp, (dx, dy): (i32, i32), mask: Option<&Mask>) {
+    match *op {
+        TextOp::Blend(x, y, w, h, c) => blend_rect(pm, (x - dx, y - dy, w, h), c, mask),
+        TextOp::Rule(x, y, w, h, col) => {
+            if let Some(r) = Rect::from_xywh(x - dx as f32, y - dy as f32, w, h) {
+                let mut p = Paint::default();
+                p.set_color_rgba8(col[0], col[1], col[2], col[3]);
+                p.anti_alias = false;
+                pm.fill_rect(r, &p, Transform::identity(), mask);
+            }
+        }
+    }
+}
+
+/// Lay out and paint a text node as device-pixel operations (`emit` receives them in paint order).
+fn paint_text(n: &crate::scene::Node, t: &crate::scene::TextRun, fonts: &mut Fonts, s: f32, mut emit: impl FnMut(TextOp)) {
+    let b = n.bounds;
+    let (bx, by, bw) = (b.x as f32, b.y as f32, b.w as f32);
+    let rgba = [
+        (t.color.r * 255.0).round() as u8,
+        (t.color.g * 255.0).round() as u8,
+        (t.color.b * 255.0).round() as u8,
+        (t.color.a * n.opacity * 255.0).round() as u8,
+    ];
+    // Wrapped text uses a larger pitch than the single-line box; keep line 1 where it is.
+    // Accessibility sizes: iOS sets the glyphs ~0.01 em higher in the line box (measured).
+    let (lift, ldx) = match (t.font.size > 40.0, fonts.is_sf()) {
+        (false, _) => (0.0, 0.0),
+        (true, true) => (0.0105 * t.font.size, 0.0),
+        // Inter fallback at accessibility sizes: baseline and side bearing differ from SF.
+        (true, false) => (-0.03 * t.font.size, -0.775),
+    };
+    let (ox, oy) = ((bx + t.offset_x + ldx) * s, (by - (t.font.pitch - t.font.line_height).max(0.0) / 2.0 - lift) * s);
+    let spec = FontSpec { size: t.font.size * s, line_height: t.font.line_height * s, pitch: t.font.pitch * s, ..t.font };
+    // +2px slack so rounding differences vs layout never re-wrap.
+    // Styled runs carry their own color (alpha included); only the node opacity is applied on top.
+    let base_a = if t.spans.is_empty() { rgba[3] as u32 } else { (n.opacity * 255.0).round() as u32 };
+    let spans = fonts.draw(&t.text, &spec, bw * s + 2.0, rgba, (ox, oy), &t.spans, |x, y, w, h, c| {
+        // cosmic-text replaces the colour alpha with glyph coverage; reapply ours.
+        emit(TextOp::Blend(x, y, w, h, [c[0], c[1], c[2], (c[3] as u32 * base_a / 255) as u8]));
+    });
+    // Strikethrough / underline: per line, or per styled run (in the run's own color and size).
+    for sp in spans {
+        let run = sp.run.and_then(|i| t.spans.get(i));
+        let (strike, under) = (t.strike || run.is_some_and(|r| r.strike), run.is_some_and(|r| r.underline));
+        let size = run.map_or(spec.size, |r| spec.size * r.pt / t.font.pt);
+        let col = run.map_or(rgba, |r| [(r.color.r * 255.0).round() as u8, (r.color.g * 255.0).round() as u8, (r.color.b * 255.0).round() as u8, (r.color.a * n.opacity * 255.0).round() as u8]);
+        for (on, drop) in [(strike, 0.27f32), (under, -0.11)] {
+            if !on {
+                continue;
+            }
+            let th = (size * 0.065).max(1.0);
+            let y = oy + sp.baseline - size * drop - th / 2.0;
+            emit(TextOp::Rule(ox + sp.x0, y, (sp.x1 - sp.x0).max(0.0), th, col));
+        }
+    }
+}
+
+/// Liquid Glass halo + glass, own shadow and scroll-edge effect of `n`: everything in the paint order
+/// that reads or blends against the backdrop already in `pm`.
+fn paint_backdrop(pm: &mut Pixmap, n: &crate::scene::Node, dark: bool, ios: IosVersion, s: f32, mask: Option<&Mask>) {
+    let b = n.bounds;
+    let (bx, by, bw, bh) = (b.x as f32, b.y as f32, b.w as f32, b.h as f32);
+    let sh = (bx, by, bw, bh);
+    // Liquid Glass: snapshot the backdrop before our own halo lands on it.
+    let glass = n.glass.as_ref().filter(|g| g.variant != crate::glass::GlassVariant::Identity).map(|g| {
+        let p = crate::glass::spec_params(g, dark, ios);
+        let r = (n.radius as f32).min(bw / 2.0).min(bh / 2.0) * s;
+        let shape = crate::glass::Shape { x: bx * s, y: by * s, w: bw * s, h: bh * s, r };
+        (g, p, shape, crate::glass::snapshot(pm, shape, s, &p))
+    });
+    if let Some((_, p, ..)) = &glass {
+        let sd = Shadow { color: Color::rgba(0.0, 0.0, 0.0, p.sh_a), radius: p.sh_sigma as f64, dx: 0.0, dy: p.sh_dy as f64 };
+        if p.sh_a > 0.0 {
+            draw_shadow(pm, n, &sd, sh, s, mask);
+        }
+    }
+    if let Some((g, _, shape, snap)) = glass {
+        crate::glass::draw(pm, snap, shape, g, s, dark, ios, n.opacity, mask);
+    }
+    if let Some(sd) = &n.shadow {
+        draw_shadow(pm, n, sd, sh, s, mask);
+    }
+    if let Some(e) = &n.edge {
+        crate::glass::draw_edge(pm, e, s, ios, mask);
+    }
+}
+
+/// The clip mask `n` imposes on its descendants, on top of `mask` (its own).
+/// A square clip covering the whole canvas clips nothing: skip the full-size mask (and the
+/// slower masked blending under it). Full scrollers are exactly that.
+fn child_mask(n: &crate::scene::Node, mask: Option<Rc<Mask>>, s: f32, pw: u32, ph: u32) -> Option<Rc<Mask>> {
+    let b = n.bounds;
+    let (bx, by, bw, bh) = (b.x as f32, b.y as f32, b.w as f32, b.h as f32);
+    match clip_radius(n, s, pw, ph).and_then(|r| rrect(bx, by, bw, bh, r as f32)) {
+        Some(path) => Some(Rc::new(clip_mask(mask.as_deref(), &path, Transform::from_scale(s, s), pw, ph))),
+        None => mask,
+    }
+}
+
+/// Corner radius (points) of the clip `n` applies to its descendants on a `pw` x `ph` canvas at
+/// `scale`; `None` when it clips nothing (no clip, or a square clip covering the whole canvas).
+pub fn clip_radius(n: &crate::scene::Node, s: f32, pw: u32, ph: u32) -> Option<f64> {
+    let b = n.bounds;
+    let (bx, by, bw, bh) = (b.x as f32, b.y as f32, b.w as f32, b.h as f32);
+    let covers = n.clip_radius == Some(0.0) && bx * s <= 0.0 && by * s <= 0.0 && (bx + bw) * s >= pw as f32 && (by + bh) * s >= ph as f32;
+    n.clip_radius.filter(|_| !covers)
+}
+
+/// The clip rounded rects (device px `[x, y, w, h, radius]`, outermost first) that apply to node `idx`: its ancestors'
+/// clips, exactly those [`apply_backdrop`] intersects into its mask.
+pub fn clip_chain(scene: &Scene, idx: usize, scale: f64) -> Vec<[f32; 5]> {
+    let s = scale as f32;
+    let (pw, ph) = ((scene.size.0 * scale).round().max(1.0) as u32, (scene.size.1 * scale).round().max(1.0) as u32);
+    let mut chain = vec![];
+    let mut at = scene.nodes[idx].parent;
+    while let Some(i) = at {
+        let n = &scene.nodes[i];
+        if let Some(r) = clip_radius(n, s, pw, ph) {
+            let b = n.bounds;
+            let (w, h) = (b.w as f32 * s, b.h as f32 * s);
+            if rrect(b.x as f32, b.y as f32, b.w as f32, b.h as f32, r as f32).is_some() {
+                chain.push([b.x as f32 * s, b.y as f32 * s, w, h, (r as f32 * s).min(w / 2.0).min(h / 2.0).max(0.0)]);
+            }
+        }
+        at = n.parent;
+    }
+    chain.reverse();
+    chain
+}
+
+/// True when `n` paints by reading or blending against what is already in the frame (Liquid Glass, scroll edge),
+/// so a GPU backend must composite it on the CPU.
+pub fn needs_backdrop(n: &crate::scene::Node) -> bool {
+    n.glass.as_ref().is_some_and(|g| g.variant != crate::glass::GlassVariant::Identity) || n.edge.is_some()
+}
+
+/// Paint the backdrop-dependent parts of node `idx` (see [`needs_backdrop`]: halo, glass, own shadow,
+/// scroll edge, in that order) into `pm`, which holds every earlier node, clipped by its ancestors exactly as [`render`] does.
+pub fn apply_backdrop(pm: &mut Pixmap, scene: &Scene, idx: usize, scale: f64) {
+    let s = scale as f32;
+    let (pw, ph) = (pm.width(), pm.height());
+    let mut chain = vec![];
+    let mut at = scene.nodes[idx].parent;
+    while let Some(i) = at {
+        chain.push(i);
+        at = scene.nodes[i].parent;
+    }
+    let mask = chain.iter().rev().fold(None, |m, &i| child_mask(&scene.nodes[i], m, s, pw, ph));
+    let dark = scene.appearance == onesim_protocol::Appearance::Dark;
+    paint_backdrop(pm, &scene.nodes[idx], dark, scene.ios, s, mask.as_deref());
+}
+
+/// Paint the backdrop display-list op `op` ([`crate::display::Op::is_backdrop`]) into `pm`, which holds everything
+/// painted before it, clipped by `clips` (outermost first). Everything is in device pixels at `scale` px per point.
+/// This is the CPU reference for the GPU executor's backdrop passes and its fallback.
+pub fn apply_backdrop_op(pm: &mut Pixmap, op: &crate::display::Op, clips: &[crate::display::RRect], scale: f32, dark: bool, ios: IosVersion) {
+    use crate::display::Op;
+    let (pw, ph) = (pm.width(), pm.height());
+    let mask = clips.iter().fold(None, |m: Option<Mask>, c| match rrect(c.x, c.y, c.w, c.h, c.r) {
+        Some(p) => Some(clip_mask(m.as_ref(), &p, Transform::identity(), pw, ph)),
+        None => m,
+    });
+    let mask = mask.as_ref();
+    let rgba = |c: Color| [c.r, c.g, c.b, c.a].map(|v| (v * 255.0).round() as u8);
+    match op {
+        Op::Glass { shape, spec, opacity, halo_radius } => {
+            if spec.variant == crate::glass::GlassVariant::Identity {
+                return;
+            }
+            let p = crate::glass::spec_params(spec, dark, ios);
+            let r = shape.r.min(shape.w / 2.0).min(shape.h / 2.0).max(0.0);
+            let sh = crate::glass::Shape { x: shape.x, y: shape.y, w: shape.w, h: shape.h, r };
+            // Snapshot the backdrop before our own halo lands on it.
+            let snap = crate::glass::snapshot(pm, sh, scale, &p);
+            if p.sh_a > 0.0 {
+                let halo = Color::rgba(0.0, 0.0, 0.0, p.sh_a * opacity);
+                let dev = DevShadow { b: (sh.x, sh.y, sh.w, sh.h), radius: *halo_radius, sigma: (p.sh_sigma * scale).max(0.5), dx: 0.0, dy: p.sh_dy * scale, rgba: rgba(halo) };
+                draw_shadow_dev(pm, "", &dev, mask);
+            }
+            crate::glass::draw(pm, snap, sh, spec, scale, dark, ios, *opacity, mask);
+        }
+        Op::BackdropShadow { shape, color, sigma, dx, dy } => {
+            let dev = DevShadow { b: (shape.x, shape.y, shape.w, shape.h), radius: shape.r, sigma: sigma.max(0.5), dx: *dx, dy: *dy, rgba: rgba(*color) };
+            draw_shadow_dev(pm, "", &dev, mask);
+        }
+        Op::Edge(e) => crate::glass::draw_edge(pm, e, scale, ios, mask),
+        _ => {}
+    }
+}
+
+/// Which part of a node's content [`node_sprite`] draws.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpriteLayer {
+    /// Vector glyph icon and SF Symbol (painted before the node's image).
+    Icons,
+    /// Text with underline / strikethrough (painted last).
+    Text,
+}
+
+/// A CPU-drawn piece of one node, unclipped, premultiplied, at device-pixel position `(x, y)`.
+pub struct Sprite {
+    pub x: i32,
+    pub y: i32,
+    pub pixmap: Pixmap,
+}
+
+/// Cache identity of a node's sprite: equal `hash` and the same `anchor`-relative offsets mean
+/// equal pixels, so a sprite from [`node_sprite`] can be reused after the node moves by whole device pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SpriteKey {
+    pub hash: u64,
+    /// Device-pixel origin the sprite position is relative to.
+    pub anchor: (i32, i32),
+}
+
+/// Identity of the `layer` sprite of `n` at `scale`, or `None` if the node has none.
+pub fn sprite_key(n: &crate::scene::Node, fonts: &Fonts, scale: f64, layer: SpriteLayer) -> Option<SpriteKey> {
+    use std::hash::{Hash, Hasher};
+    let has = match layer {
+        SpriteLayer::Icons => n.glyph.is_some() || n.symbol.is_some(),
+        SpriteLayer::Text => n.text.is_some(),
+    };
+    if !has {
+        return None;
+    }
+    let s = scale as f32;
+    let (px, py) = (n.bounds.x as f32 * s, n.bounds.y as f32 * s);
+    let (ax, ay) = (px.floor(), py.floor());
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    let content = match layer {
+        SpriteLayer::Icons => format!("{:?}", (&n.glyph, &n.symbol)),
+        SpriteLayer::Text => format!("{:?}", n.text),
+    };
+    (layer as u8, content, fonts.is_sf(), s.to_bits(), n.opacity.to_bits()).hash(&mut h);
+    [n.bounds.w as f32, n.bounds.h as f32, px - ax, py - ay].map(f32::to_bits).hash(&mut h);
+    Some(SpriteKey { hash: h.finish(), anchor: (ax as i32, ay as i32) })
+}
+
+/// Largest sprite edge in device pixels; anything bigger is not drawn.
+const MAX_SPRITE: i32 = 8192;
+
+/// Draw the `layer` content of `n` with the exact CPU code of [`render`], unclipped, into a tight pixmap.
+pub fn node_sprite(n: &crate::scene::Node, fonts: &mut Fonts, scale: f64, layer: SpriteLayer) -> Option<Sprite> {
+    let s = scale as f32;
+    let b = n.bounds;
+    let sh = (b.x as f32, b.y as f32, b.w as f32, b.h as f32);
+    match layer {
+        SpriteLayer::Icons => {
+            let mut parts: Vec<(i32, i32, Pixmap)> = vec![];
+            if let Some((g, c)) = n.glyph {
+                // Strokes and halos reach past the box (popover arrow shadow strokes: up to ~6 pt).
+                let pad = (12.0 * s).ceil() as i32;
+                let (ox, oy) = ((sh.0 * s).floor() as i32 - pad, (sh.1 * s).floor() as i32 - pad);
+                let (w, h) = ((sh.2 * s).ceil() as i32 + 2 * pad + 1, (sh.3 * s).ceil() as i32 + 2 * pad + 1);
+                if w <= MAX_SPRITE && h <= MAX_SPRITE {
+                    if let Some(mut pm) = Pixmap::new(w as u32, h as u32) {
+                        let xf = Transform::from_scale(s, s).post_translate(-ox as f32, -oy as f32);
+                        draw_glyph(&mut pm, g, c, sh, n.opacity, xf, None);
+                        parts.push((ox, oy, pm));
+                    }
+                }
+            }
+            if let Some(sy) = &n.symbol {
+                parts.extend(symbol_tile(sy, sh, n.opacity, s));
+            }
+            combine(parts)
+        }
+        SpriteLayer::Text => {
+            let t = n.text.as_ref()?;
+            let mut ops = vec![];
+            paint_text(n, t, fonts, s, |op| match op {
+                TextOp::Blend(_, _, _, _, c) if c[3] == 0 => {}
+                op => ops.push(op),
+            });
+            let (mut x0, mut y0, mut x1, mut y1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+            for op in &ops {
+                let (a, b, c, d) = match *op {
+                    TextOp::Blend(x, y, w, h, _) => (x, y, x + w as i32, y + h as i32),
+                    TextOp::Rule(x, y, w, h, _) => (x.floor() as i32, y.floor() as i32, (x + w).ceil() as i32 + 1, (y + h).ceil() as i32 + 1),
+                };
+                (x0, y0, x1, y1) = (x0.min(a), y0.min(b), x1.max(c), y1.max(d));
+            }
+            if x1 <= x0 || y1 <= y0 || x1 - x0 > MAX_SPRITE || y1 - y0 > MAX_SPRITE {
+                return None;
+            }
+            let mut pm = Pixmap::new((x1 - x0) as u32, (y1 - y0) as u32)?;
+            for op in &ops {
+                apply_text_op(&mut pm, op, (x0, y0), None);
+            }
+            Some(Sprite { x: x0, y: y0, pixmap: pm })
+        }
+    }
+}
+
+/// Composite device-positioned tiles into one pixmap cropped to their non-empty extent.
+fn combine(parts: Vec<(i32, i32, Pixmap)>) -> Option<Sprite> {
+    let mut all: Vec<(i32, i32, Pixmap)> = parts.into_iter().filter_map(|(x, y, p)| crop(x, y, p)).collect();
+    match all.len() {
+        0 => None,
+        1 => all.pop().map(|(x, y, pixmap)| Sprite { x, y, pixmap }),
+        _ => {
+            let x0 = all.iter().map(|p| p.0).min()?;
+            let y0 = all.iter().map(|p| p.1).min()?;
+            let x1 = all.iter().map(|p| p.0 + p.2.width() as i32).max()?;
+            let y1 = all.iter().map(|p| p.1 + p.2.height() as i32).max()?;
+            let mut pm = Pixmap::new((x1 - x0) as u32, (y1 - y0) as u32)?;
+            for (x, y, p) in &all {
+                pm.draw_pixmap(x - x0, y - y0, p.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+            }
+            Some(Sprite { x: x0, y: y0, pixmap: pm })
+        }
+    }
+}
+
+/// Crop a tile to its non-transparent pixels (`None` if fully transparent).
+fn crop(x: i32, y: i32, p: Pixmap) -> Option<(i32, i32, Pixmap)> {
+    let (w, h) = (p.width() as usize, p.height() as usize);
+    let d = p.data();
+    let live = |i: usize| d[i * 4 + 3] != 0;
+    let rows: Vec<usize> = (0..h).filter(|&r| (0..w).any(|c| live(r * w + c))).collect();
+    let (r0, r1) = (*rows.first()?, *rows.last()?);
+    let cols = |c: usize| (r0..=r1).any(|r| live(r * w + c));
+    let c0 = (0..w).find(|&c| cols(c))?;
+    let c1 = (0..w).rev().find(|&c| cols(c))?;
+    if (c0, r0, c1 + 1, r1 + 1) == (0, 0, w, h) {
+        return Some((x, y, p));
+    }
+    let rect = tiny_skia::IntRect::from_xywh(c0 as i32, r0 as i32, (c1 - c0 + 1) as u32, (r1 - r0 + 1) as u32)?;
+    Some((x + c0 as i32, y + r0 as i32, p.clone_rect(rect)?))
+}
+
 /// Rasterize at `scale` device pixels per point.
 pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
     let pw = (scene.size.0 * scale).round().max(1.0) as u32;
@@ -633,6 +996,7 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
     let mut pm = Pixmap::new(pw, ph).expect("pixmap size");
     let s = scale as f32;
     let xf = Transform::from_scale(s, s);
+    let dark = scene.appearance == onesim_protocol::Appearance::Dark;
     // Clip mask in effect for the *children* of each node.
     let mut masks: Vec<Option<Rc<Mask>>> = Vec::with_capacity(scene.nodes.len());
     for n in &scene.nodes {
@@ -640,30 +1004,7 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
         let b = n.bounds;
         let (bx, by, bw, bh) = (b.x as f32, b.y as f32, b.w as f32, b.h as f32);
         let sh = (bx, by, bw, bh);
-        // Liquid Glass: snapshot the backdrop before our own halo lands on it.
-        let glass = n.glass.as_ref().filter(|g| g.variant != crate::glass::GlassVariant::Identity).map(|g| {
-            let dark = scene.appearance == onesim_protocol::Appearance::Dark;
-            let p = crate::glass::spec_params(g, dark, scene.ios);
-            let r = (n.radius as f32).min(bw / 2.0).min(bh / 2.0) * s;
-            let shape = crate::glass::Shape { x: bx * s, y: by * s, w: bw * s, h: bh * s, r };
-            (g, p, shape, crate::glass::snapshot(&pm, shape, s, &p), dark)
-        });
-        if let Some((_, p, ..)) = &glass {
-            let sd = Shadow { color: Color::rgba(0.0, 0.0, 0.0, p.sh_a), radius: p.sh_sigma as f64, dx: 0.0, dy: p.sh_dy as f64 };
-            if p.sh_a > 0.0 {
-                draw_shadow(&mut pm, n, &sd, sh, s, mask.as_deref());
-            }
-        }
-        if let Some((g, _, shape, snap, dark)) = glass {
-            crate::glass::draw(&mut pm, snap, shape, g, s, dark,
-                scene.ios, n.opacity, mask.as_deref());
-        }
-        if let Some(sd) = &n.shadow {
-            draw_shadow(&mut pm, n, sd, sh, s, mask.as_deref());
-        }
-        if let Some(e) = &n.edge {
-            crate::glass::draw_edge(&mut pm, e, s, scene.ios, mask.as_deref());
-        }
+        paint_backdrop(&mut pm, n, dark, scene.ios, s, mask.as_deref());
         if let Some(c) = n.fill {
             if n.radius > 0.0 {
                 if let Some(p) = rrect(bx, by, bw, bh, n.radius as f32) {
@@ -697,58 +1038,10 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
             draw_image(&mut pm, n, im, s, mask.as_deref());
         }
         if let Some(t) = &n.text {
-            let rgba = [
-                (t.color.r * 255.0).round() as u8,
-                (t.color.g * 255.0).round() as u8,
-                (t.color.b * 255.0).round() as u8,
-                (t.color.a * n.opacity * 255.0).round() as u8,
-            ];
-            // Wrapped text uses a larger pitch than the single-line box; keep line 1 where it is.
-            // Accessibility sizes: iOS sets the glyphs ~0.01 em higher in the line box (measured).
-            let (lift, ldx) = match (t.font.size > 40.0, fonts.is_sf()) {
-                (false, _) => (0.0, 0.0),
-                (true, true) => (0.0105 * t.font.size, 0.0),
-                // Inter fallback at accessibility sizes: baseline and side bearing differ from SF.
-                (true, false) => (-0.03 * t.font.size, -0.775),
-            };
-            let (ox, oy) = ((bx + t.offset_x + ldx) * s, (by - (t.font.pitch - t.font.line_height).max(0.0) / 2.0 - lift) * s);
-            let spec = FontSpec { size: t.font.size * s, line_height: t.font.line_height * s, pitch: t.font.pitch * s, ..t.font };
-            // +2px slack so rounding differences vs layout never re-wrap.
-            // Styled runs carry their own color (alpha included); only the node opacity is applied on top.
-            let base_a = if t.spans.is_empty() { rgba[3] as u32 } else { (n.opacity * 255.0).round() as u32 };
-            let spans = fonts.draw(&t.text, &spec, bw * s + 2.0, rgba, (ox, oy), &t.spans, |x, y, w, h, c| {
-                // cosmic-text replaces the colour alpha with glyph coverage; reapply ours.
-                blend_rect(&mut pm, (x, y, w, h), [c[0], c[1], c[2], (c[3] as u32 * base_a / 255) as u8], mask.as_deref());
-            });
-            // Strikethrough / underline: per line, or per styled run (in the run's own color and size).
-            for sp in spans {
-                let run = sp.run.and_then(|i| t.spans.get(i));
-                let (strike, under) = (t.strike || run.is_some_and(|r| r.strike), run.is_some_and(|r| r.underline));
-                let size = run.map_or(spec.size, |r| spec.size * r.pt / t.font.pt);
-                let col = run.map_or(rgba, |r| [(r.color.r * 255.0).round() as u8, (r.color.g * 255.0).round() as u8, (r.color.b * 255.0).round() as u8, (r.color.a * n.opacity * 255.0).round() as u8]);
-                for (on, drop) in [(strike, 0.27f32), (under, -0.11)] {
-                    if !on {
-                        continue;
-                    }
-                    let th = (size * 0.065).max(1.0);
-                    let y = oy + sp.baseline - size * drop - th / 2.0;
-                    if let Some(r) = Rect::from_xywh(ox + sp.x0, y, (sp.x1 - sp.x0).max(0.0), th) {
-                        let mut p = Paint::default();
-                        p.set_color_rgba8(col[0], col[1], col[2], col[3]);
-                        p.anti_alias = false;
-                        pm.fill_rect(r, &p, Transform::identity(), mask.as_deref());
-                    }
-                }
-            }
+            paint_text(n, t, fonts, s, |op| apply_text_op(&mut pm, &op, (0, 0), mask.as_deref()));
         }
-        // A square clip covering the whole canvas clips nothing: skip the full-size mask (and the
-        // slower masked blending under it). Full scrollers are exactly that.
-        let covers = n.clip_radius == Some(0.0) && bx * s <= 0.0 && by * s <= 0.0 && (bx + bw) * s >= pw as f32 && (by + bh) * s >= ph as f32;
-        let child_mask = match n.clip_radius.filter(|_| !covers).and_then(|r| rrect(bx, by, bw, bh, r as f32)) {
-            Some(path) => Some(Rc::new(clip_mask(mask.as_deref(), &path, xf, pw, ph))),
-            None => mask,
-        };
-        masks.push(child_mask);
+        let cm = child_mask(n, mask, s, pw, ph);
+        masks.push(cm);
     }
     pm
 }

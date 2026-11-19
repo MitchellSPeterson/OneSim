@@ -18,6 +18,15 @@ node scripts/api-coverage.mjs --check
 
 For Expo changes, use the guest checks in the [React Native guide](frameworks/react-native/README.md). For renderer changes, run the pixel comparisons below.
 
+For native GPU changes, run the display-list and rendering tests on a machine with a usable wgpu adapter.
+
+```sh
+cargo test -p onesim-render-gpu
+cargo clippy -p onesim-cli --features window --all-targets -- -D warnings
+```
+
+For WebGPU changes, build the SwiftUI showcase and run `node web/test/presenter.mjs --app`. The presenter test also exercises Canvas 2D fallback. [Browser test setup](docs/web.md#testing)
+
 ## Update the docs with your change
 
 | Change | Update |
@@ -47,6 +56,8 @@ Inter’s widths are fitted to SF Pro. The fallback threshold accounts for the r
 - The React Native showcase `text` state has a **< 2.5%** limit in system mode. Dense glyph rasterization accounts for the remaining difference.
 
 Run these checks with Python 3 and Pillow. The Compose comparison also requires Java 17 or later.
+
+The reference comparisons use the CPU renderer. In a shell with a shared `SIMCORE_RENDERER` setting, set it to `cpu` before running the scripts.
 
 ```sh
 scripts/compare-ios.sh

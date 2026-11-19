@@ -85,7 +85,7 @@ The default profile is iPhone 18 Pro on iOS 27.2 (`--ios 27.2`). The table inclu
 | React Native / refresh-pulled | 0.80% | 1.45% |
 | React Native / scroll-scrolled | 0.86% | 1.13% |
 | React Native / scroll | 0.77% | 1.02% |
-| React Native / text | 2.45% | 4.35% |
+| React Native / text | 2.45% | 3.26% |
 | React Native / visuals-dark | 0.78% | 0.89% |
 | React Native / visuals | 0.87% | 0.99% |
 | Expo Router / tabs-explore-dark | 1.43% | 2.27% |
@@ -225,7 +225,6 @@ Each sheet shows the iOS 26.5 Simulator capture, the OneSim render, and the pixe
 
 ## Known gaps
 
-- The React Native showcase’s dense `text` state differs by about 4.4% in fallback mode on both iOS releases. Its approved 2.5% limit applies only in system mode.
 - SwiftUI models the iPhone Duo unfolded. React Native content does not yet avoid its status column.
 - The keyboard leaves the two completion slots next to the typed word empty.
 - Fallback mode fails `typography-scrolled` (4.9%, limit 3.5%): Inter's glyph shapes and word spacing differ from SF at 43-60pt (per-line positions already match within ~1pt after fitting size scale 0.93, tracking and baseline; no threshold was changed). Measured limits: re-fitting every Inter knob (scale, tracking at 43/53/60pt, weight, baseline, x offset) bottoms out at 4.85%. Drawing Inter glyphs at SF Pro's own shaped positions (kerning included) reaches 2.9%, but SF's kerning is essential (5.1% without it), so closing the gap means shipping SF-derived advance and kerning tables, which was declined for licensing reasons.
@@ -243,7 +242,7 @@ When Apple's fonts and symbols are unavailable, or when forced with `SIMCORE_FAL
 - **Inter 4.1** (SIL OFL 1.1). Letter spacing is fitted per size so widths and wrapping match SF.
 - **Phosphor Icons 2.1.1** (MIT). 270 SF Symbol names are mapped onto Phosphor's regular, bold and fill styles, sized to SF's layout boxes. Unmapped names draw a placeholder and report `unsupported_symbol`.
 
-The fallback threshold accounts for the measured difference in glyph shapes. See the result tables above for the measured states.
+The fallback threshold accounts for the measured difference in glyph shapes. Fallback paragraph tracking keeps the React Native showcase’s dense `text` state within the 3.5% gate on iOS 26.5 and 27.2.
 
 <details>
 <summary>Fallback symbols and typography</summary>

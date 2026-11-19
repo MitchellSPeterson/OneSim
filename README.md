@@ -3,7 +3,7 @@
 <p align="center">
   <strong>Run, inspect, and automate mobile UI</strong><br>
   One runtime for SwiftUI, Expo / React Native, and Jetpack Compose.<br>
-  Preview SwiftUI in a browser or drive apps headlessly from the CLI and session API.
+  Open live previews with GPU acceleration or automate headless sessions.
 </p>
 
 <p align="center">
@@ -45,6 +45,17 @@ OneSim compiles the SwiftUI example, taps **Increment**, and saves `counter.png`
 
 For Expo, Compose, browser builds, and CLI input options, see the [getting-started guide](docs/getting-started.md).
 
+## Native window
+
+Open the SwiftUI showcase or an Expo app served by Metro. The window tries the GPU first and falls back to CPU rendering if needed.
+
+```sh
+cargo run -p onesim-cli --features window -- window examples/swiftui-showcase
+cargo run -p onesim-cli --features window -- expo --url http://localhost:8081 --window
+```
+
+Use `--renderer cpu` to select the CPU presenter or Cmd+R / F5 to switch presenters in the same session. For headless GPU captures, build with `--features gpu` and use `--renderer gpu`. [Renderer migration and compatibility](docs/rendering.md) · [v0.3 benchmarks](docs/benchmarks/v0.3-gpu.md)
+
 ## Framework support
 
 | Framework | Target | What you can run |
@@ -53,7 +64,7 @@ For Expo, Compose, browser builds, and CLI input options, see the [getting-start
 | [Expo / React Native](docs/compatibility/expo/README.md) | iOS and Android preview | Metro bundles with Fabric and simulated device modules. Android core components are in early preview. |
 | [Jetpack Compose](docs/compatibility/compose/README.md) | Android 17 preview | The AndroidX Compose runtime with Material 3 controls and layouts on a Pixel 10a profile. |
 
-OneSim runs each framework’s supported UI code in a guest process and renders it on a shared Rust host. SwiftUI can also run in the browser, where the app and renderer compile to a single WebAssembly module. [Architecture](docs/architecture.md) · [Browser guide](docs/web.md)
+OneSim runs each framework’s supported UI code in a guest process and renders it on a shared Rust host. SwiftUI can also run in the browser, where the app and CPU renderer compile to one WebAssembly module and a second module enables WebGPU with automatic CPU fallback. [Architecture](docs/architecture.md) · [Browser guide](docs/web.md)
 
 ## Visual fidelity
 
@@ -63,6 +74,7 @@ OneSim tests its renderer against screenshots from the iOS Simulator and Android
 
 - [Run an app and capture a screenshot](docs/getting-started.md)
 - [Build a SwiftUI app for the browser](docs/web.md)
+- [Choose a renderer and check backend compatibility](docs/rendering.md)
 - [Automate sessions and UI input](docs/api.md)
 - [See how the renderer and guests fit together](docs/architecture.md)
 - [Find every guide and reference](docs/README.md)

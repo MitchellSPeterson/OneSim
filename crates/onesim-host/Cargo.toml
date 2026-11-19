@@ -8,9 +8,14 @@ description = "OneSim session manager and external API (docs/protocol.md section
 [dependencies]
 onesim-protocol = { path = "../onesim-protocol" }
 onesim-render = { path = "../onesim-render" }
+onesim-render-gpu = { path = "../onesim-render-gpu", optional = true }
 serde.workspace = true
 serde_json.workspace = true
 base64 = "0.22"
 log = "0.4"
 tungstenite = "0.30.0"
 libc = "0.2.191"
+
+[features]
+# GPU renderer (wgpu + Vello); off by default so CPU-only builds need no GPU stack.
+gpu = ["dep:onesim-render-gpu"]
