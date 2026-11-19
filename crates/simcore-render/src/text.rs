@@ -57,6 +57,8 @@ pub struct FontSpec {
     pub lines: Option<usize>,
     /// Explicit paragraph line height (RN `lineHeight`): every run uses `pitch`; otherwise a run's pitch scales with its size.
     pub fixed_pitch: bool,
+    /// Use the same Inter tracking for logical layout and device-pixel shaping.
+    pub inter_point_tracking: bool,
     /// Android text: Roboto, with `tracking` taken as given (Compose `letterSpacing`).
     pub android: bool,
 }
@@ -65,7 +67,7 @@ impl FontSpec {
     pub fn new(size: f32, line_height: f32, weight: u16, align: TextAlign) -> Self {
         // Leading: 22/17 of the size up to large-title sizes, ~1.12 x size + 2.64 above (accessibility sizes, measured: 53pt -> 62pt).
         let pitch = if size > 34.0 { size * 1.12 + 2.64 } else { line_height.max(size * 22.0 / 17.0) };
-        Self { size, pt: size, line_height, pitch, weight, align, tracking: tracking_em(size, weight), mono: false, lines: None, fixed_pitch: false, android: false }
+        Self { size, pt: size, line_height, pitch, weight, align, tracking: tracking_em(size, weight), mono: false, lines: None, fixed_pitch: false, inter_point_tracking: false, android: false }
     }
 }
 
@@ -225,9 +227,9 @@ impl Fonts {
     }
 
     /// Family, tracking (em) and weight of one face. `sf_tracking` is SF's tracking for this face;
-    /// `big` selects Inter's accessibility-size fit (see `INTER_BIG_SCALE`).
+    /// `inter_size` selects Inter's tracking fit; `big` selects the accessibility-size fit.
     #[allow(clippy::too_many_arguments)]
-    fn face(&self, mono: bool, android: bool, pt: f32, size_px: f32, weight: u16, sf_tracking: f32, big: bool) -> (Family<'static>, f32, u16) {
+    fn face(&self, mono: bool, android: bool, pt: f32, inter_size: f32, weight: u16, sf_tracking: f32, big: bool) -> (Family<'static>, f32, u16) {
         let wght = if big { (weight as i32 + INTER_BIG_WEIGHT).clamp(100, 900) as u16 } else { weight };
         if mono {
             (self.mono_family(), 0.0, wght)
@@ -236,7 +238,7 @@ impl Fonts {
         } else if self.sf {
             (Family::Name(SF_FAMILY), sf_tracking, wght)
         } else {
-            (Family::Name(INTER_FAMILY), if big { inter_ax_tracking(pt, weight) } else { inter_tracking_em(size_px, weight) }, wght)
+            (Family::Name(INTER_FAMILY), if big { inter_ax_tracking(pt, weight) } else { inter_tracking_em(inter_size, weight) }, wght)
         }
     }
 
@@ -298,7 +300,8 @@ impl Fonts {
         let size = if big { f.size * INTER_BIG_SCALE } else { f.size };
         let mut b = Buffer::new(&mut self.sys, Metrics::new(size, f.pitch));
         b.set_size(width, None);
-        let (family, tracking, wght) = self.face(f.mono, f.android, f.pt, f.size, f.weight, f.tracking, big);
+        let inter_size = if f.inter_point_tracking { f.pt } else { f.size };
+        let (family, tracking, wght) = self.face(f.mono, f.android, f.pt, inter_size, f.weight, f.tracking, big);
         let attrs = Attrs::new().family(family).weight(Weight(wght)).letter_spacing(tracking);
         if !spans.is_empty() {
             let sf = self.sf;
@@ -307,7 +310,7 @@ impl Fonts {
                 let size_px = f.size * k;
                 let big = !sf && !f.android && s.pt > 40.0;
                 let sf_tracking = if f.android { f.tracking } else { tracking_em(s.pt, s.weight) };
-                let (fam, tracking, wght) = self.face(f.mono || s.mono, f.android, s.pt, size_px, s.weight, sf_tracking, big);
+                let (fam, tracking, wght) = self.face(f.mono || s.mono, f.android, s.pt, inter_size * k, s.weight, sf_tracking, big);
                 let m = Metrics::new(if big { size_px * INTER_BIG_SCALE } else { size_px }, if f.fixed_pitch { f.pitch } else { f.pitch * k });
                 let c = Color::rgba((s.color.r * 255.0).round() as u8, (s.color.g * 255.0).round() as u8, (s.color.b * 255.0).round() as u8, (s.color.a * 255.0).round() as u8);
                 let a = Attrs::new().family(fam).weight(Weight(wght)).letter_spacing(tracking).metrics(m).color(c).metadata(i);
@@ -417,6 +420,24 @@ impl Fonts {
 #[cfg(test)]
 mod span_tests {
     use super::*;
+
+    #[test]
+    fn inter_paragraph_wraps_at_the_same_word_at_both_scales() {
+        let mut fonts = Fonts::with_fallback(true);
+        let text = "Line height 26: the quick brown fox jumps over the lazy dog and keeps running far away.";
+        let logical = FontSpec { inter_point_tracking: true, ..FontSpec::new(15.0, 26.0, 400, TextAlign::Leading) };
+        let layout = fonts.build(text, &logical, Some(370.0), &[]);
+        let first_line = |b: &Buffer| {
+            let run = b.layout_runs().next().unwrap();
+            text[..run.glyphs.last().unwrap().end].trim_end()
+        };
+        assert_eq!(first_line(&layout), "Line height 26: the quick brown fox jumps over the");
+        for scale in [2.0, 3.0] {
+            let physical = FontSpec { size: logical.size * scale, pitch: logical.pitch * scale, ..logical };
+            let draw = fonts.build(text, &physical, Some(370.0 * scale), &[]);
+            assert_eq!(first_line(&draw), first_line(&layout));
+        }
+    }
 
     /// Runs scale their line pitch with their size unless the paragraph fixes it.
     #[test]

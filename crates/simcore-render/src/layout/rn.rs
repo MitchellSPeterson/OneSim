@@ -467,6 +467,9 @@ impl<'a> Cx<'a, '_> {
         spec.fixed_pitch = self.span_lh > 0.0 || num(p, "lineHeight").is_some_and(|l| l > 0.0);
         let color = self.color(p.get("color")).unwrap_or(Color::rgba(0.0, 0.0, 0.0, 1.0));
         let spans = runs(&text, &spans, &spec, color);
+        // Yoga measures these paragraphs in points. Keep Inter's tracking fit constant when rasterizing
+        // so that word wrapping, line caps and the width of styled runs agree with layout.
+        spec.inter_point_tracking = spec.lines.is_some() || spec.fixed_pitch || spans.len() > 1;
         let strike = p.get("textDecorationLine").and_then(Value::as_str).is_some_and(|d| d.contains("line-through"));
         Text { text, spec, color, strike, field: false, single: false, fixed: None, spans, explicit_lh: num(p, "lineHeight").is_some() }
     }
