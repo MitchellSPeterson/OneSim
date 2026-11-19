@@ -9,7 +9,7 @@
 //!   the target, copied into an accumulation texture and composited by compute passes (see [`glass`]); the next
 //!   segment starts by drawing the accumulation texture as a full-frame image. With `default-features = false` it
 //!   builds for `wasm32-unknown-unknown` (`Executor::new_async`).
-//! - With the default `native` feature, [`GpuRenderer`] implements [`simcore_render::Renderer`] headlessly:
+//! - With the default `native` feature, [`WindowRenderer`] presents display lists to a window surface (vsync), and [`GpuRenderer`] implements [`simcore_render::Renderer`] headlessly:
 //!   `simcore_render::Builder` lowers the scene, the executor runs it, and the target is read back once per frame.
 
 mod executor;
@@ -18,10 +18,14 @@ mod glass;
 mod headless;
 #[cfg(feature = "native")]
 mod readback;
+#[cfg(feature = "native")]
+mod window;
 
 pub use executor::{target_usage, ExecStats, Executor};
 #[cfg(feature = "native")]
 pub use headless::{adapter_available, GpuRenderer};
 #[cfg(feature = "native")]
 pub use readback::read_texture;
+#[cfg(feature = "native")]
+pub use window::{Presented, WindowRenderer};
 pub use vello::wgpu;

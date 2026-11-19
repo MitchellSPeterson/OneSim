@@ -461,6 +461,38 @@ impl Host {
         Ok(out)
     }
 
+    /// Live viewers (native window): lay out the current tree and hand the scene, the shared fonts and the tree
+    /// version to `f`. Pair React Native sessions with `set_settle(id, false)` so this never waits for the guest.
+    pub fn with_frame<R>(&mut self, id: &str, f: impl FnOnce(&Scene, &mut Fonts, u64) -> R) -> Result<R, ApiError> {
+        let (scene, version, _) = self.scene(id)?;
+        let fonts = self.fonts.get_or_insert_with(Fonts::new);
+        Ok(f(&scene, fonts, version))
+    }
+
+    /// Advance scroll momentum and bounces by `dt` seconds. Returns whether anything is still moving (call
+    /// again next frame); false means the scene is at rest.
+    pub fn tick(&mut self, id: &str, dt: f64) -> Result<bool, ApiError> {
+        let (scene, ..) = self.scene(id)?;
+        Ok(self.get(id)?.inter.tick(&scene, dt))
+    }
+
+    /// One phase of a live finger drag (`t_ms` is the event time): the content follows the finger and carries on
+    /// with its release velocity (see [`Host::tick`]); sheets follow too. Returns whether the scene changed.
+    /// Not for React Native, where a drag is a touch gesture (`PointerKind::Drag`).
+    pub fn drag(&mut self, id: &str, phase: simcore_render::DragPhase, x: f64, y: f64, t_ms: f64) -> Result<bool, ApiError> {
+        self.get(id)?.require_running()?;
+        if self.get(id)?.is_rn() {
+            return Err(err(ErrorCode::Unsupported, "live drags are not available in react-native sessions"));
+        }
+        let (scene, version, _) = self.scene(id)?;
+        let s = self.get(id)?;
+        s.inter.version = version;
+        let effect = s.inter.drag(&scene, phase, x, y, t_ms);
+        let changed = effect != simcore_render::Effect::None;
+        s.send_effect(effect)?;
+        Ok(changed)
+    }
+
     /// Keyboard input for the focused text field. The host computes the new text and sends it
     /// to the guest as `text_input`.
     pub fn keyboard(&mut self, id: &str, ev: KeyboardEvent) -> Result<(), ApiError> {

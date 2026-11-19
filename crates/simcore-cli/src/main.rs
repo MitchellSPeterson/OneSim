@@ -1,6 +1,9 @@
 use anyhow::{bail, Context, Result};
 use clap::{ArgMatches, CommandFactory, FromArgMatches, Parser, Subcommand};
 use simcore_host::Host;
+#[cfg(feature = "window")]
+mod window;
+
 use simcore_protocol::{
     Appearance, CreateSessionParams, DynamicTypeSize, KeyboardEvent, PointerEvent, PointerKind, UiNode, Viewport,
 };
@@ -35,14 +38,28 @@ enum Cmd {
         #[command(flatten)]
         opts: Opts,
     },
+    /// Open an app in a native window (build with `--features window`): GPU first with automatic CPU
+    /// fallback, rendering only on input, resize or guest updates. Cmd+R / F5 switches GPU and CPU live,
+    /// Cmd+D toggles dark mode. `SIMCORE_FRAME_STATS=1` prints per-second frame statistics.
+    Window {
+        /// A .swift file or directory, a .kt file or directory (Jetpack Compose, Android), or a prebuilt guest executable.
+        app_path: String,
+        #[arg(long)]
+        root_view: Option<String>,
+        #[command(flatten)]
+        opts: Opts,
+    },
     /// Run an Expo / React Native app served by Metro headlessly (same options as `run`).
     Expo {
         /// Metro dev server (default http://localhost:8081).
         #[arg(long)]
         url: Option<String>,
-        /// Accepted for symmetry with other runners: there is no window, every run is headless.
-        #[arg(long)]
+        /// Accepted for symmetry with other runners: headless is the default.
+        #[arg(long, conflicts_with = "window")]
         headless: bool,
+        /// Open a native window instead of running headlessly (build with `--features window`).
+        #[arg(long)]
+        window: bool,
         /// light (default) or dark; same as --dark.
         #[arg(long, value_name = "light|dark")]
         appearance: Option<String>,
@@ -162,13 +179,23 @@ fn main() -> Result<()> {
             let framework = if is_kotlin(&app_path) { "compose" } else { "swiftui" };
             run(&matches, "run", CreateSessionParams { app_path, root_view, ..params(framework) }, opts, None, report)
         }
-        Cmd::Expo { url, appearance, opts, .. } => {
+        Cmd::Window { app_path, root_view, opts } => {
+            let framework = if is_kotlin(&app_path) { "compose" } else { "swiftui" };
+            let title = format!("SimCore - {}", std::path::Path::new(&app_path).file_name().map_or(app_path.clone(), |n| n.to_string_lossy().into_owned()));
+            open_window(&matches, "window", CreateSessionParams { app_path, root_view, ..params(framework) }, opts, None, title)
+        }
+        Cmd::Expo { url, appearance, opts, window, .. } => {
             let appearance = match appearance.as_deref() {
                 None | Some("light") => None,
                 Some("dark") => Some(Appearance::Dark),
                 Some(a) => bail!("unknown --appearance {a:?} (light, dark)"),
             };
-            run(&matches, "expo", CreateSessionParams { metro_url: url, ..params("react-native") }, opts, appearance, report)
+            let p = CreateSessionParams { metro_url: url, ..params("react-native") };
+            if window {
+                let title = format!("SimCore - expo {}", p.metro_url.as_deref().unwrap_or("http://localhost:8081"));
+                return open_window(&matches, "expo", p, opts, appearance, title);
+            }
+            run(&matches, "expo", p, opts, appearance, report)
         }
     }
 }
@@ -201,8 +228,8 @@ fn params(framework: &str) -> CreateSessionParams {
     }
 }
 
-/// Create a session from the shared options, drive it in command-line order, then shut down.
-fn run(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: Opts, appearance: Option<Appearance>, report: bool) -> Result<()> {
+/// A not yet started session from the shared options, and the interaction steps to apply once it runs.
+fn prepare(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: &mut Opts, appearance: Option<Appearance>) -> Result<(Host, String, Vec<Step>)> {
     let steps = steps(matches.subcommand_matches(name).expect("subcommand"));
     p.viewport = match (o.width, o.height) {
         (None, None) => None,
@@ -212,11 +239,18 @@ fn run(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: Opts, ap
     p.appearance = Some(appearance.unwrap_or(if o.dark { Appearance::Dark } else { Appearance::Light }));
     p.dynamic_type_size = o
         .dynamic_type
+        .take()
         .map(|d| DynamicTypeSize::parse(&d).with_context(|| format!("unknown --dynamic-type {d:?}")))
         .transpose()?;
-    p.device = o.device;
+    p.device = o.device.take();
     let mut host = Host::new();
     let id = host.create_session(p)?;
+    Ok((host, id, steps))
+}
+
+/// Create a session from the shared options, drive it in command-line order, then shut down.
+fn run(matches: &ArgMatches, name: &str, p: CreateSessionParams, mut o: Opts, appearance: Option<Appearance>, report: bool) -> Result<()> {
+    let (mut host, id, steps) = prepare(matches, name, p, &mut o, appearance)?;
     let result = drive(&mut host, &id, o.screenshot, &steps, o.inspect, report);
     if result.is_err() {
         for e in host.errors(&id).unwrap_or_default() {
@@ -225,6 +259,27 @@ fn run(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: Opts, ap
     }
     host.shutdown();
     result
+}
+
+/// Start the session, apply any `--click`/`--type`/... steps, then hand it to the native window.
+#[cfg(feature = "window")]
+fn open_window(matches: &ArgMatches, name: &str, p: CreateSessionParams, mut o: Opts, appearance: Option<Appearance>, title: String) -> Result<()> {
+    // `--renderer` was exported as SIMCORE_RENDERER in `main`; unset or `auto` means GPU first in a window.
+    let pref = simcore_render::BackendPref::from_env().map_err(anyhow::Error::msg)?;
+    let (rn, dark) = (p.framework == "react-native", o.dark || appearance == Some(Appearance::Dark));
+    let (mut host, id, steps) = prepare(matches, name, p, &mut o, appearance)?;
+    // `drive` starts the session and applies the steps; the window then takes over the running session.
+    if let Err(e) = drive(&mut host, &id, None, &steps, false, false) {
+        host.shutdown();
+        return Err(e);
+    }
+    let stats = std::env::var_os("SIMCORE_FRAME_STATS").is_some_and(|v| v != "0");
+    window::run(host, id, window::Config { pref, rn, title, stats, dark })
+}
+
+#[cfg(not(feature = "window"))]
+fn open_window(_: &ArgMatches, _: &str, _: CreateSessionParams, _: Opts, _: Option<Appearance>, _: String) -> Result<()> {
+    bail!("this build has no native window: rebuild with `cargo build -p simcore-cli --features window`")
 }
 
 fn drive(host: &mut Host, id: &str, shot: Option<String>, steps: &[Step], inspect: bool, report: bool) -> Result<()> {

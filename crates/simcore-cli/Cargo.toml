@@ -19,5 +19,11 @@ anyhow = "1"
 log = "0.4"
 env_logger = "0.11"
 
+winit = { version = "0.30", optional = true }
+softbuffer = { version = "0.4", optional = true }
+simcore-render-gpu = { path = "../simcore-render-gpu", optional = true }
+
 [features]
 gpu = ["simcore-host/gpu"]
+# `simcore window` / `simcore expo --window`: a native window (winit + softbuffer), GPU first via wgpu.
+window = ["gpu", "dep:winit", "dep:softbuffer", "dep:simcore-render-gpu"]

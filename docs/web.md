@@ -12,7 +12,8 @@ python3 -m http.server 8000 -d target/web                    # open http://local
 ```
 Query params: `?device=<name>` (a profile from `DEVICES` in `crates/simcore-render/src/device.rs`, listed by `sim.devices`; default the first, iphone-17-pro), `?width=&height=&scale=` (points / device
 pixels per point; default scale fits the window x `devicePixelRatio`), `?dark=1` (default: the browser's
-colour scheme). The canvas fits the window keeping the aspect ratio and re-renders crisply on resize.
+colour scheme), `?renderer=cpu|gpu|auto` (default auto; also localStorage `simcore.renderer`), `?diag` (show the
+active renderer and any fallback reason in the corner). The canvas fits the window keeping the aspect ratio and re-renders crisply on resize.
 Page API: `window.simcore.setViewport(w, h)`, `setAppearance('dark'|'light')` (both re-layout and push the
 environment to Swift, as native), `click(label)`, `type(text)`, `key('backspace'|'enter')`, `scroll(x,y,dx,dy)`,
 `inspect()`, `lastTreeText()`.
@@ -28,11 +29,33 @@ installer -pkg swift-6.4.2-RELEASE-osx.pkg -target CurrentUserHomeDirectory   # 
 PATH=~/Library/Developer/Toolchains/swift-6.4.2-RELEASE.xctoolchain/usr/bin:$PATH \
 swift sdk install https://download.swift.org/swift-6.4.2-release/wasm-sdk/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE_wasm.artifactbundle.tar.gz \
   --checksum 83baca83553f8c443cda7b84800912e6e709c3acd2e7ebf277794ca5836c0da5
-rustup target add wasm32-wasip1
+rustup target add wasm32-wasip1 wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.130 --locked   # must equal the wasm-bindgen pin in crates/simcore-web-gpu/Cargo.toml
 brew install binaryen    # optional: wasm-opt shrinks app.wasm ~25%; skipped (with a note) if absent or if it fails
 ```
 Needs several GB free during the toolchain install. The script finds the toolchain (set
 `SIMCORE_SWIFT_TOOLCHAIN` to override) and the SDK and fails with install hints if either is missing.
+
+## GPU rendering (WebGPU, CPU fallback)
+
+Two Wasm modules. `app.wasm` (wasm32-wasip1: Swift + layout + fonts + CPU raster) stays the runtime. With
+`simcore_web_set_output(1)` its `draw` lowers the scene with a persistent `simcore_render::Builder` to an encoded
+`DisplayList` (`simcore_web_dl_ptr/len`) instead of pixels (mode 0, the default, is byte-identical to before).
+Hit testing and interaction still come from the `Scene`. `gpu/simcore_web_gpu*.{js,wasm}`
+(`crates/simcore-web-gpu`, wasm32-unknown-unknown + wasm-bindgen, built by `scripts/build-web.sh`) wraps
+`simcore_render_gpu::Executor`: `await init(canvas)` -> `Gpu`; `gpu.render(bytes)` decodes, executes into an offscreen
+`Rgba8Unorm` storage texture and blits it to the canvas (canvas textures cannot be storage textures; values are already
+sRGB-encoded 8-bit, so the blit is a copy); `resize`, `info()` (JSON), `lost()`, `error()`, `free()`. The crate is
+`#![cfg(target_arch = "wasm32")]` with wasm-only dependencies, so on native targets it is empty and
+`cargo build/clippy --workspace` is unaffected; lint it with `cargo clippy -p simcore-web-gpu --target wasm32-unknown-unknown`.
+
+`web/renderer.js` (`Presenter`) chooses the backend before the first frame: `renderer=cpu`, no `navigator.gpu`, a runtime
+without display-list output, or any init failure -> CPU; otherwise GPU. After that, a render error, a lost device (polled
+once a second, plus checked after every frame) or an uncaptured GPU error switches to CPU for good: `setOutput(0)`
+(resets the builder), a fresh `<canvas>` (a canvas that got a `webgpu` context cannot give a `2d` one; input listeners are
+on the `#stage` wrapper so they survive), and the same frame is shown with `putImageData`. The page is never blank.
+Rendering stays event-driven: a frame is presented only when input or the animation tick changed something.
+`window.simcoreRenderer` exposes `mode` (`gpu|cpu`), `reason`, `requested`, `info`, `frames`, `fallback()`.
 
 ## How it works
 
@@ -70,6 +93,7 @@ Needs several GB free during the toolchain install. The script finds the toolcha
 node web/test/run.mjs --suite counter|showcase        # assertions on the built target/web/app.wasm (Node >= 20, no deps)
 node web/test/run.mjs --click Todos --click "New todo" --type "Buy milk" --screenshot out.png --expect "Buy milk"
                                                       # CLI-style steps: --click LABEL|X,Y --type --key --scroll X,Y,DX,DY --dark --width/--height/--scale --inspect
+node web/test/presenter.mjs                           # headless Chrome: GPU vs CPU pixels, ?renderer=cpu, no navigator.gpu, GPU render error -> CPU (needs target/web/gpu)
 scripts/compare-web.sh                                # the 13 showcase states: Node harness vs native `SIMCORE_FALLBACK=1`, each < 2%
 ```
 CI (`web` job in `.github/workflows/ci.yml`) installs the 6.4.2 toolchain + Wasm SDK (downloads cached),
