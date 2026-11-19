@@ -1,6 +1,6 @@
 # SimCore
 
-Rust-powered preview runtime for mobile UI code. Runs real SwiftUI source (unchanged `import SwiftUI`) and unmodified Expo / React Native apps, and renders them headlessly, with no iOS Simulator, no Chromium, and no GPU required.
+Rust-powered preview runtime for mobile UI code. Runs unmodified SwiftUI, Expo / React Native, and Jetpack Compose source. Headless capture uses the CPU by default. Native windows and browser previews prefer GPU rendering when an adapter is available.
 
 ```
 $ simcore run examples/swiftui-counter --root-view CounterView --click Increment --screenshot out.png
@@ -22,11 +22,20 @@ Rendered output stays within 0.4–1.9% of the iOS 26 Simulator pixel-for-pixel 
 
 ## How it works
 
-Your app compiles with `swiftc` against SimCore's own `SwiftUI` module, which shadows Apple's. The app runs as its own process and sends a normalized view tree to the host through a small Rust staticlib over a C ABI. The host lays the tree out with SwiftUI semantics, rasterizes it with tiny-skia and cosmic-text, hit-tests input, and routes button actions back to Swift closures. Details: [docs/architecture.md](docs/architecture.md), [docs/protocol.md](docs/protocol.md), [docs/compatibility/swiftui/guest.md](docs/compatibility/swiftui/guest.md).
+Your SwiftUI app compiles with `swiftc` against SimCore's own `SwiftUI` module, which shadows Apple's. It runs as its own process and sends a normalized view tree to the host through a small Rust staticlib over a C ABI. The host lays out the tree, hit-tests input, and routes actions back to the app. A shared scene feeds tiny-skia and cosmic-text for CPU captures or wgpu and Vello for GPU rendering. [Architecture](docs/architecture.md) · [Protocol](docs/protocol.md) · [SwiftUI guest](docs/compatibility/swiftui/guest.md)
+
+## Native window
+
+```sh
+cargo run -p simcore-cli --features window -- window examples/swiftui-showcase
+cargo run -p simcore-cli --features window -- expo --url http://localhost:8081 --window
+```
+
+Use `--renderer cpu` to select the CPU presenter or Cmd+R / F5 to switch presenters in the same session. For headless GPU captures, build with `--features gpu` and use `--renderer gpu`. [Renderer migration and compatibility](docs/rendering.md) · [v0.3 benchmarks](docs/benchmarks/v0.3-gpu.md)
 
 ## In the browser (WebAssembly)
 
-The same unmodified SwiftUI source runs in a browser tab. The app and SimCore's SwiftUI module compile to WebAssembly together with the Rust renderer into one module, which draws to a `<canvas>` and needs only a static file server. Setup: [docs/web.md](docs/web.md).
+The same SwiftUI source runs in a browser tab. The app and layout runtime compile to one Wasm module, and a second module presents frames through WebGPU. The preview falls back to Canvas 2D with the same runtime state when WebGPU is unavailable. Serve both modules from the same build over HTTPS or localhost. [Browser setup](docs/web.md)
 
 ```sh
 scripts/build-web.sh examples/swiftui-showcase && python3 -m http.server -d target/web 8000   # or: ... swiftui-counter CounterView
@@ -113,9 +122,11 @@ cargo run -p simcore-render --example counter --features window -- --window    #
 | Path | What |
 |---|---|
 | `crates/simcore-protocol` | Wire and API types (serde) |
-| `crates/simcore-render` | Scene, SwiftUI layout, raster, hit testing, inspection |
+| `crates/simcore-render` | Framework layout, scene, CPU rendering, GPU display lists, hit testing and inspection |
+| `crates/simcore-render-gpu` | wgpu and Vello executor, Metal capture and native window presenter |
+| `crates/simcore-web`, `crates/simcore-web-gpu` | Browser runtime and WebGPU presenter |
 | `crates/simcore-host` | Sessions, build, process-per-session supervision |
-| `crates/simcore-cli` | `simcore` binary (`run`, `serve`) |
+| `crates/simcore-cli` | `simcore` binary (`run`, `serve`, `expo`, `window`) |
 | `crates/simcore-runtime` | Guest staticlib, C ABI linked into the app |
 | `frameworks/swiftui` | SimCore's `SwiftUI` module and C bridge |
 | `frameworks/react-native` | Node guest for Expo / React Native: Fabric UIManager, native-module registry (`guest/modules.js`) |

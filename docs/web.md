@@ -1,8 +1,8 @@
 # SimCore in the browser
 
-The SwiftUI counter runs entirely client-side: **one Wasm module** (Swift app + our `SwiftUI`
-module + `crates/simcore-web`, which embeds `simcore-render`) drawing to a `<canvas>`. A static file
-server is enough.
+The SwiftUI app runs entirely client-side. One Wasm module contains the app, SwiftUI runtime, layout and
+CPU renderer. A second Wasm module presents the display list through WebGPU when the browser offers an
+adapter. Serve the complete build over HTTPS or localhost.
 
 ```
 scripts/build-web.sh examples/swiftui-showcase               # @main App, no root view
@@ -56,6 +56,8 @@ once a second, plus checked after every frame) or an uncaptured GPU error switch
 on the `#stage` wrapper so they survive), and the same frame is shown with `putImageData`. The page is never blank.
 Rendering stays event-driven: a frame is presented only when input or the animation tick changed something.
 `window.simcoreRenderer` exposes `mode` (`gpu|cpu`), `reason`, `requested`, `info`, `frames`, `fallback()`.
+Deploy `app.wasm`, the JavaScript and `gpu/` from the same build. Both Wasm modules use the internal display-list
+version, and an incompatible pair triggers CPU fallback.
 
 ## How it works
 
@@ -93,11 +95,13 @@ Rendering stays event-driven: a frame is presented only when input or the animat
 node web/test/run.mjs --suite counter|showcase        # assertions on the built target/web/app.wasm (Node >= 20, no deps)
 node web/test/run.mjs --click Todos --click "New todo" --type "Buy milk" --screenshot out.png --expect "Buy milk"
                                                       # CLI-style steps: --click LABEL|X,Y --type --key --scroll X,Y,DX,DY --dark --width/--height/--scale --inspect
-node web/test/presenter.mjs                           # headless Chrome: GPU vs CPU pixels, ?renderer=cpu, no navigator.gpu, GPU render error -> CPU (needs target/web/gpu)
-scripts/compare-web.sh                                # the 13 showcase states: Node harness vs native `SIMCORE_FALLBACK=1`, each < 2%
+node web/test/presenter.mjs                           # headless Chrome with GPU fixtures, resize, init failure and device loss
+node web/test/presenter.mjs --app                     # also test the built showcase, idle and retained state after device loss
+scripts/compare-web.sh                               # 33 showcase states: Node harness vs native bundled fonts, each < 2%
 ```
-CI (`web` job in `.github/workflows/ci.yml`) installs the 6.4.2 toolchain + Wasm SDK (downloads cached),
-builds both examples and runs all of the above.
+The `web` CI job installs Swift 6.4.2 and its Wasm SDK and uses wasm-bindgen-cli 0.2.130. It lints the WebGPU
+target, builds both examples and runs the tests above. Chrome tests still verify CPU output on a runner without
+a WebGPU adapter.
 
 ## Gaps
 
