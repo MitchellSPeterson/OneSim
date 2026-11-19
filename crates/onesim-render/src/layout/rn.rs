@@ -155,6 +155,14 @@ fn insets(h: f64) -> (f64, f64) {
     }
 }
 
+fn viewport_insets(params: &SceneParams) -> (f64, f64) {
+    if params.device.android {
+        (params.device.safe_top, params.device.safe_bottom)
+    } else {
+        insets(params.viewport.1)
+    }
+}
+
 /// CSS color strings (`#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()`, a few names).
 fn css_color(s: &str) -> Option<Color> {
     let s = s.trim();
@@ -203,6 +211,8 @@ struct Cx<'a, 'f> {
     fonts: &'f mut Fonts,
     /// Visible `RCTModalHostView`s: laid out against the viewport and painted last.
     modals: Vec<Item<'a>>,
+    embedded_modals: ModalLayers,
+    viewport_insets: (f64, f64),
     /// Safe-area insets (top, bottom) from the viewport height.
     insets: (f64, f64),
     /// Top inset applied to auto-adjusting scroll views under a stack header.
@@ -380,7 +390,8 @@ impl<'a, 'f> Cx<'a, 'f> {
         let mut tree = TaffyTree::new();
         tree.disable_rounding();
         Self { tree, notes: BTreeSet::new(), scale: params.scale.max(1.0), dark: params.appearance == Appearance::Dark,
-            android: params.device.android, fonts, modals: vec![], insets, inset_top: 0.0, rot: 0.0, stack: None,
+            android: params.device.android, fonts, modals: vec![], embedded_modals: ModalLayers::default(),
+            viewport_insets: viewport_insets(params), insets, inset_top: 0.0, rot: 0.0, stack: None,
             parent_row: false, span_lh: 0.0, safe: vec![] }
     }
     /// `RNCSafeAreaView` / `RNSSafeAreaView` `edges` set to `additive` (or `true`) add the inset to the padding.
@@ -505,6 +516,11 @@ impl<'a, 'f> Cx<'a, 'f> {
 
     fn build(&mut self, node: &'a ViewNode) -> Option<Item<'a>> {
         let ViewKind::Rn { component, props, children } = &node.kind else { return None };
+        let modal = component == "RCTModalHostView";
+        if modal && props.get("visible").and_then(Value::as_bool) == Some(false) {
+            return None;
+        }
+        let modal_index = self.modals.len();
         let input = is_text_input(component);
         match component.as_str() {
             "RCTRawText" | "RCTVirtualText" => return None,
@@ -615,7 +631,9 @@ impl<'a, 'f> Cx<'a, 'f> {
         }
         // The tab bar (83 pt with its safe area) is the bottom safe-area inset of the tab's content.
         let saved_insets = self.insets;
-        if tabs.as_ref().is_some_and(|t| !t.hidden) {
+        if modal {
+            self.insets = self.viewport_insets;
+        } else if tabs.as_ref().is_some_and(|t| !t.hidden) {
             self.insets.1 = TAB_BAR_INSET;
         }
         let saved_row = std::mem::replace(&mut self.parent_row, row);
@@ -628,10 +646,8 @@ impl<'a, 'f> Cx<'a, 'f> {
         }
         let mut item = Item::new(node, props, id, kids);
         (item.header, item.tabs) = (header, tabs);
-        if component == "RCTModalHostView" {
-            if props.get("visible").and_then(Value::as_bool) != Some(false) {
-                self.modals.push(item);
-            }
+        if modal {
+            self.modals.insert(modal_index, item);
             return None;
         }
         Some(item)
@@ -665,6 +681,24 @@ impl<'a, 'f> Cx<'a, 'f> {
         if again {
             self.compute_pass(id, w, h, params);
         }
+    }
+
+    fn paint_modals(&mut self, params: &SceneParams, out: &mut Vec<Node>) {
+        let (w, h) = params.viewport;
+        let bg = if self.dark { 0.0 } else { 1.0 };
+        let saved_insets = std::mem::replace(&mut self.insets, self.viewport_insets);
+        self.embedded_modals.paint(out);
+        for modal in std::mem::take(&mut self.modals) {
+            self.compute(modal.id, w, h, params);
+            let first = out.len();
+            paint(self, &modal, (0.0, 0.0), 0, 1.0, params, out);
+            let transparent = modal.props.get("transparent").and_then(Value::as_bool) == Some(true);
+            if let Some(root) = out.get_mut(first).filter(|_| !transparent) {
+                root.fill = Some(Color::rgba(bg, bg, bg, 1.0));
+            }
+            self.embedded_modals.paint(out);
+        }
+        self.insets = saved_insets;
     }
 
     fn compute_pass(&mut self, id: NodeId, w: f64, h: f64, params: &SceneParams) {
@@ -725,23 +759,51 @@ impl<'a, 'f> Cx<'a, 'f> {
     }
 }
 
+/// Modal layers use viewport coordinates and a virtual screen parent at index 0.
+#[derive(Default)]
+pub(super) struct ModalLayers(Vec<Vec<Node>>);
+
+impl ModalLayers {
+    pub fn paint(&mut self, out: &mut Vec<Node>) {
+        for layer in self.0.drain(..) {
+            place_nodes(layer, (0.0, 0.0), Some(0), 1.0, out);
+        }
+    }
+}
+
+fn place_nodes(nodes: impl IntoIterator<Item = Node>, origin: (f64, f64), parent: Option<usize>, opacity: f32, out: &mut Vec<Node>) {
+    let base = out.len();
+    out.extend(nodes.into_iter().map(|mut node| {
+        node.parent = node.parent.and_then(|p| p.checked_sub(1)).map(|p| p + base).or(parent);
+        node.bounds.x += origin.0;
+        node.bounds.y += origin.1;
+        node.opacity *= opacity;
+        node
+    }));
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct Embedded {
     pub size: (f64, f64),
     nodes: Vec<Node>,
+    modals: Vec<Node>,
 }
 
 impl Embedded {
-    pub fn place(&self, origin: (f64, f64), parent: Option<usize>, opacity: f32, out: &mut Vec<Node>) {
-        let base = out.len();
-        out.extend(self.nodes.iter().cloned().map(|mut node| {
-            node.parent = node.parent.and_then(|p| p.checked_sub(1)).map(|p| p + base).or(parent);
-            node.bounds.x += origin.0;
-            node.bounds.y += origin.1;
-            node.opacity *= opacity;
-            node
-        }));
+    pub fn place(&self, origin: (f64, f64), parent: Option<usize>, opacity: f32, out: &mut Vec<Node>, modals: &mut ModalLayers) {
+        place_nodes(self.nodes.iter().cloned(), origin, parent, opacity, out);
+        if !self.modals.is_empty() {
+            modals.0.push(self.modals.clone());
+        }
     }
+}
+
+pub(super) struct Placement<'a> {
+    pub bounds: Rect,
+    pub parent: usize,
+    pub opacity: f32,
+    pub nodes: &'a mut Vec<Node>,
+    pub modals: &'a mut ModalLayers,
 }
 
 pub(super) fn embedded(
@@ -751,7 +813,7 @@ pub(super) fn embedded(
     fonts: &mut Fonts,
 ) -> Embedded {
     let mut cx = Cx::new(params, fonts, (0.0, 0.0));
-    let mut result = Embedded { size: (0.0, 0.0), nodes: vec![] };
+    let mut result = Embedded { size: (0.0, 0.0), nodes: vec![], modals: vec![] };
     let Some(item) = cx.build(root) else { return result };
     let mut style = cx.tree.style(item.id).cloned().unwrap_or_default();
     let size = |prop, limit: Option<f64>| {
@@ -770,6 +832,11 @@ pub(super) fn embedded(
     result.nodes.push(Node::new("embedded", "layout"));
     paint(&mut cx, &item, (0.0, 0.0), 0, 1.0, params, &mut result.nodes);
     result.nodes.remove(0);
+    if !cx.modals.is_empty() || !cx.embedded_modals.0.is_empty() {
+        result.modals.push(Node::new("embedded", "layout"));
+        cx.paint_modals(params, &mut result.modals);
+        result.modals.remove(0);
+    }
     result
 }
 
@@ -778,7 +845,7 @@ fn expo_embed(
     available: (Option<f64>, Option<f64>),
     params: &SceneParams,
     fonts: &mut Fonts,
-    place: Option<(Rect, usize, f32, &mut Vec<Node>)>,
+    place: Option<Placement<'_>>,
 ) -> (f64, f64) {
     match content.kind {
         ViewKind::Compose { .. } => super::compose::embedded(content, available, params, fonts, place),
@@ -798,8 +865,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     let (w, h) = params.viewport;
     let dark = params.appearance == Appearance::Dark;
     let android = params.device.android;
-    let insets = if android { (params.device.safe_top, params.device.safe_bottom) } else { insets(h) };
-    let mut cx = Cx::new(params, fonts, insets);
+    let mut cx = Cx::new(params, fonts, viewport_insets(params));
     let bg = if dark { 0.0 } else { 1.0 };
     let mut screen = Node::new("root", "screen");
     screen.bounds = Rect { x: 0.0, y: 0.0, w, h };
@@ -809,15 +875,8 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         // The surface root fills the viewport.
         cx.compute(item.id, w, h, params);
         paint(&mut cx, &item, (0.0, 0.0), 0, 1.0, params, &mut nodes);
-        for m in std::mem::take(&mut cx.modals) {
-            cx.compute(m.id, w, h, params);
-            let first = nodes.len();
-            paint(&mut cx, &m, (0.0, 0.0), 0, 1.0, params, &mut nodes);
-            if m.props.get("transparent").and_then(Value::as_bool) != Some(true) {
-                nodes[first].fill = Some(Color::rgba(bg, bg, bg, 1.0));
-            }
-        }
     }
+    cx.paint_modals(params, &mut nodes);
     super::swiftui::rn_alerts(params, cx.fonts, layers, &mut nodes);
     if android {
         if let ViewKind::Rn { props, .. } = &root.kind {
@@ -1180,7 +1239,8 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
         node.inspect = false;
         let idx = out.len();
         out.push(node);
-        let (w, h) = expo_embed(content, (Some(bounds.w), Some(bounds.h)), params, cx.fonts, Some((bounds, idx, eff, out)));
+        let place = Placement { bounds, parent: idx, opacity: eff, nodes: out, modals: &mut cx.embedded_modals };
+        let (w, h) = expo_embed(content, (Some(bounds.w), Some(bounds.h)), params, cx.fonts, Some(place));
         out[idx].bounds = Rect { w, h, ..bounds };
     }
     for k in &it.kids {
@@ -1508,6 +1568,60 @@ mod tests {
         assert!(n("5") > n("4"));
         assert_eq!(scene.hit_test(200.0, 300.0).map(|i| scene.nodes[i].id.as_str()), Some("6"));
         let _ = std::fs::remove_file(png);
+    }
+
+    #[test]
+    fn embedded_modal_uses_the_viewport_above_both_native_layouts() {
+        let rn = |id: &str, component: &str, props: Value, children: Vec<Value>|
+            json!({"kind":"rn","id":id,"component":component,"props":props,"children":children});
+        for platform in [DEFAULT_DEVICE, crate::DEFAULT_ANDROID_DEVICE] {
+            let dev = device(platform).unwrap();
+            let params = SceneParams {
+                viewport: (402.0, 874.0), device: dev, scale: dev.scale, appearance: Appearance::Light,
+                dynamic_type: Default::default(), ios: Default::default(), scroll: &HashMap::new(),
+                sheets: &HashMap::new(), focus: None, overscroll: false, status_bar: false,
+                chrome: Default::default(),
+            };
+            for visible in [true, false] {
+                let control = rn("6", "RCTView", json!({
+                    "position":"absolute", "left":230, "top":430, "width":65, "height":40,
+                    "onClick":true, "accessibilityLabel":"Close modal",
+                }), vec![]);
+                let modal = rn("5", "RCTModalHostView", json!({"visible":visible}), vec![control]);
+                let host = rn("4", EXPO_UI_RN_HOST, json!({}), vec![modal]);
+                let clipped = if dev.android {
+                    json!({"kind":"compose","component":"Column","id":"native","children":[host],
+                           "props":{"modifier":[{"width":80},{"height":70},{"scroll":true}]}})
+                } else {
+                    json!({"kind":"scroll","id":"native","child":host,
+                           "modifiers":[{"frame":{"width":80,"height":70}}]})
+                };
+                let tree: ViewNode = serde_json::from_value(rn("1", "RootView", json!({}), vec![
+                    rn("2", EXPO_UI_HOST, json!({
+                        "marginLeft":30,"marginTop":150,"width":80,"height":70,"opacity":0.4,
+                    }), vec![clipped]),
+                    rn("7", "RCTView", json!({
+                        "position":"absolute","left":0,"top":0,"width":402,"height":874,
+                    }), vec![]),
+                ])).unwrap();
+                let scene = build_scene(&tree, &params, &mut Fonts::new());
+                let index = |id| scene.nodes.iter().position(|n| n.id == id);
+                let hit = scene.hit_test(250.0, 450.0).map(|i| scene.nodes[i].id.as_str());
+                if visible {
+                    let i = index("5").unwrap();
+                    let modal = &scene.nodes[i];
+                    let b = modal.bounds;
+                    assert_eq!((b.x, b.y, b.w, b.h), (0.0, 0.0, 402.0, 874.0));
+                    assert_eq!((modal.parent, modal.opacity), (Some(0), 1.0));
+                    assert!(i > index("7").unwrap());
+                    assert_eq!(scene.nodes[index("6").unwrap()].parent, Some(i));
+                    assert_eq!(hit, Some("6"));
+                } else {
+                    assert!(index("5").is_none() && index("6").is_none());
+                    assert_eq!(hit, Some("7"));
+                }
+            }
+        }
     }
 
     #[test]

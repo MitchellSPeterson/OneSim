@@ -5,6 +5,7 @@
 //! them, as in AndroidX), so this module only models `androidx.compose.ui` + `foundation.layout` semantics:
 //! constraints flow down, sizes flow up, parents place children. Units are dp (= scene points).
 
+use super::rn::{ModalLayers, Placement};
 use super::swiftui::SceneParams;
 use crate::chrome::{android_nav_handle, android_status_bar};
 use crate::scene::{Color, Node, Rect, Role, Scene, ScrollInfo, Shadow, TextRun};
@@ -568,7 +569,7 @@ fn label_of(l: &Laid, out: &mut Vec<String>) {
     }
 }
 
-fn flatten(l: &Laid, x: f64, y: f64, parent: usize, opacity: f32, out: &mut Vec<Node>) {
+fn flatten(l: &Laid, x: f64, y: f64, parent: usize, opacity: f32, out: &mut Vec<Node>, modals: &mut ModalLayers) {
     let mut n = Node::new(&l.id, "layer");
     n.bounds = Rect { x, y, w: l.w, h: l.h };
     n.parent = Some(parent);
@@ -643,7 +644,7 @@ fn flatten(l: &Laid, x: f64, y: f64, parent: usize, opacity: f32, out: &mut Vec<
             op *= n.opacity;
         }
         Deco::Embedded(embedded) => {
-            embedded.place((x, y), Some(parent), opacity, out);
+            embedded.place((x, y), Some(parent), opacity, out, modals);
             return;
         }
         Deco::Core(k) => {
@@ -655,7 +656,7 @@ fn flatten(l: &Laid, x: f64, y: f64, parent: usize, opacity: f32, out: &mut Vec<
     let idx = out.len();
     out.push(n);
     for (dx, dy, k) in &l.kids {
-        flatten(k, x + dx, y + dy, idx, op, out);
+        flatten(k, x + dx, y + dy, idx, op, out, modals);
     }
 }
 
@@ -664,15 +665,15 @@ pub(super) fn embedded(
     available: (Option<f64>, Option<f64>),
     params: &SceneParams,
     fonts: &mut Fonts,
-    place: Option<(Rect, usize, f32, &mut Vec<Node>)>,
+    place: Option<Placement<'_>>,
 ) -> (f64, f64) {
     let mut cx = Cx { fonts, notes: BTreeSet::new(), density: params.device.scale as f32, params: Some(params) };
     let laid = cx.measure(root, C {
         min_w: 0.0, max_w: available.0.unwrap_or(INF),
         min_h: 0.0, max_h: available.1.unwrap_or(INF),
     });
-    if let Some((bounds, parent, opacity, out)) = place {
-        flatten(&laid, bounds.x, bounds.y, parent, opacity, out);
+    if let Some(Placement { bounds, parent, opacity, nodes, modals }) = place {
+        flatten(&laid, bounds.x, bounds.y, parent, opacity, nodes, modals);
     }
     (laid.w, laid.h)
 }
@@ -689,7 +690,9 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     let mut nodes = vec![screen];
     // The content view gets the window's constraints, like ComposeView in an Activity: loose, bounded by the screen.
     let laid = cx.measure(root, C { min_w: 0.0, max_w: w, min_h: 0.0, max_h: h });
-    flatten(&laid, 0.0, 0.0, 0, 1.0, &mut nodes);
+    let mut modals = ModalLayers::default();
+    flatten(&laid, 0.0, 0.0, 0, 1.0, &mut nodes, &mut modals);
+    modals.paint(&mut nodes);
     if params.status_bar {
         android_status_bar(&mut nodes, params, cx.fonts, dark);
     }

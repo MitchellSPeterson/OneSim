@@ -6,6 +6,7 @@
 //! Visual constants (row height, card radius, nav bar heights, control sizes) are measured from
 //! an iOS 26 / iPhone 17 Pro simulator, see `tests/fixtures/showcase-ios/README.md`.
 
+use super::rn::{ModalLayers, Placement};
 use crate::device::Device;
 use crate::scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, Shadow, SymbolRun, TextRun};
 use crate::symbols::{self, SymbolSpec};
@@ -457,14 +458,14 @@ pub(super) fn embedded(
     available: (Option<f64>, Option<f64>),
     params: &SceneParams,
     fonts: &mut Fonts,
-    place: Option<(Rect, usize, f32, &mut Vec<Node>)>,
+    place: Option<Placement<'_>>,
 ) -> (f64, f64) {
     let mut cx = ctx(params, fonts);
     let env = Env { size: onesim_protocol::TextStyle::Body.size_at(params.dynamic_type) as f32, ..Env::new() };
     let laid = cx.view(root, Prop { w: available.0, h: available.1 }, env);
     let size = (laid.size.w, laid.size.h);
-    if let Some((bounds, parent, opacity, out)) = place {
-        flatten(laid, bounds.x, bounds.y, Some(parent), opacity, out);
+    if let Some(Placement { bounds, parent, opacity, nodes, modals }) = place {
+        flatten_tree(laid, bounds.x, bounds.y, Some(parent), opacity, nodes, modals);
     }
     size
 }
@@ -567,7 +568,13 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         ios: params.ios, nodes, unsupported_symbols: cx.unsupported.into_iter().collect(), notes: vec![] }
 }
 
-fn flatten(lay: Lay, x: f64, y: f64, mut parent: Option<usize>, mut opacity: f32, out: &mut Vec<Node>) {
+fn flatten(lay: Lay, x: f64, y: f64, parent: Option<usize>, opacity: f32, out: &mut Vec<Node>) {
+    let mut modals = ModalLayers::default();
+    flatten_tree(lay, x, y, parent, opacity, out, &mut modals);
+    modals.paint(out);
+}
+
+fn flatten_tree(lay: Lay, x: f64, y: f64, mut parent: Option<usize>, mut opacity: f32, out: &mut Vec<Node>, modals: &mut ModalLayers) {
     if let Some(mut n) = lay.node {
         let (l, t, r, b) = lay.infl;
         n.bounds = Rect { x: x - l, y: y - t, w: lay.size.w + l + r, h: lay.size.h + t + b };
@@ -578,10 +585,10 @@ fn flatten(lay: Lay, x: f64, y: f64, mut parent: Option<usize>, mut opacity: f32
         parent = Some(out.len() - 1);
     }
     if let Some(embedded) = lay.embedded {
-        embedded.place((x, y), parent, opacity, out);
+        embedded.place((x, y), parent, opacity, out, modals);
     }
     for (dx, dy, k) in lay.kids {
-        flatten(k, x + dx, y + dy, parent, opacity, out);
+        flatten_tree(k, x + dx, y + dy, parent, opacity, out, modals);
     }
 }
 
