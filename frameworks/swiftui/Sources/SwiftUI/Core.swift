@@ -135,6 +135,10 @@ final class _Runtime {
     // onChange: last value seen per structural path (committed at the end of each pass) and the callbacks this pass queued.
     var changeSeen: [String: Any] = [:], changeNow: [String: Any] = [:]
     var changePending: [() -> Void] = []
+    // Gestures (section L): registered by this evaluation by key; `gesturesOff` while a `GestureMask` excludes subviews.
+    var gestures: [String: _GestureEntry] = [:]
+    var gesturesOff = false
+    var touch: _TouchSession?   // the touch sequence in progress (spans evaluations)
 
     /// Compare `value` with the previous pass's; queue `fire(old, new)` on a change (or on first sight when `initial`).
     func noteChange<V: Equatable>(_ path: String, _ value: V, initial: Bool, _ fire: @escaping (V, V) -> Void) {
@@ -181,6 +185,7 @@ final class _Runtime {
         disabled = false; buttonStyle = "automatic"; pickerStyle = "menu"; tags = [:]; nav = nil; envObjects = [:]
         layers = []; autoDismiss = nil; dismissHook = nil
         lifecycleNow = [:]; lifecycleOrder = []; changeNow = [:]; changePending = []
+        gestures = [:]; gesturesOff = false
         touched.removeAll(keepingCapacity: true)
         var tree = render()
         if !layers.isEmpty { tree = ["kind": "presentation", "id": "presentation", "content": tree, "layers": layers] }
@@ -268,6 +273,14 @@ func _onesimRegisterCallbacks() {
         rt.viewport = (w, h)
         rt.submitTree()
     })
+    simcore_runtime_set_gesture_callback { _, phase, time, pts, np, keys, frames, nt in
+        guard let phase = _Touch.Phase(rawValue: phase) else { return }
+        let points = (0..<np).map { CGPoint(x: pts![2 * $0], y: pts![2 * $0 + 1]) }
+        let targets = (0..<nt).map { i -> (String, CGPoint, CGSize) in
+            (String(cString: keys![i]!), CGPoint(x: frames![4 * i], y: frames![4 * i + 1]), CGSize(width: frames![4 * i + 2], height: frames![4 * i + 3]))
+        }
+        _handleTouch(phase, time, points, targets)
+    }
     simcore_runtime_set_text_callback { _, field, text in
         let rt = _Runtime.shared
         if let text { let t = String(cString: text); _pool { rt.fields[field]?(t) } }

@@ -475,9 +475,18 @@ impl Host {
 
     /// Advance scroll momentum and bounces by `dt` seconds. Returns whether anything is still moving (call
     /// again next frame); false means the scene is at rest.
+    /// A finger resting on a SwiftUI gesture view is reported again each tick (long presses fire while held), and keeps
+    /// the scene live.
     pub fn tick(&mut self, id: &str, dt: f64) -> Result<bool, ApiError> {
         let (scene, ..) = self.scene(id)?;
-        Ok(self.get(id)?.inter.tick(&scene, dt))
+        let s = self.get(id)?;
+        let moving = s.inter.tick(&scene, dt);
+        if !s.inter.holding() {
+            return Ok(moving);
+        }
+        let held = s.inter.hold(dt);
+        s.send_effect(held)?;
+        Ok(true)
     }
 
     /// One phase of a live finger drag (`t_ms` is the event time): the content follows the finger and carries on

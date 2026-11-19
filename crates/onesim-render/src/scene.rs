@@ -228,6 +228,8 @@ pub struct Node {
     pub caret: Option<f64>,
     pub scroll: Option<ScrollInfo>,
     pub sheet: Option<SheetInfo>,
+    /// SwiftUI gestures on this view (protocol section L): the guest's key, and whether one follows a moving finger.
+    pub gesture: Option<(String, bool)>,
     /// False for layout-only helper nodes (clip/opacity layers); hidden from inspection.
     pub inspect: bool,
 }
@@ -264,6 +266,7 @@ impl Node {
             caret: None,
             scroll: None,
             sheet: None,
+            gesture: None,
             inspect: true,
         }
     }
@@ -343,6 +346,28 @@ impl Scene {
             let n = &self.nodes[i];
             modal.is_none_or(|m| i > m) && n.scroll.is_some() && n.bounds.contains(x, y) && self.clipped_in(i, x, y)
         })
+    }
+
+    /// SwiftUI gesture views under a finger at (x, y), innermost first (protocol section L): the topmost one
+    /// containing the point, then every ancestor with gestures (a parent's gesture covers its moved children too).
+    /// Under an alert or sheet only the presentation layer is reachable.
+    pub fn gesture_targets(&self, x: f64, y: f64) -> Vec<usize> {
+        let modal = self.nodes.iter().rposition(|n| n.kind == "scrim");
+        let Some(top) = (0..self.nodes.len()).rev().find(|&i| {
+            let n = &self.nodes[i];
+            modal.is_none_or(|m| i > m) && n.gesture.is_some() && n.bounds.contains(x, y) && self.clipped_in(i, x, y)
+        }) else {
+            return vec![];
+        };
+        let mut out = vec![top];
+        let mut p = self.nodes[top].parent;
+        while let Some(i) = p {
+            if self.nodes[i].gesture.is_some() {
+                out.push(i);
+            }
+            p = self.nodes[i].parent;
+        }
+        out
     }
 
     /// Inspection tree (protocol `UiNode`), skipping layout-only nodes.

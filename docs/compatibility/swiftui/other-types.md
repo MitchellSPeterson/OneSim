@@ -26,7 +26,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Alignment` | 13 | ✅ |  |  |
 | `AlignmentKey` | 13 | ⬜ |  |  |
 | `Anchor` | 13 | ⬜ |  |  |
-| `Angle` | 13 | ⬜ |  |  |
+| `Angle` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
 | `AnimatablePair` | 13 | ⬜ |  |  |
 | `AnimatableValues` | 26 | ⬜ |  |  |
 | `Animation` | 13 | ⬜ |  |  |
@@ -83,7 +83,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ControlSize` | 15 | ⬜ |  |  |
 | `ControlWidgetConfigurationBuilder` | 18 | ⬜ |  |  |
 | `ControlWidgetTemplateBuilder` | 18 | ⬜ |  |  |
-| `CoordinateSpace` | 13 | ⬜ |  |  |
+| `CoordinateSpace` | 13 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | `.named` is the screen (no `.coordinateSpace(name:)`) |
 | `CrossFadeNavigationTransition` | 27 | ⬜ |  |  |
 | `CubicKeyframe` | 17 | ⬜ |  |  |
 | `DatePickerComponents` | 13 | ⬜ |  |  |
@@ -155,7 +155,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `GaugeStyleConfiguration` | 16 | ⬜ |  |  |
 | `GeometryProxy` | 13 | ⬜ |  |  |
 | `GestureInputKinds` | 13 | ⬜ |  |  |
-| `GestureMask` | 13 | ⬜ |  |  |
+| `GestureMask` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
 | `Glass` | 26 | 🟠 |  | `interactive` has no visual effect |
 | `GlassEffectTransition` | 26 | ⬜ |  |  |
 | `GlobalCoordinateSpace` | 17 | ⬜ |  |  |
@@ -380,7 +380,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ToolbarTitleMenu` | 16 | ⬜ |  |  |
 | `ToolbarVerticalBehavior` | 13 | ⬜ |  |  |
 | `ToolbarVerticalCompressionBehavior` | 13 | ⬜ |  |  |
-| `Transaction` | 13 | ⬜ |  |  |
+| `Transaction` | 13 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | Carries no animation (animations are not simulated) |
 | `TransitionPhase` | 17 | ⬜ |  |  |
 | `TransitionProperties` | 17 | ⬜ |  |  |
 | `TupleSliderTickContent` | 26 | ⬜ |  |  |
@@ -395,7 +395,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `UIViewControllerRepresentableContext` | 13 | ⬜ |  |  |
 | `UIViewRepresentableContext` | 13 | ⬜ |  |  |
 | `UnitCurve` | 17 | ⬜ |  |  |
-| `UnitPoint` | 13 | ⬜ |  |  |
+| `UnitPoint` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
 | `URLDocumentConfiguration` | 13 | ⬜ |  |  |
 | `UserInterfaceSizeClass` | 13 | ⬜ |  |  |
 | `VerticalAlignment` | 13 | ✅ |  |  |

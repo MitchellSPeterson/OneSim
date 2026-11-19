@@ -604,6 +604,17 @@ fn lay_radius(l: &Lay) -> f64 {
     }
 }
 
+/// How far `.offset` wrappers (node-less, one same-sized child) move `l`'s content.
+fn moved_by(l: &Lay) -> (f64, f64) {
+    match l.kids.as_slice() {
+        [(dx, dy, k)] if l.node.is_none() && (k.size.w, k.size.h) == (l.size.w, l.size.h) => {
+            let (x, y) = moved_by(k);
+            (dx + x, dy + y)
+        }
+        _ => (0.0, 0.0),
+    }
+}
+
 /// x offset of the first text inside `l` (separator inset), relative to `l`'s origin.
 fn first_text_x(l: &Lay, ox: f64) -> Option<f64> {
     if l.node.as_ref().is_some_and(|n| n.text.is_some()) {
@@ -872,6 +883,21 @@ impl Ctx<'_> {
                 n.glass = Some(self.glass_spec(g.variant, g.tint.as_ref(), g.interactive));
                 n.inspect = false;
                 Lay::new(inner.size, Some(n), vec![(0.0, 0.0, inner)])
+            }
+            // Layout keeps the original place; drawing and hit testing use the moved one.
+            Modifier::Offset(o) => {
+                let inner = self.mods(v, rest, p, env);
+                Lay::new(inner.size, None, vec![(o.x, o.y, inner)])
+            }
+            Modifier::Gesture(g) => {
+                let inner = self.mods(v, rest, p, env);
+                let mut n = Node::new(format!("{}#gesture{}", v.id, rest.len()), "gesture");
+                n.gesture = Some((g.key.clone(), g.pans));
+                n.inspect = false;
+                // Touches land where an `.offset` moved the content, so the gesture frame moves with it.
+                let (dx, dy) = moved_by(&inner);
+                let size = inner.size;
+                Lay::new(size, None, vec![(dx, dy, Lay::new(size, Some(n), vec![(-dx, -dy, inner)]))])
             }
         }
     }
@@ -2896,5 +2922,145 @@ mod tests {
         if f.has_sf() {
             assert!(r < sb && sb < b, "variable wght axis applies: {r} {sb} {b}");
         }
+    }
+
+    // --- SwiftUI gestures (protocol section L)
+
+    use crate::{DragPhase, Effect, Interaction};
+    use onesim_protocol::{GestureTarget, GestureTouch, PointerEvent, PointerKind, TouchPhase};
+
+    fn touches(e: Effect) -> Vec<GestureTouch> {
+        match e {
+            Effect::Gesture(t) => t,
+            e => panic!("expected touches, got {e:?}"),
+        }
+    }
+
+    fn phases(t: &[GestureTouch]) -> Vec<TouchPhase> {
+        t.iter().map(|t| t.phase).collect()
+    }
+
+    fn keys(t: &GestureTouch) -> Vec<&str> {
+        t.targets.iter().map(|t| t.key.as_str()).collect()
+    }
+
+    /// A 100 x 100 square moved right by `.offset(x: 20)`, with gestures (`pans`), centred in 300 x 300.
+    fn square(pans: bool) -> Scene {
+        scene(
+            &format!(r#"{{"kind":"shape","id":"sq","shape":"rectangle","modifiers":[{{"frame":{{"width":100,"height":100,"alignment":"center"}}}},{{"offset":{{"x":20,"y":0}}}},{{"gesture":{{"key":"g","pans":{pans}}}}}]}}"#),
+            (300.0, 300.0),
+        )
+    }
+
+    #[test]
+    fn offset_moves_the_view_and_its_gesture_frame() {
+        let s = square(true);
+        let b = by_id(&s, "sq").bounds;
+        assert_eq!((b.x, b.y, b.w, b.h), (120.0, 100.0, 100.0, 100.0));
+        let g = s.nodes.iter().find(|n| n.gesture.is_some()).expect("gesture node");
+        assert_eq!((g.bounds.x, g.bounds.y), (120.0, 100.0));
+        assert!(s.ui_tree().children.iter().all(|c| c.kind != "gesture"), "layout-only node stays out of inspection");
+    }
+
+    #[test]
+    fn drag_on_a_gesture_view_is_one_touch_sequence() {
+        let s = square(true);
+        let mut it = Interaction::default();
+        let t = touches(it.pointer(&s, PointerEvent::moved(PointerKind::Drag, 170.0, 150.0, 30.0, 0.0)));
+        let p = phases(&t);
+        assert_eq!((p[0], *p.last().unwrap()), (TouchPhase::Start, TouchPhase::End));
+        assert!(p[1..p.len() - 1].iter().all(|&p| p == TouchPhase::Move) && p.len() >= 3);
+        assert_eq!(t[0].points, vec![[170.0, 150.0]]);
+        assert_eq!(t.last().unwrap().points, vec![[200.0, 150.0]]);
+        assert!(t.windows(2).all(|w| w[1].time > w[0].time), "time runs forward");
+        for e in &t {
+            assert_eq!(e.targets, vec![GestureTarget { key: "g".into(), frame: [120.0, 100.0, 100.0, 100.0] }]);
+        }
+        assert_eq!(it.hit.as_deref(), Some("sq#gesture2"));
+        // A click is a start and an end at one point; a miss sends nothing.
+        let t = touches(it.pointer(&s, PointerEvent::new(PointerKind::Click, 130.0, 110.0)));
+        assert_eq!(phases(&t), vec![TouchPhase::Start, TouchPhase::End]);
+        assert_eq!(it.pointer(&s, PointerEvent::new(PointerKind::Click, 10.0, 10.0)), Effect::None);
+    }
+
+    #[test]
+    fn control_inside_a_gesture_view_owns_its_touches() {
+        let s = scene(
+            r#"{"kind":"zstack","id":"z","alignment":"center","modifiers":[{"gesture":{"key":"o","pans":true}}],"children":[
+                {"kind":"color","id":"bg","color":{"semantic":"accent"},"modifiers":[{"frame":{"width":100,"height":100,"alignment":"center"}}]},
+                {"kind":"shape","id":"in","shape":"circle","modifiers":[{"frame":{"width":20,"height":20,"alignment":"center"}},{"offset":{"x":-30,"y":-30}},{"gesture":{"key":"i","pans":false}}]},
+                {"kind":"button","id":"b","action":7,"label":{"kind":"color","id":"bl","color":{"semantic":"primary"},"modifiers":[{"frame":{"width":40,"height":40,"alignment":"center"}}]}}]}"#,
+            (300.0, 300.0),
+        );
+        let mut it = Interaction::default();
+        it.version = 2;
+        assert_eq!(it.pointer(&s, PointerEvent::new(PointerKind::Click, 150.0, 150.0)), Effect::Action { id: 7, version: 2 });
+        let t = touches(it.pointer(&s, PointerEvent::new(PointerKind::Click, 190.0, 190.0)));
+        assert_eq!(keys(&t[0]), vec!["o"]);
+        // Nested gesture views: innermost first.
+        let t = touches(it.pointer(&s, PointerEvent::new(PointerKind::Click, 120.0, 120.0)));
+        assert_eq!(keys(&t[0]), vec!["i", "o"]);
+        assert_eq!(t[0].targets[0].frame, [110.0, 110.0, 20.0, 20.0]);
+    }
+
+    #[test]
+    fn pinch_rotate_and_long_press_synthesize_fingers() {
+        let s = square(true);
+        let mut it = Interaction::default();
+        let pinch = PointerEvent { scale: Some(2.0), ..PointerEvent::new(PointerKind::Pinch, 170.0, 150.0) };
+        let t = touches(it.pointer(&s, pinch));
+        assert_eq!(t[0].points, vec![[120.0, 150.0], [220.0, 150.0]]);
+        assert_eq!(t.last().unwrap().points, vec![[70.0, 150.0], [270.0, 150.0]]);
+        assert_eq!(t.last().unwrap().phase, TouchPhase::End);
+
+        let rotate = PointerEvent { degrees: Some(90.0), ..PointerEvent::new(PointerKind::Rotate, 170.0, 150.0) };
+        let t = touches(it.pointer(&s, rotate));
+        let end = &t.last().unwrap().points;
+        for (got, want) in end.iter().zip([[170.0, 100.0], [170.0, 200.0]]) {
+            assert!((got[0] - want[0]).abs() < 1e-9 && (got[1] - want[1]).abs() < 1e-9, "{end:?}");
+        }
+
+        let press = PointerEvent { duration: Some(0.8), ..PointerEvent::new(PointerKind::LongPress, 150.0, 150.0) };
+        let t = touches(it.pointer(&s, press));
+        assert_eq!((t[0].phase, t.last().unwrap().phase), (TouchPhase::Start, TouchPhase::End));
+        assert!((t.last().unwrap().time - t[0].time - 800.0).abs() < 1e-9);
+        assert!(t.iter().all(|e| e.points == vec![[150.0, 150.0]]), "the finger never moves");
+        assert!(t.len() > 3, "held fingers keep reporting, so a long press can fire before the lift");
+    }
+
+    #[test]
+    fn live_touch_holds_and_moves_with_the_finger() {
+        let s = square(true);
+        let mut it = Interaction::default();
+        assert_eq!(phases(&touches(it.drag(&s, DragPhase::Begin, 150.0, 150.0, 1000.0))), vec![TouchPhase::Start]);
+        let held = touches(it.hold(0.1));
+        assert_eq!((held[0].phase, held[0].time, held[0].points.clone()), (TouchPhase::Move, 1100.0, vec![[150.0, 150.0]]));
+        let t = touches(it.drag(&s, DragPhase::Move, 160.0, 150.0, 1116.0));
+        assert_eq!((t[0].phase, t[0].points.clone()), (TouchPhase::Move, vec![[160.0, 150.0]]));
+        assert_eq!(touches(it.drag(&s, DragPhase::End, 160.0, 150.0, 1130.0))[0].phase, TouchPhase::End);
+        assert_eq!(it.hold(0.1), Effect::None, "no finger, no hold");
+    }
+
+    #[test]
+    fn scroller_takes_a_moving_touch_from_a_tap_only_gesture() {
+        let json = |pans: bool| {
+            format!(
+                r#"{{"kind":"scroll","id":"sc","axis":"vertical","child":{{"kind":"vstack","id":"v","alignment":"center","spacing":0,"children":[
+                    {{"kind":"color","id":"c","color":{{"semantic":"accent"}},"modifiers":[{{"frame":{{"height":2000,"alignment":"center"}}}},{{"gesture":{{"key":"c","pans":{pans}}}}}]}}]}}}}"#
+            )
+        };
+        let s = scene(&json(false), (300.0, 300.0));
+        let mut it = Interaction::default();
+        touches(it.drag(&s, DragPhase::Begin, 150.0, 200.0, 0.0));
+        let t = touches(it.drag(&s, DragPhase::Move, 150.0, 170.0, 16.0));
+        assert_eq!(phases(&t), vec![TouchPhase::Cancel]);
+        it.drag(&s, DragPhase::Move, 150.0, 150.0, 32.0);
+        assert_eq!(it.scroll.get("sc").map(|o| o.1), Some(50.0), "the scroller follows from where the touch began");
+
+        let s = scene(&json(true), (300.0, 300.0));
+        let mut it = Interaction::default();
+        touches(it.drag(&s, DragPhase::Begin, 150.0, 200.0, 0.0));
+        assert_eq!(phases(&touches(it.drag(&s, DragPhase::Move, 150.0, 150.0, 16.0))), vec![TouchPhase::Move]);
+        assert!(it.scroll.get("sc").is_none_or(|o| o.1 == 0.0), "a drag gesture keeps the touch");
     }
 }

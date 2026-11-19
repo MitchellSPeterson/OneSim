@@ -93,8 +93,18 @@ struct Opts {
     scrolls: Vec<String>,
     /// Drag a finger from (X,Y) by (DX,DY) points as one gesture: scrolls a scroller (content follows
     /// the finger) or swipes a sheet (down past the dismiss line dismisses, up expands). Repeatable.
+    /// `LABEL,DX,DY` drags from a control or text by its label.
     #[arg(long = "drag", value_name = "X,Y,DX,DY")]
     drags: Vec<String>,
+    /// Hold a finger still for a second at "X,Y" or on a control or text by label (SwiftUI long presses). Repeatable.
+    #[arg(long = "long-press", value_name = "LABEL_OR_X,Y")]
+    long_presses: Vec<String>,
+    /// Pinch two fingers centred on "X,Y" or a labelled view, 100 pt apart, to SCALE times that distance. Repeatable.
+    #[arg(long = "pinch", value_name = "LABEL_OR_X,Y,SCALE")]
+    pinches: Vec<String>,
+    /// Turn two fingers centred on "X,Y" or a labelled view by DEGREES (clockwise). Repeatable.
+    #[arg(long = "rotate", value_name = "LABEL_OR_X,Y,DEGREES")]
+    rotations: Vec<String>,
     /// Print the UI tree as JSON on stdout.
     #[arg(long)]
     inspect: bool,
@@ -128,6 +138,9 @@ enum Step {
     Key(String),
     Scroll(String),
     Drag(String),
+    LongPress(String),
+    Pinch(String),
+    Rotate(String),
 }
 
 /// Collect the repeatable interaction flags in the order they were given.
@@ -143,12 +156,23 @@ fn steps(m: &ArgMatches) -> Vec<Step> {
     add("keys", Step::Key);
     add("scrolls", Step::Scroll);
     add("drags", Step::Drag);
+    add("long_presses", Step::LongPress);
+    add("pinches", Step::Pinch);
+    add("rotations", Step::Rotate);
     all.sort_by_key(|(i, _)| *i);
     all.into_iter().map(|(_, s)| s).collect()
 }
 
 fn resolve_label(tree: &UiNode, spec: &str) -> Result<(f64, f64)> {
     onesim_render::resolve_label(tree, spec).map_err(anyhow::Error::msg)
+}
+
+/// "X,Y" in points, or the centre of a control or text by label.
+fn point(host: &mut Host, id: &str, spec: &str) -> Result<(f64, f64)> {
+    match parse_nums::<2>(spec) {
+        Some([x, y]) => Ok((x, y)),
+        None => resolve_label(&host.inspect(id)?.1, spec),
+    }
 }
 
 fn parse_nums<const N: usize>(s: &str) -> Option<[f64; N]> {
@@ -318,15 +342,42 @@ fn drive(host: &mut Host, id: &str, shot: Option<String>, steps: &[Step], inspec
             Step::Type(t) => host.keyboard(id, KeyboardEvent::Text { text: t.clone() }).context("--type")?,
             Step::Key(k) => host.keyboard(id, KeyboardEvent::Key { key: k.clone() }).context("--key")?,
             Step::Drag(s) => {
-                let [x, y, dx, dy] = parse_nums::<4>(s).with_context(|| format!("--drag wants X,Y,DX,DY, got {s:?}"))?;
-                let (hit, _) = host.pointer(id, PointerEvent { kind: PointerKind::Drag, x, y, dx, dy })?;
+                let bad = || format!("--drag wants X,Y,DX,DY or LABEL,DX,DY, got {s:?}");
+                let (x, y, dx, dy) = match parse_nums::<4>(s) {
+                    Some([x, y, dx, dy]) => (x, y, dx, dy),
+                    None => {
+                        let mut it = s.rsplitn(3, ',');
+                        let (dy, dx, label) = (it.next(), it.next(), it.next().with_context(bad)?);
+                        let [dx, dy] = parse_nums::<2>(&format!("{},{}", dx.unwrap_or(""), dy.unwrap_or(""))).with_context(bad)?;
+                        let (x, y) = resolve_label(&host.inspect(id)?.1, label)?;
+                        (x, y, dx, dy)
+                    }
+                };
+                let (hit, _) = host.pointer(id, PointerEvent::moved(PointerKind::Drag, x, y, dx, dy))?;
                 if hit.is_none() {
                     bail!("nothing to drag at {x},{y}");
                 }
             }
+            Step::LongPress(s) => {
+                let (x, y) = point(host, id, s)?;
+                if host.pointer(id, PointerEvent::new(PointerKind::LongPress, x, y))?.0.is_none() {
+                    bail!("nothing to long-press at {x},{y}");
+                }
+            }
+            Step::Pinch(s) | Step::Rotate(s) => {
+                let rotate = matches!(step, Step::Rotate(_));
+                let (at, amount) = s.rsplit_once(',').with_context(|| format!("wants LABEL_OR_X,Y,AMOUNT, got {s:?}"))?;
+                let amount: f64 = amount.trim().parse().with_context(|| format!("bad amount in {s:?}"))?;
+                let (x, y) = point(host, id, at)?;
+                let ev = PointerEvent::new(if rotate { PointerKind::Rotate } else { PointerKind::Pinch }, x, y);
+                let ev = if rotate { PointerEvent { degrees: Some(amount), ..ev } } else { PointerEvent { scale: Some(amount), ..ev } };
+                if host.pointer(id, ev)?.0.is_none() {
+                    bail!("no gesture view at {x},{y}");
+                }
+            }
             Step::Scroll(s) => {
                 let [x, y, dx, dy] = parse_nums::<4>(s).with_context(|| format!("--scroll wants X,Y,DX,DY, got {s:?}"))?;
-                let (hit, _) = host.pointer(id, PointerEvent { kind: PointerKind::Scroll, x, y, dx, dy })?;
+                let (hit, _) = host.pointer(id, PointerEvent::moved(PointerKind::Scroll, x, y, dx, dy))?;
                 if hit.is_none() {
                     bail!("nothing scrollable at {x},{y}");
                 }

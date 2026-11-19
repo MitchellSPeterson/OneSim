@@ -162,7 +162,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.fullScreenCover` | 14 | ✅ |  | Settled states only (no animation) |
 | `.gaugeStyle` | 16 | ⬜ |  |  |
 | `.geometryGroup` | 17 | ⬜ |  |  |
-| `.gesture` | 13 | ⬜ |  |  |
+| `.gesture` | 13 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | A gesture never waits for a higher-priority one to fail (a double tap also fires a single tap on the same view) |
 | `.glassEffect` | 26 | 🟠 |  | `interactive` has no visual effect |
 | `.glassEffectID` | 26 | ⬜ |  |  |
 | `.glassEffectTransition` | 26 | ⬜ |  |  |
@@ -178,7 +178,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.headerProminence` | 15 | ⬜ |  |  |
 | `.help` | 14 | ⬜ |  |  |
 | `.hidden` | 13 | ⬜ |  |  |
-| `.highPriorityGesture` | 13 | ⬜ |  |  |
+| `.highPriorityGesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
 | `.hoverEffect` | 13.4 | ⬜ |  |  |
 | `.hoverEffectDisabled` | 17 | ⬜ |  |  |
 | `.hueRotation` | 13 | ⬜ |  |  |
@@ -251,7 +251,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.navigationTitle` | 14 | ✅ |  |  |
 | `.navigationTransition` | 18 | ⬜ |  |  |
 | `.navigationViewStyle` | 13 | ⬜ |  | Deprecated |
-| `.offset` | 13 | ⬜ |  |  |
+| `.offset` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
 | `.onAppear` | 13 | ✅ |  |  |
 | `.onChange` | 13 | 🟠 |  | `Equatable` values; value forgotten when the view leaves the tree |
 | `.onContinueUserActivity` | 14 | ⬜ |  |  |
@@ -266,7 +266,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.onHover` | 13.4 | ⬜ |  |  |
 | `.onInteractiveResizeChange` | 26 | ⬜ |  |  |
 | `.onKeyPress` | 17 | ⬜ |  |  |
-| `.onLongPressGesture` | 13 | ⬜ |  |  |
+| `.onLongPressGesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
 | `.onOpenURL` | 14 | ⬜ |  |  |
 | `.onPencilDoubleTap` | 17.5 | ⬜ |  |  |
 | `.onPencilSqueeze` | 17.5 | ⬜ |  |  |
@@ -277,7 +277,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.onScrollTargetVisibilityChange` | 18 | ⬜ |  |  |
 | `.onScrollVisibilityChange` | 18 | ⬜ |  |  |
 | `.onSubmit` | 15 | ⬜ |  |  |
-| `.onTapGesture` | 13 | 🟠 |  | `count: 1` only; acts as a button |
+| `.onTapGesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | `count: 1` is a plain button node (button accessibility) |
 | `.opacity` | 13 | ✅ |  |  |
 | `.overlay` | 13 | ✅ |  |  |
 | `.overlayArrangementEdge` | 13 | ⬜ |  |  |
@@ -354,7 +354,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.sensoryFeedback` | 17 | ⬜ |  |  |
 | `.shadow` | 13 | ✅ |  |  |
 | `.sheet` | 13 | ✅ |  | Settled states only (no animation) |
-| `.simultaneousGesture` | 13 | ⬜ |  |  |
+| `.simultaneousGesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
 | `.sliderThumbVisibility` | 26 | ⬜ |  |  |
 | `.speechAdjustedPitch` | 15 | ⬜ |  |  |
 | `.speechAlwaysIncludesPunctuation` | 15 | ⬜ |  |  |

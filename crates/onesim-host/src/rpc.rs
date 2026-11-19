@@ -473,7 +473,7 @@ fn session_call(srv: &Server, en: &Arc<Entry>, method: &str, a: P) -> R {
                         h.pointer(sid, PointerEvent::new(PointerKind::Up, x, y))?.0
                     }
                     _ => {
-                        let ev = PointerEvent { kind: PointerKind::Scroll, x, y, dx: a.dx.unwrap_or(0.0), dy: a.dy.unwrap_or(0.0) };
+                        let ev = PointerEvent::moved(PointerKind::Scroll, x, y, a.dx.unwrap_or(0.0), a.dy.unwrap_or(0.0));
                         h.pointer(sid, ev)?;
                         return Ok(json!({}));
                     }
@@ -485,7 +485,7 @@ fn session_call(srv: &Server, en: &Arc<Entry>, method: &str, a: P) -> R {
         }),
         "input.swipe" => {
             let (Some(f), Some(t)) = (&a.from, &a.to) else { return Err(bad("from and to ({x,y}) required")) };
-            let ev = PointerEvent { kind: PointerKind::Scroll, x: f.x, y: f.y, dx: f.x - t.x, dy: f.y - t.y };
+            let ev = PointerEvent::moved(PointerKind::Scroll, f.x, f.y, f.x - t.x, f.y - t.y);
             en.with(|h| h.pointer(sid, ev)).map(|_| json!({}))
         }
         "input.type" => {

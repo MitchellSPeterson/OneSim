@@ -4,17 +4,17 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 
 | API | Since | iOS | Issue | Notes |
 |---|---|---|---|---|
-| `AnyGesture` | 13 | ⬜ |  |  |
-| `DragGesture` | 13 | ⬜ |  |  |
-| `ExclusiveGesture` | 13 | ⬜ |  |  |
-| `GestureStateGesture` | 13 | ⬜ |  |  |
-| `LongPressGesture` | 13 | ⬜ |  |  |
-| `MagnificationGesture` | 13 | ⬜ |  | Deprecated |
-| `MagnifyGesture` | 17 | ⬜ |  |  |
-| `RotateGesture` | 17 | ⬜ |  |  |
-| `RotationGesture` | 13 | ⬜ |  | Deprecated |
-| `SequenceGesture` | 13 | ⬜ |  |  |
-| `SimultaneousGesture` | 13 | ⬜ |  |  |
+| `AnyGesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
+| `DragGesture` | 13 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | `predictedEndLocation` projects 0.25 s of the release velocity (not UIKit deceleration); named coordinate spaces are global |
+| `ExclusiveGesture` | 13 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | Never waits for the first gesture to fail: the second wins as soon as it commits |
+| `GestureStateGesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
+| `LongPressGesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
+| `MagnificationGesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | Deprecated; two fingers from the API/CLI (`pinch`, `rotate`); the window and web page have one |
+| `MagnifyGesture` | 17 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | Two fingers from the API/CLI (`pinch`, `rotate`); the window and web page have one |
+| `RotateGesture` | 17 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | Two fingers from the API/CLI (`pinch`, `rotate`); the window and web page have one |
+| `RotationGesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | Deprecated; two fingers from the API/CLI (`pinch`, `rotate`); the window and web page have one |
+| `SequenceGesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
+| `SimultaneousGesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
 | `SpatialEventGesture` | 13 | ⬜ |  |  |
-| `SpatialTapGesture` | 16 | ⬜ |  |  |
-| `TapGesture` | 13 | ⬜ |  |  |
+| `SpatialTapGesture` | 16 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | Named coordinate spaces are global |
+| `TapGesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |

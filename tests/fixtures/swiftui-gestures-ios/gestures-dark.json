@@ -1,0 +1,273 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "type": "Other",
+        "role": "_TtC7SwiftUIP33_ACC2C5639A7D76F611E170E831FCA49118SwiftUIApplication",
+        "subrole": "UIApplication",
+        "label": "Gestures",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 0,
+        "pid": 38853,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "other"
+      },
+      {
+        "index": 1,
+        "parentIndex": 0,
+        "type": "NavigationBar",
+        "role": "SwiftUI.UIKitNavigationBar",
+        "subrole": "UINavigationBar",
+        "identifier": "Gestures",
+        "rect": {
+          "x": 0,
+          "y": 62,
+          "width": 402,
+          "height": 106
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 38853,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "navigation-bar"
+      },
+      {
+        "index": 2,
+        "parentIndex": 1,
+        "type": "StaticText",
+        "role": "UILabel",
+        "label": "Gestures",
+        "rect": {
+          "x": 16,
+          "y": 119.66666666666667,
+          "width": 144,
+          "height": 40.66666666666667
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 38853,
+        "hittable": true,
+        "ref": "e3",
+        "kind": "text"
+      },
+      {
+        "index": 3,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Drag me",
+        "rect": {
+          "x": 168.5,
+          "y": 259,
+          "width": 65,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 38853,
+        "hittable": true,
+        "ref": "e4",
+        "kind": "text"
+      },
+      {
+        "index": 4,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Offset 0, 0",
+        "rect": {
+          "x": 160.66666666666669,
+          "y": 321.1666666666667,
+          "width": 80.66666666666666,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 38853,
+        "hittable": true,
+        "ref": "e5",
+        "kind": "text"
+      },
+      {
+        "index": 5,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Hold",
+        "rect": {
+          "x": 183,
+          "y": 383.3333333333333,
+          "width": 36,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 38853,
+        "hittable": true,
+        "ref": "e6",
+        "kind": "text"
+      },
+      {
+        "index": 6,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Not pressed yet",
+        "rect": {
+          "x": 140.5,
+          "y": 445.5,
+          "width": 121,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 38853,
+        "hittable": true,
+        "ref": "e7",
+        "kind": "text"
+      },
+      {
+        "index": 7,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Double-tap",
+        "rect": {
+          "x": 157.83333333333334,
+          "y": 507.6666666666666,
+          "width": 86.33333333333334,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 38853,
+        "hittable": true,
+        "ref": "e8",
+        "kind": "text"
+      },
+      {
+        "index": 8,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Double taps: 0",
+        "rect": {
+          "x": 145.5,
+          "y": 569.8333333333333,
+          "width": 111,
+          "height": 20.33333333333337
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 38853,
+        "hittable": true,
+        "ref": "e9",
+        "kind": "text"
+      },
+      {
+        "index": 9,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Pinch or rotate",
+        "rect": {
+          "x": 145.16666666666669,
+          "y": 644,
+          "width": 111.66666666666669,
+          "height": 20.33333333333337
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 38853,
+        "hittable": true,
+        "ref": "e10",
+        "kind": "text"
+      },
+      {
+        "index": 10,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Not zoomed",
+        "rect": {
+          "x": 154.33333333333334,
+          "y": 718.1666666666666,
+          "width": 93.33333333333334,
+          "height": 20.33333333333337
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 38853,
+        "hittable": true,
+        "ref": "e11",
+        "kind": "text"
+      },
+      {
+        "index": 11,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Not turned",
+        "rect": {
+          "x": 159.83333333333334,
+          "y": 754.5,
+          "width": 82.33333333333334,
+          "height": 20.33333333333337
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 38853,
+        "hittable": true,
+        "ref": "e12",
+        "kind": "text"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.gestures",
+    "appBundleId": "dev.simcore.gestures",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 12,
+      "totalNodeCount": 12,
+      "reasons": []
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "absent",
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 11,
+        "p50Ms": 77,
+        "p95Ms": 378,
+        "maxMs": 378,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 11
+        }
+      }
+    },
+    "refsGeneration": 112958
+  }
+}

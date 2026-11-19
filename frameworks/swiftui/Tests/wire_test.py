@@ -401,4 +401,72 @@ t = act(p, t, button(t, "two 0")["action"]); assert "two 1" in alltexts(tv(t))
 t = tab(t, 0); assert tv(t)["selected"] == 0 and "one 0" in alltexts(tv(t))
 t = tab(t, 1); assert "two 1" in alltexts(tv(t))
 finish(p)
+
+# --- gestures (protocol section L): touches at gesture keys drive recognizers, composition and arbitration
+p = spawn(sys.argv[8]); assert recv(p)["type"] == "hello"; t = recv(p)
+F = [100, 200, 300, 40]  # every target's frame: local = point - (100, 200)
+def gview(t, prefix):
+    return next(m for m in walk(t["root"]) if any("gesture" in x for x in m.get("modifiers", [])) and any(s.startswith(prefix) for s in alltexts(m)))
+def gkeys(t, prefix): return [x["gesture"]["key"] for x in gview(t, prefix)["modifiers"] if "gesture" in x]
+def touch(keys, phase, time, *pts):
+    send(p, type="gesture", phase=phase, time=time, points=[list(q) for q in pts], targets=[{"key": k, "frame": F} for k in keys])
+    return recv(p)  # every touch event is answered with a tree
+def txt(t, prefix): return next(s for s in alltexts(t["root"]) if s.startswith(prefix))
+def taps(keys, time, at=(130, 215)):
+    touch(keys, "start", time, at); return touch(keys, "end", time + 50, at)
+
+k = gkeys(t, "Drag ")
+assert [x["gesture"]["pans"] for x in gview(t, "Drag ")["modifiers"] if "gesture" in x] == [True]
+assert [x["gesture"]["pans"] for x in gview(t, "Double ")["modifiers"] if "gesture" in x] == [False]
+t = touch(k, "start", 0, (110, 210)); assert txt(t, "Drag ") == "Drag 0 total 0 global 110", txt(t, "Drag ")
+t = touch(k, "move", 16, (115, 210)); assert txt(t, "Drag ") == "Drag 0 total 0 global 115", "under minimumDistance: no drag yet"
+t = touch(k, "move", 32, (140, 210)); assert txt(t, "Drag ") == "Drag 30 total 0 global 140", txt(t, "Drag ")
+t = touch(k, "end", 48, (150, 210)); assert txt(t, "Drag ") == "Drag 0 total 40 global 140", "@GestureState resets, onEnded adds: " + txt(t, "Drag ")
+touch(k, "start", 100, (110, 210)); t = touch(k, "move", 116, (150, 210)); assert txt(t, "Drag ").startswith("Drag 40 total 40")
+t = touch(k, "cancel", 132, (150, 210)); assert txt(t, "Drag ").startswith("Drag 0 total 40"), "a cancelled drag never ends: " + txt(t, "Drag ")
+
+k = gkeys(t, "Long "); assert len(k) == 2, k
+t = touch(k, "start", 1000, (120, 210)); assert txt(t, "Long ") == "Long 0 pressing yes held yes", txt(t, "Long ")
+t = touch(k, "move", 1300, (122, 211)); assert txt(t, "Long ") == "Long 0 pressing yes held yes"
+t = touch(k, "move", 1600, (122, 211)); assert txt(t, "Long ") == "Long 1 pressing no held yes", "fires while held: " + txt(t, "Long ")
+t = touch(k, "end", 1700, (122, 211)); assert txt(t, "Long ") == "Long 1 pressing no held no", txt(t, "Long ")
+touch(k, "start", 3000, (120, 210)); t = touch(k, "end", 3100, (120, 210)); assert txt(t, "Long ") == "Long 1 pressing no held no", "too short"
+touch(k, "start", 4000, (120, 210)); t = touch(k, "move", 4100, (140, 210)); assert txt(t, "Long ") == "Long 1 pressing no held no", "moved away"
+touch(k, "end", 4700, (140, 210))
+
+k = gkeys(t, "Double ")
+t = taps(k, 5000); assert txt(t, "Double ") == "Double 0"
+t = taps(k, 5150); assert txt(t, "Double ") == "Double 1", txt(t, "Double ")
+taps(k, 6000); t = taps(k, 7000); assert txt(t, "Double ") == "Double 1", "taps too far apart"
+
+k = gkeys(t, "Tap at"); t = taps(k, 8000); assert txt(t, "Tap at") == "Tap at 30,15", txt(t, "Tap at")
+
+k = gkeys(t, "Pinch ")
+t = touch(k, "start", 9000, (150, 220), (250, 220)); assert txt(t, "Pinch ").startswith("Pinch 100 turn 0")
+t = touch(k, "move", 9016, (100, 220), (300, 220)); assert txt(t, "Pinch ").startswith("Pinch 200 turn 0"), txt(t, "Pinch ")
+t = touch(k, "move", 9032, (200, 170), (200, 270)); assert txt(t, "Pinch ").startswith("Pinch 100 turn 90"), txt(t, "Pinch ")
+t = touch(k, "end", 9048, (200, 170), (200, 270)); assert txt(t, "Pinch ") == "Pinch 100 turn 90 done", txt(t, "Pinch ")
+
+k = gkeys(t, "Seq ")
+t = touch(k, "start", 10000, (120, 210)); assert txt(t, "Seq ") == "Seq pressing", txt(t, "Seq ")
+t = touch(k, "move", 10400, (120, 210)); assert txt(t, "Seq ") == "Seq dragging 0", txt(t, "Seq ")
+t = touch(k, "move", 10450, (145, 210)); assert txt(t, "Seq ") == "Seq dragging 25", txt(t, "Seq ")
+t = touch(k, "end", 10500, (145, 210)); assert txt(t, "Seq ") == "Seq done", txt(t, "Seq ")
+
+k = gkeys(t, "Excl ")
+touch(k, "start", 11000, (120, 210)); touch(k, "move", 11016, (150, 210)); t = touch(k, "end", 11032, (150, 210))
+assert txt(t, "Excl ") == "Excl drag", txt(t, "Excl ")
+taps(k, 12000); t = taps(k, 12100); assert txt(t, "Excl ") == "Excl double", txt(t, "Excl ")
+
+k = gkeys(t, "Nested "); assert len(k) == 4, k  # child tap, parent tap, high-priority drag, simultaneous tap
+t = taps(k, 13000); assert txt(t, "Nested ") == "Nested cs", "child beats parent, simultaneous joins: " + txt(t, "Nested ")
+touch(k, "start", 14000, (120, 210)); touch(k, "move", 14016, (150, 210)); t = touch(k, "end", 14032, (150, 210))
+assert txt(t, "Nested ") == "Nested csH", "high priority wins once it commits: " + txt(t, "Nested ")
+
+k = gkeys(t, "Custom "); taps(k, 15000); t = taps(k, 15100); assert txt(t, "Custom ") == "Custom 1", txt(t, "Custom ")
+
+k = gkeys(t, "Masked "); assert len(k) == 1, "including: .subviews drops the parent's own gesture"
+t = taps(k, 16000); assert txt(t, "Masked ") == "Masked c", txt(t, "Masked ")
+t = touch(["stale#g0"], "start", 17000, (1, 1)); t = touch(["stale#g0"], "end", 17050, (1, 1))  # unknown keys: no-op
+finish(p)
 print("PASS")
