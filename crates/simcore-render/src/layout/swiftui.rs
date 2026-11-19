@@ -2635,10 +2635,12 @@ mod tests {
         assert_eq!(star.symbol.as_ref().unwrap().color, rgba(0, 136, 255, 1.0));
         assert_eq!(by_id(&s, "lab.t").text.as_ref().unwrap().color, rgba(0, 0, 0, 1.0));
         assert_eq!(by_id(&s, "bad.i").stroke.map(|s| s.0), by_id(&s, "bad.t").text.as_ref().map(|t| t.color));
-        // heart.fill at 17pt: 21x18 box (16.7x15.3 ink on iOS); large is bigger than medium
-        let heart = by_id(&s, "h.0").bounds;
-        near(heart.w, 21.0);
-        near(heart.h, 18.0);
+        // The layout uses AppKit's natural box. Its height varies with the macOS symbol version
+        // (18 pt on the original host, 19 pt on macOS 27.2.1). The iOS fixture checks the ink.
+        let heart = by_id(&s, "h.0");
+        let metrics = crate::symbols::metrics(&heart.symbol.as_ref().unwrap().spec).unwrap();
+        near(heart.bounds.w, 21.0);
+        near(heart.bounds.h, metrics.h);
         assert!(by_id(&s, "h.2").bounds.w > 24.0);
         // resizable scaledToFit keeps the symbol's aspect inside the 44pt frame
         let cloud = by_id(&s, "h.1").bounds;
