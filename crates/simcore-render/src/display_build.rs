@@ -168,18 +168,18 @@ impl Builder {
         let b = n.bounds;
         let op = n.opacity;
         let backdrop = needs_backdrop(n);
+        let shadow_radius = n.radius.max(n.clip_radius.unwrap_or(0.0)) as f32 * s;
 
         // Backdrop effects, in the CPU order: halo + glass (one op: the glass samples the backdrop before its halo
         // lands), the node's own shadow, the scroll edge.
         if backdrop {
             if let Some(g) = n.glass.as_ref().filter(|g| g.variant != crate::glass::GlassVariant::Identity) {
-                dl.ops.push(Op::Glass { shape: rr(b.x, b.y, b.w, b.h, n.radius, s), spec: *g, opacity: op });
+                dl.ops.push(Op::Glass { shape: rr(b.x, b.y, b.w, b.h, n.radius, s), spec: *g, opacity: op, halo_radius: shadow_radius });
             }
         }
         if let Some(sh) = &n.shadow {
-            let radius = n.radius.max(n.clip_radius.unwrap_or(0.0));
             // The CPU always draws an own shadow; the GPU's Vello path only where it cannot sample the backdrop.
-            let shape = RRect { x: b.x as f32 * s, y: b.y as f32 * s, w: b.w as f32 * s, h: b.h as f32 * s, r: radius as f32 * s };
+            let shape = RRect { x: b.x as f32 * s, y: b.y as f32 * s, w: b.w as f32 * s, h: b.h as f32 * s, r: shadow_radius };
             let (color, sigma, dx, dy) = (with_opacity(sh.color, op), (sh.radius as f32 * s).max(0.5), sh.dx as f32 * s, sh.dy as f32 * s);
             if backdrop {
                 dl.ops.push(Op::BackdropShadow { shape, color, sigma, dx, dy });
@@ -265,11 +265,12 @@ impl Builder {
         }
         let m = to_pt.then(Aff::scale(scale, scale)).0.map(|v| v as f32);
         let id = self.bitmap(&im.pixmap, &mut dl.added);
-        let clipped = n.radius > 0.0 || rotated || (d.x < b.x || d.y < b.y || d.x + d.w > b.x + b.w || d.y + d.h > b.y + b.h);
+        let coverage = rr(b.x, b.y, b.w, b.h, n.radius, s);
+        let clipped = !rotated && (n.radius > 0.0 || d.x < b.x || d.y < b.y || d.x + d.w > b.x + b.w || d.y + d.h > b.y + b.h);
         if clipped {
-            dl.ops.push(Op::PushClip(rr(b.x, b.y, b.w, b.h, n.radius, s)));
+            dl.ops.push(Op::PushClip(coverage));
         }
-        dl.ops.push(Op::Image { id, transform: m, sampling: Sampling::Bicubic, opacity: n.opacity });
+        dl.ops.push(Op::Image { id, transform: m, sampling: Sampling::Bicubic, opacity: n.opacity, shape: rotated.then_some(coverage) });
         if clipped {
             dl.ops.push(Op::PopClip);
         }

@@ -640,7 +640,7 @@ pub fn apply_backdrop_op(pm: &mut Pixmap, op: &crate::display::Op, clips: &[crat
     let mask = mask.as_ref();
     let rgba = |c: Color| [c.r, c.g, c.b, c.a].map(|v| (v * 255.0).round() as u8);
     match op {
-        Op::Glass { shape, spec, opacity } => {
+        Op::Glass { shape, spec, opacity, halo_radius } => {
             if spec.variant == crate::glass::GlassVariant::Identity {
                 return;
             }
@@ -651,7 +651,7 @@ pub fn apply_backdrop_op(pm: &mut Pixmap, op: &crate::display::Op, clips: &[crat
             let snap = crate::glass::snapshot(pm, sh, scale, &p);
             if p.sh_a > 0.0 {
                 let halo = Color::rgba(0.0, 0.0, 0.0, p.sh_a * opacity);
-                let dev = DevShadow { b: (sh.x, sh.y, sh.w, sh.h), radius: r, sigma: (p.sh_sigma * scale).max(0.5), dx: 0.0, dy: p.sh_dy * scale, rgba: rgba(halo) };
+                let dev = DevShadow { b: (sh.x, sh.y, sh.w, sh.h), radius: *halo_radius, sigma: (p.sh_sigma * scale).max(0.5), dx: 0.0, dy: p.sh_dy * scale, rgba: rgba(halo) };
                 draw_shadow_dev(pm, "", &dev, mask);
             }
             crate::glass::draw(pm, snap, sh, spec, scale, dark, *opacity, mask);

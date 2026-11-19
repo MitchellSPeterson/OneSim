@@ -16,8 +16,6 @@ struct C {
     f5: vec4<f32>,   // halo rgb (0..255), alpha
     f6: vec4<f32>,   // own shadow rgb (0..255), alpha
     f7: vec4<f32>,   // edge colour rgb (0..255)
-    cl: array<vec4<f32>, 4>,   // clip rrects x, y, w, h
-    cr: vec4<f32>,             // clip radii
 };
 
 @group(0) @binding(0) var<uniform> c: C;
@@ -25,7 +23,8 @@ struct C {
 @group(0) @binding(2) var blurred: texture_2d<f32>;
 @group(0) @binding(3) var halo: texture_2d<f32>;
 @group(0) @binding(4) var own: texture_2d<f32>;
-@group(0) @binding(5) var<storage, read> rows: array<vec4<f32>>;
+// Two vec4 per ancestor clip (bounds, radius), then one vec4 per scroll-edge row.
+@group(0) @binding(5) var<storage, read> params: array<vec4<f32>>;
 @group(0) @binding(6) var out: texture_storage_2d<rgba8unorm, write>;
 
 struct Sd { d: f32, n: vec2<f32> };
@@ -83,8 +82,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     // Clip coverage of the ancestors.
     var m = 1.0;
     for (var k = 0; k < c.i1.y; k++) {
-        let cl = c.cl[k];
-        m *= clamp(0.5 - rr_sdf(px, cl.x, cl.y, cl.z, cl.w, c.cr[k]).d, 0.0, 1.0);
+        let cl = params[2 * k];
+        let radius = params[2 * k + 1].x;
+        m *= clamp(0.5 - rr_sdf(px, cl.x, cl.y, cl.z, cl.w, radius).d, 0.0, 1.0);
     }
 
     // Glass halo (soft outer shadow), source-over.
@@ -140,7 +140,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     // Scroll edge: veil toward the background colour with a progressive blur.
     if ((flags & 8) != 0 && y < c.i2.z) {
-        let row = rows[y];
+        let row = params[2 * c.i1.y + y];
         let f = c.i2.w;
         var d = col;
         if (row.y > 0.0) {

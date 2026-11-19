@@ -179,8 +179,8 @@ fn executor_needs_no_fonts_or_scene() {
             Op::Fill { shape: rr(28.0, 76.0, 60.0, 14.0, 0.0), color: red },
             Op::PopClip,
             Op::Sprite { id: 5, x: 60, y: 60 },
-            Op::Image { id: 5, transform: [4.0, 0.0, 0.0, 4.0, 10.0, 60.0], sampling: Sampling::Nearest, opacity: 1.0 },
-            Op::Glass { shape: rr(10.0, 36.0, 76.0, 20.0, 10.0), spec, opacity: 1.0 },
+            Op::Image { id: 5, transform: [4.0, 0.0, 0.0, 4.0, 10.0, 60.0], sampling: Sampling::Nearest, opacity: 1.0, shape: None },
+            Op::Glass { shape: rr(10.0, 36.0, 76.0, 20.0, 10.0), spec, opacity: 1.0, halo_radius: 10.0 },
             Op::BackdropShadow { shape: rr(4.0, 70.0, 20.0, 10.0, 3.0), color: Color::rgba(0.0, 0.0, 0.0, 0.5), sigma: 2.0, dx: 0.0, dy: 1.0 },
             Op::Edge(ScrollEdge { bar: 10.0, color: white, tint: 0.0 }),
         ],
@@ -213,6 +213,6 @@ fn glass_op_without_backdrop_work_still_defines_every_pixel() {
     let empty = DisplayList { width: 32, height: 32, scale: 1.0, ..Default::default() };
     assert!(pixels(&mut ex, &empty, &tex).iter().all(|&b| b == 0));
     let spec = GlassSpec { variant: GlassVariant::Clear, tint: None, interactive: false, blur: None, mix: None, shadow: None, flat: None };
-    let only = DisplayList { ops: vec![Op::Glass { shape: rr(4.0, 4.0, 20.0, 20.0, 6.0), spec, opacity: 1.0 }], ..empty };
+    let only = DisplayList { ops: vec![Op::Glass { shape: rr(4.0, 4.0, 20.0, 20.0, 6.0), spec, opacity: 1.0, halo_radius: 6.0 }], ..empty };
     let _ = pixels(&mut ex, &only, &tex);
 }

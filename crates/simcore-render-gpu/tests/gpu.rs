@@ -120,7 +120,10 @@ fn unit_scenes_match_cpu() {
     n.radius = 10.0;
     n.opacity = 0.9;
     n.image = Some(ImageRun { pixmap: Arc::new(px), dest: Rect { x: 5.0, y: 15.0, w: 80.0, h: 50.0 }, rotation: 0.0 });
+    let mut rotated = n.clone();
+    rotated.image.as_mut().unwrap().rotation = 35.0;
     cases.push(("image", scene(false, vec![n]), 1.0));
+    cases.push(("rotated-image", scene(false, vec![rotated]), 1.0));
 
     let mut n = node("sh", 25.0, 25.0, 60.0, 35.0);
     n.fill = Some(Color::rgba(1.0, 1.0, 1.0, 1.0));
@@ -297,12 +300,12 @@ fn glass_node(id: &str, x: f64, y: f64, w: f64, h: f64, r: f64, gs: GlassSpec) -
     n
 }
 
-/// Backdrop variants against the CPU: each runs on the GPU compute path (`backdrop_counts`) unless named a fallback.
+/// Backdrop variants against the CPU, with the counters confirming GPU execution.
 #[test]
 fn glass_variants_match_cpu() {
     let Some(mut g) = gpu() else { return };
     let red = Color::rgba(0.9, 0.1, 0.2, 0.5);
-    let mut cases: Vec<(String, Scene, f64, bool)> = vec![];
+    let mut cases: Vec<(String, Scene, f64)> = vec![];
     let with = |dark: bool, extra: Vec<Node>| {
         let mut nodes = stripes();
         nodes.extend(extra);
@@ -311,45 +314,45 @@ fn glass_variants_match_cpu() {
     for dark in [false, true] {
         let d = if dark { "-dark" } else { "" };
         let flat = GlassSpec { flat: Some(1.8), blur: Some(6.0), mix: Some((0.9, 0.05)), ..spec(GlassVariant::Regular) };
-        cases.push((format!("flat{d}"), with(dark, vec![glass_node("f", 20.0, 20.0, 80.0, 40.0, 14.0, flat)]), 1.0, true));
-        cases.push((format!("clear{d}"), with(dark, vec![glass_node("c", 15.0, 30.0, 90.0, 30.0, 15.0, spec(GlassVariant::Clear))]), 1.0, true));
+        cases.push((format!("flat{d}"), with(dark, vec![glass_node("f", 20.0, 20.0, 80.0, 40.0, 14.0, flat)]), 1.0));
+        cases.push((format!("clear{d}"), with(dark, vec![glass_node("c", 15.0, 30.0, 90.0, 30.0, 15.0, spec(GlassVariant::Clear))]), 1.0));
         let tinted = GlassSpec { tint: Some(red), interactive: true, ..spec(GlassVariant::Regular) };
-        cases.push((format!("tinted-interactive{d}"), with(dark, vec![glass_node("t", 20.0, 25.0, 80.0, 36.0, 18.0, tinted)]), 1.0, true));
+        cases.push((format!("tinted-interactive{d}"), with(dark, vec![glass_node("t", 20.0, 25.0, 80.0, 36.0, 18.0, tinted)]), 1.0));
         let over = GlassSpec { blur: Some(8.0), mix: Some((0.8, 0.2)), shadow: Some((0.25, 10.0, 4.0)), ..spec(GlassVariant::Regular) };
         let mut n = glass_node("o", 18.0, 20.0, 84.0, 44.0, 22.0, over);
         n.shadow = Some(Shadow { color: Color::rgba(0.0, 0.0, 0.3, 0.4), radius: 5.0, dx: 1.0, dy: 3.0 });
         n.opacity = 0.8;
-        cases.push((format!("overrides+own-shadow{d}"), with(dark, vec![n]), 1.0, true));
+        cases.push((format!("overrides+own-shadow{d}"), with(dark, vec![n]), 1.0));
         // Three overlapping glass nodes: each sees the previous ones.
         let stack = vec![
             glass_node("a", 10.0, 12.0, 70.0, 40.0, 16.0, spec(GlassVariant::Regular)),
             glass_node("b", 35.0, 30.0, 70.0, 40.0, 20.0, spec(GlassVariant::Clear)),
             glass_node("c", 20.0, 48.0, 80.0, 30.0, 15.0, GlassSpec { tint: Some(red), ..spec(GlassVariant::Regular) }),
         ];
-        cases.push((format!("stacked{d}"), with(dark, stack), 1.0, true));
+        cases.push((format!("stacked{d}"), with(dark, stack), 1.0));
         // Glass inside a rounded scroll container, partly outside it (clip + opacity).
         let mut clip = node("clip", 12.0, 10.0, 96.0, 64.0);
         clip.clip_radius = Some(18.0);
         let mut gl = glass_node("cg", 0.0, 20.0, 110.0, 34.0, 17.0, spec(GlassVariant::Regular));
         gl.parent = Some(9);
         gl.opacity = 0.9;
-        cases.push((format!("clipped{d}"), with(dark, vec![clip, gl]), 1.0, true));
+        cases.push((format!("clipped{d}"), with(dark, vec![clip, gl]), 1.0));
         // Scroll edge, plain and inside a clip.
         let mut e = node("edge", 0.0, 0.0, 120.0, 90.0);
         e.edge = Some(ScrollEdge { bar: 30.0, color: if dark { Color::rgba(0.1, 0.1, 0.12, 1.0) } else { Color::rgba(1.0, 1.0, 1.0, 1.0) }, tint: if dark { 0.0 } else { 3.0 / 255.0 } });
-        cases.push((format!("edge{d}"), with(dark, vec![e.clone()]), 1.0, true));
+        cases.push((format!("edge{d}"), with(dark, vec![e.clone()]), 1.0));
         let mut clip = node("clip", 0.0, 0.0, 100.0, 80.0);
         clip.clip_radius = Some(12.0);
         e.parent = Some(9);
-        cases.push((format!("edge-clipped{d}"), with(dark, vec![clip, e.clone()]), 1.0, true));
+        cases.push((format!("edge-clipped{d}"), with(dark, vec![clip, e.clone()]), 1.0));
         // Edge combined with glass on one node: separate passes in the CPU's order, all on the GPU.
         let mut both = glass_node("both", 20.0, 20.0, 80.0, 30.0, 15.0, spec(GlassVariant::Regular));
         both.edge = e.edge;
-        cases.push((format!("glass+edge{d}"), with(dark, vec![both]), 1.0, true));
-        // More ancestor clips than the composite shader takes: the CPU fallback (and must still match).
+        cases.push((format!("glass+edge{d}"), with(dark, vec![both]), 1.0));
+        // The last clip must cut into the material, so ignoring the part past four clips fails parity.
         let mut nested = vec![];
         for k in 0..5 {
-            let mut c = node("clip", 4.0 + k as f64, 4.0 + k as f64, 110.0 - 2.0 * k as f64, 80.0 - 2.0 * k as f64);
+            let mut c = node("clip", 4.0 + 5.0 * k as f64, 4.0 + k as f64, 110.0 - 10.0 * k as f64, 80.0 - 2.0 * k as f64);
             c.clip_radius = Some(20.0 - k as f64);
             c.parent = (k > 0).then_some(9 + k - 1);
             nested.push(c);
@@ -357,18 +360,19 @@ fn glass_variants_match_cpu() {
         let mut gl = glass_node("deep", 10.0, 20.0, 90.0, 34.0, 17.0, spec(GlassVariant::Regular));
         gl.parent = Some(13);
         nested.push(gl);
-        cases.push((format!("five-clips-fallback{d}"), with(dark, nested), 1.0, false));
+        cases.push((format!("five-clips{d}"), with(dark, nested), 1.0));
+
+        let material = GlassSpec { shadow: Some((0.8, 4.0, 9.0)), ..spec(GlassVariant::Regular) };
+        let mut halo = glass_node("halo", 20.0, 14.0, 80.0, 54.0, 2.0, material);
+        halo.clip_radius = Some(27.0);
+        cases.push((format!("halo-clip-radius{d}"), with(dark, vec![halo]), 1.0));
     }
-    for (name, sc, max, on_gpu) in &cases {
+    for (name, sc, max) in &cases {
         let before = g.backdrop_counts();
         compare(&mut g, name, sc, *max);
         let after = g.backdrop_counts();
         let (gpu_nodes, cpu_nodes) = (after.0 - before.0, after.1 - before.1);
-        if *on_gpu {
-            assert!(gpu_nodes > 0 && cpu_nodes == 0, "{name}: expected the GPU path, got gpu {gpu_nodes} cpu {cpu_nodes}");
-        } else {
-            assert!(cpu_nodes > 0, "{name}: expected the CPU fallback");
-        }
+        assert!(gpu_nodes > 0 && cpu_nodes == 0, "{name}: expected the GPU path, got gpu {gpu_nodes} cpu {cpu_nodes}");
     }
 }
 

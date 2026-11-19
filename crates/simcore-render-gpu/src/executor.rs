@@ -5,7 +5,7 @@
 //! painted so far, which Vello cannot: the frame is split there. The segment so far is rendered into the target
 //! and copied into an accumulation texture, compute passes (see [`crate::glass`]) composite the op, and the next
 //! segment starts by drawing the accumulation texture (registered with Vello) as a full-frame image. A backdrop
-//! op the device cannot run (or more than four ancestor clips) takes the CPU path on native builds: read the
+//! op the device cannot run takes the CPU path on native builds: read the
 //! frame back, `simcore_render::apply_backdrop_op`, upload.
 //!
 //! Nothing here blocks on the GPU except that fallback, so with the `native` feature off the executor builds
@@ -21,7 +21,7 @@ use vello::peniko::{color::AlphaColor, Blob, Color, Extend, Fill, Gradient, Imag
 use vello::wgpu;
 use vello::{AaConfig, AaSupport, RenderParams, RendererOptions};
 
-use crate::glass::{Backdrop, GlassGpu, OwnShadow, Surfaces, MAX_CLIPS};
+use crate::glass::{Backdrop, GlassGpu, OwnShadow, Surfaces};
 
 /// Texture usages the caller's target must have: Vello and the glass passes write it as a storage texture and the
 /// executor copies from it.
@@ -363,7 +363,7 @@ impl Executor {
                         dirty = true;
                     }
                 }
-                Op::Image { id, transform, sampling, opacity } => {
+                Op::Image { id, transform, sampling, opacity, shape } => {
                     let data = self.resources.get(id).ok_or_else(|| missing(*id))?;
                     let quality = match sampling {
                         Sampling::Nearest => ImageQuality::Low,
@@ -373,7 +373,11 @@ impl Executor {
                     let (iw, ih) = (data.width as f64, data.height as f64);
                     let brush = ImageBrush::new(data.clone()).with_quality(quality).with_alpha(*opacity).with_extend(Extend::Pad);
                     let xf = Affine::new(transform.map(|v| v as f64));
-                    self.scene.fill(Fill::NonZero, xf, &brush, None, &Rect::new(0.0, 0.0, iw, ih));
+                    if let Some(shape) = shape {
+                        self.scene.fill(Fill::NonZero, Affine::IDENTITY, &brush, Some(xf), &rrect(shape));
+                    } else {
+                        self.scene.fill(Fill::NonZero, xf, &brush, None, &Rect::new(0.0, 0.0, iw, ih));
+                    }
                     dirty = true;
                 }
                 Op::Sprite { id, x, y } => {
@@ -424,7 +428,9 @@ impl Executor {
     fn backdrop(&mut self, op: &Op, clips: &[RRect], dl: &DisplayList, copy_back: bool, stats: &mut ExecStats) -> Result<bool, RenderError> {
         let (s, dark) = (dl.scale, dl.dark);
         let bd = match op {
-            Op::Glass { shape, spec, opacity } => Backdrop { glass: Some((spec, *shape)), opacity: *opacity, shadow: None, edge: None },
+            Op::Glass { shape, spec, opacity, halo_radius } => {
+                Backdrop { glass: Some((spec, *shape, *halo_radius)), opacity: *opacity, shadow: None, edge: None }
+            }
             Op::BackdropShadow { shape, color, sigma, dx, dy } => {
                 Backdrop { glass: None, opacity: 1.0, shadow: Some(OwnShadow { shape: *shape, color: *color, sigma: *sigma, dx: *dx, dy: *dy }), edge: None }
             }
@@ -432,9 +438,7 @@ impl Executor {
             _ => return Ok(false),
         };
         let mut why = if self.glass.is_none() { self.glass_note.clone() } else { String::new() };
-        if clips.len() > MAX_CLIPS {
-            why = format!("{} ancestor clips (the GPU path takes {MAX_CLIPS})", clips.len());
-        } else if let (Some(glass), Some(acc), Some(tgt)) = (self.glass.as_mut(), self.acc.as_ref(), self.tgt.as_ref()) {
+        if let (Some(glass), Some(acc), Some(tgt)) = (self.glass.as_mut(), self.acc.as_ref(), self.tgt.as_ref()) {
             let fr = Surfaces {
                 device: &self.device,
                 queue: &self.queue,

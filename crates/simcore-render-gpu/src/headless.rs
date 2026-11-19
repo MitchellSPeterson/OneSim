@@ -147,7 +147,7 @@ impl Renderer for GpuRenderer {
             adapter: self.adapter.clone(),
             limitations: vec![
                 if self.exec.glass_on_gpu() {
-                    "liquid glass and scroll-edge effects: GPU compute passes on an accumulation texture (single readback); nodes under more than 4 clipping ancestors use the CPU path".to_string()
+                    "liquid glass and scroll-edge effects: GPU compute passes on an accumulation texture (single readback)".to_string()
                 } else {
                     format!("liquid glass and scroll-edge effects: CPU composite via readback ({})", self.exec.glass_note())
                 },

@@ -14,7 +14,7 @@ use crate::glass::{GlassSpec, GlassVariant, ScrollEdge};
 use crate::Color;
 
 /// Bumped on any incompatible change to the encoding.
-pub const VERSION: u16 = 1;
+pub const VERSION: u16 = 2;
 const MAGIC: &[u8; 4] = b"SCDL";
 
 /// A rounded rectangle in device pixels (`r` = corner radius; 0 = sharp).
@@ -62,13 +62,13 @@ pub enum Op {
     Shadow { shape: RRect, color: Color, sigma: f32, dx: f32, dy: f32 },
     /// Bitmap `id` mapped by the affine `[a, b, c, d, e, f]` (x' = a x + c y + e, y' = b x + d y + f,
     /// bitmap pixel space to device px), multiplied by `opacity`. Draws the transformed bitmap rectangle
-    /// (edge pixels extended for sampling) inside the current clip.
-    Image { id: u64, transform: [f32; 6], sampling: Sampling, opacity: f32 },
+    /// unless `shape` supplies explicit coverage in device px. The brush extends its edge pixels.
+    Image { id: u64, transform: [f32; 6], sampling: Sampling, opacity: f32, shape: Option<RRect> },
     /// Bitmap `id` drawn 1:1 with its top-left at whole device pixel `(x, y)`.
     Sprite { id: u64, x: i32, y: i32 },
     /// Liquid Glass over what is painted so far (see `glass.rs`): backdrop sample, its outer shadow, then
     /// the glass, all inside the current clip.
-    Glass { shape: RRect, spec: GlassSpec, opacity: f32 },
+    Glass { shape: RRect, spec: GlassSpec, opacity: f32, halo_radius: f32 },
     /// Scroll-edge progressive blur + veil under a bar (see `glass::draw_edge`).
     Edge(ScrollEdge),
     /// Like [`Op::Shadow`] but evaluated on the backdrop path: an exact gaussian that matches the CPU
@@ -298,12 +298,16 @@ impl DisplayList {
                     w.color(*color);
                     [*sigma, *dx, *dy].into_iter().for_each(|v| w.f32(v));
                 }
-                Op::Image { id, transform, sampling, opacity } => {
+                Op::Image { id, transform, sampling, opacity, shape } => {
                     w.u8(6);
                     w.u64(*id);
                     transform.iter().for_each(|&v| w.f32(v));
                     w.u8(*sampling as u8);
                     w.f32(*opacity);
+                    w.u8(u8::from(shape.is_some()));
+                    if let Some(shape) = shape {
+                        w.rrect(*shape);
+                    }
                 }
                 Op::Sprite { id, x, y } => {
                     w.u8(7);
@@ -311,11 +315,12 @@ impl DisplayList {
                     w.i32(*x);
                     w.i32(*y);
                 }
-                Op::Glass { shape, spec, opacity } => {
+                Op::Glass { shape, spec, opacity, halo_radius } => {
                     w.u8(8);
                     w.rrect(*shape);
                     encode_spec(&mut w, spec);
                     w.f32(*opacity);
+                    w.f32(*halo_radius);
                 }
                 Op::Edge(e) => {
                     w.u8(9);
@@ -384,10 +389,16 @@ impl DisplayList {
                         2 => Sampling::Bicubic,
                         s => return Err(format!("bad sampling {s}")),
                     };
-                    Op::Image { id, transform, sampling, opacity: r.f32()? }
+                    let opacity = r.f32()?;
+                    let shape = match r.u8()? {
+                        0 => None,
+                        1 => Some(r.rrect()?),
+                        tag => return Err(format!("bad image shape tag {tag}")),
+                    };
+                    Op::Image { id, transform, sampling, opacity, shape }
                 }
                 7 => Op::Sprite { id: r.u64()?, x: r.i32()?, y: r.i32()? },
-                8 => Op::Glass { shape: r.rrect()?, spec: decode_spec(&mut r)?, opacity: r.f32()? },
+                8 => Op::Glass { shape: r.rrect()?, spec: decode_spec(&mut r)?, opacity: r.f32()?, halo_radius: r.f32()? },
                 9 => Op::Edge(ScrollEdge { bar: r.f32()?, color: r.color()?, tint: r.f32()? }),
                 10 => Op::BackdropShadow { shape: r.rrect()?, color: r.color()?, sigma: r.f32()?, dx: r.f32()?, dy: r.f32()? },
                 t => return Err(format!("bad op tag {t}")),
@@ -421,9 +432,9 @@ mod tests {
                 Op::Stroke { shape: rr, width: 1.5, color: c },
                 Op::Gradient { shape: rr, p0: (0.0, 0.0), p1: (0.0, 40.0), stops: vec![(0.0, c), (1.0, c)] },
                 Op::Shadow { shape: rr, color: c, sigma: 6.0, dx: 0.0, dy: 2.0 },
-                Op::Image { id: 7, transform: [1.0, 0.0, 0.0, 1.0, 5.0, 6.0], sampling: Sampling::Bicubic, opacity: 0.5 },
+                Op::Image { id: 7, transform: [1.0, 0.0, 0.0, 1.0, 5.0, 6.0], sampling: Sampling::Bicubic, opacity: 0.5, shape: Some(rr) },
                 Op::Sprite { id: 7, x: -3, y: 9 },
-                Op::Glass { shape: rr, spec, opacity: 1.0 },
+                Op::Glass { shape: rr, spec, opacity: 1.0, halo_radius: 6.0 },
                 Op::Edge(ScrollEdge { bar: 100.0, color: c, tint: 0.5 }),
                 Op::BackdropShadow { shape: rr, color: c, sigma: 3.0, dx: 1.0, dy: 2.0 },
                 Op::PopClip,

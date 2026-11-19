@@ -24,12 +24,10 @@ const PASSES: &str = include_str!("shaders/glass_passes.wgsl");
 const COMPOSITE: &str = include_str!("shaders/glass_composite.wgsl");
 /// Dynamic-offset uniform slots per node (snapshot 1 + blur 6, halo 3, own shadow 3 = 13).
 const SLOTS: u64 = 16;
-/// Ancestor clips the composite shader intersects (more take the CPU path).
-pub(crate) const MAX_CLIPS: usize = 4;
 /// `P` in `glass_passes.wgsl`: four vec4<i32> + four vec4<f32>.
 const P_SIZE: u64 = 128;
-/// `C` in `glass_composite.wgsl`: 6 + 8 vec4 + 4 clips + radii.
-const C_SIZE: u64 = 19 * 16;
+/// `C` in `glass_composite.wgsl`: 6 + 8 vec4.
+const C_SIZE: u64 = 14 * 16;
 const SCRATCH: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 
 type Ints = [[i32; 4]; 4];
@@ -53,7 +51,7 @@ struct Img {
     view: wgpu::TextureView,
 }
 
-/// Scratch textures, row table and the bind groups over them (rebuilt when any of them or the frame textures change).
+/// Scratch textures, composite data and the bind groups over them (rebuilt when any of them or the frame textures change).
 struct Scratch {
     gen: u64,
     a: Img,
@@ -62,8 +60,8 @@ struct Scratch {
     _h1: Img,
     o0: Img,
     _o1: Img,
-    rows: wgpu::Buffer,
-    rows_cap: u64,
+    params: wgpu::Buffer,
+    params_cap: u64,
     acc_a: wgpu::BindGroup,
     a_b: wgpu::BindGroup,
     b_a: wgpu::BindGroup,
@@ -100,7 +98,7 @@ pub(crate) struct OwnShadow {
 
 /// What one composite pass draws: any of glass (with its halo), a shadow and the scroll edge.
 pub(crate) struct Backdrop<'a> {
-    pub glass: Option<(&'a GlassSpec, RRect)>,
+    pub glass: Option<(&'a GlassSpec, RRect, f32)>,
     pub opacity: f32,
     pub shadow: Option<OwnShadow>,
     pub edge: Option<ScrollEdge>,
@@ -114,7 +112,7 @@ pub(crate) struct GlassGpu {
     uniform: wgpu::Buffer,
     comp: wgpu::Buffer,
     slots: Vec<u8>,
-    rows_cpu: Vec<u8>,
+    params_cpu: Vec<u8>,
     scratch: Option<Scratch>,
 }
 
@@ -270,7 +268,7 @@ impl GlassGpu {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        Ok(Self { pipes, bgl_pass, bgl_comp, stride, uniform, comp, slots: Vec::new(), rows_cpu: Vec::new(), scratch: None })
+        Ok(Self { pipes, bgl_pass, bgl_comp, stride, uniform, comp, slots: Vec::new(), params_cpu: Vec::new(), scratch: None })
     }
 
     fn pass_bg(&self, device: &wgpu::Device, src: &wgpu::TextureView, dst: &wgpu::TextureView) -> wgpu::BindGroup {
@@ -289,7 +287,7 @@ impl GlassGpu {
     }
 
     /// Make the scratch textures at least `need` = [(w, h) of A/B, of H0/H1, of O0/O1] and bind them to this frame.
-    fn ensure(&mut self, f: &Surfaces, need: [(u32, u32); 3]) -> Result<(), String> {
+    fn ensure(&mut self, f: &Surfaces, need: [(u32, u32); 3], params_need: u64) -> Result<(), String> {
         let max = f.device.limits().max_texture_dimension_2d;
         let up = |v: u32| if v == 0 { 0 } else { v.div_ceil(64) * 64 };
         let cur = self.scratch.as_ref().filter(|s| s.gen == f.gen);
@@ -298,8 +296,11 @@ impl GlassGpu {
         if dims.iter().any(|&(w, h)| w > max || h > max) {
             return Err(format!("glass scratch {dims:?} exceeds the texture limit {max}"));
         }
-        let rows_need = (f.size.1 as u64 * 16).max(16);
-        if cur.is_some_and(|s| s.rows_cap >= rows_need) && (0..3).all(|i| have[i] == dims[i]) {
+        let max_params = f.device.limits().max_storage_buffer_binding_size;
+        if params_need > max_params {
+            return Err(format!("glass composite data needs {params_need} bytes, device limit is {max_params}"));
+        }
+        if cur.is_some_and(|s| s.params_cap >= params_need) && (0..3).all(|i| have[i] == dims[i]) {
             return Ok(());
         }
         // Unused pairs stay 1x1.
@@ -307,9 +308,10 @@ impl GlassGpu {
         let (a, b) = (make_img(f.device, d(0).0, d(0).1), make_img(f.device, d(0).0, d(0).1));
         let (h0, h1) = (make_img(f.device, d(1).0, d(1).1), make_img(f.device, d(1).0, d(1).1));
         let (o0, o1) = (make_img(f.device, d(2).0, d(2).1), make_img(f.device, d(2).0, d(2).1));
-        let rows = f.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("simcore-edge-rows"),
-            size: rows_need,
+        let params_cap = params_need.max(cur.map_or(0, |s| s.params_cap)).next_power_of_two().min(max_params);
+        let params = f.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("simcore-glass-params"),
+            size: params_cap,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -325,7 +327,7 @@ impl GlassGpu {
                 wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&a.view) },
                 wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&h0.view) },
                 wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(&o0.view) },
-                wgpu::BindGroupEntry { binding: 5, resource: rows.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 5, resource: params.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(f.target_view) },
             ],
         });
@@ -342,8 +344,8 @@ impl GlassGpu {
             o0_o1: bg(&o0.view, &o1.view),
             o1_o0: bg(&o1.view, &o0.view),
             comp,
-            rows_cap: rows_need,
-            rows,
+            params_cap,
+            params,
             a,
             _b: b,
             h0,
@@ -367,14 +369,11 @@ impl GlassGpu {
     /// Composite one backdrop op onto the frame: reads `acc`, writes `target` (and, with `copy_back`, copies the
     /// result back to `acc` for whatever reads it next). `clips` are the open ancestor clips (device px).
     pub fn encode(&mut self, fr: &Surfaces, bd: &Backdrop, clips: &[RRect], s: f32, dark: bool, copy_back: bool) -> Result<(), String> {
-        if clips.len() > MAX_CLIPS {
-            return Err(format!("{} ancestor clips (max {MAX_CLIPS})", clips.len()));
-        }
         let (pw, ph) = fr.size;
         let opacity = bd.opacity;
 
         // Glass: parameters, shape and the snapshot rectangle.
-        let glass = bd.glass.as_ref().filter(|(gs, _)| gs.variant != GlassVariant::Identity).map(|(gs, sh)| {
+        let glass = bd.glass.as_ref().filter(|(gs, ..)| gs.variant != GlassVariant::Identity).map(|(gs, sh, _)| {
             let p = g::spec_params(gs, dark);
             let r = sh.r.min(sh.w / 2.0).min(sh.h / 2.0).max(0.0);
             let shape = g::Shape { x: sh.x, y: sh.y, w: sh.w, h: sh.h, r };
@@ -383,7 +382,8 @@ impl GlassGpu {
         });
         let halo = glass.as_ref().filter(|(_, p, ..)| p.sh_a > 0.0).map(|(_, p, shape, _)| {
             let rgba = [0, 0, 0, u8c(p.sh_a * opacity)];
-            ShadowPlan::new((shape.x, shape.y, shape.w, shape.h), shape.r, p.sh_sigma * s, 0.0, p.sh_dy * s, rgba)
+            let radius = bd.glass.map_or(shape.r, |(_, _, r)| r);
+            ShadowPlan::new((shape.x, shape.y, shape.w, shape.h), radius, p.sh_sigma * s, 0.0, p.sh_dy * s, rgba)
         });
         let own = bd.shadow.as_ref().map(|sd| {
             let c = sd.color;
@@ -400,7 +400,8 @@ impl GlassGpu {
             (None, Some(_)) => (ebw, ebh),
             _ => (0, 0),
         };
-        self.ensure(fr, [a_need, halo.as_ref().map_or((0, 0), |h| (h.gw, h.gh)), own.as_ref().map_or((0, 0), |h| (h.gw, h.gh))])?;
+        let params_need = (clips.len() as u64 * 2 + u64::from(edge_rows)).max(1) * 16;
+        self.ensure(fr, [a_need, halo.as_ref().map_or((0, 0), |h| (h.gw, h.gh)), own.as_ref().map_or((0, 0), |h| (h.gw, h.gh))], params_need)?;
 
         // Dispatch region (page px), clipped to the frame.
         let mut rect = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
@@ -468,10 +469,6 @@ impl GlassGpu {
         }
 
         // Composite uniform.
-        let chain: Vec<[f32; 5]> = clips
-            .iter()
-            .map(|c| [c.x, c.y, c.w, c.h, c.r.min(c.w / 2.0).min(c.h / 2.0).max(0.0)])
-            .collect();
         let flags = halo.is_some() as i32 | (glass.is_some() as i32) << 1 | (own.is_some() as i32) << 2 | (edge.is_some() as i32) << 3;
         let (snap, shape, p, gs) = match &glass {
             Some((gs, p, shape, snap)) => (*snap, [shape.x, shape.y, shape.w, shape.h, shape.r], Some(*p), Some(*gs)),
@@ -493,19 +490,13 @@ impl GlassGpu {
             &mut c,
             &[
                 [rx0, ry0, rx1 - rx0, ry1 - ry0],
-                [flags, chain.len() as i32, snap.2 as i32, snap.3 as i32],
+                [flags, clips.len() as i32, snap.2 as i32, snap.3 as i32],
                 [snap.0, snap.1, edge_rows as i32, ep],
                 hp.map_or([0; 4], |h| [h.gx0, h.gy0, h.gw as i32, h.gh as i32]),
                 op.map_or([0; 4], |h| [h.gx0, h.gy0, h.gw as i32, h.gh as i32]),
                 [hp.map_or(1, |h| h.f), op.map_or(1, |h| h.f), ebw as i32, ebh as i32],
             ],
         );
-        let mut clips = [[0.0f32; 4]; 4];
-        let mut radii = [0.0f32; 4];
-        for (k, cl) in chain.iter().enumerate() {
-            clips[k] = [cl[0], cl[1], cl[2], cl[3]];
-            radii[k] = cl[4];
-        }
         let sh4 = |h: Option<&ShadowPlan>| h.map_or([0.0; 4], |h| [h.rgb[0], h.rgb[1], h.rgb[2], h.alpha]);
         put_f(
             &mut c,
@@ -520,23 +511,23 @@ impl GlassGpu {
                 [ec[0], ec[1], ec[2], 0.0],
             ],
         );
-        put_f(&mut c, &clips);
-        put_f(&mut c, &[radii]);
         debug_assert_eq!(c.len() as u64, C_SIZE);
         fr.queue.write_buffer(&self.comp, 0, &c);
         fr.queue.write_buffer(&self.uniform, 0, &self.slots);
+        self.params_cpu.clear();
+        for cl in clips {
+            put_f(&mut self.params_cpu, &[[cl.x, cl.y, cl.w, cl.h], [cl.r, 0.0, 0.0, 0.0]]);
+        }
         if let Some(e) = edge {
-            self.rows_cpu.clear();
             for y in 0..edge_rows as usize {
                 let [a, bw, t] = g::edge_row(&e, y, s);
-                [a, bw, t, 0.0].iter().for_each(|v| self.rows_cpu.extend_from_slice(&v.to_le_bytes()));
-            }
-            if let Some(sc) = &self.scratch {
-                fr.queue.write_buffer(&sc.rows, 0, &self.rows_cpu);
+                put_f(&mut self.params_cpu, &[[a, bw, t, 0.0]]);
             }
         }
-
         let Some(sc) = self.scratch.as_ref() else { return Err("glass scratch missing".into()) };
+        if !self.params_cpu.is_empty() {
+            fr.queue.write_buffer(&sc.params, 0, &self.params_cpu);
+        }
         let mut enc = fr.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("simcore-glass") });
         {
             let mut cp = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("simcore-glass"), timestamp_writes: None });
