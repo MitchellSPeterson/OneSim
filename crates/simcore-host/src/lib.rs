@@ -299,6 +299,15 @@ impl Host {
                     s.send_scroll(n, ScrollPhase::Scroll, new)?;
                     s.send_scroll(n, ScrollPhase::End, new)?;
                 }
+            } else if let Some(n) = scene.nodes.iter().find(|n| Some(&n.id) == out.0.as_ref()) {
+                // Pulled down past the top: iOS reports the rubber-band overscroll as a negative offset (a RefreshControl
+                // fires on it); the content springs back to 0 on release.
+                // ponytail: no rubber-band drawing, the overscroll is only reported.
+                if n.scroll.is_some_and(|i| i.vertical && i.offset.1 <= 0.0) && ev.dy < 0.0 {
+                    s.send_scroll(n, ScrollPhase::Begin, (0.0, 0.0))?;
+                    s.send_scroll(n, ScrollPhase::Scroll, (0.0, ev.dy))?;
+                    s.send_scroll(n, ScrollPhase::End, (0.0, 0.0))?;
+                }
             }
             self.scene(id)?; // settle: FlatList renders the rows the scroll revealed
             return Ok(out);

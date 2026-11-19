@@ -649,7 +649,7 @@ impl Ctx<'_> {
     }
 
     fn glass_spec(&self, variant: GlassVariant, tint: Option<&simcore_protocol::Color>, interactive: bool) -> crate::glass::GlassSpec {
-        crate::glass::GlassSpec { variant, tint: tint.map(|c| self.color(c)), interactive, blur: None, mix: None, shadow: None }
+        crate::glass::GlassSpec { variant, tint: tint.map(|c| self.color(c)), interactive, blur: None, mix: None, shadow: None, flat: None }
     }
 
     /// Opaque (light, dark) color pair for the current appearance.
@@ -1689,7 +1689,7 @@ impl Ctx<'_> {
         let bar_w = 8.0 + 94.0 + (n - 1.0) * 86.0;
         let mut bar = Node::new(format!("{host}#tabbar"), "tabbar");
         bar.radius = PILL;
-        bar.glass = Some(crate::glass::GlassSpec { variant: GlassVariant::Regular, tint: None, interactive: false, blur: None, mix: None, shadow: None });
+        bar.glass = Some(crate::glass::GlassSpec { variant: GlassVariant::Regular, tint: None, interactive: false, blur: None, mix: None, shadow: None, flat: None });
         let (label, accent) = if self.dark { (rgba(255, 255, 255, 1.0), rgba(10, 132, 255, 1.0)) } else { (rgba(0, 0, 0, 1.0), rgba(0, 136, 255, 1.0)) };
         let mut kids = vec![];
         for (i, tab) in t.items.iter().enumerate() {

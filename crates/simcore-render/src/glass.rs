@@ -20,6 +20,9 @@ pub struct GlassSpec {
     pub mix: Option<(f32, f32)>,
     /// Outer shadow (alpha, sigma pt, dy pt) replacing the variant's, in light appearance.
     pub shadow: Option<(f32, f32, f32)>,
+    /// A plain material (UIVisualEffectView blur) with this saturation: backdrop blur and colour transform only, no
+    /// lens, rim or shadow, and the backdrop is the shape's own pixels mirrored at its edges.
+    pub flat: Option<f32>,
 }
 
 /// Fitted parameters. Lengths are points, colors/mixes are 0...1.
@@ -44,6 +47,8 @@ pub struct Params {
     pub sh_a: f32,
     pub sh_sigma: f32,
     pub sh_dy: f32,
+    /// Backdrop limited to the shape, mirrored beyond its edges (flat materials).
+    pub mirror: bool,
 }
 
 pub fn params(variant: GlassVariant, dark: bool) -> Params {
@@ -61,6 +66,7 @@ pub fn params(variant: GlassVariant, dark: bool) -> Params {
         sh_a: 0.13,
         sh_sigma: 12.0,
         sh_dy: 5.0,
+        mirror: false,
     };
     match (variant, dark) {
         (GlassVariant::Regular, true) => {
@@ -98,6 +104,9 @@ pub fn spec_params(spec: &GlassSpec, dark: bool) -> Params {
     }
     if let (Some((a, sg, dy)), false) = (spec.shadow, dark) {
         (p.sh_a, p.sh_sigma, p.sh_dy) = (a, sg, dy);
+    }
+    if let Some(sat) = spec.flat {
+        (p.lens_d, p.rim_a, p.sh_a, p.sat, p.tint_shift, p.mirror) = (0.0, 0.0, 0.0, sat, 0.0, true);
     }
     p
 }
@@ -152,9 +161,20 @@ pub fn snapshot(pm: &Pixmap, shape: Shape, scale: f32, p: &Params) -> Snapshot {
     let y1 = (((shape.y + shape.h).ceil() as i32) + pad).min(pm.height() as i32);
     let (w, h) = ((x1 - x0).max(1) as usize, (y1 - y0).max(1) as usize);
     let mut rgb = [vec![0f32; w * h], vec![0f32; w * h], vec![0f32; w * h]];
+    // Mirror a page coordinate into [lo, hi) (flat materials see only their own backdrop).
+    let fold = |v: i32, lo: f32, hi: f32| {
+        let (lo, hi) = (lo.round() as i32, (hi.round() as i32).max(lo.round() as i32 + 1));
+        if !p.mirror {
+            return v;
+        }
+        let n = hi - lo;
+        let m = (v - lo).rem_euclid(2 * n);
+        lo + if m < n { m } else { 2 * n - 1 - m }
+    };
     for y in 0..h {
         for x in 0..w {
-            if let Some(px) = pm.pixel((x0 as usize + x) as u32, (y0 as usize + y) as u32) {
+            let (px, py) = (fold(x0 + x as i32, shape.x, shape.x + shape.w), fold(y0 + y as i32, shape.y, shape.y + shape.h));
+            if let Some(px) = pm.pixel(px as u32, py as u32) {
                 let c = px.demultiply();
                 rgb[0][y * w + x] = c.red() as f32;
                 rgb[1][y * w + x] = c.green() as f32;
@@ -442,7 +462,7 @@ mod tests {
         let mut g = Node::new("g", "glass");
         g.bounds = Rect { x: 50.0, y: 50.0, w: 100.0, h: 100.0 };
         g.radius = 20.0;
-        g.glass = Some(GlassSpec { variant, tint, interactive: false, blur: None, mix: None, shadow: None });
+        g.glass = Some(GlassSpec { variant, tint, interactive: false, blur: None, mix: None, shadow: None, flat: None });
         let appearance = if dark { Appearance::Dark } else { Appearance::Light };
         crate::Scene { size: (200.0, 200.0), appearance, nodes: vec![bg, g], unsupported_symbols: vec![], notes: vec![] }
     }

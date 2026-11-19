@@ -1,10 +1,19 @@
 import { useRef, useState } from 'react';
 import {
-  Alert, FlatList, Image, KeyboardAvoidingView, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useColorScheme,
+  ActivityIndicator, Alert, FlatList, LogBox, Image, KeyboardAvoidingView, Pressable, RefreshControl, SafeAreaView, ScrollView, StyleSheet, Switch, Text,
+  TextInput, View, useColorScheme,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 
-const SCREENS = ['Layout', 'Text', 'Controls', 'Scroll', 'Image'];
+// iOS Expo Go sends console warnings to the debugger (Fusebox), SimCore to LogBox's toast: keep the core SafeAreaView
+// deprecation warning (RN 0.88) off the screenshots.
+LogBox.ignoreLogs(['SafeAreaView has been deprecated']);
+
+const SCREENS = ['Layout', 'Text', 'Controls', 'Scroll', 'Image', 'Visuals', 'Refresh'];
+const STRIPES = ['#FF3B30', '#FFCC00', '#34C759', '#007AFF', '#AF52DE', '#FF9500', '#5AC8FA', '#FF2D55',
+  '#FF3B30', '#FFCC00', '#34C759', '#007AFF', '#AF52DE', '#FF9500', '#5AC8FA'];
 
 function Header({ title, onBack, children }) {
   return (
@@ -164,6 +173,55 @@ function ImageScreen() {
   );
 }
 
+// Root has no paddingTop here: the core SafeAreaView pads by the device insets (62 top, 34 bottom).
+function Visuals({ onBack, fg }) {
+  return (
+    <SafeAreaView style={{ flex: 1 }}>
+      <Header title="Visuals" onBack={onBack} />
+      <View style={styles.body}>
+        <View style={styles.spinRow}>
+          <ActivityIndicator />
+          <ActivityIndicator size="large" />
+          <ActivityIndicator color="#FF3B30" />
+          <ActivityIndicator size="large" color="#007AFF" />
+          <ActivityIndicator size="large" animating={false} />
+        </View>
+        <LinearGradient colors={['#FF9500', '#FF2D55', '#5856D6']} locations={[0, 0.3, 1]}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.gradient}>
+          <Text style={styles.gradientText}>Gradient</Text>
+        </LinearGradient>
+        <LinearGradient colors={['#34C759', '#007AFF']} start={{ x: 0, y: 0.5 }} end={{ x: 1, y: 0.5 }} style={styles.pill} />
+        <View style={styles.blurBox}>
+          {STRIPES.map((c, i) => <View key={i} style={{ flex: 1, backgroundColor: c }} />)}
+          <BlurView style={[styles.tile, { left: 8 }]} />
+          <BlurView tint="light" intensity={100} style={[styles.tile, { left: 98 }]} />
+          <BlurView tint="dark" intensity={100} style={[styles.tile, { left: 188 }]} />
+          <BlurView tint="systemMaterial" intensity={100} style={[styles.tile, { left: 278 }]} />
+        </View>
+        <Text style={[styles.label, { color: fg, marginTop: 12 }]}>Blur: default, light, dark, material</Text>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+// Pull down past the top fires onRefresh; refreshing then stays on (spinner above the rows).
+function Refresh({ onBack, fg, dark }) {
+  const [refreshing, setRefreshing] = useState(false);
+  return (
+    <View style={{ flex: 1 }}>
+      <Header title={refreshing ? 'Refreshing' : 'Refresh'} onBack={onBack} />
+      <FlatList
+        data={Array.from({ length: 30 }, (_, i) => `Item ${i + 1}`)}
+        keyExtractor={(t) => t}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => setRefreshing(true)} />}
+        renderItem={({ item }) => (
+          <View style={[styles.listRow, { borderBottomColor: dark ? '#38383A' : '#E5E5EA' }]}><Text style={[styles.label, { color: fg }]}>{item}</Text></View>
+        )}
+      />
+    </View>
+  );
+}
+
 export default function App() {
   const [screen, setScreen] = useState(null);
   const dark = useColorScheme() === 'dark';
@@ -172,7 +230,7 @@ export default function App() {
   const back = () => setScreen(null);
   const Body = { Layout, Text: TextScreen, Controls, Image: ImageScreen, Form }[screen];
   return (
-    <View style={[styles.root, { backgroundColor: bg }]}>
+    <View style={[styles.root, { backgroundColor: bg }, screen === 'Visuals' && { paddingTop: 0 }]}>
       <StatusBar style={dark ? 'light' : 'dark'} />
       {screen === null && (
         <View style={{ flex: 1 }}>
@@ -187,7 +245,9 @@ export default function App() {
         </View>
       )}
       {screen === 'Scroll' && <Scroll onBack={back} />}
-      {screen !== null && screen !== 'Scroll' && (
+      {screen === 'Visuals' && <Visuals onBack={back} fg={fg} />}
+      {screen === 'Refresh' && <Refresh onBack={back} fg={fg} dark={dark} />}
+      {Body && (
         <View style={{ flex: 1 }}>
           <Header title={screen} onBack={back} />
           <Body />
@@ -221,5 +281,11 @@ const styles = StyleSheet.create({
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 },
   input: { marginTop: 24, height: 44, borderWidth: 1, borderColor: '#C7C7CC', borderRadius: 8, paddingHorizontal: 12, fontSize: 17, color: '#000' },
   form: { flex: 1, justifyContent: 'flex-end', padding: 16 },
+  spinRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', height: 60 },
+  gradient: { height: 120, borderRadius: 16, marginTop: 12, justifyContent: 'center', alignItems: 'center' },
+  gradientText: { color: '#fff', fontSize: 28, fontWeight: '700' },
+  pill: { height: 44, borderRadius: 22, marginTop: 12 },
+  blurBox: { flexDirection: 'row', height: 140, marginTop: 12, borderRadius: 16, overflow: 'hidden' },
+  tile: { position: 'absolute', top: 30, width: 82, height: 80, borderRadius: 12 },
   listRow: { height: 44, justifyContent: 'center', paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#E5E5EA' },
 });

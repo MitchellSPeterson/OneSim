@@ -8,6 +8,9 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
+const { Buffer } = require('node:buffer');
+const process = require('node:process');
 const UNSUP = 'unsupported';
 const HIDDEN = new Set(['getConstants', 'addListener', 'removeListeners']);
 // Optional modules RN feature-detects: absent => JS falls back (JS Animated driver, no perf API, ...).
@@ -24,9 +27,10 @@ module.exports = function createRegistry(rt, h) {
   // ---- simulated platform state (host control: `simulate`) ----
   const sim = {
     clip: '', clipEm: null,
-    perms: { location: 'undetermined' }, // undetermined -> granted on request (the user taps Allow); denied stays denied
+    perms: { location: 'undetermined', tracking: 'undetermined' }, // undetermined -> granted on request (the user taps Allow); denied stays denied
     pos: { latitude: 37.3349, longitude: -122.009, accuracy: 5, altitude: 0, heading: null, speed: null }, // Apple Park
     watchers: new Map(), // watchId -> expo-location module instance (event emitter)
+    battery: { level: 1, state: 3, lowPowerMode: false }, brightness: 0.5, lock: 0, localauth: { success: true }, // expo-battery / -brightness / -screen-orientation / -local-authentication
   };
   const permission = (k) => { const s = sim.perms[k]; return { status: s, expires: 'never', granted: s === 'granted', canAskAgain: s !== 'denied' }; };
   const ask = (k) => { if (sim.perms[k] === 'undetermined') sim.perms[k] = 'granted'; return permission(k); };
@@ -34,6 +38,7 @@ module.exports = function createRegistry(rt, h) {
   const fix = () => { const p = sim.pos; return { coords: { latitude: p.latitude, longitude: p.longitude, altitude: p.altitude, accuracy: p.accuracy, altitudeAccuracy: p.accuracy, heading: p.heading, speed: p.speed }, timestamp: Date.now() }; };
   const needLocation = () => { if (sim.perms.location !== 'granted') throw Object.assign(new Error('Not authorized to use location services'), { code: 'E_LOCATION_UNAUTHORIZED' }); };
   const pushFix = (id, em) => rt.guard(() => em.emit('Expo.locationChanged', { watchId: id, location: fix() }))();
+  const emitOn = (name, ev, d) => rt.guard(() => instance(byName.get(name)).emit(ev, d))();
   const called = (mod, fns) => Object.fromEntries(Object.entries(fns).map(([m, f]) => [m, function (...a) { sendEvent('module.called', { module: mod, method: m, args: a }); return f.apply(this, a); }]));
   const setClip = (t) => { sim.clip = String(t); };
   // expo-secure-store: a JSON file in the session data dir, so values survive reloads (the keychain survives app restarts).
@@ -44,6 +49,9 @@ module.exports = function createRegistry(rt, h) {
   const storeSet = (value, key, o) => { const s = store.read(); s[storeKey(key, o)] = String(value); store.write(s); return true; };
 
   const files = require('./filesystem.js')(h);
+  const asyncStorage = require('./asyncstorage.js')(h);
+  const hash = (alg, buf) => crypto.createHash(String(alg).replace('-', '').toLowerCase()).update(buf), granted = { status: 'granted', expires: 'never', granted: true, canAskAgain: true };
+  const PORTRAIT_LOCKS = [0, 2, 3], ZERO_UUID = '00000000-0000-0000-0000-000000000000'; // OrientationLock DEFAULT, PORTRAIT, PORTRAIT_UP
 
   const simulators = {
     // replay = state the supervisor re-sends to a new worker: the store already holds it (and the app may have changed it since).
@@ -53,6 +61,11 @@ module.exports = function createRegistry(rt, h) {
       for (const k of Object.keys(sim.pos)) if (s[k] !== undefined) sim.pos[k] = s[k];
       for (const [id, em] of sim.watchers) pushFix(id, em);
     },
+    battery: (s) => { // {level 0..1, state 0 unknown|1 unplugged|2 charging|3 full, lowPowerMode}: updates the module and emits its change events
+      const b = sim.battery, ev = { level: ['Expo.batteryLevelDidChange', 'batteryLevel'], state: ['Expo.batteryStateDidChange', 'batteryState'], lowPowerMode: ['Expo.powerModeDidChange', 'lowPowerMode'] };
+      for (const [k, [e, f]] of Object.entries(ev)) if (s[k] !== undefined && s[k] !== b[k]) { b[k] = s[k]; emitOn('ExpoBattery', e, { [f]: b[k] }); }
+    },
+    localauth: (s) => { sim.localauth = { success: s.success !== false, error: s.error }; }, // next authenticateAsync result
     permissions: (s) => {
       for (const [k, v] of Object.entries(s)) {
         if (['granted', 'denied', 'undetermined'].includes(v)) sim.perms[k] = v; else log(`SimCore: simulate permissions: bad status ${JSON.stringify(v)} for ${k}`);
@@ -141,7 +154,7 @@ module.exports = function createRegistry(rt, h) {
     { name: 'ImageStoreManager', status: 'unsupported', async: true },
     { name: 'AccessibilityManager', status: 'unsupported' },
     { name: 'DevToolsSettingsManager', status: 'unsupported' },
-    { name: 'Vibration', status: 'unsupported', methods: all(['vibrate', 'cancel']) },
+    { name: 'Vibration', status: 'simulated', methods: called('Vibration', { vibrate: noop, cancel: noop }) },
     { name: 'ImageEditor', status: 'unsupported', async: true },
     // RN's Clipboard TurboModule (RN <= 0.8x NativeClipboard): the same in-memory clipboard as expo-clipboard.
     { name: 'Clipboard', status: 'simulated', strict: true, async: true, methods: called('Clipboard', { getString: async () => sim.clip, setString: (t) => { setClip(t); } }) },
@@ -211,8 +224,50 @@ module.exports = function createRegistry(rt, h) {
         setValueWithKeyAsync: async (v, k, o) => storeSet(v, k, o), setValueWithKeySync: storeSet,
         deleteValueWithKeyAsync: async (k, o) => { const s = store.read(); delete s[storeKey(k, o)]; store.write(s); },
         canUseBiometricAuthentication: () => false } },
+    // expo-localization / -crypto / -application / -network / -battery / -brightness / -screen-orientation / -store-review / -tracking-transparency / -local-authentication
+    { name: 'ExpoLocalization', package: 'expo-localization', kind: 'expo', status: 'implemented', events: ['onLocaleSettingsChanged', 'onCalendarSettingsChanged'],
+      methods: {
+        getLocales: () => [{ languageTag: 'en-US', languageCode: 'en', languageScriptCode: null, regionCode: 'US', languageRegionCode: 'US', currencyCode: 'USD', currencySymbol: '$', languageCurrencyCode: 'USD', languageCurrencySymbol: '$',
+          decimalSeparator: '.', digitGroupingSeparator: ',', textDirection: 'ltr', measurementSystem: 'us', temperatureUnit: 'fahrenheit' }],
+        getCalendars: () => [{ calendar: 'gregory', uses24hourClock: false, firstWeekday: 1, timeZone: process.env.TZ || 'America/Los_Angeles' }] } },
+    { name: 'ExpoCrypto', package: 'expo-crypto', kind: 'expo', status: 'implemented', // ExpoCryptoAES (expo-crypto/aes) is not provided
+      methods: {
+        digestStringAsync: async (alg, data, o) => hash(alg, Buffer.from(String(data), 'utf8')).digest((o && o.encoding) || 'hex'),
+        digestAsync: async (alg, data) => new Uint8Array(hash(alg, ArrayBuffer.isView(data) ? Buffer.from(data.buffer, data.byteOffset, data.byteLength) : Buffer.from(data)).digest()).buffer,
+        getRandomValues: (a) => { crypto.randomFillSync(a); return a; }, randomUUID: () => crypto.randomUUID() } },
+    { name: 'ExpoCryptoAES', package: 'expo-crypto', kind: 'expo', status: 'unsupported', // expo-crypto/aes: the classes exist so the package imports; every call diagnoses
+      make: () => { const no = (m) => () => Promise.reject(unsupported('ExpoCryptoAES', m, 'expo-crypto')); const cls = (n, ...ms) => { const c = class extends SharedObject {}; for (const m of ms) c[m] = no(`${n}.${m}`); return c; };
+        return { EncryptionKey: cls('EncryptionKey', 'generate', 'import'), SealedData: cls('SealedData', 'fromParts', 'fromCombined'), encryptAsync: no('encryptAsync'), decryptAsync: no('decryptAsync') }; } },
+    { name: 'ExpoApplication', package: 'expo-application', kind: 'expo', status: 'simulated',
+      constants: () => { const c = (rt.manifest && rt.manifest.extra && rt.manifest.extra.expoClient) || {}; return { applicationName: c.name || 'SimCore App', applicationId: (c.ios && c.ios.bundleIdentifier) || 'host.exp.Exponent', nativeApplicationVersion: c.version || '1.0.0', nativeBuildVersion: (c.ios && c.ios.buildNumber) || '1' }; },
+      methods: { getIosIdForVendorAsync: async () => '00000000-0000-4000-8000-000000000001', getInstallationTimeAsync: async () => fs.statSync(cfg.dataDir).birthtimeMs, getLastUpdateTimeAsync: async () => fs.statSync(cfg.dataDir).birthtimeMs } },
+    { name: 'ExpoNetwork', package: 'expo-network', kind: 'expo', status: 'simulated', events: ['onNetworkStateChanged'],
+      methods: { getNetworkStateAsync: async () => ({ type: 'WIFI', isConnected: true, isInternetReachable: true }), getIpAddressAsync: async () => '192.168.1.2', isAirplaneModeEnabledAsync: async () => false } },
+    { name: 'ExpoBattery', package: 'expo-battery', kind: 'expo', status: 'simulated', constants: { isSupported: true }, events: ['Expo.batteryLevelDidChange', 'Expo.batteryStateDidChange', 'Expo.powerModeDidChange'],
+      methods: { getBatteryLevelAsync: async () => sim.battery.level, getBatteryStateAsync: async () => sim.battery.state, isLowPowerModeEnabledAsync: async () => sim.battery.lowPowerMode } },
+    { name: 'ExpoBrightness', package: 'expo-brightness', kind: 'expo', status: 'simulated', events: ['Expo.brightnessDidChange'], permissions: ['brightness'],
+      methods: {
+        getBrightnessAsync: async () => sim.brightness, setBrightnessAsync: async (v) => { sim.brightness = v; emitOn('ExpoBrightness', 'Expo.brightnessDidChange', { brightness: v }); },
+        getPermissionsAsync: async () => granted, requestPermissionsAsync: async () => granted } }, // Android-only system-brightness calls are absent (JS guards them by platform)
+    { name: 'ExpoScreenOrientation', package: 'expo-screen-orientation', kind: 'expo', status: 'simulated', // portrait only: any other lock rejects
+      methods: {
+        getOrientationAsync: async () => 1, getOrientationLockAsync: async () => sim.lock, supportsOrientationLockAsync: async (l) => PORTRAIT_LOCKS.includes(l),
+        lockAsync: async (l) => { if (!PORTRAIT_LOCKS.includes(l)) throw unsupported('ExpoScreenOrientation', `lockAsync(${l})`, 'expo-screen-orientation'); sim.lock = l; },
+        lockPlatformAsync: async () => { throw unsupported('ExpoScreenOrientation', 'lockPlatformAsync', 'expo-screen-orientation'); }, getPlatformOrientationLockAsync: async () => ({ screenOrientationArrayIOS: [1] }) } },
+    { name: 'ExpoStoreReview', package: 'expo-store-review', kind: 'expo', status: 'simulated',
+      methods: { isAvailableAsync: async () => true, ...called('ExpoStoreReview', { requestReview: async () => {} }) } },
+    { name: 'ExpoTrackingTransparency', package: 'expo-tracking-transparency', kind: 'expo', status: 'simulated', permissions: ['tracking'], // `simulate permissions {tracking}`
+      methods: { getPermissionsAsync: async () => permission('tracking'), requestPermissionsAsync: async () => ask('tracking'), getAdvertisingId: () => ZERO_UUID, getAdvertisingIdAsync: async () => ZERO_UUID } },
+    { name: 'ExpoLocalAuthentication', package: 'expo-local-authentication', kind: 'expo', status: 'simulated', // result controlled by `simulate localauth`
+      methods: {
+        hasHardwareAsync: async () => true, isEnrolledAsync: async () => true, supportedAuthenticationTypesAsync: async () => [2], getEnrolledLevelAsync: async () => 3, cancelAuthenticate: noop,
+        ...called('ExpoLocalAuthentication', { authenticateAsync: async () => (sim.localauth.success ? { success: true } : { success: false, error: sim.localauth.error || 'user_cancel' }) }) } },
+    ...asyncStorage,
     { name: 'ExpoCamera', package: 'expo-camera', kind: 'expo', status: 'unsupported', permissions: ['camera', 'microphone'],
       methods: all(['getCameraPermissionsAsync', 'requestCameraPermissionsAsync', 'getMicrophonePermissionsAsync', 'requestMicrophonePermissionsAsync', 'isAvailableAsync', 'getAvailableVideoCodecsAsync', 'scanFromURLAsync']) },
+    // ---- Expo view modules drawn by the host (layout/rn.rs); props whitelisted in host.js EXPO_VIEWS ----
+    { name: 'ExpoLinearGradient', package: 'expo-linear-gradient', kind: 'expo', status: 'implemented', constants: { ViewPrototypes: {} } },
+    { name: 'ExpoBlur', package: 'expo-blur', kind: 'expo', status: 'implemented', constants: { ViewPrototypes: {} } },
   ].map((e) => ({ kind: 'turbo', package: e.kind === 'expo' ? undefined : 'react-native', ...e }));
   const byName = new Map(entries.map((e) => [e.name, e]));
 

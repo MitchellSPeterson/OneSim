@@ -1,5 +1,5 @@
 // Milestone 4 check (native-module compatibility): node frameworks/react-native/guest/run-modules.mjs [port=8220]
-// Boots examples/expo-modules (clipboard, haptics, location, camera, file system, secure store) and asserts the `modules` line, the simulated clipboard /
+// Boots examples/expo-modules (clipboard, haptics, location, camera, file system, secure store, localization, crypto, battery, local auth, async storage, ...) and asserts the `modules` line, the simulated clipboard /
 // haptics / location / permissions, host `simulate`, state surviving a reload, and the unsupported-module diagnostic.
 // A Metro already listening on the port is reused (and left running).
 import { join } from 'node:path';
@@ -14,7 +14,7 @@ run(async () => {
   const press = async (label, re, what) => { h.tap(label); await h.until(() => re.test(out() || ''), what || `${label} -> ${re}`); ok(`${label}: ${out()}`); };
   await h.until(() => /Output: ready/.test(h.text) && h.modules.length, 'first tree + modules line');
   const mods = Object.fromEntries(h.modules[0].map((m) => [m.name, m]));
-  const want = { ExpoClipboard: 'simulated', ExpoHaptics: 'simulated', ExpoLocation: 'simulated', ExpoCamera: 'unsupported', FileSystem: 'implemented', ExponentFileSystem: 'implemented', ExpoSecureStore: 'simulated', ExpoDevice: 'simulated', DeviceInfo: 'simulated', Appearance: 'simulated', RNCSafeAreaContext: 'simulated', Clipboard: 'simulated' };
+  const want = { ExpoClipboard: 'simulated', ExpoHaptics: 'simulated', ExpoLocation: 'simulated', ExpoCamera: 'unsupported', FileSystem: 'implemented', ExponentFileSystem: 'implemented', ExpoSecureStore: 'simulated', ExpoDevice: 'simulated', DeviceInfo: 'simulated', Appearance: 'simulated', RNCSafeAreaContext: 'simulated', Clipboard: 'simulated', ExpoLocalization: 'implemented', ExpoCrypto: 'implemented', ExpoApplication: 'simulated', ExpoNetwork: 'simulated', ExpoBattery: 'simulated', ExpoBrightness: 'simulated', ExpoScreenOrientation: 'simulated', ExpoStoreReview: 'simulated', ExpoTrackingTransparency: 'simulated', ExpoLocalAuthentication: 'simulated', Vibration: 'simulated', RNCAsyncStorage: 'implemented' };
   for (const [n, s] of Object.entries(want)) if (!mods[n] || mods[n].status !== s) throw new Error(`modules: ${n} should be ${s}, got ${mods[n] && mods[n].status}`);
   if (!mods.ExpoLocation.methods.includes('watchPositionImplAsync') || mods.ExpoLocation.package !== 'expo-location' || !mods.ExpoLocation.events.includes('Expo.locationChanged')) throw new Error('modules: ExpoLocation entry ' + JSON.stringify(mods.ExpoLocation));
   ok(`modules line: ${h.modules[0].length} modules; clipboard/haptics/location simulated, camera unsupported`);
@@ -72,6 +72,35 @@ run(async () => {
   const stray = h.errors.slice(0, e1);
   if (stray.length) throw new Error('unexpected errors:\n' + stray.map((e) => e.slice(0, 400)).join('\n---\n'));
   ok('no other errors');
+
+  // expo-localization / -crypto / -application / -network / -battery / -brightness / -screen-orientation / -store-review / -tracking-transparency / -local-authentication, Vibration, async-storage
+  await press('Digest', /digest 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824/, 'SHA-256 of "hello"');
+  await press('Locale', /locale en-US US USD ltr gregory \S+/);
+  await press('App info', /app expo-modules 1\.0\.0 \S+/);
+  await press('Network', /net WIFI true 192\.168\.1\.2/);
+  await press('Brightness', /brightness 0\.8/);
+  await press('Review', /review true/);
+  await press('Track', /track granted null/);
+  h.send({ type: 'simulate', module: 'localauth', state: { success: false, error: 'user_cancel' } });
+  await press('Auth', /auth false user_cancel/, 'Auth fails when simulate localauth says so');
+  h.send({ type: 'simulate', module: 'localauth', state: { success: true } });
+  await press('Auth', /auth true/);
+  await press('Battery', /battery 1 3 false/);
+  h.send({ type: 'simulate', module: 'battery', state: { level: 0.5, state: 1, lowPowerMode: true } });
+  await h.until(() => /Output: battery event 0\.5/.test(h.text), 'battery level event from simulate battery');
+  await press('Battery', /battery 0\.5 1 true/, 'Battery reads the simulated state');
+  const n2 = h.events.length;
+  await press('Vibrate', /vibrated/);
+  if (!h.events.slice(n2).some((e) => e.name === 'module.called' && e.detail.module === 'Vibration' && e.detail.method === 'vibrate')) throw new Error('no module.called for Vibration.vibrate');
+  await press('Landscape', /error: SimCore: ExpoScreenOrientation is not supported\./, 'landscape lock rejects, portrait lock resolved');
+  const e2 = h.errors.length;
+  await press('Store item', /stored/);
+  await press('Read item', /item \{"a":\{"b":1,"c":2\}\} keys k/, 'async-storage mergeItem deep-merges');
+  const nm3 = h.modules.length;
+  h.send({ type: 'reload' });
+  await h.until(() => h.modules.length > nm3 && /Output: ready/.test(h.text), 'reload for async-storage');
+  await press('Read item', /item \{"a":\{"b":1,"c":2\}\} keys k/, 'async-storage survives the reload');
+  if (h.errors.length !== e2) throw new Error('unexpected errors:\n' + h.errors.slice(e2).join('\n'));
   h.send({ type: 'shutdown' });
   console.log('PASS');
   }, 240000);

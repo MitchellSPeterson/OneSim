@@ -401,6 +401,9 @@ its existing focus + software-keyboard machinery.
   (x/y = content offset) → `topScrollBeginDrag` / `topScroll` / `topScrollEndDrag` +
   `topMomentumScrollEnd`, nativeEvent `{contentOffset,contentSize,layoutMeasurement,contentInset:{0,0,0,0},zoomScale:1}`.
   One `--scroll` gesture = begin, scroll, end.
+  A vertical scroll pulling down past the top (offset already 0) is reported like iOS rubber-banding:
+  begin at 0, `scroll` with the negative overscroll `y`, end at 0. Pulled 100 pt or more, the guest fires
+  `topRefresh` on the scroll view's `PullToRefreshView` child (RN `RefreshControl`) unless it is already refreshing.
 - Guest → host `{"type":"scroll_to","tag","x","y"}` for the `scrollTo` / `scrollToEnd` commands
   (`scrollToEnd`: `x`/`y` = `"end"`); host sets the offset (clamped), re-renders and replies
   with a `scroll` message (phase `end`).
@@ -424,6 +427,22 @@ whose target is an `RCTSwitch` (not disabled) dispatches `topChange` `{value: !v
 everything else (transparent → no backdrop; otherwise background color of the app default).
 `visible: false` or absent node → nothing. Guest dispatches `topShow` after first emit with it
 visible; `topRequestClose` is not generated (no hardware back on iOS).
+
+**ActivityIndicator** (`ActivityIndicatorView`, props `animating`, `hidesWhenStopped`, `color`, `size`; size from style:
+20×20 small, 36×36 large). Host draws the iOS spinner's 8 spokes at rest (a static frame); stopped + `hidesWhenStopped` → nothing.
+
+**RefreshControl** (`PullToRefreshView`, iOS: first child of its `RCTScrollView`; props `refreshing`, `tintColor`).
+Outside the content flow. While `refreshing` the scroll view opens a band above the content (extra top inset) with a spinner
+centred in it. Pull-to-refresh: see ScrollView overscroll.
+
+**SafeAreaView** (core, `SafeAreaView`). After a first layout pass its padding becomes the part of the safe-area insets its
+frame overlaps (replacing its own padding), then the tree is laid out again.
+
+**expo-linear-gradient** (`ViewManagerAdapter_ExpoLinearGradient`, props `colors` (processed ints), `locations`,
+`startPoint` / `endPoint` `[x, y]` in the unit box, default top centre → bottom centre). Drawn like CAGradientLayer.
+
+**expo-blur** (`ViewManagerAdapter_ExpoBlur_ExpoBlurView`, props `tint`, `intensity` 0...100). A flat material: backdrop
+blur plus a colour transform per tint, scaled by intensity (no Liquid Glass lens/rim).
 
 ### Milestone 2 additions (Fast Refresh, reload)
 

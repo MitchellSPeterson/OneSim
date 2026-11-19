@@ -107,6 +107,8 @@ pub enum Glyph {
     ArrowLeft,
     /// Activity indicator (static frame).
     Spinner,
+    /// Large activity indicator / refresh control: thicker spokes.
+    SpinnerLarge,
 }
 
 /// An SF Symbol painted as an alpha mask in `color`, `size` points, centred in the node's bounds
@@ -132,6 +134,10 @@ pub struct ImageRun {
 pub struct Gradient {
     pub angle: f32,
     pub stops: Vec<Color>,
+    /// Start and end points `[x0, y0, x1, y1]` as fractions of the bounds (CAGradientLayer / expo-linear-gradient), replacing `angle`.
+    pub points: Option<[f32; 4]>,
+    /// Stop positions 0...1, one per stop (default: evenly spaced).
+    pub locations: Option<Vec<f32>>,
 }
 
 /// A sheet the user can drag (`Node::sheet`).
