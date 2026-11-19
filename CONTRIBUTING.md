@@ -18,11 +18,22 @@ Missing APIs are grouped into batches by platform and area, as sub-issues of fou
 2. Branch from `main` and start from a fresh context (a new agent session, or `/clear`).
 3. Build it test-first. With the agent skills, run `/implement #<issue>`: it runs `/tdd`, the test suite and `/code-review`. Behaviour without a visible result needs a test that fails if it breaks.
 4. For new UI, [add a visual reference](#add-a-visual-reference) and keep it under the [visual fidelity rule](#visual-fidelity-rule).
-5. Open a pull request with `Closes #<issue>` and before/after screenshots. CI runs every gate on every platform. Merging closes the issue and unblocks the batches that wait on it.
+5. Open a pull request with `Closes #<issue>` and before/after screenshots. CI runs the gates the change touches (every gate when it touches shared code such as `crates/`), and every gate on `main`. Merging closes the issue and unblocks the batches that wait on it.
 
 Found an API that isn't in any table? Add a ⬜ row and open a new issue instead of growing the batch. Leave blocking links as they are.
 
 ## Run the checks
+
+To run only the checks your branch needs, use `scripts/affected.sh`. It diffs against `origin/main` and maps the changed paths to the SwiftUI, Compose, Expo and web gates, the same way CI does. A SwiftUI-only change skips the Android and Expo comparisons. Changes to `crates/`, the protocol or the comparison tooling run everything.
+
+```sh
+scripts/affected.sh        # list the affected groups
+scripts/affected.sh --run  # run their gates
+```
+
+`SIMCORE_ONLY=swiftui` or `SIMCORE_ONLY=expo` limits `scripts/compare-ios.sh` to one framework's states.
+
+The full set of checks:
 
 From the repository root, run the Rust and Swift checks. The Swift wire test requires macOS and exercises guest messages, memory use, and stdout isolation.
 
