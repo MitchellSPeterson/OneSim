@@ -21,7 +21,10 @@ jobs:
         run: node scripts/api-coverage.mjs --check
       - run: cargo build -p simcore-render --examples --features window
       - run: cargo test --workspace
+        env:
+          SIMCORE_SKIP_GPU_TESTS: '1'
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy -p simcore-cli --features window --all-targets -- -D warnings
       - name: SwiftUI wire test (build, 1100 actions, memory, isolation of stdout)
         run: frameworks/swiftui/Tests/wire_test.sh
       - name: End-to-end headless counter
@@ -52,6 +55,14 @@ jobs:
           cargo run -q -p simcore-cli -- run target/debug/fake-nav-guest \
             --click Todos --click "New todo" --type "Buy milk" --key backspace --click Add --inspect \
             --screenshot target/showcase-render/ci-todos.png | grep -q '"Buy mil"'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Expo fixture dependencies
+        run: |
+          npm ci --prefix examples/expo-showcase
+          npm ci --prefix examples/expo-router-stack
+          npm ci --prefix examples/expo-default
       - name: iOS pixel-diff gate (every state < 2%)
         run: scripts/compare-ios.sh
       - name: iOS pixel-diff gate, fallback fonts/symbols (every state < 3.5%)
@@ -64,8 +75,7 @@ jobs:
           path: target/compare/
 
   web:
-    # Browser (Wasm) backend: build the counter and the showcase, run the Node harness, and gate
-    # pixel parity against the native fallback render. Every step fails the job on error.
+    # Build the two Wasm modules, verify CPU pixel parity, and exercise the browser presenter.
     runs-on: macos-latest
     env:
       SWIFT_VERSION: 6.4.2
@@ -74,11 +84,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-wasip1
+          components: clippy
+          targets: wasm32-wasip1,wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
+      - run: cargo clippy -p simcore-web-gpu --target wasm32-unknown-unknown -- -D warnings
       - name: Cache Swift toolchain and Wasm SDK downloads
         uses: actions/cache@v4
         with:
@@ -107,6 +120,12 @@ jobs:
         run: |
           scripts/build-web.sh examples/swiftui-showcase
           node web/test/run.mjs --suite showcase
+      - name: Browser presenter (CPU fallback and WebGPU when an adapter is available)
+        run: |
+          export CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+          [ -x "$CHROME" ] || brew install --cask google-chrome
+          test -x "$CHROME"
+          node web/test/presenter.mjs --app
       - name: Web vs native pixel parity (every state < 2%)
         run: |
           python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow

@@ -6,7 +6,7 @@
 //! `simcore_render::Interaction` (the same state machine as the native host) and its effects
 //! call the Swift callbacks directly.
 use simcore_protocol::{Appearance, DynamicTypeSize, IosVersion, KeyboardEvent, PointerEvent, PointerKind, ViewNode};
-use simcore_render::{build_scene, device, render, resolve_label, Device, DEFAULT_DEVICE, DEVICES, DragPhase, Effect, Fonts, Interaction, Scene, SceneParams};
+use simcore_render::{build_scene, Builder, device, render, resolve_label, Device, DEFAULT_DEVICE, DEVICES, DragPhase, Effect, Fonts, Interaction, Scene, SceneParams};
 use std::cell::RefCell;
 use std::ffi::{c_char, c_void, CStr, CString};
 
@@ -36,6 +36,11 @@ struct State {
     tree_json: String,
     fb: Vec<u8>,
     fb_size: (u32, u32),
+    /// 0: `draw` rasterizes into `fb` (CPU); 1: it lowers the scene to an encoded display list in `dl` for a GPU executor.
+    output: i32,
+    /// Persistent so successive display lists only carry new resources; reset whenever the consumer changes.
+    builder: Builder,
+    dl: Vec<u8>,
     /// Scratch buffer shared with JS (inputs: label/key text; outputs: inspect JSON, find result).
     buf: Vec<u8>,
 }
@@ -45,7 +50,7 @@ thread_local! {
     static STATE: RefCell<State> = RefCell::new(State {
         ctx: 0, on_action: None, on_env: None, on_text: None, version: None, tree: None, scene: None,
         fonts: None, device: device(DEFAULT_DEVICE).unwrap(), viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios27, inter: Interaction::default(),
-        stale: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), buf: Vec::new(),
+        stale: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), output: 0, builder: Builder::new(), dl: Vec::new(), buf: Vec::new(),
     });
     static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
 }
@@ -73,9 +78,15 @@ fn draw(s: &mut State) {
         chrome: s.inter.chrome(),
     };
     let scene = build_scene(root, &params, fonts);
-    let pm = render(&scene, fonts, s.scale);
-    s.fb_size = (pm.width(), pm.height());
-    s.fb = pm.take(); // opaque full-screen scene: premultiplied == straight RGBA
+    if s.output == 1 {
+        let list = s.builder.build(&scene, fonts, s.scale);
+        s.fb_size = (list.width, list.height);
+        s.dl = list.encode();
+    } else {
+        let pm = render(&scene, fonts, s.scale);
+        s.fb_size = (pm.width(), pm.height());
+        s.fb = pm.take(); // opaque full-screen scene: premultiplied == straight RGBA
+    }
     s.scene = Some(scene);
     s.stale = false;
 }
@@ -412,6 +423,37 @@ pub extern "C" fn simcore_web_find(len: usize) -> i32 {
     })
 }
 
+/// Choose what `draw` produces: 0 = CPU pixels (`simcore_web_fb_*`, the default), 1 = an encoded display list
+/// (`simcore_web_dl_*`) for the GPU executor. Resets the display-list builder (the consumer starts with no
+/// resources: call this again after a device loss or re-init) and redraws the current scene in the new mode.
+/// Returns 0, or 1 for an unknown mode.
+#[no_mangle]
+pub extern "C" fn simcore_web_set_output(mode: i32) -> i32 {
+    if !(0..=1).contains(&mode) {
+        return 1;
+    }
+    with(|s| {
+        s.output = mode;
+        s.builder.reset();
+        if mode == 1 {
+            s.fb = Vec::new();
+        } else {
+            s.dl = Vec::new();
+        }
+        draw(s);
+    });
+    0
+}
+/// Encoded display list of the latest frame (output mode 1); valid until the next draw.
+#[no_mangle]
+pub extern "C" fn simcore_web_dl_ptr() -> *const u8 {
+    with(|s| s.dl.as_ptr())
+}
+#[no_mangle]
+pub extern "C" fn simcore_web_dl_len() -> usize {
+    with(|s| s.dl.len())
+}
+
 #[no_mangle]
 pub extern "C" fn simcore_web_fb_ptr() -> *const u8 {
     with(|s| s.fb.as_ptr())
@@ -466,6 +508,73 @@ mod tests {
         });
         assert_eq!(simcore_web_pointer(2, x, y), 1);
         assert_eq!(HITS.with(|h| h.borrow().clone()), vec![1]);
+    }
+
+    #[test]
+    fn display_list_mode() {
+        use simcore_render::display::DisplayList;
+        let dl = || {
+            let b = unsafe { std::slice::from_raw_parts(simcore_web_dl_ptr(), simcore_web_dl_len()) };
+            DisplayList::decode(b).expect("decodes")
+        };
+        simcore_runtime_set_callbacks(std::ptr::null_mut(), Some(on_action), None);
+        assert_eq!(unsafe { simcore_submit_tree(TREE.as_ptr(), TREE.len(), 1) }, 0);
+        let cpu = with(|s| s.fb.clone());
+        assert!(!cpu.is_empty());
+        assert_eq!(simcore_web_set_output(2), 1);
+        assert_eq!(simcore_web_set_output(1), 0);
+        assert_eq!(simcore_web_fb_len(), 0, "no pixels in display-list mode");
+        let first = dl();
+        assert_eq!((first.width, first.height), (1206, 2622));
+        assert!(!first.ops.is_empty() && !first.added.is_empty(), "text sprites are sent");
+        // A redraw (scale change back and forth) reuses the cached resources.
+        simcore_web_set_scale(3.0);
+        let again = dl();
+        assert!(again.added.is_empty(), "resources are not re-sent: {}", again.added.len());
+        // Reset (new consumer): everything used is sent again.
+        assert_eq!(simcore_web_set_output(1), 0);
+        let reset = dl();
+        assert_eq!(reset.added.len(), first.added.len());
+        // Back to CPU: byte-identical pixels to before, and the list is gone.
+        assert_eq!(simcore_web_set_output(0), 0);
+        assert_eq!(simcore_web_dl_len(), 0);
+        assert!(with(|s| s.fb == cpu), "CPU output unchanged");
+    }
+
+    /// Fixtures for the browser presenter test (`web/test/presenter.mjs`): for a few showcase trees, the same frame as
+    /// a display list (`NAME.dl`) and as CPU pixels (`NAME.rgba`), plus `manifest.json`. Only runs when
+    /// `SIMCORE_WEB_FIXTURE_DIR` is set (the test script does that).
+    #[test]
+    fn write_browser_fixtures() {
+        let Ok(dir) = std::env::var("SIMCORE_WEB_FIXTURE_DIR") else { return };
+        std::fs::create_dir_all(&dir).unwrap();
+        const SHOWCASE: [(&str, &str); 2] = [
+            ("home", include_str!("../../simcore-render/tests/data/home.json")),
+            ("controls", include_str!("../../simcore-render/tests/data/controls.json")),
+        ];
+        let tabs = r#"[{"title":"Home","systemImage":"house","action":1},{"title":"Counter","action":2},{"title":"Settings","systemImage":"gearshape","badge":"3","action":3}]"#;
+        let mut trees: Vec<(String, String)> = SHOWCASE.iter().map(|(n, t)| (n.to_string(), t.to_string())).collect();
+        trees.push(("home-tabbar".into(), format!(r#"{{"kind":"tabview","id":"tabs","selected":0,"tabs":{tabs},"content":{}}}"#, SHOWCASE[0].1)));
+        trees.push(("home-compact".into(), SHOWCASE[0].1.into()));
+        let mut manifest = vec![];
+        for (version, (name, tree)) in trees.iter().enumerate() {
+            if name == "home-compact" {
+                simcore_web_set_viewport(320.0, 568.0);
+                simcore_web_set_scale(2.0);
+            }
+            let v = version as u64 + 1;
+            for out in [0, 1] {
+                with(|s| s.version = Some(v - 1));
+                assert_eq!(unsafe { simcore_submit_tree(tree.as_ptr(), tree.len(), v) }, 0, "{name}");
+                // Switching resets the builder and redraws: the list carries every resource it uses.
+                assert_eq!(simcore_web_set_output(out), 0);
+                let (ptr, len) = if out == 1 { (simcore_web_dl_ptr(), simcore_web_dl_len()) } else { (simcore_web_fb_ptr(), simcore_web_fb_len()) };
+                let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
+                std::fs::write(format!("{dir}/{name}.{}", if out == 1 { "dl" } else { "rgba" }), bytes).unwrap();
+            }
+            manifest.push(serde_json::json!({"name": name, "width": simcore_web_fb_width(), "height": simcore_web_fb_height()}));
+        }
+        std::fs::write(format!("{dir}/manifest.json"), serde_json::to_vec(&manifest).unwrap()).unwrap();
     }
 
     #[test]

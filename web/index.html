@@ -8,12 +8,15 @@
   html, body { margin: 0; height: 100%; overflow: hidden; background: #1c1c1e; }
   body { display: flex; align-items: center; justify-content: center; }
   /* main.js sizes the canvas to fit the window (aspect ratio kept, render resolution = CSS px x devicePixelRatio). */
-  canvas { touch-action: none; cursor: pointer; user-select: none; -webkit-user-select: none; }
+  #stage, canvas { touch-action: none; cursor: pointer; user-select: none; -webkit-user-select: none; }
+  #stage { display: block; line-height: 0; }
+  #diag { color: #8e8e93; font: 11px monospace; position: fixed; left: 6px; bottom: 4px; pointer-events: none; }
   #err { color: #ff6961; font: 14px monospace; white-space: pre-wrap; padding: 1em; position: fixed; left: 0; top: 0; }
 </style>
 </head>
 <body>
-<canvas id="screen" width="402" height="874"></canvas>
+<div id="stage"><canvas id="screen" width="402" height="874"></canvas></div>
+<div id="diag" hidden></div>
 <div id="err"></div>
 <script type="module" src="main.js"></script>
 </body>
