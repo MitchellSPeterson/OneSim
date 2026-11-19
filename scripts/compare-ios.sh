@@ -9,6 +9,22 @@ cd "$(dirname "$0")/.."
 cargo build -q -p onesim-cli
 printf '{"id":1,"method":"hello","params":{"protocol_version":1}}\n{"id":2,"method":"get_capabilities"}\n' | ./target/debug/onesim serve 2>/dev/null \
   | python3 -c 'import json,sys; c=json.loads(sys.stdin.readlines()[1])["result"]; print("fonts:", c["fonts"], "| symbols:", c["symbols"], "| SIMCORE_FALLBACK=" + "'"${SIMCORE_FALLBACK:-}"'")'
+# Build each guest once. Every shot still starts a fresh process with its own device and appearance.
+guests=$(mktemp -d)
+metro=
+stop_metro() {
+  if [ -n "$metro" ]; then
+    pkill -P "$metro" 2>/dev/null || true
+    kill "$metro" 2>/dev/null || true
+    metro=
+  fi
+}
+cleanup() { stop_metro; rm -rf "$guests"; }
+trap cleanup EXIT
+app="$guests/showcase"
+tabs="$guests/tabs"
+scripts/build-swift-app.sh examples/swiftui-showcase "$app"
+scripts/build-swift-app.sh examples/swiftui-tabs "$tabs"
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
 # (docs/compatibility/versions.json): 26.5 on the iPhone 17 Pro in tests/fixtures/, 27.2 on the iPhone 18 Pro
 # in tests/fixtures/ios27/. SIMCORE_IOS="27.2" limits the run to one release.
@@ -24,7 +40,6 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
   out=target/compare/ios$ios; mkdir -p "$out/onesim"
   echo "==== iOS $ios ($dev, $fx)"
   export SIMCORE_COMPARE_IOS=$ios
-  app=examples/swiftui-showcase
   shot() { local name=$1; shift; ./target/debug/onesim run "$app" "${base[@]}" "$@" --screenshot "$out/onesim/$name.png" >/dev/null; }
   shot home
   shot typography       --click Typography
@@ -65,8 +80,8 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
   shot form-changed --click Form --click Flavor --click Chocolate --click Large --drag 170,552,300,0
   python3 scripts/compare_ios.py $fx/showcase-ios "$out/onesim" "$out" || rc=1
   # SwiftUI TabView: tests/fixtures/swiftui-tabs-ios (see its README). Tab items by point: Home 115,822, Counter 201,822, Settings 287,822.
-  app=examples/swiftui-tabs; tout=$out/swiftui-tabs; mkdir -p "$tout/onesim"
-  tshot() { local name=$1; shift; ./target/debug/onesim run "$app" "${base[@]}" "$@" --screenshot "$tout/onesim/$name.png" >/dev/null; }
+  tout=$out/swiftui-tabs; mkdir -p "$tout/onesim"
+  tshot() { local name=$1; shift; ./target/debug/onesim run "$tabs" "${base[@]}" "$@" --screenshot "$tout/onesim/$name.png" >/dev/null; }
   tshot tabs-home
   tshot tabs-home-dark     --dark
   tshot tabs-second        --click 201,822 --click Increment
@@ -74,7 +89,6 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
   tshot tabs-settings-dark --dark --click 287,822
   echo "== SwiftUI TabView (swiftui-tabs, iOS $ios)"
   python3 scripts/compare_ios.py $fx/swiftui-tabs-ios "$tout/onesim" "$tout" || rc=1
-  app=examples/swiftui-showcase
   # React Native / Expo showcase: tests/fixtures/rn-showcase-ios (see its README). Needs node + `npm install` in the example.
   rn=examples/expo-showcase
   if [ -d "$rn/node_modules" ] && command -v npx >/dev/null; then
@@ -82,7 +96,6 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
     (cd "$rn" && CI=1 exec npx expo start --port "$port" >"../../$rnout/metro.log" 2>&1) &
     metro=$!
-    trap 'pkill -P $metro 2>/dev/null; kill $metro 2>/dev/null; true' EXIT
     for _ in $(seq 60); do curl -sf "http://localhost:$port/status" >/dev/null 2>&1 && break; sleep 1; done
     rnshot() { local name=$1; shift; ./target/debug/onesim expo --url "http://localhost:$port" "${base[@]}" "$@" --screenshot "$rnout/onesim/$name.png" >/dev/null || echo "onesim expo failed: $name"; }
     rnshot home
@@ -105,6 +118,7 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     rnshot refresh-pulled-dark --dark --click Refresh --scroll 200,300,0,-150
     echo "== React Native (expo-showcase, iOS $ios)"
     python3 scripts/compare_ios.py $fx/rn-showcase-ios "$rnout/onesim" "$rnout" || rc=1
+    stop_metro
   else
     echo "== skipping React Native comparison (run npm install in $rn, needs node)"
   fi
