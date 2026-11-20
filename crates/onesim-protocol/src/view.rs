@@ -245,8 +245,25 @@ pub enum Modifier {
     Offset(Offset),
     /// The view carries SwiftUI gestures (section L).
     Gesture(GestureMod),
-    /// `.containerShape(_:)`: records the container shape for descendant `ContainerRelativeShape` and `ConcentricRectangle` (section M).
+    /// `.containerShape(_:)`: records the container shape for descendant `ContainerRelativeShape` and `ConcentricRectangle` (section N).
     ContainerShape(ContainerShapeSpec),
+    /// `.id(_:)`: names the view for `ScrollViewProxy.scrollTo` (section M).
+    #[serde(rename = "id")]
+    Identity(String),
+    /// Pinned section header or footer inside a lazy stack (`"header"` / `"footer"`).
+    Pin(String),
+    /// `.gridCellColumns(_:)`.
+    GridCellColumns(u32),
+    /// `.contentMargins`: the inset already resolved onto each edge.
+    ContentMargins(Edges),
+    /// `.scrollIndicators(_:axes:)`.
+    ScrollIndicators(ScrollIndicators),
+    /// `.scrollTargetBehavior` (`.paging` or `.viewAligned`).
+    ScrollTargetBehavior(ScrollSnap),
+    /// `.scrollTargetLayout(isEnabled:)`.
+    ScrollTargetLayout(bool),
+    /// `.scrollPosition(id:)` is attached to this scroll view.
+    ScrollPosition,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
@@ -556,7 +573,7 @@ pub struct Stroke {
     pub inset: f64,
 }
 
-/// One vector path command in a shape's local coordinate space (section M).
+/// One vector path command in a shape's local coordinate space (section N).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PathOp {
@@ -647,6 +664,76 @@ pub enum Axis {
     #[default]
     Vertical,
     Horizontal,
+}
+
+/// Which section views a lazy stack pins (section M).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PinMode {
+    Headers,
+    Footers,
+    Both,
+}
+
+/// `GridItem` size (section M).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TrackSize {
+    Fixed,
+    Flexible,
+    Adaptive,
+}
+
+/// One `GridItem`. `value` is the fixed size; `min`/`max` bound flexible and adaptive tracks.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GridTrack {
+    pub size: TrackSize,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "inf")]
+    pub value: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "inf")]
+    pub min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "inf")]
+    pub max: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "inf")]
+    pub spacing: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alignment: Option<Alignment>,
+}
+
+/// One `GridRow`. `alignment` `None` inherits the grid's alignment.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GridLine {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alignment: Option<Alignment>,
+    #[serde(default)]
+    pub cells: Vec<ViewNode>,
+}
+
+/// Axes `ViewThatFits` checks (section M).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FitAxes {
+    #[default]
+    Both,
+    Horizontal,
+    Vertical,
+}
+
+/// Built-in scroll target behaviors (section M).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ScrollSnap {
+    Paging,
+    ViewAligned,
+}
+
+/// `.scrollIndicators` per axis: `"automatic"`, `"visible"`, or `"hidden"`.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ScrollIndicators {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub horizontal: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vertical: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -757,6 +844,9 @@ pub enum ViewKind {
         alignment: Alignment,
         #[serde(default)]
         children: Vec<ViewNode>,
+        /// Lazy stack pinning. Absent on an ordinary stack.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pinned: Option<PinMode>,
     },
     HStack {
         #[serde(default)]
@@ -765,6 +855,8 @@ pub enum ViewKind {
         alignment: Alignment,
         #[serde(default)]
         children: Vec<ViewNode>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pinned: Option<PinMode>,
     },
     ZStack {
         #[serde(default)]
@@ -802,6 +894,9 @@ pub enum ViewKind {
         #[serde(default)]
         axis: Axis,
         child: Box<ViewNode>,
+        /// `"automatic"` or `"hidden"`. Absent means automatic.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        indicators: Option<String>,
     },
     List {
         #[serde(default)]
@@ -908,6 +1003,44 @@ pub enum ViewKind {
         color: Color,
     },
     Rectangle,
+    /// `Grid` (section M). Does not stretch columns to the proposed width.
+    Grid {
+        #[serde(default)]
+        alignment: Alignment,
+        #[serde(default, rename = "horizontalSpacing", skip_serializing_if = "Option::is_none")]
+        horizontal_spacing: Option<f64>,
+        #[serde(default, rename = "verticalSpacing", skip_serializing_if = "Option::is_none")]
+        vertical_spacing: Option<f64>,
+        #[serde(default)]
+        rows: Vec<GridLine>,
+    },
+    /// `LazyVGrid` (`axis: vertical`) or `LazyHGrid` (`axis: horizontal`).
+    #[serde(rename = "lazyGrid")]
+    LazyGrid {
+        #[serde(default)]
+        axis: Axis,
+        #[serde(default)]
+        alignment: Alignment,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        spacing: Option<f64>,
+        #[serde(default)]
+        tracks: Vec<GridTrack>,
+        #[serde(default)]
+        children: Vec<ViewNode>,
+    },
+    /// `GeometryReader`. `proposal` is the size the guest built the child with.
+    Geometry {
+        proposal: [f64; 2],
+        child: Box<ViewNode>,
+    },
+    /// `ViewThatFits`. The host shows the first child that fits `axes`.
+    #[serde(rename = "viewThatFits")]
+    ViewThatFits {
+        #[serde(default)]
+        axes: FitAxes,
+        #[serde(default)]
+        children: Vec<ViewNode>,
+    },
     Empty,
 }
 
@@ -1035,7 +1168,70 @@ mod tests {
     }
 
     #[test]
-    fn section_m_shapes_and_paths_parse() {
+    fn section_m_round_trip() {
+        let j = json!({
+            "kind": "grid", "id": "g", "alignment": "leading",
+            "horizontalSpacing": 8.0, "verticalSpacing": 4.0,
+            "rows": [{"alignment": "top", "cells": [
+                {"kind": "text", "id": "a", "text": "A", "modifiers": [
+                    {"id": "cell-a"}, {"gridCellColumns": 2}, {"pin": "header"},
+                    {"contentMargins": {"top": 1.0, "leading": 2.0, "bottom": 3.0, "trailing": 4.0}},
+                    {"scrollIndicators": {"vertical": "hidden"}},
+                    {"scrollTargetBehavior": "viewAligned"},
+                    {"scrollTargetLayout": true},
+                    {"scrollPosition": null}
+                ]}
+            ]}]
+        });
+        let n: ViewNode = serde_json::from_value(j).unwrap();
+        let ViewKind::Grid { alignment, horizontal_spacing, vertical_spacing, rows } = &n.kind else { panic!() };
+        assert_eq!((*alignment, *horizontal_spacing, *vertical_spacing, rows[0].alignment), (Alignment::Leading, Some(8.0), Some(4.0), Some(Alignment::Top)));
+        assert_eq!(rows[0].cells[0].modifiers[0], Modifier::Identity("cell-a".into()));
+        assert_eq!(rows[0].cells[0].modifiers[1], Modifier::GridCellColumns(2));
+        assert_eq!(rows[0].cells[0].modifiers[2], Modifier::Pin("header".into()));
+        assert_eq!(rows[0].cells[0].modifiers[5], Modifier::ScrollTargetBehavior(ScrollSnap::ViewAligned));
+        assert_eq!(rows[0].cells[0].modifiers[6], Modifier::ScrollTargetLayout(true));
+        assert_eq!(rows[0].cells[0].modifiers[7], Modifier::ScrollPosition);
+        let lazy: ViewNode = serde_json::from_value(json!({
+            "kind": "lazyGrid", "id": "lg", "axis": "horizontal", "spacing": 8.0,
+            "tracks": [{"size": "flexible", "min": 10.0, "max": "inf"}, {"size": "fixed", "value": 40.0}, {"size": "adaptive", "min": 20.0}],
+            "children": [{"kind": "empty", "id": "c"}]
+        })).unwrap();
+        let ViewKind::LazyGrid { axis, tracks, .. } = &lazy.kind else { panic!() };
+        assert_eq!(*axis, Axis::Horizontal);
+        assert_eq!(tracks[0].max, Some(f64::INFINITY));
+        assert_eq!(tracks[1].size, TrackSize::Fixed);
+        assert_eq!(serde_json::to_value(&lazy).unwrap()["tracks"][0]["max"], "inf");
+        let geo: ViewNode = serde_json::from_value(json!({
+            "kind": "geometry", "id": "geo", "proposal": [100.0, 80.0],
+            "child": {"kind": "empty", "id": "geo/0"}
+        })).unwrap();
+        assert!(matches!(geo.kind, ViewKind::Geometry { proposal, .. } if proposal == [100.0, 80.0]));
+        let fits: ViewNode = serde_json::from_value(json!({
+            "kind": "viewThatFits", "id": "f", "axes": "horizontal",
+            "children": [{"kind": "empty", "id": "f/0"}]
+        })).unwrap();
+        assert!(matches!(fits.kind, ViewKind::ViewThatFits { axes: FitAxes::Horizontal, .. }));
+        let stack: ViewNode = serde_json::from_value(json!({
+            "kind": "vstack", "id": "v", "pinned": "headers", "children": []
+        })).unwrap();
+        assert!(matches!(stack.kind, ViewKind::VStack { pinned: Some(PinMode::Headers), .. }));
+        let scroll: ViewNode = serde_json::from_value(json!({
+            "kind": "scroll", "id": "s", "axis": "horizontal", "indicators": "hidden",
+            "child": {"kind": "empty", "id": "s/0"}
+        })).unwrap();
+        assert!(matches!(scroll.kind, ViewKind::Scroll { indicators: Some(ref ind), .. } if ind == "hidden"));
+        for node in [&n, &lazy, &geo, &fits, &stack, &scroll] {
+            let again: ViewNode = serde_json::from_value(serde_json::to_value(node).unwrap()).unwrap();
+            assert_eq!(node, &again);
+        }
+        // An ordinary stack still parses with no pinned field.
+        let plain: ViewNode = serde_json::from_str(r#"{"kind":"hstack","id":"h","children":[]}"#).unwrap();
+        assert!(matches!(plain.kind, ViewKind::HStack { pinned: None, .. }));
+    }
+
+    #[test]
+    fn section_n_shapes_and_paths_parse() {
         let j = json!({
             "kind": "vstack", "id": "0",
             "modifiers": [{"containerShape": {"shape": "roundedRectangle", "cornerRadius": 24.0, "cornerStyle": "continuous"}}],

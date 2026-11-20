@@ -389,7 +389,7 @@ func _emitShapeNode<S: Shape>(
         n["id"] = id
         strokeInset = stroke?.inset ?? 0
     } else {
-        // Custom or composed shape: evaluate `path(in:)` at the host-reported laid-out size (protocol section M).
+        // Custom or composed shape: evaluate `path(in:)` at the host-reported laid-out size (protocol section N).
         n = ["kind": "shape", "id": id, "shape": "path", "custom": true]
         if let hint = _probeSizeHint(shape) { n["sizeHint"] = hint }
         if _shouldMirrorRTL(shape) { n["mirrorRtl"] = true }

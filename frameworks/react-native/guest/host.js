@@ -106,7 +106,7 @@ const cfg = {
   appearance: process.env.SIMCORE_APPEARANCE === 'dark' ? 'dark' : 'light',
   scale: Number(process.env.SIMCORE_SCALE) || 3,
   session: process.env.SIMCORE_SESSION_ID || '',
-  hmr: process.env.SIMCORE_HMR !== '0', // Fast Refresh via Metro's /hot; SIMCORE_HMR=0 turns it off
+  hmr: process.env.SIMCORE_HMR !== '0' && !env.SIMCORE_BUNDLE_URL, // Fast Refresh via Metro's /hot; SIMCORE_HMR=0 turns it off
   generation: (workerData && workerData.generation) || 0, // 0 = first load, >0 = after a reload
   dataDir: workerData && workerData.dataDir, // per-session sandbox (documents, caches, secure store): survives reloads, removed on exit
 };
@@ -1093,6 +1093,7 @@ class Runtime {
 
 // Manifest first (what a real Expo client does), then plain Metro bundle URL.
 async function resolveBundleUrl() {
+  if (env.SIMCORE_BUNDLE_URL) return { url: env.SIMCORE_BUNDLE_URL, manifest: null }; // prebuilt bundle (expo export): no Metro
   const o = new URL(cfg.metro);
   try {
     const r = await node.fetch(cfg.metro + '/', { headers: { 'expo-platform': cfg.platform, accept: 'application/expo+json,application/json' } });
@@ -1142,6 +1143,7 @@ function mainThread() {
   const out = (m) => process.stdout.write(JSON.stringify(m) + '\n');
   const start = () => {
     if (worker) worker.terminate();
+    out({ type: 'hello', protocol: 1 }); // every (re)start: the host drops what it told the previous worker (layout)
     base = last; // tree versions stay monotonic across reloads
     const w = (worker = new Worker(__filename, { argv: process.argv.slice(2), stdout: false, stderr: false, workerData: { generation: ++generation, dataDir } }));
     for (const [module, state] of simulated) w.postMessage({ type: 'simulate', module, state, replay: true });
@@ -1169,7 +1171,6 @@ function mainThread() {
     });
     w.on('error', (e) => out({ type: 'error', message: String(e && e.stack || e) }));
   };
-  out({ type: 'hello', protocol: 1 });
   const rl = readline.createInterface({ input: process.stdin });
   rl.on('line', (line) => {
     let m; try { m = JSON.parse(line); } catch (_) { return; }

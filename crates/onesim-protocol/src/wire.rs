@@ -17,6 +17,14 @@ pub enum GuestMessage {
     /// React Native `scrollTo` / `scrollToEnd` commands.
     #[serde(rename = "scroll_to")]
     ScrollTo { tag: u64, x: ScrollTarget, y: ScrollTarget },
+    /// SwiftUI `ScrollViewProxy.scrollTo` (section M). `anchor` is a unit point; absent means top-leading.
+    #[serde(rename = "scroll_to_id")]
+    ScrollToId {
+        scroll: String,
+        target: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        anchor: Option<[f64; 2]>,
+    },
     /// Lifecycle event (`bundle.loaded`, `bundle.reloaded`, `bundle.error`, `refresh.applied`).
     Event { name: String, #[serde(default)] detail: serde_json::Value },
     /// React Native native-module inventory, once after boot (same shape as the API's `modules.list`).
@@ -154,6 +162,23 @@ pub struct Viewport {
     pub height: f64,
 }
 
+/// One `GeometryReader` box the host reports back (section M), in points.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct GeoBox {
+    pub width: f64,
+    pub height: f64,
+    pub x: f64,
+    pub y: f64,
+    #[serde(rename = "safeTop", default)]
+    pub safe_top: f64,
+    #[serde(rename = "safeBottom", default)]
+    pub safe_bottom: f64,
+    #[serde(rename = "safeLeading", default)]
+    pub safe_leading: f64,
+    #[serde(rename = "safeTrailing", default)]
+    pub safe_trailing: f64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TouchPhase {
@@ -199,6 +224,11 @@ pub enum HostMessage {
     Gesture(GestureTouch),
     /// React Native layout frames `tag -> [x, y, w, h]` in page points.
     Layout { frames: std::collections::BTreeMap<String, [f64; 4]> },
+    /// SwiftUI `GeometryReader` correction (section M). One frame per geometry node id.
+    Geometry { frames: std::collections::BTreeMap<String, GeoBox> },
+    /// SwiftUI `.scrollPosition` writeback: the id of the topmost visible anchored view, or null.
+    #[serde(rename = "scroll_position")]
+    ScrollPosition { scroll: String, target: Option<String> },
     /// React Native: host focus moved to / away from the text input `tag`.
     Focus { tag: u64 },
     Blur { tag: u64 },
@@ -323,6 +353,24 @@ mod tests {
         let g: GuestMessage = serde_json::from_str(r#"{"type":"scroll_to","tag":3,"x":0,"y":"end"}"#).unwrap();
         let GuestMessage::ScrollTo { tag: 3, x, y } = g else { panic!() };
         assert_eq!((x.resolve(10.0), y.resolve(10.0)), (0.0, 10.0));
+        let sid = GuestMessage::ScrollToId { scroll: "0".into(), target: "row".into(), anchor: Some([0.5, 0.0]) };
+        let sj = serde_json::to_string(&sid).unwrap();
+        assert_eq!(sj, r#"{"type":"scroll_to_id","scroll":"0","target":"row","anchor":[0.5,0.0]}"#);
+        assert_eq!(serde_json::from_str::<GuestMessage>(&sj).unwrap(), sid);
+        let geo = HostMessage::Geometry {
+            frames: [("g".into(), GeoBox { width: 100.0, height: 80.0, x: 16.0, y: 62.0, safe_top: 62.0, safe_bottom: 34.0, safe_leading: 0.0, safe_trailing: 0.0 })].into(),
+        };
+        let gj = serde_json::to_string(&geo).unwrap();
+        assert_eq!(gj, r#"{"type":"geometry","frames":{"g":{"width":100.0,"height":80.0,"x":16.0,"y":62.0,"safeTop":62.0,"safeBottom":34.0,"safeLeading":0.0,"safeTrailing":0.0}}}"#);
+        assert_eq!(serde_json::from_str::<HostMessage>(&gj).unwrap(), geo);
+        let sp = HostMessage::ScrollPosition { scroll: "0".into(), target: Some("row".into()) };
+        let pj = serde_json::to_string(&sp).unwrap();
+        assert_eq!(pj, r#"{"type":"scroll_position","scroll":"0","target":"row"}"#);
+        assert_eq!(serde_json::from_str::<HostMessage>(&pj).unwrap(), sp);
+        assert_eq!(
+            serde_json::from_str::<HostMessage>(r#"{"type":"scroll_position","scroll":"0","target":null}"#).unwrap(),
+            HostMessage::ScrollPosition { scroll: "0".into(), target: None }
+        );
         assert_eq!(
             serde_json::to_string(&HostMessage::TextInput { field: 4, version: 2, text: "hi".into() }).unwrap(),
             r#"{"type":"text_input","field":4,"version":2,"text":"hi"}"#

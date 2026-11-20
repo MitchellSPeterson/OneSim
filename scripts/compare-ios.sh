@@ -29,11 +29,13 @@ app="$guests/showcase"
 tabs="$guests/tabs"
 gest="$guests/gestures"
 shp="$guests/shapes"
+layout="$guests/layout"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
   scripts/build-swift-app.sh examples/swiftui-tabs "$tabs"
   scripts/build-swift-app.sh examples/swiftui-gestures "$gest"
   scripts/build-swift-app.sh examples/swiftui-shapes "$shp"
+  scripts/build-swift-app.sh examples/swiftui-layout "$layout"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
 # (docs/compatibility/versions.json): 26.5 on the iPhone 17 Pro in tests/fixtures/, 27.2 on the iPhone 18 Pro
@@ -118,6 +120,14 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     sshot shapes-dark --dark
     echo "== SwiftUI shapes (swiftui-shapes, iOS $ios)"
     python3 scripts/compare_ios.py $fx/swiftui-shapes-ios "$sout/onesim" "$sout" || rc=1
+    # SwiftUI layout: tests/fixtures/swiftui-layout-ios (see its README). Pages are 320pt; --scroll does not tick.
+    lout=$out/swiftui-layout; mkdir -p "$lout/onesim"
+    lshot() { local name=$1; shift; ./target/debug/onesim run "$layout" "${base[@]}" "$@" --screenshot "$lout/onesim/$name.png" >/dev/null; }
+    lshot layout
+    lshot layout-dark --dark
+    lshot layout-paged --scroll 201,658,320,0
+    echo "== SwiftUI layout (swiftui-layout, iOS $ios)"
+    python3 scripts/compare_ios.py $fx/swiftui-layout-ios "$lout/onesim" "$lout" || rc=1
   fi
   # React Native / Expo showcase: tests/fixtures/rn-showcase-ios (see its README). Needs node + `npm install` in the example.
   if want expo; then

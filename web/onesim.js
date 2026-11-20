@@ -126,6 +126,35 @@ export class OneSim {
     return this;
   }
 
+  /**
+   * React Native mode (the guest runs in a Worker, web/expo/guest.js): like `init`, but nothing draws until the
+   * guest's first tree arrives through `receive`. `android` picks the Android look and device.
+   */
+  initRn({ device, width, height, scale, dark = false, android = false } = {}) {
+    const devs = this.devices, dev = devs.find((d) => (device === undefined ? d.android === android : d.name === device));
+    if (!dev || this.wasm.simcore_web_set_device(this.#put(dev.name)) !== 0) throw new Error(`unknown device ${JSON.stringify(device)}`);
+    width ??= dev.width; height ??= dev.height; scale ??= dev.scale;
+    Object.assign(this, { width, height, scale });
+    if (this.wasm.simcore_web_rn_init(width, height, scale, dark ? 1 : 0, android ? 1 : 0) !== 0) throw new Error("simcore_web_rn_init failed");
+    return this;
+  }
+  /** A guest message (protocol section H). True if the frame changed (present it). */
+  receive(msg) {
+    const r = this.wasm.simcore_web_rn_receive(this.#put(JSON.stringify(msg)));
+    if (r < 0) throw new Error(dec.decode(this.#take()));
+    return r === 1;
+  }
+  /** An image file the guest wrote (PNG/JPEG bytes at the path its tree names). True if it decoded (frame redrawn). */
+  putImage(path, bytes) {
+    const p = enc.encode(path), ptr = this.wasm.simcore_web_buf(p.length + 1 + bytes.length), b = new Uint8Array(this.mem, ptr, p.length + 1 + bytes.length);
+    b.set(p); b[p.length] = 0; b.set(bytes, p.length + 1);
+    return this.wasm.simcore_web_put_image(b.length) === 1;
+  }
+  /** Host messages waiting for the guest (post each to it); empties the queue. */
+  outbox() {
+    return this.wasm.simcore_web_rn_outbox() > 0 ? JSON.parse(dec.decode(this.#take())) : [];
+  }
+
   /** Dynamic Type size: xSmall ... large (default) ... xxxLarge, accessibility1 ... accessibility5. */
   setDynamicType(size) {
     const i = DYNAMIC_TYPE.indexOf(size);

@@ -5,10 +5,12 @@
 //! JS drives it through the `simcore_web_*` exports at the bottom; input goes through
 //! `onesim_render::Interaction` (the same state machine as the native host) and its effects
 //! call the Swift callbacks directly.
-use onesim_protocol::{Appearance, DynamicTypeSize, IosVersion, KeyboardEvent, PointerEvent, PointerKind, ViewNode};
+use onesim_protocol::{Appearance, DynamicTypeSize, GuestMessage, HostMessage, IosVersion, KeyboardEvent, PointerEvent, PointerKind, Viewport, ViewNode};
 #[cfg(not(all(target_family = "wasm", feature = "js-guest")))]
 use onesim_protocol::TouchPhase;
-use onesim_render::{build_scene, Builder, device, render, resolve_label, Device, DEFAULT_DEVICE, DEVICES, DragPhase, Effect, Fonts, Interaction, Scene, SceneParams};
+use onesim_render::rn_input::{effect_messages, Out, RnCtx, RnInput};
+use onesim_render::display::DisplayList;
+use onesim_render::{build_scene, Builder, device, look, render, resolve_label, Device, DEFAULT_DEVICE, DEVICES, DragPhase, Effect, Fonts, Interaction, Scene, SceneParams};
 use std::cell::RefCell;
 use std::ffi::{c_char, c_void, CStr, CString};
 
@@ -16,7 +18,7 @@ pub type ActionCb = Option<unsafe extern "C" fn(*mut c_void, u64)>;
 pub type TextCb = Option<unsafe extern "C" fn(*mut c_void, u64, *const c_char)>;
 pub type EnvCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char, f64, f64)>;
 pub type GestureCb = Option<unsafe extern "C" fn(*mut c_void, i32, f64, *const f64, usize, *const *const c_char, *const f64, usize)>;
-pub type LayoutCb = Option<unsafe extern "C" fn(*mut c_void, *const *const c_char, *const f64, usize)>;
+pub type LayoutCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char)>;
 
 struct State {
     ctx: usize,
@@ -50,8 +52,21 @@ struct State {
     /// Persistent so successive display lists only carry new resources; reset whenever the consumer changes.
     builder: Builder,
     dl: Vec<u8>,
+    /// The latest display list until JS reads it (`simcore_web_dl_ptr`): a newer frame drawn first carries its
+    /// resource changes on, since the builder sends each resource once.
+    unread: Option<DisplayList>,
     /// Scratch buffer shared with JS (inputs: label/key text; outputs: inspect JSON, find result).
     buf: Vec<u8>,
+    /// React Native mode (`simcore_web_rn_init`): no Swift callbacks; the page relays messages to the guest Worker.
+    rn: Option<Rn>,
+}
+
+/// React Native mode: input state shared with the native host, and the host messages (docs/protocol.md section H)
+/// waiting for the page to post them to the guest (`simcore_web_rn_outbox`).
+#[derive(Default)]
+struct Rn {
+    input: RnInput,
+    outbox: Vec<HostMessage>,
 }
 
 thread_local! {
@@ -59,7 +74,7 @@ thread_local! {
     static STATE: RefCell<State> = RefCell::new(State {
         ctx: 0, on_action: None, on_env: None, on_text: None, on_gesture: None, on_layout: None, in_layout: false, version: None, tree: None, scene: None,
         fonts: None, device: device(DEFAULT_DEVICE).unwrap(), viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios27, inter: Interaction::default(),
-        stale: false, initialized: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), output: 0, builder: Builder::new(), dl: Vec::new(), buf: Vec::new(),
+        stale: false, initialized: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), output: 0, builder: Builder::new(), dl: Vec::new(), unread: None, buf: Vec::new(), rn: None,
     });
     static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
 }
@@ -88,13 +103,27 @@ fn draw(s: &mut State) {
     };
     let scene = build_scene(root, &params, fonts);
     if s.output == 1 {
-        let list = s.builder.build(&scene, fonts, s.scale);
+        let mut list = s.builder.build(&scene, fonts, s.scale);
+        if let Some(old) = s.unread.take() {
+            // The executor frees `dropped`, then adds `added`: keep what the old list added unless this one drops it.
+            let added_ids: Vec<u64> = old.added.iter().map(|r| r.id).collect();
+            let mut added: Vec<_> = old.added.into_iter().filter(|r| !list.dropped.contains(&r.id)).collect();
+            list.dropped.retain(|id| !added_ids.contains(id));
+            list.dropped.extend(old.dropped);
+            added.append(&mut list.added);
+            list.added = added;
+        }
         s.fb_size = (list.width, list.height);
         s.dl = list.encode();
+        s.unread = Some(list);
     } else {
         let pm = render(&scene, fonts, s.scale);
         s.fb_size = (pm.width(), pm.height());
         s.fb = pm.take(); // opaque full-screen scene: premultiplied == straight RGBA
+    }
+    // React Native lays out on the host: the guest learns every frame change (`layout`), as from the native host.
+    if let Some(rn) = s.rn.as_mut() {
+        rn.outbox.extend(rn.input.layout(&scene));
     }
     s.scene = Some(scene);
     s.stale = false;
@@ -126,10 +155,8 @@ fn submit(json: &[u8], version: u64) -> Result<(), String> {
         Ok(None)
     })?;
     if let Some((cb, ctx, frames)) = pending {
-        let keys: Vec<CString> = frames.keys().map(|k| CString::new(k.replace('\0', "")).unwrap_or_default()).collect();
-        let key_ptrs: Vec<*const c_char> = keys.iter().map(|k| k.as_ptr()).collect();
-        let coords: Vec<f64> = frames.values().flat_map(|f| *f).collect();
-        unsafe { cb(ctx as *mut c_void, key_ptrs.as_ptr(), coords.as_ptr(), keys.len()) };
+        let line = CString::new(serde_json::json!({"type": "layout", "frames": frames}).to_string()).unwrap_or_default();
+        unsafe { cb(ctx as *mut c_void, line.as_ptr()) };
         STATE.with(|s| s.borrow_mut().in_layout = false);
     }
     Ok(())
@@ -161,10 +188,19 @@ pub extern "C" fn simcore_runtime_set_gesture_callback(on_gesture: GestureCb) {
     STATE.with(|s| s.borrow_mut().on_gesture = on_gesture);
 }
 
-/// Optional section M layout callback (same ctx as the action callback); called when custom SwiftUI shapes need `path(in:)`.
+/// Optional section N layout callback (same ctx as the action callback); called when custom SwiftUI shapes need `path(in:)`.
 #[no_mangle]
 pub extern "C" fn simcore_runtime_set_layout_callback(on_layout: LayoutCb) {
     STATE.with(|s| s.borrow_mut().on_layout = on_layout);
+}
+
+/// Web has no host pipe. Guest `scroll_to_id` lines are dropped.
+///
+/// # Safety
+/// `line` is unused.
+#[no_mangle]
+pub unsafe extern "C" fn simcore_send_line(_line: *const c_char) -> i32 {
+    0
 }
 
 /// # Safety
@@ -303,6 +339,20 @@ pub extern "C" fn simcore_web_init(width: f64, height: f64, scale: f64, dark: i3
 
 /// Push the environment to the guest (as the native host does); the guest re-submits its tree.
 fn push_environment() -> i32 {
+    let rn = with(|s| {
+        let (dark, vp, dt) = (s.dark, s.viewport, s.dynamic_type);
+        let rn = s.rn.as_mut()?;
+        rn.outbox.push(HostMessage::Environment {
+            appearance: if dark { Appearance::Dark } else { Appearance::Light },
+            viewport: Viewport { width: vp.0, height: vp.1 },
+            dynamic_type_size: (dt != DynamicTypeSize::Large).then_some(dt),
+        });
+        Some(())
+    });
+    if rn.is_some() {
+        with(draw); // the viewport is the host's: lay out now, the guest re-renders after
+        return 0;
+    }
     #[cfg(all(target_family = "wasm", feature = "js-guest"))]
     {
         let (dark, vp, safe_top, safe_bottom) = with(|s| {
@@ -341,7 +391,7 @@ pub extern "C" fn simcore_web_set_dark(dark: i32) -> i32 {
 pub extern "C" fn simcore_web_set_dynamic_type(index: i32) -> i32 {
     with(|s| s.dynamic_type = DynamicTypeSize::from_index(index.max(0) as usize));
     // Before `init` there is no guest yet; the size is picked up by the first render.
-    if with(|s| s.on_env.is_some() || s.initialized) { push_environment() } else { 0 }
+    if with(|s| s.on_env.is_some() || s.initialized || s.rn.is_some()) { push_environment() } else { 0 }
 }
 
 /// Simulated iOS release by index into `IosVersion::ALL` (0 = 26.5, 1 = 27.2); out of range = newest.
@@ -377,6 +427,15 @@ pub extern "C" fn simcore_web_set_scale(scale: f64) {
 fn dispatch(e: Effect) -> i32 {
     #[cfg(not(all(target_family = "wasm", feature = "js-guest")))]
     let (ctx, on_action, on_text) = with(|s| (s.ctx, s.on_action, s.on_text));
+    if !matches!(e, Effect::None | Effect::Redraw) && with(|s| s.rn.is_some()) {
+        return with(|s| {
+            if let Some(rn) = s.rn.as_mut() {
+                rn.outbox.extend(effect_messages(e));
+            }
+            draw(s); // focus/press state may have changed; the guest's answer arrives as a new tree
+            1
+        });
+    }
     match e {
         Effect::None => return 0,
         Effect::Redraw => with(draw),
@@ -441,14 +500,51 @@ pub extern "C" fn simcore_web_pointer(kind: i32, x: f64, y: f64) -> i32 {
         1 => PointerKind::Up,
         _ => PointerKind::Click,
     };
-    let e = with(|s| s.scene.as_ref().map(|sc| s.inter.pointer(sc, PointerEvent::new(kind, x, y))));
-    e.map_or(0, dispatch)
+    rn_pointer(PointerEvent::new(kind, x, y)).unwrap_or_else(|| {
+        let e = with(|s| s.scene.as_ref().map(|sc| s.inter.pointer(sc, PointerEvent::new(kind, x, y))));
+        e.map_or(0, dispatch)
+    })
+}
+
+/// React Native mode: deliver `out` (messages to the outbox, native-control effects through `dispatch`) and redraw.
+fn deliver(out: Vec<Out>) -> i32 {
+    let any = !out.is_empty();
+    for o in out {
+        match o {
+            Out::Send(m, _) => with(|s| s.rn.as_mut().map_or((), |rn| rn.outbox.push(m))),
+            Out::Effect(e) => drop(dispatch(e)),
+        }
+    }
+    with(draw); // scroll offsets, focus and the keyboard are host state
+    i32::from(any)
+}
+
+/// Run `f` against the React Native input state, the interaction and the current scene and tree.
+/// `None` outside React Native mode or before the first tree.
+fn with_rn<R>(f: impl FnOnce(&mut RnInput, &mut Interaction, &RnCtx) -> R) -> Option<R> {
+    with(|s| {
+        let rn = s.rn.as_mut()?;
+        let (scene, root) = (s.scene.as_ref()?, s.tree.as_ref()?);
+        let cx = RnCtx { scene, root, keyboard: look::keyboard_height(s.device, s.ios) };
+        Some(f(&mut rn.input, &mut s.inter, &cx))
+    })
+}
+
+fn rn_pointer(ev: PointerEvent) -> Option<i32> {
+    if with(|s| s.rn.is_none()) {
+        return None;
+    }
+    let out = with_rn(|rn, inter, cx| rn.pointer(inter, cx, ev).2)?;
+    Some(deliver(out))
 }
 
 /// Scroll the scroller under (x, y) by (dx, dy) points; positive dy reveals later content.
 #[no_mangle]
 pub extern "C" fn simcore_web_scroll(x: f64, y: f64, dx: f64, dy: f64) -> i32 {
     let ev = PointerEvent::moved(PointerKind::Scroll, x, y, dx, dy);
+    if let Some(r) = rn_pointer(ev) {
+        return r;
+    }
     let e = with(|s| s.scene.as_ref().map(|sc| s.inter.pointer(sc, ev)));
     e.map_or(0, dispatch)
 }
@@ -463,6 +559,9 @@ pub extern "C" fn simcore_web_drag(phase: i32, x: f64, y: f64, t: f64) -> i32 {
         1 => DragPhase::Move,
         _ => DragPhase::End,
     };
+    if let Some(Some(out)) = with_rn(|rn, inter, cx| rn.drag(inter, cx.scene, phase, x, y, t)) {
+        return deliver(out);
+    }
     let e = with(|s| s.scene.as_ref().map(|sc| s.inter.drag(sc, phase, x, y, t)));
     e.map_or(0, dispatch)
 }
@@ -489,13 +588,19 @@ pub extern "C" fn simcore_web_tick(dt_ms: f64) -> i32 {
 /// 0 if ignored, -1 if no field is focused.
 #[no_mangle]
 pub extern "C" fn simcore_web_key(kind: i32, len: usize) -> i32 {
-    let e = with(|s| {
-        let payload = String::from_utf8_lossy(&s.buf[..len.min(s.buf.len())]).into_owned();
-        let ev = match (kind, payload.as_str()) {
-            (0 | 2, _) => KeyboardEvent::Text { text: payload },
-            (1, "backspace" | "enter") => KeyboardEvent::Key { key: payload },
-            _ => return Ok(Effect::None),
+    let payload = with(|s| String::from_utf8_lossy(&s.buf[..len.min(s.buf.len())]).into_owned());
+    let ev = match (kind, payload.as_str()) {
+        (0 | 2, _) => KeyboardEvent::Text { text: payload },
+        (1, "backspace" | "enter") => KeyboardEvent::Key { key: payload },
+        _ => return 0,
+    };
+    if with(|s| s.rn.is_some()) {
+        return match with_rn(|rn, inter, cx| rn.keyboard(inter, cx, ev)) {
+            Some(Ok(out)) => deliver(out),
+            _ => -1,
         };
+    }
+    let e = with(|s| {
         let sc = s.scene.as_ref().ok_or("no scene")?;
         let r = s.inter.keyboard(sc, ev);
         if let (2, Ok(Effect::TextInput { text, .. })) = (kind, &r) {
@@ -573,6 +678,7 @@ pub extern "C" fn simcore_web_set_output(mode: i32) -> i32 {
     with(|s| {
         s.output = mode;
         s.builder.reset();
+        s.unread = None;
         if mode == 1 {
             s.fb = Vec::new();
         } else {
@@ -585,7 +691,10 @@ pub extern "C" fn simcore_web_set_output(mode: i32) -> i32 {
 /// Encoded display list of the latest frame (output mode 1); valid until the next draw.
 #[no_mangle]
 pub extern "C" fn simcore_web_dl_ptr() -> *const u8 {
-    with(|s| s.dl.as_ptr())
+    with(|s| {
+        s.unread = None; // the consumer has it now
+        s.dl.as_ptr()
+    })
 }
 #[no_mangle]
 pub extern "C" fn simcore_web_dl_len() -> usize {
@@ -616,6 +725,101 @@ pub extern "C" fn simcore_web_tree_ptr() -> *const u8 {
 #[no_mangle]
 pub extern "C" fn simcore_web_tree_len() -> usize {
     with(|s| s.tree_json.len())
+}
+
+// ---- React Native (the guest runs in a browser Worker; docs/web.md) ----------------------------------------------
+
+/// Switch to React Native mode and set the screen: `width` x `height` points, `scale`, `dark`, `android` (1 = the
+/// default Android device unless `simcore_web_set_device` chose one). Nothing draws until the guest's first tree
+/// (`simcore_web_rn_receive`). Call once instead of `simcore_web_init`.
+#[no_mangle]
+pub extern "C" fn simcore_web_rn_init(width: f64, height: f64, scale: f64, dark: i32, android: i32) -> i32 {
+    with(|s| {
+        s.viewport = (width.max(1.0), height.max(1.0));
+        s.scale = scale.clamp(1.0, 4.0);
+        s.dark = dark != 0;
+        if (android != 0) != s.device.android {
+            s.device = device(if android != 0 { onesim_render::DEFAULT_ANDROID_DEVICE } else { DEFAULT_DEVICE }).unwrap();
+        }
+        s.rn = Some(Rn::default());
+    });
+    0
+}
+
+/// One guest message (docs/protocol.md section H, JSON, `len` bytes in the scratch buffer). A `tree` is drawn;
+/// `focus_request` / `scroll_to` are applied. Returns 1 if the frame changed, 0 if not (other messages are the
+/// page's), -1 on a bad message or a stale tree version (the reason is in the scratch buffer).
+#[no_mangle]
+pub extern "C" fn simcore_web_rn_receive(len: usize) -> i32 {
+    let msg = with(|s| serde_json::from_slice::<GuestMessage>(&s.buf[..len.min(s.buf.len())]));
+    let fail = |m: String| {
+        with(|s| s.buf = m.into_bytes());
+        -1
+    };
+    match msg {
+        Err(e) => fail(format!("bad guest message: {e}")),
+        Ok(GuestMessage::Tree { version, root }) => {
+            let stale = with(|s| s.version.is_some_and(|v| version <= v));
+            if stale {
+                return fail("tree version must increase monotonically".into());
+            }
+            with(|s| {
+                s.version = Some(version);
+                s.inter.version = version;
+                s.tree_json = serde_json::to_string(&root).unwrap_or_default();
+                s.tree = Some(root);
+                draw(s);
+            });
+            rn_requests(vec![]); // drop the focus of a field that is gone
+            1
+        }
+        Ok(m @ (GuestMessage::FocusRequest { .. } | GuestMessage::ScrollTo { .. })) => rn_requests(vec![m]),
+        // A new guest instance (first start or reload): it knows no frames yet and has no touch in progress.
+        Ok(GuestMessage::Hello { .. }) => with(|s| {
+            if let Some(rn) = s.rn.as_mut() {
+                rn.input = RnInput::default();
+            }
+            0
+        }),
+        Ok(_) => 0,
+    }
+}
+
+fn rn_requests(requests: Vec<GuestMessage>) -> i32 {
+    match with_rn(|rn, inter, cx| rn.apply_requests(inter, cx, requests)) {
+        Some((true, out)) => {
+            deliver(out);
+            1
+        }
+        Some((false, out)) => deliver(out),
+        None => 0,
+    }
+}
+
+/// An image file the guest wrote (React Native `Image` sources are cached as files): the scratch buffer holds the path,
+/// a NUL byte, then the PNG or JPEG bytes (`len` in all). Redraws so the image shows. 1 if it decoded, else 0.
+#[no_mangle]
+pub extern "C" fn simcore_web_put_image(len: usize) -> i32 {
+    let ok = with(|s| {
+        let b = &s.buf[..len.min(s.buf.len())];
+        let Some(nul) = b.iter().position(|&c| c == 0) else { return false };
+        onesim_render::put_image(&String::from_utf8_lossy(&b[..nul]), &b[nul + 1..])
+    });
+    if ok {
+        with(draw);
+    }
+    i32::from(ok)
+}
+
+/// Move the host messages waiting for the guest into the scratch buffer as a JSON array; returns how many.
+/// The page posts each one to the guest Worker.
+#[no_mangle]
+pub extern "C" fn simcore_web_rn_outbox() -> i32 {
+    with(|s| {
+        let out = s.rn.as_mut().map(|rn| std::mem::take(&mut rn.outbox)).unwrap_or_default();
+        s.buf = serde_json::to_vec(&out).unwrap_or_default();
+        out.len() as i32
+    })
 }
 
 #[cfg(test)]
@@ -669,6 +873,13 @@ mod tests {
         simcore_web_set_scale(3.0);
         let again = dl();
         assert!(again.added.is_empty(), "resources are not re-sent: {}", again.added.len());
+        // Frames drawn but never read (several guest updates between presents) pass their resources on.
+        let _ = dl(); // the consumer has the 3x resources
+        simcore_web_set_scale(2.0); // drawn, never read: the 2x sprites are first sent here
+        simcore_web_set_scale(2.0); // the same frame again: nothing new by itself
+        assert!(!dl().added.is_empty(), "the unread frame's resources are carried over");
+        simcore_web_set_scale(3.0);
+        let _ = dl();
         // Reset (new consumer): everything used is sent again.
         assert_eq!(simcore_web_set_output(1), 0);
         let reset = dl();
@@ -731,6 +942,48 @@ mod tests {
         assert_eq!(simcore_web_scroll(200.0, 400.0, 0.0, 50.0), 0, "nothing scrollable");
         buf("hi");
         assert_eq!(simcore_web_key(0, 2), -1, "no focus");
+    }
+
+    #[test]
+    fn react_native_mode_relays_trees_and_touches() {
+        let buf = |t: &str| unsafe { std::slice::from_raw_parts_mut(simcore_web_buf(t.len()), t.len()) }.copy_from_slice(t.as_bytes());
+        let outbox = || {
+            let n = simcore_web_rn_outbox();
+            let v: Vec<serde_json::Value> = with(|s| serde_json::from_slice(&s.buf).unwrap());
+            assert_eq!(v.len() as i32, n);
+            v
+        };
+        assert_eq!(simcore_web_rn_init(402.0, 874.0, 1.0, 0, 0), 0);
+        let tree = r#"{"type":"tree","version":7,"root":{"kind":"rn","id":"1","component":"RootView","props":{},"children":[
+            {"kind":"rn","id":"2","component":"RCTView","props":{"flex":1,"paddingTop":100},"children":[
+              {"kind":"rn","id":"3","component":"RCTView","props":{"height":60,"backgroundColor":4278222079},"children":[]}]}]}}"#;
+        buf(tree);
+        assert_eq!(simcore_web_rn_receive(tree.len()), 1, "a tree draws");
+        assert_eq!(simcore_web_fb_width(), 402);
+        let first = outbox();
+        assert_eq!(first.len(), 1);
+        assert_eq!((first[0]["type"].as_str(), first[0]["frames"]["3"][3].as_f64()), (Some("layout"), Some(60.0)));
+        assert!(outbox().is_empty(), "drained");
+        // A tap on the tagged view is a touch start + end for the guest, not a Swift callback.
+        assert_eq!(simcore_web_pointer(2, 200.0, 130.0), 1);
+        let touches: Vec<_> = outbox().iter().map(|m| (m["type"].clone(), m["phase"].clone(), m["tag"].clone())).collect();
+        assert_eq!(touches, vec![("touch".into(), "start".into(), 3.into()), ("touch".into(), "end".into(), 3.into())]);
+        // The same tree version again is stale; a bad message is reported.
+        buf(tree);
+        assert_eq!(simcore_web_rn_receive(tree.len()), -1);
+        buf("{}");
+        assert_eq!(simcore_web_rn_receive(2), -1);
+        assert!(with(|s| String::from_utf8_lossy(&s.buf).contains("bad guest message")));
+        // A restarted guest (hello) gets every frame again with its first tree.
+        buf(r#"{"type":"hello","protocol":1}"#);
+        assert_eq!(simcore_web_rn_receive(29), 0);
+        let again = tree.replace(r#""version":7"#, r#""version":8"#);
+        buf(&again);
+        assert_eq!(simcore_web_rn_receive(again.len()), 1);
+        assert_eq!(outbox()[0]["frames"]["3"][3].as_f64(), Some(60.0), "layout resent after a restart");
+        // Environment changes go to the guest.
+        assert_eq!(simcore_web_set_dark(1), 0);
+        assert_eq!(outbox()[0]["type"], "environment");
     }
 
     #[test]

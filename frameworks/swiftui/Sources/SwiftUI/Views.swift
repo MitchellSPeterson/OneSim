@@ -279,20 +279,3 @@ public struct PinnedScrollableViews: OptionSet {
     public static let sectionHeaders = PinnedScrollableViews(rawValue: 1)
     public static let sectionFooters = PinnedScrollableViews(rawValue: 2)
 }
-
-/// Plain `VStack`/`HStack` (everything is laid out eagerly; `pinnedViews` is ignored).
-public struct LazyVStack<Content: View>: View {
-    let alignment: HorizontalAlignment, spacing: CGFloat?, content: Content
-    public init(alignment: HorizontalAlignment = .center, spacing: CGFloat? = nil, pinnedViews: PinnedScrollableViews = [], @ViewBuilder content: () -> Content) {
-        self.alignment = alignment; self.spacing = spacing; self.content = content()
-    }
-    public var body: some View { VStack(alignment: alignment, spacing: spacing) { content } }
-}
-
-public struct LazyHStack<Content: View>: View {
-    let alignment: VerticalAlignment, spacing: CGFloat?, content: Content
-    public init(alignment: VerticalAlignment = .center, spacing: CGFloat? = nil, pinnedViews: PinnedScrollableViews = [], @ViewBuilder content: () -> Content) {
-        self.alignment = alignment; self.spacing = spacing; self.content = content()
-    }
-    public var body: some View { HStack(alignment: alignment, spacing: spacing) { content } }
-}

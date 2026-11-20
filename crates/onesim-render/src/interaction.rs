@@ -200,6 +200,79 @@ pub fn step(mut o: f64, mut v: f64, max: f64, dt: f64, to: Option<f64>) -> (f64,
     (o, v)
 }
 
+/// Paging rest offsets: `0, page, 2*page, ...` up to `max`, plus `max` when it is not already a stop.
+pub fn page_stops(page: f64, max: f64) -> Vec<f64> {
+    if page <= 0.0 {
+        return if max > 0.0 { vec![0.0, max] } else { vec![0.0] };
+    }
+    let mut stops = Vec::new();
+    let mut x = 0.0;
+    let mut guard = 0;
+    while x <= max && guard < 100_000 {
+        stops.push(x);
+        x += page;
+        guard += 1;
+    }
+    if stops.last().is_none_or(|s| (max - *s).abs() > 0.5) {
+        stops.push(max);
+    }
+    stops
+}
+
+/// Closest stop. Ties go to the lower stop.
+pub fn nearest_stop(offset: f64, stops: &[f64]) -> f64 {
+    let Some(&first) = stops.first() else { return offset };
+    let mut best = first;
+    let mut best_d = (offset - best).abs();
+    for &s in stops.iter().skip(1) {
+        let d = (offset - s).abs();
+        if d < best_d || ((d - best_d).abs() <= 1e-9 && s < best) {
+            best = s;
+            best_d = d;
+        }
+    }
+    best
+}
+
+/// Offset that puts `content` (a target's position in the scrolled content) at the same anchor as the viewport.
+pub fn scroll_anchor_offset(content: f64, viewport: f64, target: f64, anchor: f64, max: f64) -> f64 {
+    (content - (viewport - target) * anchor).clamp(0.0, max)
+}
+
+/// Rest stops for a paging or view-aligned scroller. Empty when it has neither.
+fn scroll_rest_stops(scene: &Scene, index: usize) -> Vec<f64> {
+    let n = &scene.nodes[index];
+    let Some(info) = n.scroll else { return vec![] };
+    let (_, max, ..) = axis(n, info.offset, 0.0, 0.0);
+    if let Some(page) = info.page {
+        return page_stops(page, max);
+    }
+    if !info.aligned {
+        return vec![];
+    }
+    let mut stops = vec![0.0];
+    let base = if info.vertical { n.bounds.y } else { n.bounds.x };
+    let off = if info.vertical { info.offset.1 } else { info.offset.0 };
+    for (j, t) in scene.nodes.iter().enumerate() {
+        if j == index || !t.scroll_target || !under(scene, j, index) {
+            continue;
+        }
+        let main = if info.vertical { t.bounds.y } else { t.bounds.x };
+        stops.push((main - base + off).clamp(0.0, max));
+    }
+    stops
+}
+
+fn under(scene: &Scene, mut i: usize, ancestor: usize) -> bool {
+    while let Some(p) = scene.nodes[i].parent {
+        if p == ancestor {
+            return true;
+        }
+        i = p;
+    }
+    false
+}
+
 impl Interaction {
     pub fn has_drag_target(&self) -> bool {
         self.slider_drag.is_some() || self.drag.is_some()
@@ -392,14 +465,23 @@ impl Interaction {
                     (Some(a), true) if t > a.0 => -(d.last - a.1) / ((t - a.0) / 1000.0),
                     _ => 0.0,
                 };
-                let settle = scene.nodes.iter().find(|n| n.id == d.id).is_some_and(|n| {
+                let id = d.id;
+                if let Some((idx, n)) = scene.nodes.iter().enumerate().find(|(_, n)| n.id == id) {
                     let info = n.scroll.expect("scroller");
                     let (o, max, ..) = axis(n, info.offset, x, y);
-                    !(0.0..=max).contains(&o) || info.snap.is_some_and(|s| o > 0.0 && o < s)
-                });
-                // Released past an edge or mid-collapse: settle on the next tick even at zero velocity.
-                if v.abs() >= MIN_V || settle {
-                    self.motion.insert(d.id, (v, None));
+                    let in_title = info.snap.is_some_and(|s| info.vertical && o > 0.0 && o < s);
+                    let outside = !(0.0..=max).contains(&o);
+                    let stops = scroll_rest_stops(scene, idx);
+                    let off_stop = !stops.is_empty() && stops.iter().all(|s| (o - *s).abs() > 0.5);
+                    // A coast keeps today's velocity. At rest, page / view stops win unless a large
+                    // title is mid-collapse or the only thing to settle is an edge.
+                    if v.abs() >= MIN_V || in_title || (outside && !off_stop) {
+                        self.motion.insert(id, (v, None));
+                    } else if off_stop {
+                        self.motion.insert(id, (0.0, Some(nearest_stop(o, &stops))));
+                    } else if outside {
+                        self.motion.insert(id, (v, None));
+                    }
                 }
                 Effect::None
             }
@@ -672,7 +754,7 @@ impl Interaction {
         self.forget_gone(scene);
         let held = self.drag.as_ref().map(|d| d.id.clone());
         let mut moving = false;
-        for n in &scene.nodes {
+        for (i, n) in scene.nodes.iter().enumerate() {
             let Some(info) = n.scroll else { continue };
             if held.as_ref() == Some(&n.id) {
                 continue;
@@ -688,10 +770,19 @@ impl Interaction {
                 None => (o.clamp(0.0, max), 0.0, None),
             };
             // Never at rest mid-collapse of a large title: spring to expanded or collapsed, whichever is nearer.
+            // That wins over paging / viewAligned while the offset is inside the collapse band.
             let snap = info.snap.filter(|&s| info.vertical && to.is_none() && o > 0.0 && o < s);
             if let (0.0, Some(s)) = (v, snap) {
                 self.motion.insert(n.id.clone(), (0.0, Some(if o < s / 2.0 { 0.0 } else { s })));
                 moving = true;
+            } else if v == 0.0 && to.is_none() {
+                let stops = scroll_rest_stops(scene, i);
+                if !stops.is_empty() && stops.iter().all(|s| (o - *s).abs() > 0.5) {
+                    self.motion.insert(n.id.clone(), (0.0, Some(nearest_stop(o, &stops))));
+                    moving = true;
+                } else {
+                    self.motion.remove(&n.id);
+                }
             } else if v == 0.0 {
                 self.motion.remove(&n.id);
             } else {
@@ -857,7 +948,7 @@ mod tests {
         let screen = |with_scroller: bool| {
             let mut n = Node::new("0/s1", "scroll");
             n.bounds = Rect { x: 0.0, y: 0.0, w: 400.0, h: 800.0 };
-            n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, 0.0), max: (0.0, 500.0), snap: None, content: None });
+            n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, 0.0), max: (0.0, 500.0), snap: None, content: None, page: None, aligned: false });
             let nodes = if with_scroller { vec![n] } else { vec![] };
             Scene { size: (400.0, 800.0), appearance: onesim_protocol::Appearance::Light,
                 ios: Default::default(), nodes, unsupported_symbols: vec![], notes: vec![] }
@@ -893,7 +984,7 @@ mod tests {
         let scene = |off: f64| {
             let mut n = Node::new("l", "list");
             n.bounds = Rect { x: 0.0, y: 0.0, w: 400.0, h: 800.0 };
-            n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max: (0.0, 500.0), snap: Some(52.0), content: None });
+            n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max: (0.0, 500.0), snap: Some(52.0), content: None, page: None, aligned: false });
             Scene { size: (400.0, 800.0), appearance: onesim_protocol::Appearance::Light,
                 ios: Default::default(), nodes: vec![n], unsupported_symbols: vec![], notes: vec![] }
         };
@@ -912,6 +1003,112 @@ mod tests {
             }
             assert!((off - want).abs() < 1e-9, "released at {start}: rests at {off}, want {want}");
             assert!(!it.live());
+        }
+    }
+
+    #[test]
+    fn page_stops_include_the_max_offset() {
+        assert_eq!(page_stops(100.0, 250.0), vec![0.0, 100.0, 200.0, 250.0]);
+        assert_eq!(page_stops(100.0, 200.0), vec![0.0, 100.0, 200.0]);
+    }
+
+    #[test]
+    fn nearest_stop_prefers_the_lower_on_a_tie() {
+        let stops = [0.0, 100.0, 200.0, 250.0];
+        assert_eq!(nearest_stop(140.0, &stops), 100.0);
+        assert_eq!(nearest_stop(160.0, &stops), 200.0);
+        assert_eq!(nearest_stop(150.0, &stops), 100.0);
+    }
+
+    #[test]
+    fn scroll_anchor_offset_aligns_and_clamps() {
+        assert_eq!(scroll_anchor_offset(500.0, 200.0, 40.0, 0.0, 800.0), 500.0);
+        assert_eq!(scroll_anchor_offset(500.0, 200.0, 40.0, 0.5, 800.0), 420.0);
+        assert_eq!(scroll_anchor_offset(900.0, 100.0, 20.0, 0.0, 800.0), 800.0);
+    }
+
+    fn paging_scene(off: f64, snap: Option<f64>) -> Scene {
+        use crate::scene::{Node, Rect, ScrollInfo};
+        let mut n = Node::new("s", "scroll");
+        n.bounds = Rect { x: 0.0, y: 0.0, w: 100.0, h: 100.0 };
+        n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max: (0.0, 300.0), snap, content: None, page: Some(100.0), aligned: false });
+        Scene { size: (100.0, 100.0), appearance: onesim_protocol::Appearance::Light, ios: Default::default(), nodes: vec![n], unsupported_symbols: vec![], notes: vec![] }
+    }
+
+    #[test]
+    fn view_aligned_stops_clamp_to_the_max_offset() {
+        use crate::scene::{Node, Rect, ScrollInfo};
+        let mut scroll = Node::new("s", "scroll");
+        scroll.bounds = Rect { x: 0.0, y: 0.0, w: 370.0, h: 72.0 };
+        scroll.scroll = Some(ScrollInfo {
+            vertical: false,
+            offset: (500.0, 0.0),
+            max: (590.0, 0.0),
+            snap: None,
+            content: None,
+            page: None,
+            aligned: true,
+        });
+        let page = |id, content: f64| {
+            let mut n = Node::new(id, "page");
+            n.bounds = Rect { x: content - 500.0, y: 0.0, w: 320.0, h: 72.0 };
+            n.parent = Some(0);
+            n.scroll_target = true;
+            n
+        };
+        let scene = Scene {
+            size: (370.0, 72.0),
+            appearance: onesim_protocol::Appearance::Light,
+            ios: Default::default(),
+            nodes: vec![scroll, page("a", 0.0), page("b", 320.0), page("c", 640.0)],
+            unsupported_symbols: vec![],
+            notes: vec![],
+        };
+        let stops = scroll_rest_stops(&scene, 0);
+        assert!(stops.iter().all(|s| *s <= 590.0), "stops {stops:?} pass the max offset");
+        assert_eq!(nearest_stop(560.0, &stops), 590.0);
+    }
+
+    #[test]
+    fn parked_paging_offset_does_not_snap() {
+        let scene = paging_scene(40.0, None);
+        let mut it = Interaction::default();
+        assert!(!it.tick(&scene, 1.0));
+        assert_eq!(it.scroll.get("s").copied().unwrap_or((0.0, 40.0)).1, 40.0);
+    }
+
+    #[test]
+    fn paging_drag_at_rest_springs_to_the_nearest_stop() {
+        let scene = |off: f64| paging_scene(off, None);
+        let mut it = Interaction::default();
+        it.drag(&scene(40.0), DragPhase::Begin, 10.0, 10.0, 0.0);
+        it.drag(&scene(40.0), DragPhase::End, 10.0, 10.0, 0.0);
+        let mut off = 40.0;
+        for _ in 0..4 {
+            if !it.tick(&scene(off), 1.0) {
+                break;
+            }
+            off = it.scroll["s"].1;
+        }
+        assert!((off - 0.0).abs() < 1e-6, "rests at {off}");
+    }
+
+    #[test]
+    fn title_snap_beats_paging_in_the_collapse_band() {
+        let scene = |off: f64| paging_scene(off, Some(52.0));
+        for (start, want) in [(20.0, 0.0), (40.0, 52.0)] {
+            let mut it = Interaction::default();
+            it.drag(&scene(0.0), DragPhase::Begin, 50.0, 80.0, 0.0);
+            it.drag(&scene(0.0), DragPhase::Move, 50.0, 80.0 - start, 500.0);
+            it.drag(&scene(start), DragPhase::End, 50.0, 80.0 - start, 900.0);
+            let mut off = start;
+            for _ in 0..120 {
+                if !it.tick(&scene(off), 1.0 / 60.0) {
+                    break;
+                }
+                off = it.scroll["s"].1;
+            }
+            assert!((off - want).abs() < 1e-9, "released at {start}: rests at {off}, want {want}");
         }
     }
 }

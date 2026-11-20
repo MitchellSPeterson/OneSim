@@ -55,8 +55,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `RoundedRectangularShape` | 26 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `Scene` | 14 | ✅ |  |  |
 | `SceneAccessoryContent` | 27 | ⬜ |  |  |
-| `ScrollTargetBehavior` | 17 | ⬜ |  |  |
-| `Shape` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) | Custom `path(in:)` evaluated for laid-out bounds (protocol section M) |
+| `ScrollTargetBehavior` | 17 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | `updateTarget` is not called. `.paging` and `.viewAligned` are recognized by type |
+| `Shape` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) | Custom `path(in:)` evaluated for laid-out bounds (protocol section N) |
 | `ShapeView` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) | Supports chained `.fill` / `.stroke` / `.strokeBorder` |
 | `SliderTickContent` | 26 | ⬜ |  |  |
 | `TabContent` | 18 | ⬜ |  |  |

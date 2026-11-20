@@ -39,7 +39,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `AnyLocation` | 13 | ⬜ |  |  |
 | `AnyLocationBase` | 13 | ⬜ |  |  |
 | `AnyNavigationTransition` | 27 | ⬜ |  |  |
-| `AnyScrollTargetBehavior` | 18 | ⬜ |  |  |
+| `AnyScrollTargetBehavior` | 18 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Wrapper only. Does not emit `.paging` or `.viewAligned` |
 | `AnyTabContent` | 18 | ⬜ |  |  |
 | `AnyTransition` | 13 | ⬜ |  |  |
 | `ArrangementViewStyleConfiguration` | 13 | ⬜ |  |  |
@@ -72,7 +72,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ContainerBackgroundPlacement` | 17 | ⬜ |  |  |
 | `ContainerValues` | 18 | ⬜ |  |  |
 | `ContentMarginGuide` | 13 | ⬜ |  |  |
-| `ContentMarginPlacement` | 17 | ⬜ |  |  |
+| `ContentMarginPlacement` | 17 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Accepted. Does not change the insets |
 | `ContentMode` | 13 | ✅ |  |  |
 | `ContentShapeKinds` | 15 | ⬜ |  |  |
 | `ContentSizeCategory` | 13 | ⬜ |  | Deprecated |
@@ -115,7 +115,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `DropSession` | 26 | ⬜ |  |  |
 | `DynamicTypeSize` | 15 | ✅ |  |  |
 | `Edge` | 13 | ✅ |  |  |
-| `EdgeInsets` | 13 | ⬜ |  |  |
+| `EdgeInsets` | 13 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `EditActions` | 16 | ⬜ |  |  |
 | `EditMode` | 13 | ⬜ |  |  |
 | `EmptyAnimatableData` | 13 | ⬜ |  |  |
@@ -153,7 +153,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `FormPresentationSizing` | 18 | ⬜ |  |  |
 | `FormStyleConfiguration` | 16 | ⬜ |  |  |
 | `GaugeStyleConfiguration` | 16 | ⬜ |  |  |
-| `GeometryProxy` | 13 | ⬜ |  |  |
+| `GeometryProxy` | 13 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | `size` and `safeAreaInsets` from the host frame. `frame(in: .local)` origin is zero; `.global` and a named space are the host screen frame |
 | `GestureInputKinds` | 13 | ⬜ |  |  |
 | `GestureMask` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
 | `Glass` | 26 | 🟠 |  | `interactive` has no visual effect |
@@ -161,7 +161,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `GlobalCoordinateSpace` | 17 | ⬜ |  |  |
 | `Gradient` | 13 | ⬜ |  |  |
 | `GraphicsContext` | 15 | ⬜ |  |  |
-| `GridItem` | 14 | ⬜ |  |  |
+| `GridItem` | 14 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `GridLayout` | 16 | ⬜ |  |  |
 | `GroupBoxStyleConfiguration` | 14 | ⬜ |  |  |
 | `HandGestureShortcut` | 18 | ⬜ |  |  |
@@ -223,7 +223,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `OpenURLAction` | 14 | ⬜ |  |  |
 | `OpenWindowAction` | 16 | ⬜ |  |  |
 | `PagePresentationSizing` | 18 | ⬜ |  |  |
-| `PagingScrollTargetBehavior` | 17 | ⬜ |  |  |
+| `PagingScrollTargetBehavior` | 17 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `PaletteSelectionEffect` | 17 | ⬜ |  |  |
 | `PencilDoubleTapGestureValue` | 17.5 | ⬜ |  |  |
 | `PencilHoverPose` | 17.5 | ⬜ |  |  |
@@ -271,19 +271,19 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ScrollContentOffsetAdjustmentBehavior` | 18 | ⬜ |  |  |
 | `ScrollDismissesKeyboardMode` | 16 | ⬜ |  |  |
 | `ScrollGeometry` | 18 | ⬜ |  |  |
-| `ScrollIndicatorVisibility` | 16 | ⬜ |  |  |
+| `ScrollIndicatorVisibility` | 16 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `ScrollInputBehavior` | 18 | ⬜ |  |  |
 | `ScrollInputKind` | 18 | ⬜ |  |  |
 | `ScrollPhase` | 18 | ⬜ |  |  |
 | `ScrollPhaseChangeContext` | 18 | ⬜ |  |  |
 | `ScrollPosition` | 18 | ⬜ |  |  |
-| `ScrollTarget` | 17 | ⬜ |  |  |
-| `ScrollTargetBehaviorContext` | 17 | ⬜ |  |  |
+| `ScrollTarget` | 17 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Value for `updateTarget`, which the host does not call |
+| `ScrollTargetBehaviorContext` | 17 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Only `containerSize` and `axes`. The host does not call `updateTarget` |
 | `ScrollTargetBehaviorProperties` | 18.4 | ⬜ |  |  |
 | `ScrollTargetBehaviorPropertiesContext` | 18.4 | ⬜ |  |  |
 | `ScrollTransitionConfiguration` | 17 | ⬜ |  |  |
 | `ScrollTransitionPhase` | 17 | ⬜ |  |  |
-| `ScrollViewProxy` | 14 | ⬜ |  |  |
+| `ScrollViewProxy` | 14 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | `scrollTo` only. No animation |
 | `SearchFieldPlacement` | 15 | ⬜ |  |  |
 | `SearchPresentationToolbarBehavior` | 17.1 | ⬜ |  |  |
 | `SearchScopeActivation` | 16.4 | ⬜ |  |  |
@@ -401,7 +401,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `VerticalAlignment` | 13 | ✅ |  |  |
 | `VerticalDirection` | 18 | ⬜ |  |  |
 | `VerticalEdge` | 15 | ⬜ |  |  |
-| `ViewAlignedScrollTargetBehavior` | 17 | ⬜ |  |  |
+| `ViewAlignedScrollTargetBehavior` | 17 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | `limitBehavior` is stored and not applied |
 | `ViewBuilder` | 13 | 🟠 |  | Up to 10 children, `if`/`else`, optionals; identity is positional |
 | `ViewDimensions` | 13 | ⬜ |  |  |
 | `ViewSpacing` | 16 | ⬜ |  |  |

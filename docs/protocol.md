@@ -68,7 +68,8 @@ then `dup2(2, 1)`, so app `print()` output goes to stderr and never corrupts the
 wire. Host reads guest stderr into the session's log/errors.
 
 Guest → host:
-- `{"type":"hello","protocol":1}`
+- `{"type":"hello","protocol":1}` — React Native: sent again each time the guest restarts (reload); the host then
+  resends every `layout` frame and forgets the touch in progress
 - `{"type":"tree","version":<u64>,"root":<ViewNode>}`
 - `{"type":"error","message":"..."}`
 
@@ -357,6 +358,8 @@ It loads the app bundle from Metro and runs React Native's own Fabric renderer; 
 `SIMCORE_METRO_URL`, `SIMCORE_PLATFORM` (`ios` or `android`), `SIMCORE_VIEWPORT`, `SIMCORE_APPEARANCE`,
 `SIMCORE_SESSION_ID`, `SIMCORE_SCALE`, and `SIMCORE_INSETS=top,bottom` (profile insets used on Android).
 Optional: `SIMCORE_HMR=1` (connect Metro `/hot`), `SIMCORE_DEBUG=1`.
+`SIMCORE_BUNDLE_URL` loads that prebuilt bundle instead (`npx expo export --platform <p> --no-bytecode --no-minify`,
+the `_expo/static/js/<p>/*.js` file): no manifest, no HMR.
 The guest loads `launchAsset.url` from the Expo manifest at `GET <metro>/` with `expo-platform` set
 to the session platform. Plain Metro uses `/index.bundle?platform=<platform>&dev=true&minify=false`.
 
@@ -649,7 +652,64 @@ shadow pair (the spot shadow shifts down with distance from the top of the scree
 - Input: `click` = `start` + `end` (48 ms apart), `down`/`up` = `start`/`end`, `drag` = `start`, 8 `move`s 16 ms apart, `end`. New pointer kinds `{"kind":"long_press","x","y","duration"?: s}` (default 1 s; the resting finger is reported every 100 ms), `{"kind":"pinch","x","y","scale"}` and `{"kind":"rotate","x","y","degrees"}` (two fingers centred on (x, y), 100 pt apart side by side, spread to `scale` times that or turned clockwise, in 8 steps). Live transports (native window, web) send `start`/`move`/`end` as the finger moves, and report a resting finger every 50 ms (`Interaction::hold`) so a long press fires while held. Synthesized gestures never overlap in time. CLI: `--drag LABEL,DX,DY`, `--long-press LABEL_OR_X,Y`, `--pinch LABEL_OR_X,Y,SCALE`, `--rotate LABEL_OR_X,Y,DEGREES`; a label may also name any text (views with gestures have no control role).
 - Guest semantics (`frameworks/swiftui/Sources/SwiftUI/Gestures.swift`): each sequence builds recognizers from the gestures registered by the latest evaluation. `TapGesture`/`SpatialTapGesture` fail past 10 pt of movement, count taps within 350 ms and 45 pt; `LongPressGesture` reports `true` at touch down and succeeds after `minimumDuration` within `maximumDistance`; `DragGesture` activates at `minimumDistance` (translation from the touch-down point, velocity over the last 100 ms, predicted end 0.25 s of it ahead); `MagnifyGesture`/`RotateGesture` need two fingers and activate past their minimum delta. Exclusive candidates (normal and high-priority gestures) are ranked high-priority ones outermost first, then the rest innermost first: the first to commit (active or ended) wins, the higher-ranked one when several commit on the same event, and the others are cancelled; until then every undecided one shows its progress (a long press's pressing state). Nothing waits for a higher-ranked gesture to fail. Simultaneous gestures always run. Losers and failures reset their `@GestureState`.
 
-## M. v1 additions: SwiftUI shapes and paths (additive, protocol version stays 1)
+## M. v1 additions: SwiftUI grids, lazy stacks, geometry (additive, protocol version stays 1)
+
+Existing `vstack`, `hstack`, and `scroll` documents parse unchanged. New fields are omitted when absent.
+
+### Kinds
+
+| kind | fields |
+|---|---|
+| `grid` | `"alignment"` (default `"center"`), `"horizontalSpacing"?`, `"verticalSpacing"?`, `"rows": [{"alignment"?, "cells": [ViewNode]}]`. Spacing defaults to 8 on the host. Columns are sized from the cells; the grid does not stretch to the proposed width. A cell's `gridCellColumns` modifier is its column span (default 1). |
+| `lazyGrid` | `"axis": "vertical"\|"horizontal"` (`LazyVGrid` is vertical), `"alignment"`, `"spacing"?` (gap between lines; default 8), `"tracks": [GridTrack]`, `"children": [ViewNode]`. `GridTrack` is `{"size": "fixed"\|"flexible"\|"adaptive", "value"?, "min"?, "max"?, "spacing"?, "alignment"?}`. `min`/`max`/`value` use the `"inf"` float. One adaptive track repeats to fill the cross axis. Children are built eagerly. |
+| `geometry` | `"proposal": [w, h]` (the size the guest built the child with), `"child": ViewNode`. The host lays the child out in the parent's finite proposal and, when that differs from `proposal` by more than half a point, sends a `geometry` message. |
+| `viewThatFits` | `"axes": "both"\|"horizontal"\|"vertical"` (default `"both"`), `"children": [ViewNode]`. The host shows the first child that fits on those axes, else the last. An unbounded axis always fits. |
+
+`vstack` / `hstack` gain `"pinned": "headers"\|"footers"\|"both"` when a lazy stack asks for pinned section views. The host pins a descendant marked with the `pin` modifier; section footers are not pinned. `scroll` gains `"indicators": "automatic"\|"hidden"`. Indicators are not drawn either way.
+
+### Modifiers
+
+| JSON | SwiftUI |
+|---|---|
+| `{"id": String}` | `.id(_:)`. Names the view for `scrollTo`. Does not reset `@State`. |
+| `{"pin": "header"}` | Section header inside a lazy stack with `pinnedViews: .sectionHeaders`. |
+| `{"gridCellColumns": u32}` | `.gridCellColumns(_:)`. Read by `grid`; no effect elsewhere. |
+| `{"contentMargins": Edges}` | `.contentMargins`. The length is already resolved onto the edges. Honored on `ScrollView` only. `ContentMarginPlacement.scrollIndicators` uses the same insets. |
+| `{"scrollIndicators": {"horizontal"?, "vertical"?}}` | `.scrollIndicators(_:axes:)`. Values `"automatic"`, `"visible"`, `"hidden"`. |
+| `{"scrollTargetBehavior": "paging"\|"viewAligned"}` | `.scrollTargetBehavior`. A custom `ScrollTargetBehavior.updateTarget` is not called. |
+| `{"scrollTargetLayout": bool}` | `.scrollTargetLayout(isEnabled:)`. Direct children are scroll-target stops for `.viewAligned`. |
+| `{"scrollPosition": null}` | `.scrollPosition(id:)`. The id binding is `String` or `Int`. |
+
+### Messages
+
+Guest → host, not version-gated (ids are structural paths):
+
+```json
+{"type":"scroll_to_id","scroll":"<scroll node id>","target":"<id>","anchor":[x,y]}
+```
+
+`anchor` is a unit point and is omitted for the top-leading default. The host applies it on the next settle without waiting for another tree. C ABI: `simcore_send_line` (NUL-terminated JSON line).
+
+Host → guest:
+
+```json
+{"type":"geometry","frames":{"<geometry id>":{"width":0,"height":0,"x":0,"y":0,"safeTop":0,"safeBottom":0,"safeLeading":0,"safeTrailing":0}}}
+```
+
+```json
+{"type":"scroll_position","scroll":"<scroll id>","target":"<id>"}
+```
+
+`target` is null when no anchored view is at the top of the scroll. The guest answers with a new tree. C ABI: `simcore_runtime_set_layout_callback` receives the whole line. The web build exports both symbols and drops `scroll_to_id`; it does not send geometry corrections.
+
+### Host layout notes
+
+- `GeometryReader` is greedy on each finite axis. A missing axis uses the guest's proposal so an unbounded scroll axis does not expand forever. `safeAreaInsets` are the device insets from `SIMCORE_INSETS`, not the unconsumed proposal. `frame(in: .local)` is origin zero; `.global` and `.named` are the screen frame from the host. One correction pass converges for a reader whose proposal does not depend on its child's ideal size. The settle loop stops after 4 rounds.
+- `.paging` stops on multiples of the scroll view's main-axis size, including the max offset. `.viewAligned` stops on the content origin of each `scrollTargetLayout` child. A finger that lifts at rest springs to the nearest stop. A coast springs there when its velocity hits zero. A resting CLI `--scroll` does not snap. A large-title collapse snap still wins inside its band.
+- `scrollTo` aligns the target's anchor with the same anchor of the scroll viewport: `offset = content - (viewport - targetSize) * anchor`, clamped to the max offset. `content` is the target's position in the scrolled content.
+- `.scrollPosition` writeback sends the anchored id whose content position is the greatest that is still at or above the top edge (within 1 pt). Setting the binding to a new id sends `scroll_to_id`. A writeback of the same id does not.
+
+## N. v1 additions: SwiftUI shapes and paths (additive, protocol version stays 1)
 
 - `shape` kind gains new `shape` values: `"ellipse"`, `"unevenRoundedRectangle"`, `"containerRelative"`, `"concentricRectangle"`, and `"path"`, alongside existing `"rectangle"`, `"circle"`, `"capsule"`, `"roundedRectangle"`.
 - Additional optional `shape` fields:
@@ -658,7 +718,7 @@ shadow pair (the spot shadow shifts down with distance from the top of the scree
   - `"cornerStyle"?: "continuous"|"circular"` (default `"circular"` when omitted for fast-path compatibility; SwiftUI emits `"continuous"` for `.continuous` shapes)
   - `"concentric"?: {"corners": [{"fixed": r}|{"concentric": min?}, ...4], "uniform"?: "all"|"top"|"bottom"|"leading"|"trailing"|"topAndBottom"|"leadingAndTrailing"}` (for `ConcentricRectangle`)
   - `"path"?: [PathOp]` where `PathOp` is `{"m":[x,y]}`, `{"l":[x,y]}`, `{"q":[cx,cy,x,y]}`, `{"c":[c1x,c1y,c2x,c2y,x,y]}`, or `"z"`
-  - `"pathSize"?: [w, h]` and `"custom"?: bool`: when `custom` is true, the guest evaluates `Shape.path(in:)` in Swift for the shape's laid-out bounds. When a custom shape's laid-out `(w, h)` differs from `pathSize` (or `pathSize` is absent), the host sends a section H `layout` message (`{"type":"layout","frames":{"<id>":[x,y,w,h]}}`) and waits for the guest's updated tree. C ABI: `simcore_runtime_set_layout_callback` (header `simcore_runtime.h`); the web build invokes the same callback in-process.
+  - `"pathSize"?: [w, h]` and `"custom"?: bool`: when `custom` is true, the guest evaluates `Shape.path(in:)` in Swift for the shape's laid-out bounds. When a custom shape's laid-out `(w, h)` differs from `pathSize` (or `pathSize` is absent), the host sends a `layout` message (`{"type":"layout","frames":{"<id>":[x,y,w,h]}}`) and waits for the guest's updated tree. C ABI: `simcore_runtime_set_layout_callback` (header `simcore_runtime.h`); the callback receives the whole JSON line, including in the web build.
   - `"sizeHint"?: "square"|{"fixed":[w,h]}|{"aspect":ratio}|{"ideal":[w,h]}` (from custom `Shape.sizeThatFits(_:)`)
   - `"mirrorRtl"?: bool` (from `Shape.layoutDirectionBehavior`)
   - `"fillStyle"?: {"eoFill"?: bool, "antialiased"?: bool}` (`FillStyle`)
