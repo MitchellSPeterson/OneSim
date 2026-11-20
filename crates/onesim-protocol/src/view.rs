@@ -477,6 +477,9 @@ pub struct PickerOption {
     /// Menu layers only: a separator (`Divider` or a new `Section`) sits above this item.
     #[serde(default, skip_serializing_if = "is_false")]
     pub divider: bool,
+    /// Menu layers only: drawn dimmed and not tappable (a disabled button).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub disabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -1043,12 +1046,14 @@ mod tests {
         let menu: Layer = serde_json::from_value(json!({
             "kind": "menu", "anchor": "m", "centered": true, "dismiss": 9, "items": [
                 {"text": "Duplicate", "action": 1, "systemImage": "plus.square.on.square"},
-                {"text": "Delete", "action": 2, "systemImage": "trash", "destructive": true, "divider": true}
+                {"text": "Delete", "action": 2, "systemImage": "trash", "destructive": true, "divider": true},
+                {"text": "Off", "action": 0, "disabled": true}
             ]
         })).unwrap();
         let Layer::Menu { items, centered: true, .. } = &menu else { panic!() };
         assert_eq!(items[0].system_image.as_deref(), Some("plus.square.on.square"));
         assert!(items[1].destructive && items[1].divider && !items[0].divider);
+        assert!(items[2].disabled && !items[1].disabled);
         for node in [&gauge, &plain, &wheel, &progress, &toggle] {
             let again: ViewNode = serde_json::from_value(serde_json::to_value(node).unwrap()).unwrap();
             assert_eq!(node, &again);

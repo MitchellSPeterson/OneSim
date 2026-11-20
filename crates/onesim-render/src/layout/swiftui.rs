@@ -1021,6 +1021,11 @@ impl Ctx<'_> {
         crate::glass::GlassSpec { variant, tint: tint.map(|c| self.color(c)), interactive, blur: None, mix: None, shadow: None, flat: None }
     }
 
+    /// System red: destructive menu items and tab badges.
+    fn destructive(&self) -> Color {
+        if self.dark { rgba(255, 66, 69, 1.0) } else { rgba(255, 56, 60, 1.0) }
+    }
+
     /// Opaque (light, dark) color pair for the current appearance.
     fn pick(&self, (l, d): ((u8, u8, u8), (u8, u8, u8))) -> Color {
         let c = if self.dark { d } else { l };
@@ -1831,12 +1836,14 @@ impl Ctx<'_> {
     fn menu(&mut self, items: &[PickerOption], anchor: Option<Rect>, dismiss: Option<u64>, centered: bool, g: &Geo) -> Lay {
         let (w, h) = (g.w, g.h);
         let primary = self.semantic(Semantic::Primary);
-        let red = if self.dark { rgba(255, 66, 69, 1.0) } else { rgba(255, 56, 60, 1.0) };
+        let red = self.destructive();
+        let dim = self.semantic(Semantic::Tertiary);
         let icons = items.iter().any(|o| o.system_image.is_some());
         let text_x = if icons { MENU_ICON_TEXT_X } else { MENU_TEXT_X };
         let spec = FontSpec::new(17.0, self.line_h(17.0), 400, TextAlign::Leading);
         let texts: Vec<Lay> = items.iter().enumerate().map(|(i, o)| {
-            let mut t = self.text_lay(&format!("menu#{i}#text"), &o.text, spec, if o.destructive { red } else { primary }, None);
+            let fg = if o.disabled { dim } else if o.destructive { red } else { primary };
+            let mut t = self.text_lay(&format!("menu#{i}#text"), &o.text, spec, fg, None);
             if let Some(n) = t.node.as_mut() {
                 n.inspect = false;
             }
@@ -1855,11 +1862,12 @@ impl Ctx<'_> {
                 kids.push((MENU_SEP_INSET, y + (MENU_DIVIDER_GAP - 1.0) / 2.0, Lay::new(Size { w: cw - 2.0 * MENU_SEP_INSET, h: 1.0 }, Some(sep), vec![])));
                 y += MENU_DIVIDER_GAP;
             }
-            let fg = if o.destructive { red } else { primary };
+            let fg = if o.disabled { dim } else if o.destructive { red } else { primary };
             let mut b = Node::new(format!("menu#{i}"), "button");
             b.role = Role::Button;
             b.label = Some(o.text.clone());
-            b.action = Some(o.action);
+            b.action = (!o.disabled).then_some(o.action);
+            b.disabled = o.disabled;
             b.value = o.checked.then(|| "checked".into());
             let th = t.size.h;
             let mut bk = vec![(text_x, (MENU_ROW_H - th) / 2.0, t)];
@@ -2649,7 +2657,7 @@ impl Ctx<'_> {
                 let mut bn = Node::new(format!("{host}#tab-{}#badge", tab.key), "badge");
                 bn.inspect = false;
                 bn.radius = PILL;
-                bn.fill = Some(if self.dark { rgba(255, 66, 69, 1.0) } else { rgba(255, 56, 60, 1.0) });
+                bn.fill = Some(self.destructive());
                 let mut bt = Node::new(format!("{host}#tab-{}#badge#text", tab.key), "text");
                 bt.inspect = false;
                 bt.text = Some(TextRun { text: b.clone(), font: spec, color: rgba(255, 255, 255, 1.0), strike: false, offset_x: 0.0, spans: vec![] });

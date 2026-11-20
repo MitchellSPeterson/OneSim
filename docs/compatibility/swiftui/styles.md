@@ -122,5 +122,5 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ToggleStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `ToolbarLabelStyle` | 18 | ⬜ |  |  |
 | `WheelDatePickerStyle` | 13 | ⬜ |  |  |
-| `WheelPickerStyle` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | A tap on a row selects it; no spinning or momentum |
+| `WheelPickerStyle` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | A tap on a row selects it (three rows each side are shown); no spinning or momentum |
 | `WindowBackgroundShapeStyle` | 17 | ⬜ |  |  |

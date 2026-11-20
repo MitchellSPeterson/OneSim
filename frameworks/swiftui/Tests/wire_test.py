@@ -514,20 +514,29 @@ def node(t, kind): return [m for m in walk(tree(t)) if m.get("kind") == kind]
 # Menu: a button that opens a centred menu layer; items carry icon, role and dividers (Divider and Section).
 t = act(p, t, btn(t, "Menu")["action"])
 menu = next(l for l in layers(t) if l["kind"] == "menu")
-assert menu["centered"] and [i["text"] for i in menu["items"]] == ["Alpha", "Delete", "Inside"], menu
+assert menu["centered"] and [i["text"] for i in menu["items"]] == ["Alpha", "Delete", "Inside", "Off", "Flag", "P1", "P2"], menu
+off, flag, p1, p2 = menu["items"][3:]
+assert off.get("disabled") and not menu["items"][2].get("disabled"), "a disabled button is a dimmed item"
+assert not flag.get("checked") and p1.get("checked") and not p2.get("checked") and p1.get("divider"), "toggles and picker options are checked items"
+assert off["action"] == 0, "a disabled item has no action"
+t = act(p, t, next(l for l in layers(t) if l["kind"] == "menu")["items"][6]["action"]); assert not layers(t)
+assert has(t, "mpick 2"), "a picker option in a menu selects it and closes the menu"
+t = act(p, t, btn(t, "Menu")["action"]); menu = next(l for l in layers(t) if l["kind"] == "menu")
 assert menu["items"][0].get("systemImage") == "star" and not menu["items"][0].get("divider"), menu
 assert menu["items"][1].get("destructive") and menu["items"][1].get("divider") and menu["items"][2].get("divider"), menu
 t = act(p, t, menu["items"][0]["action"])
 assert has(t, "last Alpha") and not layers(t), "an item runs its action and closes the menu"
 t = act(p, t, btn(t, "Menu")["action"]); t = act(p, t, next(l for l in layers(t) if l["kind"] == "menu")["dismiss"])
 assert not layers(t) and has(t, "last Alpha"), "tap outside only closes"
+t = act(p, t, btn(t, "Primary")["action"]); assert has(t, "last Primary") and not layers(t), "primaryAction runs instead of opening"
 faded = btn(t, "Faded")
 assert {"opacity": 0.5} in faded.get("modifiers", []), "a custom MenuStyle wraps the menu"
 t = act(p, t, faded["action"]); t = act(p, t, next(l for l in layers(t) if l["kind"] == "menu")["items"][0]["action"])
 assert has(t, "last Beta"), "the styled menu still works"
 # Link: runs the environment's openURL; the system action reports the URL on stderr.
 t = act(p, t, btn(t, "Docs")["action"]); assert has(t, "opened https://docs.test"), alltexts(tree(t))
-send(p, type="action", id=btn(t, "Plain")["action"], version=t["version"])
+for name in ("Plain", "Dropped", "Redirect"):
+    send(p, type="action", id=btn(t, name)["action"], version=t["version"])
 # Toggle styles: .button is a selectable button; a custom ToggleStyle draws its own body.
 tbn = btn(t, "TB"); assert tbn["selected"] is False and tbn["style"] == "automatic", tbn
 t = act(p, t, tbn["action"]); assert btn(t, "TB")["selected"] is True
@@ -557,6 +566,9 @@ t = act(p, t, btn(t, "L")["action"]); assert "back" not in t["root"] and has(t, 
 wh = next(m for m in node(t, "picker") if m["style"] == "wheel"); assert wh["selected"] == 1 and len(wh["options"]) == 4, wh
 t = act(p, t, wh["options"][2]["action"]); assert has(t, "hour 2")
 fl = next(m for m in node(t, "picker") if m["style"] == "menu"); assert fl["label"]["kind"] == "empty", "labelsHidden"
+assert any(m["label"]["kind"] == "empty" for m in node(t, "toggle")), "labelsHidden hides a toggle's label"
 finish(p)
-assert "onesim: open URL https://plain.test" in p.stderr.read(), "system openURL reports the URL"
+err = p.stderr.read()
+assert "onesim: open URL https://plain.test" in err and "https://to.test" in err, "system openURL reports the (redirected) URL"
+assert "dropped.test" not in err and "from.test" not in err, ".discarded opens nothing"
 print("PASS")

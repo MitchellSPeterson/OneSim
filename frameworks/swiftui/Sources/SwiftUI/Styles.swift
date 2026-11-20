@@ -327,7 +327,7 @@ public struct DefaultMenuStyle: MenuStyle {
     public var _isBuiltIn: Bool { true }
     public func makeBody(configuration: Configuration) -> Never { fatalError() }
 }
-/// iOS draws `.button` menus like `.automatic`; the label follows `.buttonStyle`.
+/// iOS draws `.button` menus like `.automatic`; the label follows a built-in `.buttonStyle`.
 public struct ButtonMenuStyle: MenuStyle {
     public init() {}
     public var _isBuiltIn: Bool { true }
@@ -350,9 +350,16 @@ extension View {
 
 final class _MenuState { var open = false }
 
-/// Menu items from the content's evaluated nodes: buttons (icon from their label, red when destructive);
-/// a `Divider` or a `Section` boundary puts a separator above the next item.
+/// Menu items from the content's evaluated nodes: buttons (icon from their label, red when destructive, dimmed
+/// when disabled), toggles (checked when on) and a picker's options (the selected one checked, set off by
+/// separators); a `Divider` or a `Section` boundary puts a separator above the next item.
 func _menuItems(_ nodes: [Node], _ items: inout [Node], _ divider: inout Bool) {
+    func add(_ it: Node) {
+        var it = it
+        if divider && !items.isEmpty { it["divider"] = true }
+        divider = false
+        items.append(it)
+    }
     for n in nodes {
         switch n["kind"] as? String {
         case "divider": divider = true
@@ -364,9 +371,21 @@ func _menuItems(_ nodes: [Node], _ items: inout [Node], _ divider: inout Bool) {
             var it: Node = ["text": _plainText((n["label"] as? Node) ?? [:]) ?? "", "action": n["action"] ?? 0]
             if let l = n["label"] as? Node, let s = _firstSymbol(l) { it["systemImage"] = s }
             if n["role"] as? String == "destructive" { it["destructive"] = true }
-            if divider && !items.isEmpty { it["divider"] = true }
-            divider = false
-            items.append(it)
+            if n["disabled"] as? Bool == true { it["disabled"] = true }
+            add(it)
+        case "toggle":
+            var it: Node = ["text": _plainText((n["label"] as? Node) ?? [:]) ?? "", "action": n["action"] ?? 0, "checked": n["isOn"] as? Bool ?? false]
+            if n["disabled"] as? Bool == true { it["disabled"] = true }
+            add(it)
+        case "picker":
+            divider = true
+            let sel = n["selected"] as? Int
+            for (i, o) in ((n["options"] as? [Node]) ?? []).enumerated() {
+                var it: Node = ["text": o["text"] ?? "", "action": o["action"] ?? 0, "checked": i == sel]
+                if n["disabled"] as? Bool == true { it["disabled"] = true }
+                add(it)
+            }
+            divider = true
         default:
             if let c = n["children"] as? [Node] { _menuItems(c, &items, &divider) }
         }
@@ -406,8 +425,8 @@ public struct Menu<Label: View, Content: View>: View, _Primitive {
         var items: [Node] = [], divider = false
         let nodes = _without({ $0.button = nil }) { content.map { SwiftUI._children($0, path + "/c") } ?? [] }
         _menuItems(nodes, &items, &divider)
-        // An item runs its button's action and closes the menu.
-        for i in items.indices {
+        // An item runs its button's action and closes the menu; disabled items do nothing.
+        for i in items.indices where items[i]["disabled"] == nil {
             let inner = rt.actions[(items[i]["action"] as? UInt64) ?? 0]
             items[i]["action"] = rt.registerAction { st.open = false; rt.dirty = true; inner?() }
         }

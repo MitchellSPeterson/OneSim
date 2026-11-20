@@ -62,6 +62,7 @@ struct ControlLab: View {
     @State private var size = "S"
     @State private var hour = 1
     @State private var flavor = "a"
+    @State private var mpick = 1
 
     var body: some View {
         NavigationStack {
@@ -72,13 +73,30 @@ struct ControlLab: View {
                         Divider()
                         Button("Delete", role: .destructive) { last = "Delete" }
                         Section { Button("Inside") { last = "Inside" } }
+                        Button("Off") { last = "Off" }.disabled(true)
+                        Toggle("Flag", isOn: $tb)
+                        Picker("Pick", selection: $mpick) {
+                            Text("P1").tag(1)
+                            Text("P2").tag(2)
+                        }
+                    }
+                    Menu {
+                        Button("Never") { last = "Never" }
+                    } label: {
+                        Text("Primary")
+                    } primaryAction: {
+                        last = "Primary"
                     }
                     Menu("Faded") { Button("Beta") { last = "Beta" } }
                         .menuStyle(Faded())
-                    Text("last \(last)")
+                    Text("last \(last) mpick \(mpick)")
                     Link("Docs", destination: URL(string: "https://docs.test")!)
                         .environment(\.openURL, OpenURLAction { url in opened = url.absoluteString; return .handled })
                     Link("Plain", destination: URL(string: "https://plain.test")!)
+                    Link("Dropped", destination: URL(string: "https://dropped.test")!)
+                        .environment(\.openURL, OpenURLAction { _ in .discarded })
+                    Link("Redirect", destination: URL(string: "https://from.test")!)
+                        .environment(\.openURL, OpenURLAction { _ in .systemAction(URL(string: "https://to.test")!) })
                     Text("opened \(opened)")
                 }
                 Section {
@@ -117,8 +135,11 @@ struct ControlLab: View {
                         ForEach(0..<4) { Text("h\($0)").tag($0) }
                     }
                     .pickerStyle(.wheel)
-                    Picker("Flavor", selection: $flavor) {
-                        Text("a").tag("a")
+                    Group {
+                        Picker("Flavor", selection: $flavor) {
+                            Text("a").tag("a")
+                        }
+                        Toggle("Hidden", isOn: $check)
                     }
                     .labelsHidden()
                     Text("pick \(pick) size \(size) hour \(hour)")
