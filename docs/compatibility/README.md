@@ -11,7 +11,7 @@ Use the coverage tables to check an API before running your app in OneSim. Selec
 |---|---|---|
 | [SwiftUI](swiftui/README.md) | 14% (198/1382) | — |
 | [Expo / React Native](expo/README.md) | 58% (60/103) | 16% (15/95) |
-| [Jetpack Compose](compose/README.md) | — | 10% (218/2181) |
+| [Jetpack Compose](compose/README.md) | — | 12% (266.5/2181) |
 <!-- coverage:end -->
 
 ## Versions

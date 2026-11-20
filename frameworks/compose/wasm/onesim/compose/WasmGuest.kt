@@ -3,14 +3,18 @@ package onesim.compose
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.BroadcastFrameClock
 import androidx.compose.runtime.Composition
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Recomposer
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.launch
 import kotlin.coroutines.CoroutineContext
+import kotlin.js.JsAny
 
 /** Synchronous FIFO dispatcher so Compose recomposition settles within each browser input turn. */
 private class PumpDispatcher : CoroutineDispatcher() {
@@ -64,11 +68,14 @@ object WasmGuest {
         }
     }
 
-    fun start(dark: Boolean, insetTop: Float, insetBottom: Float, createActivity: () -> ComponentActivity): String {
+    fun start(dark: Boolean, insetTop: Float, insetBottom: Float, density: Float, host: JsAny, createActivity: () -> ComponentActivity): String {
         composition?.dispose()
         recomposer?.cancel()
         dispatcher.clear()
         Guest.reset()
+        Guest.uriSink = { openInBrowser(it) }
+        Guest.measureTextSink = { request -> measureWithHost(host, request) }
+        Guest.density = density
         Guest.dark.value = dark
         Guest.insetTop = insetTop
         Guest.insetBottom = insetBottom
@@ -81,7 +88,7 @@ object WasmGuest {
         val app = Guest.startActivity(createActivity())
         val comp = Composition(LayoutApplier(Guest.root), rec)
         composition = comp
-        comp.setContent(app)
+        comp.setContent { CompositionLocalProvider(LocalDensity provides Density(Guest.density), content = app) }
         pump()
         return Guest.serialize(force = true) ?: ""
     }
@@ -98,6 +105,18 @@ object WasmGuest {
         return Guest.serialize(force = false) ?: ""
     }
 
+    fun onTextClick(id: Long, offset: Int): String {
+        Guest.dispatchTextClick(id, offset)
+        pump()
+        return Guest.serialize(force = false) ?: ""
+    }
+
+    fun onTextLayouts(message: String): String {
+        Guest.dispatchTextLayouts(message)
+        pump()
+        return Guest.serialize(force = false) ?: ""
+    }
+
     fun onEnvironment(dark: Boolean, insetTop: Float, insetBottom: Float): String {
         Guest.dark.value = dark
         Guest.insetTop = insetTop
@@ -108,3 +127,9 @@ object WasmGuest {
 
     fun version(): Double = Guest.version.toDouble()
 }
+
+@JsFun("(url) => { globalThis.open?.(url, '_blank', 'noopener,noreferrer'); }")
+private external fun openInBrowser(url: String)
+
+@JsFun("(host, request) => host.measureText(request)")
+private external fun measureWithHost(host: JsAny, request: String): String

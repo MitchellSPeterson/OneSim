@@ -119,6 +119,7 @@ fn runs(text: &str, ranges: &[(usize, usize, SpanStyle)], spec: &FontSpec, base:
                 underline: false,
                 strike: false,
                 mono: st.mono,
+                compose: None,
             }
         })
         .collect()
@@ -1442,7 +1443,7 @@ fn text_field(cx: &mut Cx, n: &mut Node, it: &Item, me: usize, l: &taffy::Layout
             let start = match t.spec.align {
                 TextAlign::Center => (cw - tw).max(0.0) / 2.0,
                 TextAlign::Trailing => (cw - tw).max(0.0),
-                TextAlign::Leading => 0.0,
+                TextAlign::Leading | TextAlign::Justify => 0.0,
             };
             ((start + tw - overflow).min(cw - 2.0) + 1.0, ty)
         } else {

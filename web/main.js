@@ -225,16 +225,26 @@ async function main() {
 
   // Pointer: down/up are taps; moving past a small threshold turns the gesture into a drag-scroll
   // (rubber band at the edges, momentum and bounce after lifting).
+  const composeLinks = !rn && sim.platform === "android";
+  if (composeLinks) stage.tabIndex = 0;
   let drag = null; // { id, x, y: touch-down point, scrolling }
   stage.addEventListener("pointerdown", (e) => {
     if (e.button > 0) return;
+    if (composeLinks) stage.focus({ preventScroll: true });
     stage.setPointerCapture(e.pointerId);
     const [x, y] = toPoints(e);
     drag = { id: e.pointerId, cx: e.clientX, cy: e.clientY, x, y, scrolling: false };
     act(() => sim.pointer("down", x, y));
   });
   stage.addEventListener("pointermove", (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
+    if (!drag) {
+      if (composeLinks && e.pointerType === "mouse") {
+        const [x, y] = toPoints(e);
+        act(() => sim.pointer("hover", x, y));
+      }
+      return;
+    }
+    if (e.pointerId !== drag.id) return;
     if (!drag.scrolling && Math.hypot(e.clientX - drag.cx, e.clientY - drag.cy) < 8) return;
     if (!drag.scrolling) sim.drag("begin", drag.x, drag.y, e.timeStamp);
     drag.scrolling = true;
@@ -250,10 +260,14 @@ async function main() {
     drag = null;
     const [x, y] = toPoints(e);
     if (wasScroll) act(() => sim.drag("end", x, y, e.timeStamp));
-    else if (e.type === "pointerup") act(() => sim.pointer("up", x, y)); // a cancelled touch is no tap
+    else if (e.type === "pointerup") act(() => sim.pointer("up", x, y));
+    else if (composeLinks) act(() => sim.pointer("cancel", x, y));
   };
   stage.addEventListener("pointerup", lift);
   stage.addEventListener("pointercancel", lift);
+  stage.addEventListener("pointerleave", () => {
+    if (composeLinks) act(() => sim.pointer("hover", -1, -1));
+  });
 
   // Wheel: CSS pixels -> points; positive deltaY reveals later content, like native.
   stage.addEventListener("wheel", (e) => {
@@ -263,9 +277,21 @@ async function main() {
     act(() => sim.scroll(x, y, e.deltaX * unit, e.deltaY * unit));
   }, { passive: false });
 
-  // Physical keyboard, only while a text field is focused (the on-canvas keyboard shows).
+  // Physical keyboard input for Compose links and focused text fields.
   addEventListener("keydown", (e) => {
-    if (!sim.focused || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+    if (!rn && sim.platform === "android" && (e.ctrlKey || e.metaKey) && !e.altKey && !e.isComposing) {
+      const key = { c: "copy", a: "select_all" }[e.key.toLowerCase()];
+      if (key && act(() => sim.key(key))) e.preventDefault();
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+    if (composeLinks && e.target === stage && !sim.focused) {
+      const keys = { Tab: e.shiftKey ? "shift_tab" : "tab", Enter: "enter", Escape: "escape", " ": "space" };
+      const key = keys[e.key];
+      if (key && act(() => sim.keyIfFocused(key)) && (e.key !== "Tab" || sim.linkFocused)) e.preventDefault();
+      return;
+    }
+    if (!sim.focused) return;
     if (e.key === "Backspace") act(() => sim.key("backspace"));
     else if (e.key === "Enter") act(() => sim.key("enter"));
     else if ([...e.key].length === 1) act(() => sim.typeByUser(e.key));

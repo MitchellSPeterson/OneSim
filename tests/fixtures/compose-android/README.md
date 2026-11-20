@@ -1,8 +1,8 @@
 # compose-android ground-truth fixtures
 
 Real Jetpack Compose (material3 1.4.0, compose-bom 2026.09.00) running `examples/compose-counter`,
-`examples/compose-showcase`, and `examples/compose-input` unmodified, built as one APK by `frameworks/compose/reference-app` and captured on the
-Android 17 (API 37) Pixel 10a emulator through agent-device (T3 device tools). `scripts/compare-android.sh` renders the
+`examples/compose-showcase`, `examples/compose-input`, and `examples/compose-text` unmodified, built as one APK by `frameworks/compose/reference-app` and captured on the
+Android 17 (API 37) Pixel 10a emulator with agent-device. The text states used a local Pixel 10a emulator. `scripts/compare-android.sh` renders the
 same states on OneSim and requires every state to differ in < 2% of pixels (`scripts/compare_ios.py`).
 
 - Screen 1080 x 2424 px, density 2.625 (420 dpi) -> 411.43 x 923.43 dp. Status bar inset 142 px, navigation bar 63 px.
@@ -19,6 +19,11 @@ same states on OneSim and requires every state to differ in < 2% of pixels (`scr
 | showcase-dark | showcase | launch with system dark theme |
 | input | input | launch with two text fields and a stepped slider |
 | input-changed | input | enter NameHello in the first field, dismiss the keyboard, and drag the slider to 75 |
+| text | text | launch with styled text and a selection container |
+| text-tapped | text | tap (156,412) px in ClickableText, which reports offset 4 |
+| text-selected | text | after the tap, hold (122,598) px to select the first word, then capture while held |
+| text-toolbar | text | release the hold to show the selection toolbar and handles |
+| text-inline | text | launch the inline composable example and display the reported placeholder width |
 
 No `counter-dark`: the counter's `MaterialTheme` has no dark scheme, so only the status-bar icons change.
 
@@ -28,6 +33,8 @@ No `counter-dark`: the counter's `MaterialTheme` has no dark scheme, so only the
 # AGENT_DEVICE: the agent-device command returned by the T3 device tools' device_open for the Pixel 10a emulator.
 AGENT_DEVICE=... GRADLE=gradle tests/fixtures/compose-android/capture.sh
 ```
+
+Pass `--text-only` to recapture just the text states.
 
 Needs Gradle 9.3+ (AGP 9.1, built-in Kotlin), the Android 37 SDK platform and Java 17.
 
@@ -40,3 +47,17 @@ Needs Gradle 9.3+ (AGP 9.1, built-in Kotlin), the Android 37 SDK platform and Ja
 - Status bar: clock 14 sp regular, box centred at (57.9, 26.9) dp; battery 23.8 x 12.9 dp pill + 1.6 x 6.5 dp nub
   ending at x 382.9 dp; wifi two arcs + dot in a 16 x 11.8 dp box; icons black on light apps, white on dark.
 - Navigation handle 108 x 4 dp: black at 60% (light), white at 92% (dark).
+
+
+`text-rich` covers nested bullets, locale-aware uppercase, step-based and custom sizing,
+and a bundled font. `text-link-focused` and `text-link-pressed` cover the link highlight
+on keyboard focus and while the pointer is down. The sample font is a subset of Inter
+and uses the repository's [Inter license](../../../assets/fonts/OFL.txt).
+
+`text-effects` covers gradient and size-aware shader ink, a blurred text shadow, a dashed
+gradient marker, a custom path marker, an XML font family, geometric text transforms, outline strokes, and
+automatic hyphenation.
+
+`text-paint` covers image shaders and chained and stamped path effects. The demo verifies
+synchronous measurement, placeholder geometry, intrinsic widths, and translated,
+clipped bitmap painting before it reports the measured line count.

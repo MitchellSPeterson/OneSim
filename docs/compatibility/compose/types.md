@@ -49,7 +49,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `AnimationVector2D` | animation-core | ⬜ |  |  |
 | `AnimationVector3D` | animation-core | ⬜ |  |  |
 | `AnimationVector4D` | animation-core | ⬜ |  |  |
-| `AnnotatedString` | ui-text | ⬜ |  |  |
+| `AnnotatedString` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Styled spans and paragraphs, substring ranges, string, link and TTS annotations, bullets and locale-aware case conversion. |
 | `AppBarColumnScope` | material3 | ⬜ |  |  |
 | `AppBarMenuState` | material3 | ⬜ |  |  |
 | `AppBarRowScope` | material3 | ⬜ |  |  |
@@ -81,7 +81,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `BiasAbsoluteAlignment` | ui | ⬜ |  |  |
 | `BiasAlignment` | ui | ⬜ |  |  |
 | `BitmapPainter` | ui-graphics | ⬜ |  |  |
-| `BlendMode` | ui-graphics | ⬜ |  |  |
+| `BlendMode` | ui-graphics | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Source-over compositing for offscreen text. Other blend modes are unavailable. |
 | `BlendModeColorFilter` | ui-graphics | ⬜ |  |  |
 | `BlurEffect` | ui-graphics | ⬜ |  |  |
 | `BlurRadiusSpec` | ui-graphics | ⬜ |  |  |
@@ -102,10 +102,10 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `BringIntoViewRequester` | foundation | ⬜ |  |  |
 | `BringIntoViewResponder` | foundation | ⬜ |  | Deprecated |
 | `BringIntoViewSpec` | foundation | ⬜ |  |  |
-| `Brush` | ui-graphics | ⬜ |  |  |
+| `Brush` | ui-graphics | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Solid, gradient and bitmap brushes. Native Android shader interop is unavailable. |
 | `BrushPainter` | ui-graphics | ⬜ |  |  |
 | `BuildDrawCacheParams` | ui | ⬜ |  |  |
-| `Bullet` | ui-text | ⬜ |  |  |
+| `Bullet` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Shape outlines, sp and em dimensions, brushes, alpha and stroke path effects. |
 | `ButtonColors` | material3 | ✅ | |  |
 | `ButtonDefaults` | material3 | 🟠 | | Colors, shapes, paddings and sizes; no elevation animation |
 | `ButtonElevation` | material3 | ⬜ |  |  |
@@ -244,7 +244,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `DrawResult` | ui | ⬜ |  |  |
 | `DrawScope` | ui-graphics | ⬜ |  |  |
 | `DrawScopeMarker` | ui-graphics | ⬜ |  |  |
-| `DrawStyle` | ui-graphics | ⬜ |  |  |
+| `DrawStyle` | ui-graphics | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Fill and Stroke for text outlines and bullet markers. General Canvas drawing is unavailable. |
 | `DrawStyleScope` | foundation | ⬜ |  | Experimental |
 | `DrawTransform` | ui-graphics | ⬜ |  |  |
 | `DropdownMenuPopupPositionProvider` | material3 | ⬜ |  |  |
@@ -282,7 +282,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `FabPosition` | material3 | ⬜ |  |  |
 | `FadeConfig` | animation | ⬜ |  |  |
 | `FileBasedFontFamily` | ui-text | ⬜ |  |  |
-| `Fill` | ui-graphics, foundation | ⬜ |  |  |
+| `Fill` | ui-graphics, foundation | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Fills glyphs and bullet markers. General Canvas drawing is unavailable. |
 | `FillableData` | ui | ⬜ |  |  |
 | `FilledTonalToggleButtonDefaults` | material3 | ⬜ |  |  |
 | `FilterChipDefaults` | material3 | ⬜ |  |  |
@@ -341,7 +341,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `FocusTargetModifierNode` | ui | ⬜ |  |  |
 | `FontFamilyScope` | foundation | ⬜ |  | Experimental |
 | `FontListFontFamily` | ui-text | ⬜ |  |  |
-| `FontLoadingStrategy` | ui-text | ⬜ |  |  |
+| `FontLoadingStrategy` | ui-text | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Bundled font data loads synchronously. Asynchronous font-provider loading is unavailable. |
 | `FontScaling` | ui-unit | ⬜ |  |  |
 | `FontSizeScope` | foundation | ⬜ |  | Experimental |
 | `FontStyle` | ui-text | ⬜ |  |  |
@@ -374,7 +374,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `HorizontalAlignmentLine` | ui | ⬜ |  |  |
 | `HorizontalRuler` | ui | ⬜ |  |  |
 | `HoverInteraction` | foundation | ⬜ |  |  |
-| `Hyphens` | ui-text | ⬜ |  |  |
+| `Hyphens` | ui-text | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Manual and automatic discretionary hyphens for wrapped text with locale dictionaries. Android dictionary choices can differ. |
 | `HyphensScope` | foundation | ⬜ |  | Experimental |
 | `IconButtonColors` | material3 | ⬜ |  |  |
 | `IconButtonDefaults` | material3 | ⬜ |  |  |
@@ -382,8 +382,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `IconToggleButtonColors` | material3 | ⬜ |  |  |
 | `IconToggleButtonShapes` | material3 | ⬜ |  |  |
 | `Illuminant` | ui-graphics | ⬜ |  |  |
-| `ImageBitmap` | ui-graphics | ⬜ |  |  |
-| `ImageBitmapConfig` | ui-graphics | ⬜ |  |  |
+| `ImageBitmap` | ui-graphics | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Readable sRGB resources and mutable ARGB_8888 bitmaps for Canvas text. Other formats and Android Bitmap interop are unavailable. |
+| `ImageBitmapConfig` | ui-graphics | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Bitmap resources expose Argb8888. Explicit allocation in other formats is unavailable. |
 | `ImageVector` | ui | ⬜ |  |  |
 | `ImeAction` | ui-text | ⬜ |  |  |
 | `ImeOptions` | ui-text | ⬜ |  |  |
@@ -397,7 +397,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `InfiniteAnimationPolicy` | ui | ⬜ |  |  |
 | `InfiniteRepeatableSpec` | animation-core | ⬜ |  |  |
 | `InfiniteTransition` | animation-core | ⬜ |  |  |
-| `InlineTextContent` | foundation | ⬜ |  |  |
+| `InlineTextContent` | foundation | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Measures and places a composable at an annotated inline slot. |
 | `InnerShadowPainter` | ui-graphics | ⬜ |  |  |
 | `InnerShadowScope` | ui | ⬜ |  |  |
 | `InputChipDefaults` | material3 | ⬜ |  |  |
@@ -490,11 +490,11 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `LetterSpacingScope` | foundation | ⬜ |  | Experimental |
 | `LightingColorFilter` | ui-graphics | ⬜ |  |  |
 | `LinearGradient` | ui-graphics | ⬜ |  |  |
-| `LineBreak` | ui-text | ⬜ |  |  |
+| `LineBreak` | ui-text | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Greedy, high-quality and balanced wrapping with ICU4X line rules, strictness and dictionary boundaries. Android phrase models and break scoring can differ. |
 | `LineBreakScope` | foundation | ⬜ |  | Experimental |
 | `LineHeightScope` | foundation | ⬜ |  | Experimental |
 | `LineHeightStyle` | ui-text | ⬜ |  |  |
-| `LinkAnnotation` | ui-text | ⬜ |  |  |
+| `LinkAnnotation` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Link click listeners and focused, hovered and pressed styles. |
 | `LinkInteractionListener` | ui-text | ⬜ |  |  |
 | `ListItemColors` | material3 | ⬜ |  |  |
 | `ListItemDefaults` | material3 | ⬜ |  |  |
@@ -504,8 +504,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `LoadedFontFamily` | ui-text | ⬜ |  |  |
 | `LoadingIndicatorDefaults` | material3 | ⬜ |  | Experimental |
 | `LocalActivityResultRegistryOwner` | activity-compose | ⬜ |  |  |
-| `Locale` | ui-text | ⬜ |  |  |
-| `LocaleList` | ui-text | ⬜ |  |  |
+| `Locale` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | BCP 47 language tags and the platform locale for AnnotatedString case conversion. |
+| `LocaleList` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Locale lists and the platform locale preferences for AnnotatedString case conversion. |
 | `LocalFullyDrawnReporterOwner` | activity-compose | ⬜ |  |  |
 | `LocalOnBackPressedDispatcherOwner` | activity-compose | ⬜ |  |  |
 | `LookaheadScope` | ui | ⬜ |  |  |
@@ -551,8 +551,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `MoveCursorCommand` | ui-text | ⬜ |  |  |
 | `MultiChoiceSegmentedButtonRowScope` | material3 | ⬜ |  |  |
 | `MultiContentMeasurePolicy` | ui | ⬜ |  |  |
-| `MultiParagraph` | ui-text | ⬜ |  |  |
-| `MultiParagraphIntrinsics` | ui-text | ⬜ |  |  |
+| `MultiParagraph` | ui-text | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Direct shaping, intrinsic widths, selection geometry, and source-over painting to a bitmap Canvas. General Canvas transforms and blend modes are unavailable. |
+| `MultiParagraphIntrinsics` | ui-text | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Minimum and maximum widths using the OneSim shaper and line rules. Android font-provider invalidation is unavailable. |
 | `MutableIntervalList` | foundation | ⬜ |  |  |
 | `MutableRect` | ui-geometry | ⬜ |  |  |
 | `MutableStyleState` | foundation | ⬜ |  | Experimental |
@@ -605,14 +605,14 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Painter` | ui-graphics | ⬜ |  |  |
 | `PaintingStyle` | ui-graphics | ⬜ |  |  |
 | `Paragraph` | ui-text | ⬜ |  |  |
-| `ParagraphIntrinsics` | ui-text | ⬜ |  |  |
-| `ParagraphStyle` | ui-text | ⬜ |  |  |
+| `ParagraphIntrinsics` | ui-text | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Intrinsic widths for MultiParagraph. Standalone Paragraph and Android font-provider invalidation are unavailable. |
+| `ParagraphStyle` | ui-text | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Per-paragraph alignment, line height, indentation, hyphenation and line-break strategies. Android phrase models and dictionaries can differ. |
 | `ParentDataModifier` | ui | ⬜ |  |  |
 | `ParentDataModifierNode` | ui | ⬜ |  |  |
 | `PasswordVisualTransformation` | ui-text | ⬜ |  | Deprecated |
 | `PathBuilder` | ui-graphics | ⬜ |  |  |
 | `PathEasing` | animation-core | ⬜ |  |  |
-| `PathEffect` | ui-graphics | ⬜ |  |  |
+| `PathEffect` | ui-graphics | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Dash, corner, chain and stamp effects for glyph and bullet outlines. Android-native path effect interop is unavailable. |
 | `PathFillType` | ui-graphics | ⬜ |  |  |
 | `PathHitTester` | ui-graphics | ⬜ |  |  |
 | `PathNode` | ui-graphics | ⬜ |  |  |
@@ -622,8 +622,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `PinnableContainer` | ui | ⬜ |  |  |
 | `PixelMap` | ui-graphics | ⬜ |  |  |
 | `Placeable` | ui | ⬜ |  |  |
-| `Placeholder` | ui-text | ⬜ |  |  |
-| `PlaceholderVerticalAlign` | ui-text | ⬜ |  |  |
+| `Placeholder` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Reserves inline width and height in sp or em. |
+| `PlaceholderVerticalAlign` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Aligns inline content to the baseline, text metrics or line box. |
 | `PlacementModifierScope` | foundation | ⬜ |  | Experimental |
 | `PlacementScopeMarker` | ui | ⬜ |  |  |
 | `PlatformImeOptions` | ui-text | ⬜ |  |  |
@@ -789,9 +789,9 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `SnapSpec` | animation-core | ⬜ |  |  |
 | `SoftKeyboardInterceptionModifierNode` | ui | ⬜ |  |  |
 | `SoftwareKeyboardController` | ui | ⬜ |  |  |
-| `SolidColor` | ui-graphics | ⬜ |  |  |
+| `SolidColor` | ui-graphics | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Solid color brush for bullet markers. |
 | `SoundEffect` | ui | ⬜ |  |  |
-| `SpanStyle` | ui-text | ⬜ |  |  |
+| `SpanStyle` | ui-text | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Font and decoration styles, baseline shift, brushes, shadows, transform and stroke. Android-native shader interop is unavailable. |
 | `SplineBasedFloatDecayAnimationSpec` | animation | ⬜ |  |  |
 | `SplitButtonDefaults` | material3 | ⬜ |  |  |
 | `SplitButtonShapes` | material3 | ⬜ |  |  |
@@ -799,11 +799,11 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `SpringSpec` | animation-core | ⬜ |  |  |
 | `StaggeredGridCells` | foundation | ⬜ |  |  |
 | `StaggeredGridItemSpan` | foundation | ⬜ |  |  |
-| `StampedPathEffectStyle` | ui-graphics | ⬜ |  |  |
+| `StampedPathEffectStyle` | ui-graphics | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Translate, Rotate and Morph for stamped glyph and bullet outlines. |
 | `StartOffset` | animation-core | ⬜ |  |  |
 | `StartOffsetType` | animation-core | ⬜ |  |  |
 | `StringAnnotation` | ui-text | ⬜ |  |  |
-| `Stroke` | ui-graphics | ⬜ |  |  |
+| `Stroke` | ui-graphics | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Glyph and marker stroke width, miter, caps, joins and path effects. General Canvas drawing is unavailable. |
 | `StrokeCap` | ui-graphics | ⬜ |  |  |
 | `StrokeJoin` | ui-graphics | ⬜ |  |  |
 | `Style` | foundation | ⬜ |  | Experimental |
@@ -837,9 +837,9 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `TaskDispatchers` | ui | ⬜ |  |  |
 | `TextAlign` | ui-text | ✅ | |  |
 | `TextAlignScope` | foundation | ⬜ |  | Experimental |
-| `TextAutoSize` | foundation | ⬜ |  |  |
-| `TextAutoSizeDefaults` | foundation | ⬜ |  |  |
-| `TextAutoSizeLayoutScope` | foundation | ⬜ |  |  |
+| `TextAutoSize` | foundation | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Step-based sizing and custom sizing strategies with measured candidate layouts. |
+| `TextAutoSizeDefaults` | foundation | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Default minimum and maximum sizes for step-based sizing. |
+| `TextAutoSizeLayoutScope` | foundation | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Measures a candidate text, constraints and font size through the host layout. |
 | `TextContextMenuBuilderScope` | foundation | ⬜ |  |  |
 | `TextContextMenuComponent` | foundation | ⬜ |  |  |
 | `TextContextMenuData` | foundation | ⬜ |  |  |
@@ -863,32 +863,32 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `TextFieldState` | foundation | ⬜ |  |  |
 | `TextFieldTextStyles` | foundation | ⬜ |  |  |
 | `TextFieldValue` | ui-text | ⬜ |  |  |
-| `TextGeometricTransform` | ui-text | ⬜ |  |  |
-| `TextGranularity` | ui-text | ⬜ |  |  |
-| `TextInclusionStrategy` | ui-text | ⬜ |  |  |
-| `TextIndent` | ui-text | ⬜ |  |  |
+| `TextGeometricTransform` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Horizontal scale changes advances and hit geometry. Skew changes glyph outlines around the baseline. |
+| `TextGranularity` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Character and word granularity for measured rectangular range queries. |
+| `TextInclusionStrategy` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | AnyOverlap, ContainsAll, ContainsCenter and caller-supplied strategies. |
+| `TextIndent` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | First-line and continuation indentation in sp or em. |
 | `TextIndentScope` | foundation | ⬜ |  | Experimental |
 | `TextInputService` | ui-text | ⬜ |  | Deprecated |
 | `TextInputSession` | ui-text | ⬜ |  | Deprecated |
 | `TextLayoutInput` | ui-text | ⬜ |  |  |
-| `TextLayoutResult` | ui-text | ⬜ |  |  |
+| `TextLayoutResult` | ui-text | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Line, glyph, cursor, word and placeholder geometry for composable and standalone text. Forced paragraph direction and Android font-provider resolution remain limited. |
 | `TextLinkStyles` | ui-text | ⬜ |  |  |
-| `TextMeasurer` | ui-text | ⬜ |  |  |
+| `TextMeasurer` | ui-text | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Synchronous JVM and browser measurement with constrained wrapping, spans, placeholders and a cache. Forced paragraph direction and Android font-provider resolution remain limited. |
 | `TextMotion` | ui-text | ⬜ |  |  |
 | `TextMotionScope` | foundation | ⬜ |  | Experimental |
 | `TextObfuscationMode` | foundation | ⬜ |  |  |
-| `TextOverflow` | ui-text | ⬜ |  |  |
+| `TextOverflow` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Clip, Visible and end ellipsis. Start and middle ellipsis are single-line modes on Android. |
 | `TextPainter` | ui-text | ⬜ |  |  |
 | `TextRange` | ui-text | ⬜ |  |  |
-| `TextSelectionColors` | foundation | ⬜ |  |  |
-| `TextStyle` | ui-text | 🟠 | | color, size, weight, letterSpacing, lineHeight, textAlign only |
+| `TextSelectionColors` | foundation | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Controls the highlight and handle colors. |
+| `TextStyle` | ui-text | 🟠 | | Renders color, size, weight, italic, decoration, letter spacing, line height and alignment. |
 | `TextStyleScope` | foundation | ⬜ |  | Experimental |
 | `TextStyleStyleScope` | foundation | ⬜ |  | Experimental |
 | `TextToolbar` | ui | ⬜ |  |  |
 | `TextToolbarStatus` | ui | ⬜ |  |  |
 | `TextUnit` | ui-unit | ✅ | |  |
 | `TextUnitType` | ui-unit | ⬜ |  |  |
-| `TileMode` | ui-graphics | ⬜ |  |  |
+| `TileMode` | ui-graphics | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Clamp, repeat, mirror and decal for text and marker brushes. |
 | `TimeInputColors` | material3 | ⬜ |  |  |
 | `TimeInputDefaults` | material3 | ⬜ |  |  |
 | `TimePickerColors` | material3 | ⬜ |  |  |
@@ -926,7 +926,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `TransitionState` | animation-core | ⬜ |  |  |
 | `TranslationScope` | foundation | ⬜ |  | Experimental |
 | `TraversableNode` | ui | ⬜ |  |  |
-| `TtsAnnotation` | ui-text | ⬜ |  |  |
+| `TtsAnnotation` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Verbatim speech annotations, used by Read aloud. |
 | `TweenSpec` | animation-core | ⬜ |  |  |
 | `TwoWayConverter` | animation-core | ⬜ |  |  |
 | `Typography` | material3 | ✅ | |  |
@@ -935,7 +935,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `UndoState` | foundation | ⬜ |  |  |
 | `UnplacedAwareModifierNode` | ui | ⬜ |  |  |
 | `UriHandler` | ui | ⬜ |  |  |
-| `UrlAnnotation` | ui-text | ⬜ |  | Deprecated; Experimental |
+| `UrlAnnotation` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Deprecated legacy URL annotation storage and queries. |
 | `ValueElement` | ui | ⬜ |  |  |
 | `ValueElementSequence` | ui | ⬜ |  |  |
 | `VectorApplier` | ui | ⬜ |  |  |

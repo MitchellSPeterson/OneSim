@@ -41,6 +41,7 @@ pub struct Config {
     pub pref: BackendPref,
     /// React Native: the guest owns gesture physics and commits asynchronously.
     pub rn: bool,
+    pub compose: bool,
     pub title: String,
     pub stats: bool,
     /// Start in dark appearance (the session was created with it).
@@ -127,6 +128,7 @@ struct App {
     dark: bool,
     stopped: bool,
     fatal: Option<anyhow::Error>,
+    clipboard: Option<arboard::Clipboard>,
 }
 
 impl App {
@@ -161,6 +163,7 @@ impl App {
             dark: false,
             stopped: false,
             fatal: None,
+            clipboard: None,
         }
     }
 
@@ -266,6 +269,7 @@ impl App {
         if let Err(e) = self.timed(|h, id| h.pointer(id, ev)) {
             log::debug!("pointer {ev:?}: {e}");
         }
+        self.selection_output();
         self.sched.invalidate(Reason::Input);
     }
 
@@ -327,6 +331,10 @@ impl App {
     fn cursor_moved(&mut self, pos: PhysicalPosition<f64>) {
         self.cursor = pos;
         if !self.left_down {
+            if self.cfg.compose {
+                let (x, y) = self.points();
+                self.pointer(PointerEvent::new(PointerKind::Hover, x, y));
+            }
             return;
         }
         let p = self.points();
@@ -374,9 +382,21 @@ impl App {
             _ => {}
         }
         if cmd || self.mods.control_key() {
+            if let Key::Character(letter) = &event.logical_key {
+                let key = match letter.to_ascii_lowercase().as_str() {
+                    "a" => "select_all",
+                    "c" => "copy",
+                    _ => return,
+                };
+                self.key_event(KeyboardEvent::Key { key: key.to_owned() });
+            }
             return;
         }
         let ev = match &event.logical_key {
+            Key::Named(NamedKey::Tab) if self.cfg.compose => {
+                KeyboardEvent::Key { key: if self.mods.shift_key() { "shift_tab" } else { "tab" }.into() }
+            }
+            Key::Named(NamedKey::Escape) if self.cfg.compose => KeyboardEvent::Key { key: "escape".into() },
             Key::Named(NamedKey::Backspace) => KeyboardEvent::Key { key: "backspace".into() },
             Key::Named(NamedKey::Enter) => KeyboardEvent::Key { key: "enter".into() },
             _ => match event.text.as_deref().filter(|t| !t.is_empty() && !t.chars().any(char::is_control)) {
@@ -393,6 +413,44 @@ impl App {
                 self.sched.invalidate(Reason::Input);
             }
             Err(e) => log::debug!("keyboard: {e}"), // no focused field
+        }
+        self.selection_output();
+    }
+
+    fn selection_output(&mut self) {
+        use onesim_render::SelectionOutput;
+        match self.host.take_selection_output(&self.id) {
+            Ok(Some(SelectionOutput::Copy(text))) => {
+                if self.clipboard.is_none() {
+                    match arboard::Clipboard::new() {
+                        Ok(clipboard) => self.clipboard = Some(clipboard),
+                        Err(e) => log::warn!("clipboard: {e}"),
+                    }
+                }
+                if let Some(clipboard) = &mut self.clipboard {
+                    if let Err(e) = clipboard.set_text(text) {
+                        log::warn!("clipboard: {e}");
+                    }
+                }
+            }
+            Ok(Some(SelectionOutput::ReadAloud(text))) => {
+                std::thread::spawn(move || {
+                    #[cfg(target_os = "macos")]
+                    let result = std::process::Command::new("say").arg("--").arg(text).status();
+                    #[cfg(target_os = "linux")]
+                    let result = std::process::Command::new("spd-say").arg("--").arg(text).status();
+                    #[cfg(target_os = "windows")]
+                    let result = std::process::Command::new("powershell.exe")
+                        .args(["-NoProfile", "-NonInteractive", "-Command", "Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak($env:ONESIM_SPEECH_TEXT)"])
+                        .env("ONESIM_SPEECH_TEXT", text).status();
+                    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+                    let result: std::io::Result<std::process::ExitStatus> = Err(std::io::Error::other(format!("speech unavailable for {} bytes", text.len())));
+                    if let Err(e) = result {
+                        log::warn!("read aloud: {e}");
+                    }
+                });
+            }
+            _ => {}
         }
     }
 
@@ -627,6 +685,9 @@ impl ApplicationHandler<UserEvent> for App {
             }
             WindowEvent::ModifiersChanged(m) => self.mods = m.state(),
             WindowEvent::CursorMoved { position, .. } => self.cursor_moved(position),
+            WindowEvent::CursorLeft { .. } if self.cfg.compose => {
+                self.pointer(PointerEvent::new(PointerKind::Hover, -1.0, -1.0));
+            }
             WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => self.mouse(state),
             WindowEvent::MouseWheel { delta, .. } => self.wheel(delta),
             WindowEvent::KeyboardInput { event, .. } => self.key(&event),

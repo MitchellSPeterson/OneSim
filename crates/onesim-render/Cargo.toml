@@ -11,14 +11,19 @@ window = ["dep:winit", "dep:softbuffer"]
 
 [dependencies]
 serde_json.workspace = true
+base64 = "0.22"
 onesim-protocol = { path = "../onesim-protocol" }
 tiny-skia = "0.11"
 cosmic-text = "0.19"
+unicode-segmentation = "1"
 taffy = "0.15"
 resvg = { version = "0.45", default-features = false }
 winit = { version = "0.30", optional = true }
 softbuffer = { version = "0.4", optional = true }
 zune-jpeg = "0.5.15"
+hypher = "0.1.8"
+zeno = "0.3.3"
+icu_segmenter = { version = "2.4", default-features = false, features = ["compiled_data"] }
 
 [dev-dependencies]
 

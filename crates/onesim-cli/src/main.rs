@@ -85,8 +85,8 @@ struct Opts {
     /// Type text into the focused text field. Repeatable.
     #[arg(long = "type", value_name = "TEXT")]
     texts: Vec<String>,
-    /// Press a key in the focused text field: backspace or enter. Repeatable.
-    #[arg(long = "key", value_name = "backspace|enter")]
+    /// Send a key such as backspace, enter or tab. Repeatable.
+    #[arg(long = "key", value_name = "KEY")]
     keys: Vec<String>,
     /// Scroll the scroller under (X,Y) by (DX,DY) points; positive DY reveals later content. Repeatable.
     #[arg(long = "scroll", value_name = "X,Y,DX,DY")]
@@ -99,6 +99,9 @@ struct Opts {
     /// Hold a finger still for a second at "X,Y" or on a control or text by label (SwiftUI long presses). Repeatable.
     #[arg(long = "long-press", value_name = "LABEL_OR_X,Y")]
     long_presses: Vec<String>,
+    /// Hold for 600 ms and leave the pointer down so the screenshot shows the held state.
+    #[arg(long = "hold", value_name = "LABEL_OR_X,Y")]
+    holds: Vec<String>,
     /// Pinch two fingers centred on "X,Y" or a labelled view, 100 pt apart, to SCALE times that distance. Repeatable.
     #[arg(long = "pinch", value_name = "LABEL_OR_X,Y,SCALE")]
     pinches: Vec<String>,
@@ -139,6 +142,7 @@ enum Step {
     Scroll(String),
     Drag(String),
     LongPress(String),
+    Hold(String),
     Pinch(String),
     Rotate(String),
 }
@@ -157,6 +161,7 @@ fn steps(m: &ArgMatches) -> Vec<Step> {
     add("scrolls", Step::Scroll);
     add("drags", Step::Drag);
     add("long_presses", Step::LongPress);
+    add("holds", Step::Hold);
     add("pinches", Step::Pinch);
     add("rotations", Step::Rotate);
     all.sort_by_key(|(i, _)| *i);
@@ -309,6 +314,7 @@ fn open_window(matches: &ArgMatches, name: &str, p: CreateSessionParams, mut o: 
     // `--renderer` was exported as SIMCORE_RENDERER in `main`; unset or `auto` means GPU first in a window.
     let pref = onesim_render::BackendPref::from_env().map_err(anyhow::Error::msg)?;
     let (rn, dark) = (p.framework == "react-native", o.dark || appearance == Some(Appearance::Dark));
+    let compose = p.framework == "compose";
     let (mut host, id, steps) = prepare(matches, name, p, &mut o, appearance)?;
     // `drive` starts the session and applies the steps; the window then takes over the running session.
     if let Err(e) = drive(&mut host, &id, None, &steps, false, false) {
@@ -316,7 +322,7 @@ fn open_window(matches: &ArgMatches, name: &str, p: CreateSessionParams, mut o: 
         return Err(e);
     }
     let stats = std::env::var_os("SIMCORE_FRAME_STATS").is_some_and(|v| v != "0");
-    window::run(host, id, window::Config { pref, rn, title, stats, dark })
+    window::run(host, id, window::Config { pref, rn, compose, title, stats, dark })
 }
 
 #[cfg(not(feature = "window"))]
@@ -362,6 +368,13 @@ fn drive(host: &mut Host, id: &str, shot: Option<String>, steps: &[Step], inspec
                 let (x, y) = point(host, id, s)?;
                 if host.pointer(id, PointerEvent::new(PointerKind::LongPress, x, y))?.0.is_none() {
                     bail!("nothing to long-press at {x},{y}");
+                }
+            }
+            Step::Hold(s) => {
+                let (x, y) = point(host, id, s)?;
+                host.pointer(id, PointerEvent::new(PointerKind::Down, x, y))?;
+                for _ in 0..6 {
+                    host.tick(id, 0.1)?;
                 }
             }
             Step::Pinch(s) | Step::Rotate(s) => {

@@ -1497,6 +1497,7 @@ impl Ctx<'_> {
             miter_limit: st.miter_limit,
             dash: st.dash.clone(),
             dash_phase: st.dash_phase,
+            compose_effect: None,
             antialiased: st.antialiased,
             inset: st.inset,
         });
@@ -1525,7 +1526,7 @@ impl Ctx<'_> {
                             (s as f32, w.value())
                         });
                         let weight = r.font_weight.map(|w| w.value()).or(if r.font.is_some() { None } else { env.weight }).unwrap_or(base);
-                        Span { text: r.text.clone(), pt, weight, color: r.foreground_color.as_ref().map_or(fg, |c| self.color(c)), italic: r.italic, underline: r.underline, strike: r.strikethrough || env.strike, mono: false }
+                        Span { text: r.text.clone(), pt, weight, color: r.foreground_color.as_ref().map_or(fg, |c| self.color(c)), italic: r.italic, underline: r.underline, strike: r.strikethrough || env.strike, mono: false, compose: None }
                     })
                     .collect();
                 // Line metrics come from the largest run.

@@ -144,6 +144,7 @@ if has expo; then
   step scripts/compare-expo-android.sh
 fi
 if has compose; then
+  step bash frameworks/compose/tests/text_wire_test.sh
   step scripts/compare-android.sh
 fi
 if has web; then

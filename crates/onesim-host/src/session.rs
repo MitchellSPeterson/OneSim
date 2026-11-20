@@ -143,6 +143,8 @@ pub struct Session {
     pub sent_positions: BTreeMap<String, Option<String>>,
     /// SwiftUI: last `geometry` box sent per reader id, so a stable frame is not sent again.
     pub sent_geometry: BTreeMap<String, GeoBox>,
+    /// Compose measurement callbacks already delivered to this guest.
+    pub sent_text_layouts: Vec<onesim_protocol::ComposeTextLayout>,
     /// React Native: `false` (live viewers, set per call by the v2 API) skips every wait for the guest:
     /// inputs return once sent and snapshots take one layout pass; later trees come as `render.updated`.
     pub settle: bool,
@@ -150,7 +152,7 @@ pub struct Session {
     last_sent: Instant,
     state: State,
     child: Option<Child>,
-    stdin: Option<ChildStdin>,
+    stdin: Option<Arc<Mutex<ChildStdin>>>,
     shared: Arc<Shared>,
 }
 
@@ -207,6 +209,15 @@ fn err(code: ErrorCode, msg: impl Into<String>) -> ApiError {
 }
 
 /// Test hook: a regular executable that is not a `.swift` file is spawned directly.
+fn send_to_guest(pipe: &Mutex<ChildStdin>, msg: &HostMessage) -> Result<(), ApiError> {
+    let mut line = serde_json::to_string(msg).expect("serialize");
+    line.push('\n');
+    let mut pipe = pipe.lock().unwrap_or_else(|e| e.into_inner());
+    pipe.write_all(line.as_bytes())
+        .and_then(|_| pipe.flush())
+        .map_err(|e| err(ErrorCode::RuntimeError, format!("guest pipe closed: {e}")))
+}
+
 fn is_prebuilt(p: &CreateSessionParams) -> bool {
     let path = Path::new(&p.app_path);
     #[cfg(unix)]
@@ -253,6 +264,7 @@ impl Session {
             rn: RnInput::default(),
             sent_positions: BTreeMap::new(),
             sent_geometry: BTreeMap::new(),
+            sent_text_layouts: Vec::new(),
             settle: true,
             last_sent: Instant::now(),
             params: p,
@@ -455,12 +467,15 @@ impl Session {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| err(ErrorCode::RuntimeError, format!("cannot launch {what}: {e}")))?;
-        self.stdin = child.stdin.take();
+        self.stdin = child.stdin.take().map(|pipe| Arc::new(Mutex::new(pipe)));
         let (stdout, stderr) = (child.stdout.take().expect("piped"), child.stderr.take().expect("piped"));
         self.child = Some(child);
 
         let sh = self.shared.clone();
+        let stdin = self.stdin.as_ref().map(Arc::downgrade);
+        let compose = self.is_compose();
         std::thread::spawn(move || {
+            let mut fonts = None;
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 match serde_json::from_str::<GuestMessage>(&line) {
                     Ok(GuestMessage::Tree { version, root }) => {
@@ -483,6 +498,20 @@ impl Session {
                         sh.cv.notify_all();
                     }
                     Ok(GuestMessage::Error { message }) => sh.push_error("guest", message),
+                    Ok(GuestMessage::MeasureText { id, request }) => {
+                        if !compose {
+                            sh.push_error("host", "measure_text requires a Compose guest".into());
+                            continue;
+                        }
+                        let result = onesim_render::layout::compose::measure_text(
+                            request, fonts.get_or_insert_with(onesim_render::Fonts::new),
+                        );
+                        if let Some(pipe) = stdin.as_ref().and_then(std::sync::Weak::upgrade) {
+                            if let Err(e) = send_to_guest(&pipe, &HostMessage::TextMeasurement { id, result }) {
+                                sh.push_error("host", e.message);
+                            }
+                        }
+                    }
                     Ok(GuestMessage::Hello { protocol }) if protocol != onesim_protocol::PROTOCOL_VERSION => {
                         sh.push_error("guest", format!("unexpected guest protocol version {protocol}"))
                     }
@@ -518,12 +547,8 @@ impl Session {
 
     pub fn send(&mut self, msg: &HostMessage) -> Result<(), ApiError> {
         self.last_sent = Instant::now();
-        let mut line = serde_json::to_string(msg).expect("serialize");
-        line.push('\n');
-        let w = self.stdin.as_mut().ok_or_else(|| err(ErrorCode::InvalidState, "guest not running"))?;
-        w.write_all(line.as_bytes())
-            .and_then(|_| w.flush())
-            .map_err(|e| err(ErrorCode::RuntimeError, format!("guest pipe closed: {e}")))
+        let pipe = self.stdin.as_ref().ok_or_else(|| err(ErrorCode::InvalidState, "guest not running"))?;
+        send_to_guest(pipe, msg)
     }
 
     /// React Native: send the frames that changed since the last `layout` message.
@@ -597,6 +622,9 @@ impl Session {
             Effect::TextInput { field, version, text } => {
                 let m = HostMessage::TextInput { field, version, text };
                 if self.is_rn() { self.send_and_settle(&m).map(drop) } else { self.send_and_wait_tree(&m).map(drop) }
+            }
+            Effect::TextClick { id, version, offset } => {
+                self.send_and_wait_tree(&HostMessage::TextClick { id, version, offset }).map(drop)
             }
             // The guest answers every touch event with a tree. A whole synthesized gesture waits for the trees to stop.
             Effect::Gesture(touches) => {

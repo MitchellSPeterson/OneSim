@@ -14,10 +14,13 @@ class LayoutNode(val component: String) {
     var props: String = ""
     var modifier: Modifier = Modifier
     var onInput: ((String) -> Unit)? = null
+    var onTextClick: ((Int) -> Unit)? = null
+    var isTextProbe: Boolean = false
+    var onTextLayout: ((String) -> Unit)? = null
     val children = mutableListOf<LayoutNode>()
 
-    /** Wire JSON of this subtree; clickables are registered in [actions]. */
-    fun toJson(id: String, actions: MutableMap<Long, () -> Unit>, inputs: MutableMap<Long, (String) -> Unit>, out: StringBuilder) {
+    /** Wire JSON of this subtree and the callbacks referenced by it. */
+    internal fun toJson(id: String, handlers: CallbackTables, out: StringBuilder) {
         out.append("""{"kind":"compose","id":""").append(jsonString(id))
         out.append(""","component":"""").append(component).append("""","props":{""")
         var first = true
@@ -26,18 +29,32 @@ class LayoutNode(val component: String) {
             first = false
         }
         onInput?.let { handler ->
-            val field = inputs.size + 1L
-            inputs[field] = handler
+            val field = handlers.inputs.size + 1L
+            handlers.inputs[field] = handler
             if (!first) out.append(',')
             out.append("\"field\":").append(field)
+            first = false
+        }
+        onTextClick?.let { handler ->
+            val action = handlers.textClicks.size + 1L
+            handlers.textClicks[action] = handler
+            if (!first) out.append(',')
+            out.append("\"textClick\":").append(action)
+            first = false
+        }
+        onTextLayout?.let { handler ->
+            val callback = if (isTextProbe) ++handlers.textProbeId else ++handlers.textLayoutId
+            handlers.textLayouts[callback] = handler
+            if (!first) out.append(',')
+            out.append("\"textLayout\":").append(callback)
             first = false
         }
         val mods = modifier.foldIn(mutableListOf<String>()) { acc, e ->
             when (e) {
                 is WireModifier -> acc.add(e.json)
                 is ClickModifier -> {
-                    val actionId = actions.size + 1L
-                    actions[actionId] = e.onClick
+                    val actionId = handlers.actions.size + 1L
+                    handlers.actions[actionId] = e.onClick
                     val role = e.role?.let { ""","role":"$it"""" } ?: ""
                     val label = e.label?.let { ""","label":${jsonString(it)}""" } ?: ""
                     acc.add("""{"clickable":{"action":$actionId,"enabled":${e.enabled}$role$label}}""")
@@ -54,7 +71,7 @@ class LayoutNode(val component: String) {
             out.append(""","children":[""")
             children.forEachIndexed { i, c ->
                 if (i > 0) out.append(',')
-                c.toJson("$id/$i", actions, inputs, out)
+                c.toJson("$id/$i", handlers, out)
             }
             out.append(']')
         }
@@ -96,12 +113,38 @@ fun InputPrimitive(
     onInput: ((String) -> Unit)?,
     content: @Composable () -> Unit = {},
 ) {
+    EmitPrimitive(component, modifier, props, onInput, null, null, content)
+}
+
+@Composable
+fun TextPrimitive(
+    modifier: Modifier, props: String, onClick: ((Int) -> Unit)?, onLayout: ((String) -> Unit)?,
+    isProbe: Boolean = false,
+    content: @Composable () -> Unit = {},
+) {
+    EmitPrimitive("Text", modifier, props, null, onClick, onLayout, content, isTextProbe = isProbe)
+}
+
+@Composable
+private fun EmitPrimitive(
+    component: String,
+    modifier: Modifier,
+    props: String,
+    onInput: ((String) -> Unit)?,
+    onTextClick: ((Int) -> Unit)?,
+    onTextLayout: ((String) -> Unit)?,
+    content: @Composable () -> Unit,
+    isTextProbe: Boolean = false,
+) {
     ComposeNode<LayoutNode, LayoutApplier>(
         factory = { LayoutNode(component) },
         update = {
             set(modifier) { this.modifier = it }
             set(props) { this.props = it }
             set(onInput) { this.onInput = it }
+            set(onTextClick) { this.onTextClick = it }
+            set(onTextLayout) { this.onTextLayout = it }
+            set(isTextProbe) { this.isTextProbe = it }
         },
         content = content,
     )

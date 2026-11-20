@@ -9,5 +9,10 @@
         </activity>
         <activity android:name="com.example.showcase.ShowcaseActivity" android:exported="true" />
         <activity android:name="com.example.input.InputActivity" android:exported="true" />
+        <activity android:name="com.example.text.TextActivity" android:exported="true" />
+        <activity android:name="com.example.text.InlineTextActivity" android:exported="true" />
+        <activity android:name="com.example.text.RichTextActivity" android:exported="true" />
+        <activity android:name="com.example.text.TextEffectsActivity" android:exported="true" />
+        <activity android:name="com.example.text.TextPaintActivity" android:exported="true" />
     </application>
 </manifest>

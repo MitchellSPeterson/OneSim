@@ -118,6 +118,8 @@ jobs:
         run: |
           cargo run -q -p onesim-cli -- run examples/compose-counter \
             --click Increment --click Increment --click Decrement --inspect | grep -q '"Count: 1"'
+      - name: Compose annotated text and click callback wire test
+        run: bash frameworks/compose/tests/text_wire_test.sh
       - name: Install Pillow for screenshot comparisons
         run: python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
       - name: Android pixel-diff gate, Compose vs the Android 17 emulator (every state < 2%)

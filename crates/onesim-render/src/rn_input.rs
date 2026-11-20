@@ -112,6 +112,7 @@ pub fn effect_messages(e: Effect) -> Vec<HostMessage> {
     match e {
         Effect::Action { id, version } => vec![HostMessage::Action { id, version }],
         Effect::TextInput { field, version, text } => vec![HostMessage::TextInput { field, version, text }],
+        Effect::TextClick { id, version, offset } => vec![HostMessage::TextClick { id, version, offset }],
         Effect::Gesture(touches) => touches.into_iter().map(HostMessage::Gesture).collect(),
         Effect::None | Effect::Redraw => vec![],
     }
@@ -122,6 +123,7 @@ impl RnInput {
     /// interaction state machine's, native chrome (stack back pill, tab bar items) sends its own message, and
     /// everything else is a touch (a tap on a text input focuses it). Returns `(hit node id, acted, messages)`.
     pub fn pointer(&mut self, inter: &mut Interaction, cx: &RnCtx, ev: PointerEvent) -> (Option<String>, bool, Vec<Out>) {
+        if matches!(ev.kind, PointerKind::Hover | PointerKind::Cancel) { return (None, false, vec![]); }
         let scene = cx.scene;
         if ev.kind == PointerKind::Scroll {
             let effect = inter.pointer(scene, ev);

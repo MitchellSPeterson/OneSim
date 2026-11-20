@@ -1,6 +1,6 @@
 use crate::scene::{Color, Glyph, Scene, Shadow, SymbolRun, VectorGeom, VectorShape, VectorStroke};
 use crate::symbols;
-use crate::text::{FontSpec, Fonts};
+use crate::text::Fonts;
 use onesim_protocol::{IosVersion, LineCap as ProtoLineCap, LineJoin as ProtoLineJoin, PathOp};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -120,7 +120,7 @@ fn uneven_rrect(x: f32, y: f32, w: f32, h: f32, radii: [(f64, f64); 4], continuo
     b.finish()
 }
 
-fn build_vector_path(geom: &VectorGeom, b: crate::scene::Rect, inset: f64) -> Option<Path> {
+pub(crate) fn build_vector_path(geom: &VectorGeom, b: crate::scene::Rect, inset: f64) -> Option<Path> {
     let bx = b.x as f32;
     let by = b.y as f32;
     let bw = b.w as f32;
@@ -160,7 +160,7 @@ fn build_vector_path(geom: &VectorGeom, b: crate::scene::Rect, inset: f64) -> Op
     }
 }
 
-fn to_skia_stroke(st: &VectorStroke) -> Stroke {
+pub(crate) fn to_skia_stroke(st: &VectorStroke) -> Stroke {
     let line_cap = match st.line_cap {
         ProtoLineCap::Butt => LineCap::Butt,
         ProtoLineCap::Round => LineCap::Round,
@@ -195,6 +195,16 @@ fn to_skia_stroke(st: &VectorStroke) -> Stroke {
     }
 }
 
+fn vector_stroke_path(v: &VectorShape, bounds: crate::scene::Rect) -> Option<crate::compose_path_effect::StrokePath> {
+    let st = v.stroke.as_ref().filter(|st| st.line_width > 0.0)?;
+    let path = build_vector_path(&v.geom, bounds, st.inset)?;
+    let geometry = crate::compose_path_effect::StrokePath::new(path, to_skia_stroke(st));
+    match &st.compose_effect {
+        Some((effect, unit)) => geometry.apply(effect, *unit),
+        None => Some(geometry),
+    }
+}
+
 fn draw_vector(pm: &mut Pixmap, v: &VectorShape, bounds: crate::scene::Rect, opacity: f32, xf: Transform, mask: Option<&Mask>) {
     if let Some(f) = v.fill {
         if let Some(p) = build_vector_path(&v.geom, bounds, 0.0) {
@@ -204,14 +214,13 @@ fn draw_vector(pm: &mut Pixmap, v: &VectorShape, bounds: crate::scene::Rect, opa
             pm.fill_path(&p, &pt, rule, xf, mask);
         }
     }
-    if let Some(st) = &v.stroke {
-        if st.line_width > 0.0 {
-            if let Some(p) = build_vector_path(&v.geom, bounds, st.inset) {
-                let mut pt = paint(st.color, opacity);
-                pt.anti_alias = st.antialiased;
-                let sk = to_skia_stroke(st);
-                pm.stroke_path(&p, &pt, &sk, xf, mask);
-            }
+    if let (Some(st), Some(geometry)) = (&v.stroke, vector_stroke_path(v, bounds)) {
+        let mut pt = paint(st.color, opacity);
+        pt.anti_alias = st.antialiased;
+        if let Some(stroke) = geometry.stroke {
+            pm.stroke_path(&geometry.path, &pt, &stroke, xf, mask);
+        } else {
+            pm.fill_path(&geometry.path, &pt, geometry.fill_rule, xf, mask);
         }
     }
 }
@@ -860,6 +869,11 @@ fn apply_text_op(pm: &mut Pixmap, op: &TextOp, (dx, dy): (i32, i32), mask: Optio
     }
 }
 
+/// Two pixels of slack avoid re-wrapping because of subpixel rounding.
+pub(crate) fn text_width(width: f32, scale: f32) -> f32 {
+    width * scale + 2.0
+}
+
 /// Lay out and paint a text node as device-pixel operations (`emit` receives them in paint order).
 fn paint_text(n: &crate::scene::Node, t: &crate::scene::TextRun, fonts: &mut Fonts, s: f32, mut emit: impl FnMut(TextOp)) {
     let b = n.bounds;
@@ -872,34 +886,120 @@ fn paint_text(n: &crate::scene::Node, t: &crate::scene::TextRun, fonts: &mut Fon
     ];
     // Wrapped text uses a larger pitch than the single-line box; keep line 1 where it is.
     // Accessibility sizes: iOS sets the glyphs ~0.01 em higher in the line box (measured).
-    let (lift, ldx) = match (t.font.size > 40.0, fonts.is_sf()) {
+    let (lift, ldx) = match (t.font.size > 40.0 && t.font.compose_overflow.is_none(), fonts.is_sf()) {
         (false, _) => (0.0, 0.0),
         (true, true) => (0.0105 * t.font.size, 0.0),
         // Inter fallback at accessibility sizes: baseline and side bearing differ from SF.
         (true, false) => (-0.03 * t.font.size, -0.775),
     };
     let (ox, oy) = ((bx + t.offset_x + ldx) * s, (by - (t.font.pitch - t.font.line_height).max(0.0) / 2.0 - lift) * s);
-    let spec = FontSpec { size: t.font.size * s, line_height: t.font.line_height * s, pitch: t.font.pitch * s, ..t.font };
-    // +2px slack so rounding differences vs layout never re-wrap.
+    let spec = t.font.scaled(s);
+    let clip = spec.no_wrap && matches!(spec.compose_overflow, Some(crate::text::ComposeOverflow::Clip | crate::text::ComposeOverflow::StartEllipsis | crate::text::ComposeOverflow::MiddleEllipsis));
+    if t.spans.iter().any(|span| span.compose.as_ref().is_some_and(|style| style.background.is_some())) {
+        let buffer = fonts.buffer(&t.text, &spec, Some(text_width(bw, s)), &t.spans);
+        for line in buffer.layout_runs().take(spec.drawn_lines()) {
+            let inset = crate::text::line_x(&buffer, &line);
+            let mut backgrounds: Vec<(f32, f32, Color)> = Vec::new();
+            for glyph in line.glyphs {
+                let Some(color) = t.spans.get(glyph.metadata).and_then(|span| span.compose.as_ref()?.background) else {
+                    continue;
+                };
+                let left = inset + glyph.x;
+                let right = left + glyph.w;
+                if let Some(last) = backgrounds.last_mut().filter(|last| last.2 == color && left <= last.1 + 0.001) {
+                    last.0 = last.0.min(left);
+                    last.1 = last.1.max(right);
+                } else {
+                    backgrounds.push((left, right, color));
+                }
+            }
+            for (left, right, color) in backgrounds {
+                let rgba = [(color.r * 255.0).round() as u8, (color.g * 255.0).round() as u8, (color.b * 255.0).round() as u8,
+                    (color.a * n.opacity * 255.0).round() as u8];
+                let (left, right) = if clip { (left.clamp(0.0, bw * s), right.clamp(0.0, bw * s)) } else { (left, right) };
+                emit(TextOp::Rule(ox + left, oy + line.line_top, right - left, line.line_height, rgba));
+            }
+        }
+    }
+    if let Some(layout) = &n.compose_text {
+        if let Some(color) = layout.selection_color {
+            let rgba = [
+                (color.r * 255.0).round() as u8, (color.g * 255.0).round() as u8, (color.b * 255.0).round() as u8,
+                (color.a * n.opacity * 255.0).round() as u8,
+            ];
+            for rect in &layout.highlight {
+                emit(TextOp::Rule((bx + rect.x as f32) * s, (by + rect.y as f32) * s, rect.w as f32 * s, rect.h as f32 * s, rgba));
+            }
+        }
+    }
     // Styled runs carry their own color (alpha included); only the node opacity is applied on top.
     let base_a = if t.spans.is_empty() { rgba[3] as u32 } else { (n.opacity * 255.0).round() as u32 };
-    let spans = fonts.draw(&t.text, &spec, bw * s + 2.0, rgba, (ox, oy), &t.spans, |x, y, w, h, c| {
+    let brushes: Vec<_> = t.spans.iter().map(|span| {
+        span.compose.as_ref()?.brush.as_ref().map(|brush| crate::compose_paint::BrushSampler::new(brush, bw * s, b.h as f32 * s))
+    }).collect();
+    let has_shadow = t.spans.iter().any(|span| span.compose.as_ref().and_then(|style| style.shadow).is_some_and(|sh| sh.0[3] > 0.0));
+    let mut foreground = Vec::new();
+    let mut shadows: Vec<Vec<crate::compose_paint::GlyphPixel>> = if has_shadow { vec![vec![]; t.spans.len()] } else { vec![] };
+    let spans = fonts.draw(&t.text, &spec, text_width(bw, s), rgba, (ox, oy), &t.spans, |x, y, index, mut c| {
+        if clip && (x < ox.floor() as i32 || x >= (ox + bw * s).ceil() as i32) {
+            return;
+        }
+        let style = t.spans.get(index).and_then(|span| span.compose.as_ref());
+        let mut opacity = style.and_then(|style| style.paint_alpha).unwrap_or(1.0).clamp(0.0, 1.0);
+        if let Some(brush) = brushes.get(index).and_then(Option::as_ref) {
+            let [r, g, b, a] = brush.sample(x as f32 + 0.5 - ox, y as f32 + 0.5 - oy);
+            c[..3].copy_from_slice(&[r, g, b].map(|v| (v * 255.0).round() as u8));
+            opacity *= a;
+        }
         // cosmic-text replaces the colour alpha with glyph coverage; reapply ours.
-        emit(TextOp::Blend(x, y, w, h, [c[0], c[1], c[2], (c[3] as u32 * base_a / 255) as u8]));
+        c[3] = (f32::from(c[3]) * opacity * base_a as f32 / 255.0) as u8;
+        let pixel = TextOp::Blend(x, y, 1, 1, c);
+        if has_shadow {
+            if style.and_then(|style| style.shadow).is_some_and(|sh| sh.0[3] > 0.0) && c[3] > 0 {
+                shadows[index].push((x, y, c));
+            }
+            foreground.push(pixel);
+        } else {
+            emit(pixel);
+        }
     });
+    for (span, pixels) in t.spans.iter().zip(shadows) {
+        if let Some(shadow) = span.compose.as_ref().and_then(|style| style.shadow) {
+            crate::compose_paint::shadow(shadow, &pixels, |x, y, c| emit(TextOp::Blend(x, y, 1, 1, c)));
+        }
+    }
+    foreground.into_iter().for_each(&mut emit);
     // Strikethrough / underline: per line, or per styled run (in the run's own color and size).
     for sp in spans {
         let run = sp.run.and_then(|i| t.spans.get(i));
         let (strike, under) = (t.strike || run.is_some_and(|r| r.strike), run.is_some_and(|r| r.underline));
         let size = run.map_or(spec.size, |r| spec.size * r.pt / t.font.pt);
-        let col = run.map_or(rgba, |r| [(r.color.r * 255.0).round() as u8, (r.color.g * 255.0).round() as u8, (r.color.b * 255.0).round() as u8, (r.color.a * n.opacity * 255.0).round() as u8]);
+        let alpha = run.and_then(|r| r.compose.as_ref()?.paint_alpha).unwrap_or(1.0).clamp(0.0, 1.0);
+        let col = run.map_or(rgba, |r| [(r.color.r * 255.0).round() as u8, (r.color.g * 255.0).round() as u8, (r.color.b * 255.0).round() as u8, (r.color.a * n.opacity * alpha * 255.0).round() as u8]);
         for (on, drop) in [(strike, 0.27f32), (under, -0.11)] {
             if !on {
                 continue;
             }
             let th = (size * 0.065).max(1.0);
             let y = oy + sp.baseline - size * drop - th / 2.0;
-            emit(TextOp::Rule(ox + sp.x0, y, (sp.x1 - sp.x0).max(0.0), th, col));
+            let (left, right) = if clip {
+                (sp.x0.clamp(0.0, bw * s), sp.x1.clamp(0.0, bw * s))
+            } else {
+                (sp.x0, sp.x1)
+            };
+            if let Some(brush) = sp.run.and_then(|i| brushes.get(i)?.as_ref()) {
+                let bottom = y + th;
+                for py in y.floor() as i32..bottom.ceil() as i32 {
+                    let coverage = (bottom.min(py as f32 + 1.0) - y.max(py as f32)).max(0.0);
+                    for px in (ox + left).round() as i32..(ox + right).round() as i32 {
+                        let mut c = brush.sample(px as f32 + 0.5 - ox, py as f32 + 0.5 - oy);
+                        c[3] *= n.opacity * alpha * coverage;
+                        emit(TextOp::Blend(px, py, 1, 1, c.map(|v| (v * 255.0).round() as u8)));
+                    }
+                }
+            } else {
+                emit(TextOp::Rule(ox + left, y, (right - left).max(0.0), th, col));
+            }
         }
     }
 }
@@ -1080,9 +1180,9 @@ pub fn sprite_key(n: &crate::scene::Node, fonts: &Fonts, scale: f64, layer: Spri
     let (ax, ay) = (px.floor(), py.floor());
     let mut h = std::collections::hash_map::DefaultHasher::new();
     let content = match layer {
-        SpriteLayer::Shape => format!("{:?}", n.vector),
+        SpriteLayer::Shape => format!("{:?}{:?}", n.vector, n.vector_brush),
         SpriteLayer::Icons => format!("{:?}", (&n.glyph, &n.symbol)),
-        SpriteLayer::Text => format!("{:?}", n.text),
+        SpriteLayer::Text => format!("{:?}{:?}", n.text, n.compose_text.as_ref().map(|l| (&l.highlight, l.selection_color))),
     };
     (layer as u8, content, fonts.is_sf(), s.to_bits(), n.opacity.to_bits()).hash(&mut h);
     [n.bounds.w as f32, n.bounds.h as f32, px - ax, py - ay].map(f32::to_bits).hash(&mut h);
@@ -1117,13 +1217,11 @@ pub fn node_sprite(n: &crate::scene::Node, fonts: &mut Fonts, scale: f64, layer:
                     grow(&p, 2.0);
                 }
             }
-            if let Some(st) = &v.stroke {
-                if st.line_width > 0.0 {
-                    if let Some(p) = build_vector_path(&v.geom, b, st.inset) {
-                        let pad = (st.line_width as f32 * (st.miter_limit as f32).clamp(1.0, 10.0) * 0.5 + 2.0).max(st.line_width as f32 + 2.0);
-                        grow(&p, pad);
-                    }
-                }
+            if let Some(geometry) = vector_stroke_path(v, b) {
+                let pad = geometry.stroke.as_ref().map_or(2.0, |st| {
+                    (st.width * st.miter_limit.clamp(1.0, 10.0) * 0.5 + 2.0).max(st.width + 2.0)
+                });
+                grow(&geometry.path, pad);
             }
             if !min_x.is_finite() || !min_y.is_finite() || max_x <= min_x || max_y <= min_y {
                 return None;
@@ -1138,6 +1236,9 @@ pub fn node_sprite(n: &crate::scene::Node, fonts: &mut Fonts, scale: f64, layer:
             let mut pm = Pixmap::new(w as u32, h as u32)?;
             let xf = Transform::from_scale(s, s).post_translate(-ox as f32, -oy as f32);
             draw_vector(&mut pm, v, b, n.opacity, xf, None);
+            if let Some(brush) = &n.vector_brush {
+                crate::compose_paint::tint(&mut pm, brush, (ox as f32 - sh.0 * s, oy as f32 - sh.1 * s), (sh.2 * s, sh.3 * s));
+            }
             crop(ox, oy, pm).map(|(x, y, pixmap)| Sprite { x, y, pixmap })
         }
         SpriteLayer::Icons => {
@@ -1264,7 +1365,13 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
             }
         }
         if let Some(v) = &n.vector {
-            draw_vector(&mut pm, v, b, n.opacity, xf, mask.as_deref());
+            if n.vector_brush.is_some() {
+                if let Some(sprite) = node_sprite(n, fonts, scale, SpriteLayer::Shape) {
+                    pm.draw_pixmap(sprite.x, sprite.y, sprite.pixmap.as_ref(), &PixmapPaint::default(), Transform::identity(), mask.as_deref());
+                }
+            } else {
+                draw_vector(&mut pm, v, b, n.opacity, xf, mask.as_deref());
+            }
         }
         if let Some((g, c)) = n.glyph {
             draw_glyph(&mut pm, g, c, sh, n.opacity, xf, mask.as_deref());
@@ -1441,6 +1548,7 @@ mod tests {
                 miter_limit: 10.0,
                 dash: vec![10.0, 10.0],
                 dash_phase: 0.0,
+                compose_effect: None,
                 antialiased: true,
                 inset: 3.0,
             }),

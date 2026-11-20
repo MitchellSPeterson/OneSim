@@ -1,5 +1,8 @@
 package androidx.compose.material3
 
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
+
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -153,6 +156,7 @@ fun MaterialTheme(
         LocalColorScheme provides colorScheme,
         LocalShapes provides shapes,
         LocalTypography provides typography,
+        LocalTextSelectionColors provides TextSelectionColors(colorScheme.primary, colorScheme.primary.copy(alpha = 0.4f)),
     ) {
         ProvideTextStyle(typography.bodyLarge, content)
     }

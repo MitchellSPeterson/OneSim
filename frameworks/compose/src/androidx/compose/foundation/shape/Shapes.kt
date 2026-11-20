@@ -2,6 +2,12 @@ package androidx.compose.foundation.shape
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.jsonNum
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -17,6 +23,17 @@ val ZeroCornerSize = CornerSize(0.dp)
 
 @Immutable
 open class CornerBasedShape(val topStart: CornerSize, val topEnd: CornerSize, val bottomEnd: CornerSize, val bottomStart: CornerSize) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        fun CornerSize.radius(): CornerRadius =
+            CornerRadius(dp?.times(density.density) ?: (percent ?: 0f) * size.minDimension / 100f)
+        val ltr = layoutDirection == LayoutDirection.Ltr
+        return Outline.Rounded(RoundRect(
+            0f, 0f, size.width, size.height,
+            (if (ltr) topStart else topEnd).radius(), (if (ltr) topEnd else topStart).radius(),
+            (if (ltr) bottomEnd else bottomStart).radius(), (if (ltr) bottomStart else bottomEnd).radius(),
+        ))
+    }
+
     override fun wire(): String? {
         val all = listOf(topStart, topEnd, bottomEnd, bottomStart)
         if (all.all { it.percent != null }) return """{"percent":[${all.joinToString(",") { jsonNum(it.percent!!) }}]}"""
