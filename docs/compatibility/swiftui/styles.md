@@ -8,7 +8,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `AccessoryCircularGaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `AccessoryLinearCapacityGaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `AccessoryLinearGaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
-| `AnyShapeStyle` | 15 | ⬜ |  |  |
+| `AnyShapeStyle` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Erases supported shape styles and preserves their paint. Apple custom style resolution is a gap. |
 | `ArrangementViewStyle` | 13 | ⬜ |  |  |
 | `AutomaticArrangementViewStyle` | 13 | ⬜ |  |  |
 | `AutomaticControlGroupStyle` | 15 | ⬜ |  |  |
@@ -18,7 +18,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `AutomaticNavigationSplitViewStyle` | 16 | ⬜ |  |  |
 | `AutomaticTableStyle` | 16 | ⬜ |  |  |
 | `AutomaticTextEditorStyle` | 17 | ⬜ |  |  |
-| `BackgroundStyle` | 14 | ⬜ |  |  |
+| `BackgroundStyle` | 14 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Background environment paint and appearance defaults. Safe-area edge extension is a gap. |
 | `BalancedNavigationSplitViewStyle` | 16 | ⬜ |  |  |
 | `BorderedButtonStyle` | 15 | ✅ |  |  |
 | `BorderedProminentButtonStyle` | 15 | ✅ |  |  |
@@ -50,9 +50,9 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `DefaultToggleStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `DisclosureGroupStyle` | 16 | ⬜ |  |  |
 | `DoubleColumnNavigationViewStyle` | 13 | ⬜ |  | Deprecated |
-| `FillShapeStyle` | 17 | ⬜ |  |  |
+| `FillShapeStyle` | 17 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Fill levels with light and dark colors. UIKit fill colors are approximated. |
 | `FillStyle` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
-| `ForegroundStyle` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `ForegroundStyle` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Inherits solid or gradient paint for shapes and text. Symbols and multi-style hierarchy are gaps. |
 | `FormStyle` | 16 | ⬜ |  |  |
 | `GaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `GlassButtonStyle` | 26 | ✅ |  |  |
@@ -61,7 +61,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `GroupBoxStyle` | 14 | ⬜ |  |  |
 | `GroupedFormStyle` | 16 | ⬜ |  |  |
 | `GroupedListStyle` | 13 | ⬜ |  |  |
-| `HierarchicalShapeStyle` | 15 | ✅ |  |  |
+| `HierarchicalShapeStyle` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | All five levels for solid and gradient foreground paints. Multiple foreground styles are a gap. |
 | `IconOnlyLabelStyle` | 14 | ⬜ |  |  |
 | `IndexViewStyle` | 14 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Built-in style only |
 | `InlinePickerStyle` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | No label row in a list |
@@ -72,7 +72,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `LabelStyle` | 14 | ⬜ |  |  |
 | `LinearCapacityGaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `LinearProgressViewStyle` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Without a value it draws the spinner |
-| `LinkShapeStyle` | 17 | ⬜ |  |  |
+| `LinkShapeStyle` | 17 | ✅ | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Appearance-specific link color. |
 | `ListStyle` | 13 | ⬜ |  |  |
 | `MenuControlGroupStyle` | 16.4 | ⬜ |  |  |
 | `MenuPickerStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
@@ -87,7 +87,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `PaletteControlGroupStyle` | 17 | ⬜ |  |  |
 | `PalettePickerStyle` | 17 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Drawn as a segmented control (as outside a menu); no palette row inside a `Menu` |
 | `PickerStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
-| `PlaceholderTextShapeStyle` | 17 | ⬜ |  |  |
+| `PlaceholderTextShapeStyle` | 17 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Uses the semantic tertiary color. |
 | `PlainButtonStyle` | 13 | ✅ |  |  |
 | `PlainListStyle` | 13 | ⬜ |  |  |
 | `PlainTextEditorStyle` | 17 | ⬜ |  |  |
@@ -99,10 +99,10 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `RoundedCornerStyle` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `ScrollEdgeEffectStyle` | 26 | ⬜ |  |  |
 | `SegmentedPickerStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
-| `SelectionShapeStyle` | 15 | ⬜ |  |  |
-| `SeparatorShapeStyle` | 17 | ⬜ |  |  |
+| `SelectionShapeStyle` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Uses a translucent accent fill. |
+| `SeparatorShapeStyle` | 17 | ✅ | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Appearance-specific separator color. |
 | `ShadowStyle` | 16 | ⬜ |  |  |
-| `ShapeStyle` | 13 | 🟠 |  | `Color` and `.primary`/`.secondary`/`.tertiary` only |
+| `ShapeStyle` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Solid and gradient paint, type erasure, semantic styles and hierarchy. Material, style shadows and custom resolution are gaps. |
 | `SidebarAdaptableTabViewStyle` | 18 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Compact iPhone tab bar. Sidebar layout is unsupported. |
 | `SidebarListStyle` | 14 | ⬜ |  |  |
 | `SplitArrangementViewStyle` | 13 | ⬜ |  |  |
@@ -116,11 +116,11 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `TabViewStyle` | 14 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Built-in styles only |
 | `TextEditorStyle` | 17 | ⬜ |  |  |
 | `TextFieldStyle` | 13 | ⬜ |  |  |
-| `TintShapeStyle` | 15 | ⬜ |  |  |
+| `TintShapeStyle` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Inherited tint paint and accent fallback. Propagation to native-style controls is a gap. |
 | `TitleAndIconLabelStyle` | 14.5 | ⬜ |  |  |
 | `TitleOnlyLabelStyle` | 14 | ⬜ |  |  |
 | `ToggleStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `ToolbarLabelStyle` | 18 | ⬜ |  |  |
 | `WheelDatePickerStyle` | 13 | ⬜ |  |  |
 | `WheelPickerStyle` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | A tap on a row selects it (three rows each side are shown); no spinning or momentum |
-| `WindowBackgroundShapeStyle` | 17 | ⬜ |  |  |
+| `WindowBackgroundShapeStyle` | 17 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Uses the simulated window background color. |

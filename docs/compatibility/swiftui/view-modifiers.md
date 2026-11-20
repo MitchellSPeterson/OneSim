@@ -60,26 +60,26 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.background` | 13 | ✅ |  |  |
 | `.backgroundExtensionEffect` | 26 | ⬜ |  |  |
 | `.backgroundPreferenceValue` | 13 | ⬜ |  |  |
-| `.backgroundStyle` | 16 | ⬜ |  |  |
+| `.backgroundStyle` | 16 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Inherits paint. Safe-area edge extension is a gap. |
 | `.badge` | 15 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Plain-text tab badges. List badges and localized resource overloads are unsupported. |
 | `.badgeProminence` | 17 | ⬜ |  |  |
 | `.baselineOffset` | 16 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Positive lengthens the line downward. Glyphs stay at the top |
-| `.blendMode` | 13 | ⬜ |  |  |
-| `.blur` | 13 | ⬜ |  |  |
+| `.blendMode` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Composites an isolated source layer with the backdrop. Per-element blending of compound views can differ. |
+| `.blur` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Transparent and opaque box approximations to the Gaussian blur. |
 | `.bold` | 16 | ✅ |  |  |
 | `.border` | 13 | ⬜ |  |  |
-| `.brightness` | 13 | ⬜ |  |  |
+| `.brightness` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Applies to the isolated layer in device color space. |
 | `.buttonBorderShape` | 15 | ⬜ |  |  |
 | `.buttonRepeatBehavior` | 17 | ⬜ |  |  |
 | `.buttonSizing` | 26 | ⬜ |  |  |
 | `.buttonStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
-| `.clipped` | 13 | ⬜ |  |  |
-| `.clipShape` | 13 | ⬜ |  |  |
+| `.clipped` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Rectangular alpha clipping. Hit testing stays in layout coordinates. |
+| `.clipShape` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Alpha clipping with fill and antialiasing rules. Hit testing stays in layout coordinates. |
 | `.colorEffect` | 17 | ⬜ |  |  |
-| `.colorInvert` | 13 | ⬜ |  |  |
-| `.colorMultiply` | 13 | ⬜ |  |  |
+| `.colorInvert` | 13 | ✅ | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Inverts the layer's RGB and preserves alpha. |
+| `.colorMultiply` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | RGB and alpha multiplication in device color space. |
 | `.colorScheme` | 13 | ⬜ |  | Deprecated |
-| `.compositingGroup` | 13 | ⬜ |  |  |
+| `.compositingGroup` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Isolates nested painting. Backdrop-dependent content in a group can differ. |
 | `.confirmationDialog` | 15 | ✅ |  |  |
 | `.containerBackground` | 17 | ⬜ |  |  |
 | `.containerCornerOffset` | 26 | ⬜ |  |  |
@@ -91,7 +91,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.contentToolbar` | 18.4 | ⬜ |  |  |
 | `.contentTransition` | 16 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | `identity`, `interpolate`, `opacity`, `numericText`, `symbolEffect`; no per-glyph morphing |
 | `.contextMenu` | 13 | ⬜ |  |  |
-| `.contrast` | 13 | ⬜ |  |  |
+| `.contrast` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Contrast around mid-gray in device color space. |
 | `.controlGroupStyle` | 15 | ⬜ |  |  |
 | `.controlSize` | 15 | ⬜ |  |  |
 | `.coordinateSpace` | 13 | ⬜ |  |  |
@@ -121,7 +121,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.dragContainer` | 27 | ⬜ |  |  |
 | `.dragContainerSelection` | 27 | ⬜ |  |  |
 | `.draggable` | 16 | ⬜ |  |  |
-| `.drawingGroup` | 13 | ⬜ |  |  |
+| `.drawingGroup` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Isolated 8-bit rendering and opaque backing. Linear and extended-linear backing are gaps. |
 | `.dropConfiguration` | 27 | ⬜ |  |  |
 | `.dropDestination` | 16 | ⬜ |  |  |
 | `.dynamicTypeSize` | 15 | ⬜ |  |  |
@@ -156,7 +156,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.fontWeight` | 16 | ✅ |  |  |
 | `.fontWidth` | 16 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | The `wdth` axis is not driven. Condensed is 0.80 of the standard face. Compressed is 0.70. Expanded stays standard |
 | `.foregroundColor` | 13 | ✅ |  | Deprecated |
-| `.foregroundStyle` | 15 | ✅ |  |  |
+| `.foregroundStyle` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Solid paints for views and gradient paints for shapes and text. Multi-style symbol palettes and independent gradient text runs are gaps. |
 | `.formStyle` | 16 | ⬜ |  |  |
 | `.frame` | 13 | ✅ |  |  |
 | `.fullScreenCover` | 14 | ✅ |  | Settled states only (no animation) |
@@ -167,7 +167,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.glassEffectID` | 26 | ⬜ |  |  |
 | `.glassEffectTransition` | 26 | ⬜ |  |  |
 | `.glassEffectUnion` | 26 | ⬜ |  |  |
-| `.grayscale` | 13 | ⬜ |  |  |
+| `.grayscale` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Device-space luminance interpolation. |
 | `.gridCellAnchor` | 16 | ⬜ |  |  |
 | `.gridCellColumns` | 16 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `.gridCellUnsizedAxes` | 16 | ⬜ |  |  |
@@ -181,7 +181,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.highPriorityGesture` | 13 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | Wins only once it commits; it never holds back a gesture that commits first |
 | `.hoverEffect` | 13.4 | ⬜ |  |  |
 | `.hoverEffectDisabled` | 17 | ⬜ |  |  |
-| `.hueRotation` | 13 | ⬜ |  |  |
+| `.hueRotation` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Uses a device-space color matrix. |
 | `.id` | 13 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Names the view for `scrollTo`. Does not reset `@State` |
 | `.ignoresSafeArea` | 13 | ⬜ |  |  |
 | `.imageScale` | 13 | ✅ |  |  |
@@ -222,8 +222,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.listSectionSeparatorTint` | 15 | ⬜ |  |  |
 | `.listSectionSpacing` | 17 | ⬜ |  |  |
 | `.listStyle` | 13 | ⬜ |  |  |
-| `.luminanceToAlpha` | 13 | ⬜ |  |  |
-| `.mask` | 13 | ⬜ |  |  |
+| `.luminanceToAlpha` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Converts device-space luminance to alpha. |
+| `.mask` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Both view and builder overloads, alignment and nested alpha masks. Hit testing uses the original layout. |
 | `.matchedGeometryEffect` | 14 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `.matchedTransitionSource` | 18 | ⬜ |  |  |
 | `.materialActiveAppearance` | 18 | ⬜ |  |  |
@@ -308,21 +308,21 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.previewLayout` | 13 | ⬜ |  |  |
 | `.privacySensitive` | 15 | ⬜ |  |  |
 | `.progressViewStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
-| `.projectionEffect` | 13 | ⬜ |  |  |
+| `.projectionEffect` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Projects the layer with a 3 × 3 matrix. Sampling is nearest neighbor and hit testing uses layout coordinates. |
 | `.redacted` | 14 | ⬜ |  |  |
 | `.refreshable` | 15 | ⬜ |  |  |
 | `.renameAction` | 16 | ⬜ |  |  |
 | `.reorderContainer` | 27 | ⬜ |  |  |
 | `.replaceDisabled` | 16 | ⬜ |  |  |
 | `.rotation3DEffect` | 13 | ⬜ |  |  |
-| `.rotationEffect` | 13 | ⬜ |  |  |
+| `.rotationEffect` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Anchored 2D rotation. Hit testing and transform animation are gaps. |
 | `.safeAreaBar` | 26 | ⬜ |  |  |
 | `.safeAreaInset` | 15 | ⬜ |  |  |
 | `.safeAreaPadding` | 17 | ⬜ |  |  |
-| `.saturation` | 13 | ⬜ |  |  |
+| `.saturation` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Device-space luminance interpolation and oversaturation. |
 | `.scaledToFill` | 13 | ✅ |  |  |
 | `.scaledToFit` | 13 | ✅ |  |  |
-| `.scaleEffect` | 13 | ⬜ |  |  |
+| `.scaleEffect` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Scalar, size and per-axis overloads with anchors. Hit testing and transform animation are gaps. |
 | `.sceneAccessory` | 27 | ⬜ |  |  |
 | `.scenePadding` | 15 | ⬜ |  |  |
 | `.scrollBounceBehavior` | 16.4 | ⬜ |  |  |
@@ -401,7 +401,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.textScale` | 17 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Secondary glyphs are 0.86 of the size. The line box stays the body's |
 | `.textSelection` | 15 | ⬜ |  |  |
 | `.textSelectionAffinity` | 18 | ⬜ |  |  |
-| `.tint` | 15 | ⬜ |  |  |
+| `.tint` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Tint style resolves within the subtree. Native-style controls do not all inherit it. |
 | `.toggleStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `.toolbar` | 14 | ⬜ |  |  |
 | `.toolbarBackground` | 16 | ⬜ |  |  |
@@ -421,7 +421,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.tracking` | 16 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Added to the font's fitted tracking |
 | `.transaction` | 13 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `.transformAnchorPreference` | 13 | ⬜ |  |  |
-| `.transformEffect` | 13 | ⬜ |  |  |
+| `.transformEffect` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | 2D affine transform. Hit testing and transform animation are gaps. |
 | `.transformEnvironment` | 13 | ⬜ |  |  |
 | `.transformPreference` | 13 | ⬜ |  |  |
 | `.transition` | 13 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Built-in transitions run natively; custom `Transition` extracts `opacity` and `offset` |
@@ -431,7 +431,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.underline` | 16 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Pattern and color |
 | `.unredacted` | 14 | ⬜ |  |  |
 | `.userActivity` | 14 | ⬜ |  |  |
-| `.visualEffect` | 17 | ⬜ |  |  |
+| `.visualEffect` | 17 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Geometry-dependent affine and color effects. Scroll coordinate spaces, safe-area accuracy and additional native effects are gaps. |
 | `.windowToolbarFullScreenVisibility` | 18 | ⬜ |  |  |
 | `.writingDirection` | 26 | ⬜ |  |  |
 | `.writingToolsAffordanceVisibility` | 13 | ⬜ |  |  |

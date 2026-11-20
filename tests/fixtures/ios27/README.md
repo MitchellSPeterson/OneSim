@@ -11,6 +11,7 @@ lists only what differs. `scripts/compare-ios.sh` renders every state with `--io
 | `swiftui-tabs-ios` | `examples/swiftui-tabs` | the 5 states of `../swiftui-tabs-ios` |
 | `swiftui-gestures-ios` | `examples/swiftui-gestures` | the 6 states of `../swiftui-gestures-ios` |
 | `swiftui-shapes-ios` | `examples/swiftui-shapes` | the 2 states of `../swiftui-shapes-ios` |
+| `swiftui-effects-ios` | `examples/swiftui-effects` | Light and dark effects screen |
 | `swiftui-type-ios` | `examples/swiftui-type` | the 2 states of `../swiftui-type-ios` |
 | `swiftui-animation-ios` | `examples/swiftui-animation` | the 3 states of `../swiftui-animation-ios` |
 | `rn-showcase-ios` | `examples/expo-showcase` in Expo Go 58.0.7 | the 18 states of `../rn-showcase-ios` |

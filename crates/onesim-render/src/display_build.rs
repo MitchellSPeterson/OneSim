@@ -67,6 +67,7 @@ pub struct Builder {
     sprites: HashMap<u64, SpriteEntry>,
     bitmaps: HashMap<usize, BitmapEntry>,
     next_bitmap: u64,
+    composed_frame: Option<u64>,
     sprite_lookups: usize,
     sprite_misses: usize,
 }
@@ -130,6 +131,7 @@ impl Builder {
     pub fn reset(&mut self) {
         self.sprites.clear();
         self.bitmaps.clear();
+        self.composed_frame = None;
     }
 
     /// Lower `scene` at `scale` device pixels per point.
@@ -141,6 +143,23 @@ impl Builder {
         let sd = scale;
         let (pw, ph) = ((scene.size.0 * scale).round().max(1.0) as u32, (scene.size.1 * scale).round().max(1.0) as u32);
         let mut dl = DisplayList { width: pw, height: ph, scale: s, dark: scene.appearance == onesim_protocol::Appearance::Dark, ios: scene.ios, ..Default::default() };
+        dl.dropped.extend(self.composed_frame.take());
+        if scene.nodes.iter().any(|n| n.composite.is_some() || n.fill_paint.is_some() || n.stroke_paint.is_some() || n.content_paint.is_some()) {
+            // The shared rasterizer resolves isolated layers and shape shaders before handing
+            // the result to the executor. A replaced frame resource can be released immediately.
+            let rgba = crate::render(scene, fonts, scale).take();
+            let id = BITMAP_ID_BIT | self.next_bitmap;
+            self.next_bitmap += 1;
+            self.composed_frame = Some(id);
+            dl.added.push(Resource { id, width: pw, height: ph, rgba });
+            dl.ops.push(Op::Image {
+                id, transform: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                sampling: Sampling::Nearest, opacity: 1.0, shape: None,
+            });
+            self.evict(&mut dl.dropped);
+            dl.dropped.sort_unstable();
+            return dl;
+        }
         let nodes = &scene.nodes;
         // Ancestor clips of each node, with their conservative intersection and the chain open in `dl.ops`.
         let viewport = PaintClip::viewport(pw, ph);

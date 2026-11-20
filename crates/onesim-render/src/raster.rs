@@ -1391,8 +1391,11 @@ pub fn render_reusing(scene: &Scene, fonts: &mut Fonts, scale: f64, mut pixels: 
         Pixmap::new(pw, ph).expect("pixmap size")
     };
     let s = scale as f32;
-    let xf = Transform::from_scale(s, s);
-    let dark = scene.appearance == onesim_protocol::Appearance::Dark;
+    let mut painter = ScenePainter { fonts, scale: s, ios: scene.ios, dark: scene.appearance == onesim_protocol::Appearance::Dark };
+    if scene.nodes.iter().any(|n| n.composite.is_some()) {
+        painter.layered(&mut pm, &scene.nodes);
+        return pm;
+    }
     // Retain each inherited clip only until its last direct child has taken it.
     let mut children = vec![0usize; scene.nodes.len()];
     for parent in scene.nodes.iter().filter_map(|n| n.parent) {
@@ -1409,57 +1412,251 @@ pub fn render_reusing(scene: &Scene, fonts: &mut Fonts, scale: f64, mut pixels: 
             clips.push((children[i] > 0).then_some((clip, None)));
             continue;
         }
+        painter.node(&mut pm, n, (clip, mask.as_deref()));
+        clips.push((children[i] > 0).then(|| {
+            let cr = clip_radius(n, s, pw, ph);
+            let child_clip = if cr.is_some() { clip.intersect_node(n.bounds, s) } else { clip };
+            let mask = if child_clip.is_empty() { None } else { child_mask(n, cr, mask, s, pw, ph) };
+            (child_clip, mask)
+        }));
+    }
+    pm
+}
+
+struct ScenePainter<'a> {
+    fonts: &'a mut Fonts,
+    scale: f32,
+    ios: onesim_protocol::IosVersion,
+    dark: bool,
+}
+
+type Clip = (PaintClip, Option<Rc<Mask>>);
+
+impl ScenePainter<'_> {
+    fn node(&mut self, pm: &mut Pixmap, n: &crate::scene::Node, (clip, mask): (PaintClip, Option<&Mask>)) {
+        let Self { fonts, scale: s, ios, dark } = self;
+        let (s, ios, dark) = (*s, *ios, *dark);
+        let xf = Transform::from_scale(s, s);
         let b = n.bounds;
         let bounds_visible = clip.intersects_node(b, s);
         let (bx, by, bw, bh) = (b.x as f32, b.y as f32, b.w as f32, b.h as f32);
         let sh = (bx, by, bw, bh);
-        paint_backdrop(&mut pm, n, dark, scene.ios, s, mask.as_deref());
+        paint_backdrop(pm, n, dark, ios, s, mask);
         if let Some(c) = n.fill.filter(|_| bounds_visible) {
             if n.radius > 0.0 {
                 if let Some(p) = rrect(bx, by, bw, bh, n.radius as f32) {
-                    pm.fill_path(&p, &paint(c, n.opacity), FillRule::Winding, xf, mask.as_deref());
+                    pm.fill_path(&p, &paint(c, n.opacity), FillRule::Winding, xf, mask);
                 }
             } else {
                 // Snap to device pixels like UIKit (keeps hairlines crisp).
                 let (x0, y0) = ((bx * s).round(), (by * s).round());
                 let (x1, y1) = (((bx + bw) * s).round().max(x0 + 1.0), ((by + bh) * s).round().max(y0 + 1.0));
                 if let Some(r) = Rect::from_ltrb(x0, y0, x1, y1) {
-                    pm.fill_rect(r, &paint(c, n.opacity), Transform::identity(), mask.as_deref());
+                    pm.fill_rect(r, &paint(c, n.opacity), Transform::identity(), mask);
                 }
             }
         }
         if let Some(g) = n.gradient.as_ref().filter(|_| bounds_visible) {
-            draw_gradient(&mut pm, n, g, s, mask.as_deref());
+            draw_gradient(pm, n, g, s, mask);
         }
         if let Some((c, lw)) = n.stroke {
             if let Some(p) = rrect(bx, by, bw, bh, n.radius as f32) {
                 let st = Stroke { width: lw as f32, ..Stroke::default() };
-                pm.stroke_path(&p, &paint(c, n.opacity), &st, xf, mask.as_deref());
+                pm.stroke_path(&p, &paint(c, n.opacity), &st, xf, mask);
             }
         }
         if let Some(v) = &n.vector {
-            draw_vector(&mut pm, v, b, n.opacity, xf, mask.as_deref());
+            if n.fill_paint.is_some() || n.stroke_paint.is_some() {
+                draw_painted_vector(pm, n, v, s, mask);
+            } else {
+                draw_vector(pm, v, b, n.opacity, xf, mask);
+            }
         }
         if let Some((g, c)) = n.glyph {
-            draw_glyph(&mut pm, g, c, sh, n.opacity, xf, mask.as_deref());
+            draw_glyph(pm, g, c, sh, n.opacity, xf, mask);
         }
         if let Some(sy) = &n.symbol {
-            draw_symbol(&mut pm, sy, sh, n.opacity, s, mask.as_deref());
+            draw_symbol(pm, sy, sh, n.opacity, s, mask);
         }
         if let Some(im) = n.image.as_ref().filter(|_| bounds_visible) {
-            draw_image(&mut pm, n, im, s, mask.as_deref());
+            draw_image(pm, n, im, s, mask);
         }
         if let Some(t) = &n.text {
-            let _ = paint_text(n, t, fonts, s, (!bounds_visible).then_some(clip), |op| apply_text_op(&mut pm, &op, (0, 0), mask.as_deref()));
+            if let Some(gradient) = &n.content_paint {
+                if let Some(sprite) = text_sprite(n, fonts, s, Some(clip)).ok().flatten() {
+                    let area = crate::paint::Tile { x: sprite.x, y: sprite.y, w: sprite.pixmap.width(), h: sprite.pixmap.height(), bounds: b, scale: s };
+                    // The sprite already has node opacity.
+                    gradient.composite(pm, area, &sprite.pixmap, 1.0, mask);
+                }
+            } else {
+                let _ = paint_text(n, t, fonts, s, (!bounds_visible).then_some(clip), |op| apply_text_op(pm, &op, (0, 0), mask));
+            }
         }
-        clips.push((children[i] > 0).then(|| {
-            let cr = clip_radius(n, s, pw, ph);
-            let child_clip = if cr.is_some() { clip.intersect_node(b, s) } else { clip };
-            let mask = if child_clip.is_empty() { None } else { child_mask(n, cr, mask, s, pw, ph) };
-            (child_clip, mask)
-        }));
     }
-    pm
+
+    fn layered(&mut self, pm: &mut Pixmap, nodes: &[crate::Node]) {
+        let mut children = vec![Vec::new(); nodes.len() + 1];
+        for (i, node) in nodes.iter().enumerate() {
+            children[node.parent.unwrap_or(nodes.len())].push(i);
+        }
+        let viewport = PaintClip::viewport(pm.width(), pm.height());
+        self.subtree(pm, (viewport, None), &children[nodes.len()], nodes, &children);
+    }
+
+    fn subtree(&mut self, pm: &mut Pixmap, inherited: Clip, indices: &[usize], nodes: &[crate::Node], children: &[Vec<usize>]) {
+        // Ordinary nodes stay iterative even on an effect-heavy scene.
+        let s = self.scale;
+        let mut pending: Vec<_> = indices.iter().rev().map(|&i| (i, inherited.clone())).collect();
+        while let Some((i, (clip, mask))) = pending.pop() {
+            if clip.is_empty() { continue; }
+            let n = &nodes[i];
+            if n.composite.is_some() {
+                self.isolated(pm, i, nodes, children, mask.as_deref());
+            } else {
+                self.node(pm, n, (clip, mask.as_deref()));
+                if children[i].is_empty() { continue; }
+                let cr = clip_radius(n, s, pm.width(), pm.height());
+                let clip = if cr.is_some() { clip.intersect_node(n.bounds, s) } else { clip };
+                if !clip.is_empty() {
+                    let mask = child_mask(n, cr, mask, s, pm.width(), pm.height());
+                    pending.extend(children[i].iter().rev().map(|&child| (child, (clip, mask.clone()))));
+                }
+            }
+        }
+    }
+    fn isolated(&mut self, pm: &mut Pixmap, first: usize, nodes: &[crate::Node], children: &[Vec<usize>], clip: Option<&Mask>) {
+        use crate::effects::{self, Composite};
+
+        // A modifier chain can render from the deepest layer outwards. Keeping one source and
+        // destination at a time makes its memory independent of the number of modifiers.
+        let mut chain = vec![first];
+        let mut cursor = first;
+        while matches!(nodes[cursor].composite.as_deref(), Some(Composite::Effect(..))) && !coverage_blend(&nodes[cursor]) {
+            let [child] = children[cursor].as_slice() else { break };
+            if nodes[*child].composite.is_none() { break; }
+            cursor = *child;
+            chain.push(cursor);
+        }
+        let (w, h) = (pm.width(), pm.height());
+        let Some(mut layer) = Pixmap::new(w, h) else { return };
+        let viewport = (PaintClip::viewport(w, h), None);
+        let mut coverage = None;
+        match nodes[cursor].composite.as_deref() {
+            Some(Composite::Effect(..)) => {
+                let mut content = children[cursor].as_slice();
+                if coverage_blend(&nodes[cursor]) {
+                    // Copy and the other source-domain operators must respect a clip during
+                    // compositing. Making the source transparent would erase the backdrop there.
+                    while let [i] = content {
+                        let Some(Composite::Mask { inverted }) = nodes[*i].composite.as_deref() else { break };
+                        if nodes[*i].opacity != 1.0 { break; }
+                        let Some((&source, rest)) = children[*i].split_last() else { break };
+                        let Some(mut alpha) = Pixmap::new(w, h) else { return };
+                        self.subtree(&mut alpha, viewport.clone(), &[source], nodes, children);
+                        let mut mask = Mask::from_pixmap(alpha.as_ref(), tiny_skia::MaskType::Alpha);
+                        if *inverted {
+                            for value in mask.data_mut() { *value = 255 - *value; }
+                        }
+                        coverage = Some(intersect_coverage(mask, coverage.as_ref()));
+                        content = rest;
+                    }
+                }
+                self.subtree(&mut layer, viewport, content, nodes, children);
+            }
+            Some(Composite::Mask { inverted }) => {
+                let Some((&source, content)) = children[cursor].split_last() else { return };
+                self.subtree(&mut layer, viewport.clone(), content, nodes, children);
+                let Some(mut alpha) = Pixmap::new(w, h) else { return };
+                self.subtree(&mut alpha, viewport, &[source], nodes, children);
+                effects::apply_mask(&mut layer, &alpha, *inverted);
+            }
+            None => unreachable!(),
+        }
+
+        for i in chain.into_iter().rev() {
+            let node = &nodes[i];
+            let effect = match node.composite.as_deref() {
+                Some(Composite::Effect(op, color)) => Some((*op, *color)),
+                _ => None,
+            };
+            let local_clip = if i == cursor { coverage.take() } else { None };
+            if i == first {
+                let local_clip = local_clip.map(|mask| intersect_coverage(mask, clip));
+                effects::composite(pm, layer, effect, node.bounds, self.scale, node.opacity, local_clip.as_ref().or(clip));
+                return;
+            }
+            let Some(mut dest) = Pixmap::new(w, h) else { return };
+            effects::composite(&mut dest, layer, effect, node.bounds, self.scale, node.opacity, local_clip.as_ref());
+            layer = dest;
+        }
+    }
+
+}
+
+fn coverage_blend(node: &crate::Node) -> bool {
+    match node.composite.as_deref() {
+        Some(crate::effects::Composite::Effect(onesim_protocol::VisualOp::Blend { mode }, _)) => crate::effects::needs_blend_coverage(*mode),
+        _ => false,
+    }
+}
+
+fn intersect_coverage(mut first: Mask, second: Option<&Mask>) -> Mask {
+    if let Some(second) = second {
+        for (a, b) in first.data_mut().iter_mut().zip(second.data()) {
+            *a = ((u16::from(*a) * u16::from(*b) + 127) / 255) as u8;
+        }
+    }
+    first
+}
+
+fn draw_painted_vector(pm: &mut Pixmap, node: &crate::Node, vector: &VectorShape, scale: f32, mask: Option<&Mask>) {
+    use crate::paint::Tile;
+
+    let bounds = node.bounds;
+    let path_tile = |pm: &Pixmap, path: &Path, margin: f64| {
+        let b = path.bounds();
+        let limits = crate::Rect {
+            x: f64::from(b.x()) - margin, y: f64::from(b.y()) - margin,
+            w: f64::from(b.width()) + 2.0 * margin, h: f64::from(b.height()) + 2.0 * margin,
+        };
+        Tile::new(pm, bounds, limits, scale)
+    };
+    let xf = Transform::from_scale(scale, scale);
+    if let Some(fill) = vector.fill {
+        if let Some(path) = build_vector_path(&vector.geom, bounds, 0.0) {
+            let rule = if fill.eo_fill { FillRule::EvenOdd } else { FillRule::Winding };
+            let mut pt = paint(fill.color, node.opacity);
+            pt.anti_alias = fill.antialiased;
+            if let Some(gradient) = &node.fill_paint {
+                if let Some(area) = path_tile(pm, &path, 1.0) {
+                    if let Some(mut coverage) = Pixmap::new(area.w, area.h) {
+                        coverage.fill_path(&path, &pt, rule, area.transform(), None);
+                        gradient.composite(pm, area, &coverage, 1.0, mask);
+                    }
+                }
+            } else {
+                pm.fill_path(&path, &pt, rule, xf, mask);
+            }
+        }
+    }
+    if let Some(stroke) = vector.stroke.as_ref().filter(|st| st.line_width > 0.0) {
+        if let Some(path) = build_vector_path(&vector.geom, bounds, stroke.inset) {
+            let mut pt = paint(stroke.color, node.opacity);
+            pt.anti_alias = stroke.antialiased;
+            let sk = to_skia_stroke(stroke);
+            if let Some(gradient) = &node.stroke_paint {
+                let margin = stroke.line_width * 0.5 * stroke.miter_limit.max(2.0) + 1.0;
+                if let Some(area) = path_tile(pm, &path, margin) {
+                    if let Some(mut coverage) = Pixmap::new(area.w, area.h) {
+                        coverage.stroke_path(&path, &pt, &sk, area.transform(), None);
+                        gradient.composite(pm, area, &coverage, 1.0, mask);
+                    }
+                }
+            } else {
+                pm.stroke_path(&path, &pt, &sk, xf, mask);
+            }
+        }
+    }
 }
 
 pub fn render_png(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Result<Vec<u8>, String> {

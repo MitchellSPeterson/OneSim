@@ -39,6 +39,7 @@ layout="$guests/layout"
 typeapp="$guests/type"
 anim="$guests/animation"
 controls="$guests/controls"
+effects="$guests/effects"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
 fi
@@ -51,6 +52,7 @@ if want swiftui && [ -z "$smoke" ]; then
   scripts/build-swift-app.sh examples/swiftui-type "$typeapp"
   scripts/build-swift-app.sh examples/swiftui-animation "$anim"
   scripts/build-swift-app.sh examples/swiftui-controls "$controls"
+  scripts/build-swift-app.sh examples/swiftui-effects "$effects"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
 # (docs/compatibility/versions.json): 27.2 on the iPhone 18 Pro in tests/fixtures/ios27/, 26.5 on the iPhone 17 Pro
@@ -189,6 +191,16 @@ for ios in ${SIMCORE_IOS:-27.2}; do
     cshot indicators-dark   --dark --click Indicators
     echo "== SwiftUI controls (swiftui-controls, iOS $ios)"
     python3 scripts/compare_ios.py $fx/swiftui-controls-ios "$cout/onesim" "$cout" || rc=1
+    eout=$out/swiftui-effects; mkdir -p "$eout/onesim"
+    eshot() {
+      local name=$1; shift
+      ./target/debug/onesim run "$effects" "${base[@]}" "$@" --screenshot "$eout/onesim/$name.png" >/dev/null
+      if [ ! -f "$fx/swiftui-effects-ios/$name.png" ]; then echo "Missing iOS reference: $fx/swiftui-effects-ios/$name.png" >&2; rc=1; fi
+    }
+    eshot effects
+    eshot effects-dark --dark
+    echo "== SwiftUI gradients, Canvas and visual effects (iOS $ios)"
+    python3 scripts/compare_ios.py "$fx/swiftui-effects-ios" "$eout/onesim" "$eout" || rc=1
   fi
   # React Native / Expo showcase: tests/fixtures/rn-showcase-ios (see its README). Needs node + `npm install` in the example.
   if want expo; then
