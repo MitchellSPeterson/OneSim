@@ -44,7 +44,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `AnyTransition` | 13 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | No `.modifier(active:identity:)` |
 | `ArrangementViewStyleConfiguration` | 13 | ⬜ |  |  |
 | `AsymmetricTransition` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `AsyncImagePhase` | 15 | ⬜ |  |  |
+| `AsyncImagePhase` | 15 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | `empty`, `success`, and `failure`. A failed load uses a private error |
 | `AttributedTextFormatting` | 26 | ⬜ |  |  |
 | `AttributedTextSelection` | 26 | ⬜ |  |  |
 | `AutomaticHoverEffect` | 18 | ⬜ |  |  |
@@ -147,7 +147,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `FixedTextVariant` | 18 | ⬜ |  |  |
 | `FocusedValues` | 14 | ⬜ |  |  |
 | `FocusInteractions` | 17 | ⬜ |  |  |
-| `Font` | 13 | 🟠 |  | Text styles and `.system(size:weight:)` only |
+| `Font` | 13 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Text styles and `.system(size:weight:design:)`. `Font.Width` statics are -0.3, -0.2, 0, and 0.3 |
 | `ForEachSectionCollection` | 18 | ⬜ |  |  |
 | `ForEachSubviewCollection` | 18 | ⬜ |  |  |
 | `FormPresentationSizing` | 18 | ⬜ |  |  |
@@ -315,10 +315,10 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `StrokeShapeView` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `SubmitLabel` | 15 | ⬜ |  |  |
 | `SubmitTriggers` | 15 | ⬜ |  |  |
-| `SymbolColorRenderingMode` | 26 | ⬜ |  |  |
+| `SymbolColorRenderingMode` | 26 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Gradient is an AppKit bitmap. The Phosphor fallback stays a mask |
 | `SymbolEffectTransition` | 17 | ⬜ |  |  |
-| `SymbolRenderingMode` | 15 | ⬜ |  |  |
-| `SymbolVariableValueMode` | 26 | ⬜ |  |  |
+| `SymbolRenderingMode` | 15 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Palette is one foreground at full, 0.6, and 0.3 alpha. The fallback stays a mask |
+| `SymbolVariableValueMode` | 26 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | No variable value is sent |
 | `SymbolVariants` | 15 | ⬜ |  |  |
 | `Tab` | 18 | 🟠 |  | No `role: .search` |
 | `TabBarMinimizeBehavior` | 26 | ⬜ |  |  |

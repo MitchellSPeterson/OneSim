@@ -504,7 +504,7 @@ line = recv(p)
 assert line["type"] == "scroll_to_id" and isinstance(line.get("scroll"), str) and line["scroll"] and line["target"] == "there", line
 finish(p)
 
-# --- animation & transitions (protocol section O).
+# --- animation & transitions (protocol section P).
 def recv_tree(p):
     """Read until the next `tree` message, returning `(tree, schedules)`."""
     scheds = []
@@ -516,7 +516,7 @@ def recv_tree(p):
             scheds.append(m.get("afterMs"))
 
 env = dict(os.environ, SIMCORE_TIME="1700000000")
-p = subprocess.Popen([sys.argv[11]], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+p = subprocess.Popen([sys.argv[12]], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
 assert recv(p)["type"] == "hello"
 t, scheds = recv_tree(p)
 # One-shot keyframeAnimator(repeating: false) runs from launch (16ms schedule); Periodic/Animation/EveryMinute schedules pass.
@@ -663,5 +663,26 @@ assert d2["path"] == [{"m": [40, 0]}, {"l": [80, 30]}, {"l": [40, 60]}, {"l": [0
 assert len(t2["root"]["children"][7]["path"]) > 2 and len(t2["root"]["children"][8]["path"]) > 4
 # Pre-inset Rectangle(inset: 4).strokeBorder(lineWidth: 6) on 40x40 => rect [7..33, 7..33]
 assert t2["root"]["children"][10]["path"] == [{"m": [7, 7]}, {"l": [33, 7]}, {"l": [33, 33]}, {"l": [7, 33]}, "z"], t2["root"]["children"][10]["path"]
+finish(p)
+
+# --- type (protocol section O)
+p = spawn(sys.argv[11]); assert recv(p)["type"] == "hello"; t = recv(p)
+hello = next(m for m in walk(t["root"]) if m.get("text") == "Hello")
+assert any(m.get("textCase") == "uppercase" for m in hello.get("modifiers", [])), hello
+joined = next(m for m in walk(t["root"]) if m.get("text") == "AB")
+runs = joined["runs"]
+assert runs[0].get("italic") is True and runs[1].get("kerning") == 2, joined
+dotted = next(m for m in walk(t["root"]) if m.get("text") == "DotEnd")
+assert dotted["runs"][0].get("underline") is True and dotted["runs"][0].get("underlinePattern") == "dot", dotted
+fox = next(m for m in walk(t["root"]) if isinstance(m.get("text"), str) and m["text"].startswith("The quick"))
+mm = fox.get("modifiers", [])
+assert any(m.get("truncationMode") == "middle" for m in mm), mm
+assert any(isinstance(m.get("lineLimit"), dict) and m["lineLimit"].get("max") == 1 for m in mm), mm
+star = next(m for m in walk(t["root"]) if m.get("kind") == "image" and m.get("systemName") == "star.fill")
+assert star.get("symbolRenderingMode") == "hierarchical", star
+assert any(m.get("kind") == "empty" for m in walk(t["root"]))
+bm = next(m for m in walk(t["root"]) if m.get("kind") == "image" and "bitmap" in m)
+assert bm["bitmap"]["path"].endswith("onesim-typelab.png"), bm
+assert bm["bitmap"]["width"] == 8 and bm["bitmap"]["height"] == 8, bm
 finish(p)
 print("PASS")

@@ -151,7 +151,7 @@ final class _Runtime {
     var anchorScroll: [String: String] = [:]
     var scrolledTo: [String: String?] = [:]
     var scrollPos: [String: (String?) -> Void] = [:]
-    // Animation & transitions (section O).
+    // Animation & transitions (section P).
     var animToken: UInt64 = 0
     var currentTransaction: Transaction? = nil
     var pendingTransaction: Transaction? = nil
@@ -165,6 +165,10 @@ final class _Runtime {
     var lastScheduledMs: Double? = nil
     var tickHandlers: [() -> Void] = []
     var completions: [(dueMs: Double, fn: () -> Void)] = []
+    #if !os(WASI)
+    /// `AsyncImage` HTTP loads. Nil uses `URLSession.shared`. Set by `.asyncImageURLSession`.
+    var imageSession: URLSession?
+    #endif
 
     var currentDate: Date { Date(timeIntervalSince1970: baseEpoch + clockMs / 1000.0) }
 
@@ -253,6 +257,9 @@ final class _Runtime {
         actions.removeAll(keepingCapacity: true)
         fields.removeAll(keepingCapacity: true)
         disabled = false; buttonStyle = "automatic"; pickerStyle = "menu"; tags = [:]; nav = nil; envObjects = [:]
+        #if !os(WASI)
+        imageSession = nil
+        #endif
         layers = []; autoDismiss = nil; dismissHook = nil
         lifecycleNow = [:]; lifecycleOrder = []; changeNow = [:]; changePending = []
         animNow = [:]; contentTransition = .identity; contentTransitionAddsDrawingGroup = false
@@ -383,6 +390,9 @@ public func _onesimRun<V: View>(_ root: V) -> Never {
     if let t = env["SIMCORE_TIME"].flatMap(Double.init) { rt.baseEpoch = t } else { rt.baseEpoch = Date().timeIntervalSince1970 }
     rt.render = { _eval(root, "0") }
     _onesimRegisterCallbacks()
+    #if !os(WASI)
+    _installImageWake()
+    #endif
     rt.submitTree()
     exit(simcore_runtime_run())
 }

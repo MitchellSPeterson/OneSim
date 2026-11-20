@@ -194,7 +194,13 @@ impl TextStyle {
 #[serde(untagged)]
 pub enum Font {
     Style { style: TextStyle, #[serde(default, skip_serializing_if = "Option::is_none")] weight: Option<Weight> },
-    System { size: f64, #[serde(default)] weight: Weight },
+    System {
+        size: f64,
+        #[serde(default)]
+        weight: Weight,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        design: Option<FontDesign>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -264,17 +270,57 @@ pub enum Modifier {
     ScrollTargetLayout(bool),
     /// `.scrollPosition(id:)` is attached to this scroll view.
     ScrollPosition,
-    /// `.animation` / `withAnimation` (section O). `None` disables animation for this subtree.
+    /// `.kerning(_:)` in points, added to the font's fitted tracking.
+    Kerning(f64),
+    /// `.tracking(_:)` in points, added to the font's fitted tracking.
+    Tracking(f64),
+    /// `.baselineOffset(_:)` in points. Positive lengthens the line downward. Glyphs stay at the top.
+    BaselineOffset(f64),
+    /// `.fontDesign(_:)`. `null` restores the default design.
+    FontDesign(Option<FontDesign>),
+    /// `.fontWidth(_:)`. `null` restores the standard width.
+    FontWidth(Option<FontWidth>),
+    /// `.monospaced(_:)`.
+    Monospaced(bool),
+    /// `.monospacedDigit()`.
+    MonospacedDigit(bool),
+    /// `.textScale(_:isEnabled:)`.
+    TextScale(TextScale),
+    /// `.truncationMode(_:)`.
+    TruncationMode(Truncation),
+    /// `.lineLimit`. `null` removes the limit.
+    LineLimit(Option<LineLimit>),
+    /// `.underline(isActive:pattern:color:)`.
+    Underline(LineStyle),
+    /// `.italic(_:)`.
+    Italic(bool),
+    /// `.textCase(_:)`. `null` restores the original case.
+    TextCase(Option<TextCase>),
+    /// `.allowsTightening(_:)`.
+    AllowsTightening(bool),
+    /// `.minimumScaleFactor(_:)`.
+    MinimumScaleFactor(f64),
+    /// `.symbolRenderingMode(_:)`.
+    SymbolRenderingMode(Option<SymbolMode>),
+    /// `.symbolVariableValueMode(_:)`.
+    SymbolVariableValueMode(Option<SymbolVariable>),
+    /// `.symbolColorRenderingMode(_:)`.
+    SymbolColorRenderingMode(Option<SymbolColorMode>),
+    /// `.allowedDynamicRange(_:)`.
+    AllowedDynamicRange(Option<DynamicRange>),
+    /// `.strikethrough(_:pattern:color:)`. The bool overload stays `strikethrough`.
+    StrikethroughStyle(LineStyle),
+    /// `.animation` / `withAnimation` (section P). `None` disables animation for this subtree.
     Animation(Option<Box<AnimationSpec>>),
-    /// `.transition` (section O): insertion and removal effects.
+    /// `.transition` (section P): insertion and removal effects.
     Transition(Box<TransitionSpec>),
-    /// `.matchedGeometryEffect` (section O).
+    /// `.matchedGeometryEffect` (section P).
     MatchedGeometry(Box<MatchedGeometryMod>),
-    /// `.contentTransition` (section O), inherited by `text` and `image` descendants.
+    /// `.contentTransition` (section P), inherited by `text` and `image` descendants.
     ContentTransition(ContentTransitionKind),
 }
 
-/// Animation timing curve (section O).
+/// Animation timing curve (section P).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AnimationCurve {
@@ -323,7 +369,7 @@ fn default_true() -> bool {
     true
 }
 
-/// Wire description of a SwiftUI `Animation` (section O).
+/// Wire description of a SwiftUI `Animation` (section P).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AnimationSpec {
     pub curve: AnimationCurve,
@@ -352,7 +398,7 @@ pub enum TransitionEdge {
     Trailing,
 }
 
-/// Visual state at the active (inserted/removed) end of a `.transition` (section O).
+/// Visual state at the active (inserted/removed) end of a `.transition` (section P).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TransitionEffect {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -367,7 +413,7 @@ pub struct TransitionEffect {
     pub edge: Option<TransitionEdge>,
 }
 
-/// `.transition(_:)` (section O).
+/// `.transition(_:)` (section P).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TransitionSpec {
     #[serde(default)]
@@ -391,7 +437,7 @@ fn default_center_anchor() -> [f64; 2] {
     [0.5, 0.5]
 }
 
-/// `.matchedGeometryEffect(id:in:properties:anchor:isSource:)` (section O).
+/// `.matchedGeometryEffect(id:in:properties:anchor:isSource:)` (section P).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MatchedGeometryMod {
     pub id: String,
@@ -404,7 +450,7 @@ pub struct MatchedGeometryMod {
     pub is_source: bool,
 }
 
-/// `.contentTransition(_:)` (section O).
+/// `.contentTransition(_:)` (section P).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ContentTransitionKind {
@@ -492,6 +538,152 @@ pub enum ContentMode {
     Fill,
 }
 
+/// `Font.Design` (section O).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FontDesign {
+    Default,
+    Serif,
+    Rounded,
+    Monospaced,
+}
+
+/// `Font.Width` (section O).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FontWidth {
+    Compressed,
+    Condensed,
+    Standard,
+    Expanded,
+}
+
+/// `Text.Scale` (section O).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TextScale {
+    Default,
+    Secondary,
+}
+
+/// `Text.TruncationMode` (section O).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Truncation {
+    Head,
+    #[default]
+    Tail,
+    Middle,
+}
+
+/// `Text.LineStyle.Pattern` (section O).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LinePattern {
+    #[default]
+    Solid,
+    Dot,
+    Dash,
+    DashDot,
+    DashDotDot,
+}
+
+/// `.underline(pattern:color:)` / `.strikethrough(pattern:color:)`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LineStyle {
+    #[serde(default)]
+    pub active: bool,
+    #[serde(default)]
+    pub pattern: LinePattern,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<Color>,
+}
+
+/// `.lineLimit`. `min` reserves that many lines; `max` truncates. `None` as a modifier clears the limit.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct LineLimit {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max: Option<u32>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub reserves: bool,
+}
+
+/// `Text.Case` (section O).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TextCase {
+    Uppercase,
+    Lowercase,
+}
+
+/// `SymbolRenderingMode` (section O).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SymbolMode {
+    Monochrome,
+    Hierarchical,
+    Palette,
+    Multicolor,
+}
+
+/// `Image.TemplateRenderingMode`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TemplateMode {
+    Template,
+    Original,
+}
+
+/// `Image.Interpolation`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Interpolation {
+    None,
+    Low,
+    Medium,
+    High,
+}
+
+/// `Image.DynamicRange`. Drawing stays standard range (no HDR).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DynamicRange {
+    Standard,
+    ConstrainedHigh,
+    High,
+}
+
+/// `SymbolVariableValueMode`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SymbolVariable {
+    Color,
+    Draw,
+}
+
+/// `SymbolColorRenderingMode`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SymbolColorMode {
+    Flat,
+    Gradient,
+}
+
+/// A bitmap `Image` (AsyncImage success, or a file the guest already loaded).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Bitmap {
+    pub path: String,
+    #[serde(default)]
+    pub width: f64,
+    #[serde(default)]
+    pub height: f64,
+    /// Pixels per point. `0` means 1.
+    #[serde(default)]
+    pub scale: f64,
+}
+
 /// `ButtonRole`: `cancel` / `destructive` (alerts order and color buttons by it).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -548,6 +740,30 @@ pub struct Run {
     pub font_weight: Option<Weight>,
     #[serde(default, rename = "foregroundColor", skip_serializing_if = "Option::is_none")]
     pub foreground_color: Option<Color>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kerning: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tracking: Option<f64>,
+    #[serde(default, rename = "baselineOffset", skip_serializing_if = "Option::is_none")]
+    pub baseline_offset: Option<f64>,
+    #[serde(default, rename = "fontDesign", skip_serializing_if = "Option::is_none")]
+    pub font_design: Option<FontDesign>,
+    #[serde(default, rename = "fontWidth", skip_serializing_if = "Option::is_none")]
+    pub font_width: Option<FontWidth>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub monospaced: bool,
+    #[serde(default, rename = "monospacedDigit", skip_serializing_if = "is_false")]
+    pub monospaced_digit: bool,
+    #[serde(default, rename = "textScale", skip_serializing_if = "Option::is_none")]
+    pub text_scale: Option<TextScale>,
+    #[serde(default, rename = "underlinePattern", skip_serializing_if = "Option::is_none")]
+    pub underline_pattern: Option<LinePattern>,
+    #[serde(default, rename = "underlineColor", skip_serializing_if = "Option::is_none")]
+    pub underline_color: Option<Color>,
+    #[serde(default, rename = "strikethroughPattern", skip_serializing_if = "Option::is_none")]
+    pub strikethrough_pattern: Option<LinePattern>,
+    #[serde(default, rename = "strikethroughColor", skip_serializing_if = "Option::is_none")]
+    pub strikethrough_color: Option<Color>,
 }
 
 /// `PresentationDetent`.
@@ -1137,7 +1353,7 @@ pub enum ViewKind {
     },
     /// SF Symbol (host capability).
     Image {
-        #[serde(rename = "systemName")]
+        #[serde(default, rename = "systemName", skip_serializing_if = "String::is_empty")]
         system_name: String,
         #[serde(default)]
         resizable: bool,
@@ -1145,6 +1361,22 @@ pub enum ViewKind {
         content_mode: Option<ContentMode>,
         #[serde(default)]
         scale: Option<ImageScale>,
+        #[serde(default, rename = "renderingMode", skip_serializing_if = "Option::is_none")]
+        rendering_mode: Option<TemplateMode>,
+        #[serde(default, rename = "symbolRenderingMode", skip_serializing_if = "Option::is_none")]
+        symbol_rendering_mode: Option<SymbolMode>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        interpolation: Option<Interpolation>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        antialiased: Option<bool>,
+        #[serde(default, rename = "symbolColorRenderingMode", skip_serializing_if = "Option::is_none")]
+        symbol_color_rendering_mode: Option<SymbolColorMode>,
+        #[serde(default, rename = "symbolVariableValueMode", skip_serializing_if = "Option::is_none")]
+        symbol_variable_value_mode: Option<SymbolVariable>,
+        #[serde(default, rename = "dynamicRange", skip_serializing_if = "Option::is_none")]
+        dynamic_range: Option<DynamicRange>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bitmap: Option<Bitmap>,
     },
     Label {
         title: Box<ViewNode>,
@@ -1257,7 +1489,7 @@ mod tests {
             {"kind":"scroll","id":"e","axis":"horizontal","child":{"kind":"shape","id":"e.c","shape":"roundedRectangle","cornerRadius":4,"fill":{"semantic":"groupedBackground"}}}]}]}});
         let n: ViewNode = serde_json::from_value(j).unwrap();
         assert_eq!(n.modifiers.len(), 8);
-        assert_eq!(n.modifiers[1], Modifier::Font(Font::System { size: 22.0, weight: Weight::Semibold }));
+        assert_eq!(n.modifiers[1], Modifier::Font(Font::System { size: 22.0, weight: Weight::Semibold, design: None }));
         assert_eq!(n.modifiers[0], Modifier::Font(Font::Style { style: TextStyle::Headline, weight: None }));
         let ViewKind::Navigation { display_mode, back, content, .. } = &n.kind else { panic!() };
         assert_eq!(*display_mode, DisplayMode::Inline);
@@ -1379,6 +1611,54 @@ mod tests {
         // An ordinary stack still parses with no pinned field.
         let plain: ViewNode = serde_json::from_str(r#"{"kind":"hstack","id":"h","children":[]}"#).unwrap();
         assert!(matches!(plain.kind, ViewKind::HStack { pinned: None, .. }));
+    }
+
+    #[test]
+    fn section_o_text_and_image_parse() {
+        let j = json!({
+            "kind": "text", "id": "t", "text": "Ab",
+            "runs": [{"text": "A", "kerning": 1.5, "tracking": 0.5, "baselineOffset": 2.0, "fontDesign": "serif",
+                      "fontWidth": "condensed", "monospaced": true, "monospacedDigit": true, "textScale": "secondary",
+                      "underline": true, "underlinePattern": "dashDot", "underlineColor": {"semantic": "accent"}}],
+            "modifiers": [
+                {"kerning": 1.0}, {"tracking": 2.0}, {"baselineOffset": -1.0},
+                {"fontDesign": "rounded"}, {"fontWidth": null}, {"monospaced": false}, {"monospacedDigit": true},
+                {"textScale": "secondary"}, {"truncationMode": "middle"},
+                {"lineLimit": {"min": 2, "max": 3, "reserves": true}},
+                {"underline": {"active": true, "pattern": "dot", "color": {"semantic": "primary"}}},
+                {"italic": true}, {"textCase": "uppercase"}, {"allowsTightening": true}, {"minimumScaleFactor": 0.7},
+                {"symbolRenderingMode": "hierarchical"}, {"symbolVariableValueMode": "draw"},
+                {"symbolColorRenderingMode": "gradient"}, {"allowedDynamicRange": "high"},
+                {"font": {"size": 18, "weight": "bold", "design": "monospaced"}},
+                {"strikethroughStyle": {"active": true, "pattern": "dash"}}
+            ]
+        });
+        let n: ViewNode = serde_json::from_value(j).unwrap();
+        let ViewKind::Text { runs, .. } = &n.kind else { panic!() };
+        assert_eq!(runs[0].kerning, Some(1.5));
+        assert_eq!(runs[0].font_design, Some(FontDesign::Serif));
+        assert_eq!(runs[0].underline_pattern, Some(LinePattern::DashDot));
+        assert_eq!(n.modifiers[8], Modifier::TruncationMode(Truncation::Middle));
+        assert_eq!(n.modifiers[9], Modifier::LineLimit(Some(LineLimit { min: Some(2), max: Some(3), reserves: true })));
+        assert_eq!(n.modifiers[19], Modifier::Font(Font::System { size: 18.0, weight: Weight::Bold, design: Some(FontDesign::Monospaced) }));
+        assert_eq!(n.modifiers[20], Modifier::StrikethroughStyle(LineStyle { active: true, pattern: LinePattern::Dash, color: None }));
+        let img: ViewNode = serde_json::from_value(json!({
+            "kind": "image", "id": "i", "bitmap": {"path": "/tmp/m.png", "width": 16.0, "height": 16.0, "scale": 2.0},
+            "interpolation": "none", "antialiased": false, "renderingMode": "original", "symbolRenderingMode": "multicolor"
+        })).unwrap();
+        let ViewKind::Image { system_name, bitmap, interpolation, antialiased, rendering_mode, symbol_rendering_mode, .. } = &img.kind else { panic!() };
+        assert!(system_name.is_empty());
+        assert_eq!(bitmap.as_ref().unwrap().scale, 2.0);
+        assert_eq!(*interpolation, Some(Interpolation::None));
+        assert_eq!(*antialiased, Some(false));
+        assert_eq!(*rendering_mode, Some(TemplateMode::Original));
+        assert_eq!(*symbol_rendering_mode, Some(SymbolMode::Multicolor));
+        let unlimited: ViewNode = serde_json::from_value(json!({"kind":"empty","id":"e","modifiers":[{"lineLimit": null}]})).unwrap();
+        assert_eq!(unlimited.modifiers[0], Modifier::LineLimit(None));
+        for node in [&n, &img, &unlimited] {
+            let again: ViewNode = serde_json::from_value(serde_json::to_value(node).unwrap()).unwrap();
+            assert_eq!(node, &again);
+        }
     }
 
     #[test]

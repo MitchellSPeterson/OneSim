@@ -19,6 +19,7 @@ pub type TextCb = Option<unsafe extern "C" fn(*mut c_void, u64, *const c_char)>;
 pub type EnvCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char, f64, f64)>;
 pub type GestureCb = Option<unsafe extern "C" fn(*mut c_void, i32, f64, *const f64, usize, *const *const c_char, *const f64, usize)>;
 pub type LayoutCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char)>;
+pub type WakeCb = Option<unsafe extern "C" fn(*mut c_void)>;
 
 struct State {
     ctx: usize,
@@ -209,6 +210,10 @@ pub extern "C" fn simcore_runtime_set_gesture_callback(on_gesture: GestureCb) {
 pub extern "C" fn simcore_runtime_set_layout_callback(on_layout: LayoutCb) {
     STATE.with(|s| s.borrow_mut().on_layout = on_layout);
 }
+
+/// Stored for ABI parity. The browser is the event loop; WASI has no HTTP `AsyncImage`.
+#[no_mangle]
+pub extern "C" fn simcore_runtime_set_wake(_fd: i32, _on_wake: WakeCb) {}
 
 /// Guest JSON line (`scroll_to_id` dropped; `schedule` updates the animation tick deadline).
 ///

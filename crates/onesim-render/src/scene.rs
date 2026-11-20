@@ -139,6 +139,8 @@ pub struct ImageRun {
     pub dest: Rect,
     /// Clockwise rotation in degrees about the centre of `dest`.
     pub rotation: f32,
+    /// 0 nearest, 1 bilinear, 2 bicubic.
+    pub filter: u8,
 }
 
 /// Linear gradient fill over a node's bounds: CSS `angle` (0 = up, 90 = right), evenly spaced stops.
@@ -189,7 +191,7 @@ pub struct ScrollInfo {
     pub aligned: bool,
 }
 
-/// SwiftUI animation / transition metadata attached to a scene node (protocol section O).
+/// SwiftUI animation / transition metadata attached to a scene node (protocol section P).
 /// Boxed on `Node` so non-animated nodes pay only a null pointer.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct NodeAnim {
@@ -314,7 +316,7 @@ pub struct Node {
     pub pinned: Option<String>,
     /// Direct child of `.scrollTargetLayout()`.
     pub scroll_target: bool,
-    /// Animation / transition / matchedGeometryEffect metadata (protocol section O).
+    /// Animation / transition / matchedGeometryEffect metadata (protocol section P).
     pub anim: Option<Box<NodeAnim>>,
     /// False for layout-only helper nodes (clip/opacity layers); hidden from inspection.
     pub inspect: bool,

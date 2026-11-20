@@ -27,13 +27,39 @@ public struct Text: View, _Primitive {
     public func foregroundColor(_ color: Color?) -> Text { _with("foregroundColor", color?.json ?? ["semantic": "primary"] as Node) }
     public func foregroundStyle<S: ShapeStyle>(_ style: S) -> Text { _with("foregroundColor", style._json) }
     public func italic() -> Text { _with("italic", true) }
+    public func italic(_ isActive: Bool) -> Text { _with("italic", isActive) }
     public func underline(_ active: Bool = true) -> Text { _with("underline", active) }
+    /// No default on `pattern`: it would clash with `underline(_:)`. `color` may be nil.
+    public func underline(_ isActive: Bool, pattern: Text.LineStyle.Pattern, color: Color?) -> Text {
+        var t = _with("underline", isActive)._with("underlinePattern", pattern._wire)
+        if let color { t = t._with("underlineColor", color.json) }
+        return t
+    }
     public func strikethrough(_ active: Bool = true) -> Text { _with("strikethrough", active) }
+    /// No default on `pattern`: it would clash with `strikethrough(_:)`.
+    public func strikethrough(_ isActive: Bool, pattern: Text.LineStyle.Pattern, color: Color?) -> Text {
+        var t = _with("strikethrough", isActive)._with("strikethroughPattern", pattern._wire)
+        if let color { t = t._with("strikethroughColor", color.json) }
+        return t
+    }
+    public func kerning(_ kerning: CGFloat) -> Text { _with("kerning", Double(kerning)) }
+    public func tracking(_ tracking: CGFloat) -> Text { _with("tracking", Double(tracking)) }
+    public func baselineOffset(_ baselineOffset: CGFloat) -> Text { _with("baselineOffset", Double(baselineOffset)) }
+    public func fontDesign(_ design: Font.Design?) -> Text { _with("fontDesign", _orNull(design?._wire)) }
+    public func fontWidth(_ width: Font.Width?) -> Text { _with("fontWidth", _orNull(width?._wire)) }
+    public func monospaced(_ isActive: Bool = true) -> Text { _with("monospaced", isActive) }
+    public func monospacedDigit() -> Text { _with("monospacedDigit", true) }
+    public func textScale(_ scale: Text.Scale, isEnabled: Bool = true) -> Text {
+        _with("textScale", scale == .secondary && isEnabled ? "secondary" : "default")
+    }
 
     func _emit(_ path: String) -> Node {
         var n: Node = ["kind": "text", "id": path, "text": runs.map { $0.text }.joined()]
-        // Italic and underline exist only as run fields; everything else of a lone run is plain modifiers.
-        if runs.count == 1, runs[0].attrs["italic"] == nil, runs[0].attrs["underline"] == nil {
+        // A lone run's attrs are modifiers, except italic/underline (run fields) and the pattern/color
+        // keys, which are not modifiers and would fail host parse if dumped as modifiers.
+        let runOnly = ["italic", "underline", "underlinePattern", "underlineColor", "strikethroughPattern", "strikethroughColor"]
+        let forces = runs.count != 1 || runs[0].attrs.keys.contains { runOnly.contains($0) }
+        if !forces {
             let a = runs[0].attrs
             let mods = a.keys.sorted().map { [$0: a[$0]!] as Node }
             if !mods.isEmpty { n["modifiers"] = mods }
@@ -41,6 +67,46 @@ public struct Text: View, _Primitive {
             n["runs"] = runs.map { r -> Node in var j = r.attrs; j["text"] = r.text; return j }
         }
         return n
+    }
+}
+
+extension Text {
+    public enum TruncationMode {
+        case head, tail, middle
+        var _wire: String {
+            switch self {
+            case .head: return "head"
+            case .tail: return "tail"
+            case .middle: return "middle"
+            }
+        }
+    }
+    public enum Case {
+        case uppercase, lowercase
+        var _wire: String {
+            switch self {
+            case .uppercase: return "uppercase"
+            case .lowercase: return "lowercase"
+            }
+        }
+    }
+    public struct LineStyle {
+        public struct Pattern: Equatable {
+            let _wire: String
+            public static let solid = Pattern(_wire: "solid")
+            public static let dot = Pattern(_wire: "dot")
+            public static let dash = Pattern(_wire: "dash")
+            public static let dashDot = Pattern(_wire: "dashDot")
+            public static let dashDotDot = Pattern(_wire: "dashDotDot")
+            public static func == (a: Pattern, b: Pattern) -> Bool { a._wire == b._wire }
+        }
+    }
+    /// `default` and `secondary`. `isEnabled: false` does not apply secondary.
+    public struct Scale: Equatable {
+        let _wire: String
+        public static let `default` = Scale(_wire: "default")
+        public static let secondary = Scale(_wire: "secondary")
+        public static func == (a: Scale, b: Scale) -> Bool { a._wire == b._wire }
     }
 }
 
@@ -205,6 +271,11 @@ public struct Color: View, _Primitive {
 // MARK: - Modifiers
 
 func _num(_ v: CGFloat) -> Any { v.isInfinite ? "inf" : Double(v) }
+
+func _orNull(_ v: String?) -> Any {
+    if let v = v { return v }
+    return NSNull()
+}
 
 struct _ModifiedView<Content: View>: View, _Flattenable {
     typealias Body = Never

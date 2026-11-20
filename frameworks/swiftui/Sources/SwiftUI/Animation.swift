@@ -6,7 +6,7 @@ import WASILibc
 #endif
 
 // Animation, transitions, matchedGeometryEffect, contentTransition, PhaseAnimator, KeyframeAnimator,
-// and TimelineView (docs/protocol.md section O).
+// and TimelineView (docs/protocol.md section P).
 
 // MARK: - VectorArithmetic & Animatable
 

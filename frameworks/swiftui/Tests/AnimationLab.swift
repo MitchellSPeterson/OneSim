@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Wire-test app for SwiftUI animation & transitions (protocol section O).
+// Wire-test app for SwiftUI animation & transitions (protocol section P).
 
 struct SlideFadeTransition: Transition {
     func body(content: Content, phase: TransitionPhase) -> some View {

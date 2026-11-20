@@ -1,4 +1,4 @@
-//! SwiftUI scene animation & transition engine (docs/protocol.md section O).
+//! SwiftUI scene animation & transition engine (docs/protocol.md section P).
 //!
 //! Transport-agnostic (shared by the native host, native window, and browser Wasm build).
 //! Given each newly laid-out target [`Scene`], [`Animator`] diffs animatable visual properties,
