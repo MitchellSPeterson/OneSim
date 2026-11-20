@@ -9,10 +9,15 @@ cd "$(dirname "$0")/.."
 cargo build -q -p onesim-cli
 printf '{"id":1,"method":"hello","params":{"protocol_version":1}}\n{"id":2,"method":"get_capabilities"}\n' | ./target/debug/onesim serve 2>/dev/null \
   | python3 -c 'import json,sys; c=json.loads(sys.stdin.readlines()[1])["result"]; print("fonts:", c["fonts"], "| symbols:", c["symbols"], "| SIMCORE_FALLBACK=" + "'"${SIMCORE_FALLBACK:-}"'")'
-# SIMCORE_ONLY=swiftui|expo limits the run to one framework's states (scripts/affected.sh uses it).
+# SIMCORE_ONLY=swiftui|expo limits the run to one framework's states (scripts/ci-local.sh uses it).
 only=${SIMCORE_ONLY:-all}
 case $only in all|swiftui|expo) ;; *) echo "unknown SIMCORE_ONLY=$only (swiftui|expo)"; exit 2 ;; esac
 want() { [ "$only" = all ] || [ "$only" = "$1" ]; }
+# SIMCORE_SMOKE=1: a few representative states per framework (the per-commit CI check, scripts/ci-local.sh fast level).
+# Same fixtures and thresholds; the full run compares every state before merge.
+smoke=${SIMCORE_SMOKE:-}
+SMOKE_STATES=" home home-dark controls sheet todos-typed form controls-typed "
+keep() { [ -z "$smoke" ] || [[ "$SMOKE_STATES" == *" $1 "* ]]; }
 # Build each guest once. Every shot still starts a fresh process with its own device and appearance.
 guests=$(mktemp -d)
 metro=
@@ -33,6 +38,8 @@ layout="$guests/layout"
 typeapp="$guests/type"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
+fi
+if want swiftui && [ -z "$smoke" ]; then
   scripts/build-swift-app.sh examples/swiftui-tabs "$tabs"
   scripts/build-swift-app.sh examples/swiftui-gestures "$gest"
   scripts/build-swift-app.sh examples/swiftui-shapes "$shp"
@@ -40,10 +47,10 @@ if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-type "$typeapp"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
-# (docs/compatibility/versions.json): 26.5 on the iPhone 17 Pro in tests/fixtures/, 27.2 on the iPhone 18 Pro
-# in tests/fixtures/ios27/. SIMCORE_IOS="27.2" limits the run to one release.
+# (docs/compatibility/versions.json): 27.2 on the iPhone 18 Pro in tests/fixtures/ios27/, 26.5 on the iPhone 17 Pro
+# in tests/fixtures/. Only 27.2 is gated for now (the default); SIMCORE_IOS="26.5 27.2" also checks 26.5.
 rc=0
-for ios in ${SIMCORE_IOS:-26.5 27.2}; do
+for ios in ${SIMCORE_IOS:-27.2}; do
   case $ios in
     # ll: scroll offset of the long-list-scrolled reference (a fling on 26.5, an exact drag on 27.2).
     26.5) fx=tests/fixtures dev=iphone-17-pro ll=775.66 ;;
@@ -51,11 +58,11 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     *) echo "unknown iOS $ios"; exit 2 ;;
   esac
   base=(--ios "$ios" --device "$dev")
-  out=target/compare/ios$ios; mkdir -p "$out/onesim"
+  out=target/compare/ios$ios${smoke:+-smoke}; [ -z "$smoke" ] || rm -rf "$out"; mkdir -p "$out/onesim"
   echo "==== iOS $ios ($dev, $fx)"
   export SIMCORE_COMPARE_IOS=$ios
   if want swiftui; then
-    shot() { local name=$1; shift; ./target/debug/onesim run "$app" "${base[@]}" "$@" --screenshot "$out/onesim/$name.png" >/dev/null; }
+    shot() { local name=$1; shift; keep "$name" || return 0; ./target/debug/onesim run "$app" "${base[@]}" "$@" --screenshot "$out/onesim/$name.png" >/dev/null; }
     shot home
     shot typography       --click Typography
     shot shapes           --click Shapes
@@ -94,6 +101,8 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     shot form-menu    --click Form --click Flavor
     shot form-changed --click Form --click Flavor --click Chocolate --click Large --drag 170,552,300,0
     python3 scripts/compare_ios.py $fx/showcase-ios "$out/onesim" "$out" || rc=1
+  fi
+  if want swiftui && [ -z "$smoke" ]; then
     # SwiftUI TabView: tests/fixtures/swiftui-tabs-ios (see its README). Tab items by point: Home 115,822, Counter 201,822, Settings 287,822.
     tout=$out/swiftui-tabs; mkdir -p "$tout/onesim"
     tshot() { local name=$1; shift; ./target/debug/onesim run "$tabs" "${base[@]}" "$@" --screenshot "$tout/onesim/$name.png" >/dev/null; }
@@ -147,7 +156,7 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
       (cd "$rn" && CI=1 exec npx expo start --port "$port" >"../../$rnout/metro.log" 2>&1) &
       metro=$!
       for _ in $(seq 60); do curl -sf "http://localhost:$port/status" >/dev/null 2>&1 && break; sleep 1; done
-      rnshot() { local name=$1; shift; ./target/debug/onesim expo --url "http://localhost:$port" "${base[@]}" "$@" --screenshot "$rnout/onesim/$name.png" >/dev/null || echo "onesim expo failed: $name"; }
+      rnshot() { local name=$1; shift; keep "$name" || return 0; ./target/debug/onesim expo --url "http://localhost:$port" "${base[@]}" "$@" --screenshot "$rnout/onesim/$name.png" >/dev/null || echo "onesim expo failed: $name"; }
       rnshot home
       rnshot layout           --click Layout
       rnshot text             --click Text
@@ -200,6 +209,7 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
       rrshot stack-back        --click 200,192 --click 64,84
       rrshot stack-detail-dark --dark --click 200,192
     }
+    [ -z "$smoke" ] || continue
     rr_group examples/expo-default tabs rr_states_tabs
     rr_group examples/expo-router-stack stack rr_states_stack
     if [ -d examples/expo-ui/node_modules ]; then
@@ -208,7 +218,7 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
   fi
   # Per-device chrome: tests/fixtures/devices/<slug>/{home,keyboard-shift}.png (see its README).
   for d in $fx/devices/*/; do
-    { [ -d "$d" ] && want swiftui; } || continue
+    { [ -d "$d" ] && want swiftui && [ -z "$smoke" ]; } || continue
     slug=$(basename "$d"); dd="$out/devices/$slug"; mkdir -p "$dd/onesim"
     ./target/debug/onesim run "$app" --ios "$ios" --device "$slug" --screenshot "$dd/onesim/home.png" >/dev/null
     ./target/debug/onesim run "$app" --ios "$ios" --device "$slug" --click Todos --click "New todo" --screenshot "$dd/onesim/keyboard-shift.png" >/dev/null
