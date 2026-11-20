@@ -643,12 +643,23 @@ pub extern "C" fn simcore_web_drag(phase: i32, x: f64, y: f64, t: f64) -> i32 {
         1 => DragPhase::Move,
         _ => DragPhase::End,
     };
-    if let Some(Some(out)) = with_rn(|rn, inter, cx| rn.drag(inter, cx.scene, phase, x, y, t)) {
+    if let Some(out) = with_rn(|rn, inter, cx| rn.drag(inter, cx, phase, x, y, t)) {
         return deliver(out);
     }
     sync_guest_clock();
     let e = with(|s| s.scene.as_ref().map(|sc| s.inter.drag(sc, phase, x, y, t)));
     e.map_or(0, dispatch)
+}
+
+/// React Native mode: queue the `scroll` events for scrollers a tick moved (before the scene is rebuilt).
+fn queue_scroll_events(s: &mut State) {
+    if let (Some(rn), Some(sc)) = (s.rn.as_mut(), s.scene.as_ref()) {
+        for o in rn.input.scrolled(&s.inter, sc) {
+            if let Out::Send(m, _) = o {
+                rn.outbox.push(m);
+            }
+        }
+    }
 }
 
 /// Advance scroll animations, SwiftUI animations, and scheduled guest ticks by `dt_ms`.
@@ -674,6 +685,7 @@ pub extern "C" fn simcore_web_tick(dt_ms: f64) -> i32 {
     }
     let redrew = with(|s| {
         let scroll_moved = s.scene.as_ref().is_some_and(|sc| s.inter.tick(sc, dt));
+        queue_scroll_events(s);
         let anim_moved = dt > 0.0 && s.anim.is_animating();
         if anim_moved {
             s.anim.tick(dt);
@@ -897,7 +909,7 @@ pub extern "C" fn simcore_web_rn_receive(len: usize) -> i32 {
             rn_requests(vec![]); // drop the focus of a field that is gone
             1
         }
-        Ok(m @ (GuestMessage::FocusRequest { .. } | GuestMessage::ScrollTo { .. })) => rn_requests(vec![m]),
+        Ok(m @ (GuestMessage::FocusRequest { .. } | GuestMessage::ScrollTo { .. } | GuestMessage::JsResponder { .. } | GuestMessage::TouchAnswer { .. })) => rn_requests(vec![m]),
         // A new guest instance (first start or reload): it knows no frames yet and has no touch in progress.
         Ok(GuestMessage::Hello { .. }) => with(|s| {
             if let Some(rn) = s.rn.as_mut() {

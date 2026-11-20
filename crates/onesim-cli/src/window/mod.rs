@@ -282,8 +282,9 @@ impl App {
         match self.timed(|h, id| h.drag(id, phase, p.0, p.1, t)) {
             Ok(_) => {
                 self.sched.invalidate(Reason::Input);
-                if phase == DragPhase::End && !self.cfg.rn {
-                    self.sched.set_animating(true); // momentum / bounce: the first tick says whether there is any
+                if phase == DragPhase::End {
+                    // Momentum / bounce (React Native scroll views too): the first tick says whether there is any.
+                    self.sched.set_animating(true);
                     self.last_tick = Instant::now();
                 }
             }

@@ -148,6 +148,8 @@ module.exports = function createGestures(rt, { node, log, unsupported }) {
   }
 
   return {
+    // Whether a recognizer won the touch in progress (it then never reaches RN's responder or a scroll view).
+    captured: () => !!(touch && touch.captured),
     // Host `touch` (before RN sees it). Returns true when a gesture owns the touch (RN's responder was cancelled).
     onTouch(m) {
       const t = { x: m.x, y: m.y, lx: m.lx ?? 0, ly: m.ly ?? 0, t: m.timestamp ?? Date.now() };
