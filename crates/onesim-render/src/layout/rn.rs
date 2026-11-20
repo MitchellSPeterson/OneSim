@@ -29,6 +29,7 @@ struct Text {
     font_padding: (f32, f32),
 }
 
+#[allow(clippy::large_enum_variant)] // `Text` holds styled spans.
 enum Leaf<'a> {
     Text(Text),
     ExpoHost { content: &'a ViewNode, width: bool, height: bool },
@@ -110,16 +111,7 @@ fn runs(text: &str, ranges: &[(usize, usize, SpanStyle)], spec: &FontSpec, base:
         .map(|w| {
             let st = ranges.iter().rfind(|r| r.0 <= w[0] && w[1] <= r.1).map(|r| r.2).unwrap_or_default();
             let color = st.color.map_or(base, |c| Color::rgba(c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, base.a));
-            Span {
-                text: text[w[0]..w[1]].to_string(),
-                pt: st.size.unwrap_or(spec.pt),
-                weight: st.weight.unwrap_or(spec.weight),
-                color,
-                italic: false,
-                underline: false,
-                strike: false,
-                mono: st.mono,
-            }
+            Span { pt: st.size.unwrap_or(spec.pt), weight: st.weight.unwrap_or(spec.weight), color, mono: st.mono, ..Span::basic(text[w[0]..w[1]].to_string(), 0.0, 0, color) }
         })
         .collect()
 }
@@ -1031,7 +1023,7 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
             _ => onesim_protocol::ImageScale::Medium,
         };
         // Point size such that the symbol's natural box fits the view.
-        let unit = crate::SymbolSpec { name: name.clone(), point_size: 100.0, weight, scale };
+        let unit = crate::SymbolSpec { name: name.clone(), point_size: 100.0, weight, scale, ..Default::default() };
         if let Some(m) = crate::symbols::metrics(&unit) {
             let k = (w / m.w).min(h / m.h) * 100.0 / 100.0;
             let spec = crate::SymbolSpec { point_size: k * 100.0, ..unit };
@@ -1111,7 +1103,7 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
                     // Template images (`tintColor`) draw their alpha in the tint color.
                     let tint = p.get("tintColor").and_then(|t| t.as_str().and_then(css_color).or_else(|| cx.color(Some(t))));
                     let pixmap = tint.and_then(|c| tinted(&pixmap, c)).unwrap_or(pixmap);
-                    n.image = Some(ImageRun { pixmap, dest: Rect { x: x + dest.x, y: y + dest.y, ..dest }, rotation: cx.rot + spin });
+                    n.image = Some(ImageRun { pixmap, dest: Rect { x: x + dest.x, y: y + dest.y, ..dest }, rotation: cx.rot + spin, filter: 2 });
                 }
                 None => cx.note(format!("image_decode_failed: {path}")),
             }

@@ -228,6 +228,40 @@ struct Env {
     img: ImageScale,
     /// Laid out as (part of) a list row: `Label` uses the fixed icon column and accent icon.
     in_row: bool,
+    /// Kerning + tracking, in points.
+    extra: f32,
+    /// 0 default, 1 serif, 2 rounded, 3 monospaced.
+    design: u8,
+    /// -2 compressed, -1 condensed, 0 standard, 1 expanded.
+    width: i8,
+    mono: bool,
+    digits: bool,
+    /// `Text.Scale.secondary`.
+    secondary: bool,
+    /// 0 tail, 1 head, 2 middle.
+    trunc: u8,
+    baseline: f32,
+    italic: bool,
+    underline: bool,
+    under_color: Option<Color>,
+    under_pat: u8,
+    strike_color: Option<Color>,
+    strike_pat: u8,
+    /// 0 none, 1 uppercase, 2 lowercase.
+    case_fold: u8,
+    tighten: bool,
+    min_scale: f32,
+    max_lines: Option<usize>,
+    reserve_lines: Option<usize>,
+    /// 0 monochrome, 1 hierarchical, 2 palette, 3 multicolor.
+    sym_mode: u8,
+    /// 0 automatic, 1 color, 2 draw.
+    sym_var: u8,
+    sym_grad: bool,
+    /// `.renderingMode(.original)`.
+    sym_original: bool,
+    /// 0 nearest, 1 bilinear, 2 bicubic.
+    img_filter: u8,
 }
 
 impl Env {
@@ -245,6 +279,30 @@ impl Env {
             bottom_inset: 0.0,
             img: ImageScale::Medium,
             in_row: false,
+            extra: 0.0,
+            design: 0,
+            width: 0,
+            mono: false,
+            digits: false,
+            secondary: false,
+            trunc: 0,
+            baseline: 0.0,
+            italic: false,
+            underline: false,
+            under_color: None,
+            under_pat: 0,
+            strike_color: None,
+            strike_pat: 0,
+            case_fold: 0,
+            tighten: false,
+            min_scale: 1.0,
+            max_lines: None,
+            reserve_lines: None,
+            sym_mode: 0,
+            sym_var: 0,
+            sym_grad: false,
+            sym_original: false,
+            img_filter: 2,
         }
     }
 }
@@ -578,6 +636,11 @@ fn flatten_tree(lay: Lay, x: f64, y: f64, mut parent: Option<usize>, mut opacity
     if let Some(mut n) = lay.node {
         let (l, t, r, b) = lay.infl;
         n.bounds = Rect { x: x - l, y: y - t, w: lay.size.w + l + r, h: lay.size.h + t + b };
+        // Bitmap dest is local to the node. RN tab icons overwrite it with the absolute bounds afterwards.
+        if let Some(im) = n.image.as_mut() {
+            im.dest.x += x;
+            im.dest.y += y;
+        }
         n.parent = parent;
         opacity *= n.opacity;
         n.opacity = opacity;
@@ -590,6 +653,78 @@ fn flatten_tree(lay: Lay, x: f64, y: f64, mut parent: Option<usize>, mut opacity
     for (dx, dy, k) in lay.kids {
         flatten_tree(k, x + dx, y + dy, parent, opacity, out, modals);
     }
+}
+
+fn design_code(d: onesim_protocol::FontDesign) -> u8 {
+    match d {
+        onesim_protocol::FontDesign::Default => 0,
+        onesim_protocol::FontDesign::Serif => 1,
+        onesim_protocol::FontDesign::Rounded => 2,
+        onesim_protocol::FontDesign::Monospaced => 3,
+    }
+}
+
+fn width_code(w: onesim_protocol::FontWidth) -> i8 {
+    match w {
+        onesim_protocol::FontWidth::Compressed => -2,
+        onesim_protocol::FontWidth::Condensed => -1,
+        onesim_protocol::FontWidth::Standard => 0,
+        onesim_protocol::FontWidth::Expanded => 1,
+    }
+}
+
+fn trunc_code(m: onesim_protocol::Truncation) -> u8 {
+    match m {
+        onesim_protocol::Truncation::Tail => 0,
+        onesim_protocol::Truncation::Head => 1,
+        onesim_protocol::Truncation::Middle => 2,
+    }
+}
+
+fn pattern_code(p: onesim_protocol::LinePattern) -> u8 {
+    match p {
+        onesim_protocol::LinePattern::Solid => 0,
+        onesim_protocol::LinePattern::Dot => 1,
+        onesim_protocol::LinePattern::Dash => 2,
+        onesim_protocol::LinePattern::DashDot => 3,
+        onesim_protocol::LinePattern::DashDotDot => 4,
+    }
+}
+
+fn case_code(c: onesim_protocol::TextCase) -> u8 {
+    match c {
+        onesim_protocol::TextCase::Uppercase => 1,
+        onesim_protocol::TextCase::Lowercase => 2,
+    }
+}
+
+fn symbol_mode_code(m: onesim_protocol::SymbolMode) -> u8 {
+    match m {
+        onesim_protocol::SymbolMode::Monochrome => 0,
+        onesim_protocol::SymbolMode::Hierarchical => 1,
+        onesim_protocol::SymbolMode::Palette => 2,
+        onesim_protocol::SymbolMode::Multicolor => 3,
+    }
+}
+
+fn pull_tracking(spec: &FontSpec, spans: &[Span], pull: f32) -> (FontSpec, Vec<Span>) {
+    let mut spec = *spec;
+    spec.extra -= pull;
+    let spans = spans.iter().map(|s| Span { extra: s.extra - pull, ..s.clone() }).collect();
+    (spec, spans)
+}
+
+fn fold_label(text: &str, spans: Vec<Span>, case_fold: u8) -> (String, Vec<Span>) {
+    let fold = |s: &str| match case_fold {
+        1 => s.to_uppercase(),
+        2 => s.to_lowercase(),
+        _ => s.to_string(),
+    };
+    if case_fold == 0 {
+        return (text.to_string(), spans);
+    }
+    let spans = spans.into_iter().map(|s| Span { text: fold(&s.text), ..s }).collect();
+    (fold(text), spans)
 }
 
 fn h_frac(a: Alignment) -> f64 {
@@ -1184,7 +1319,33 @@ impl Ctx<'_> {
     }
 
     fn spec(&self, env: &Env) -> FontSpec {
-        FontSpec::new(env.size, self.line_h(env.size), env.weight.unwrap_or(env.base_weight), env.align)
+        let mut spec = FontSpec::new(env.size, self.line_h(env.size), env.weight.unwrap_or(env.base_weight), env.align);
+        if env.secondary {
+            // Glyphs shrink. The line box stays the body's, so a secondary row keeps the body pitch.
+            let k = crate::text::SECONDARY_TEXT_SCALE;
+            spec.size *= k;
+            spec.pt *= k;
+            spec.tracking = crate::text::tracking_em(spec.pt, spec.weight);
+        }
+        spec.extra = env.extra;
+        spec.design = env.design;
+        spec.width = env.width;
+        spec.mono = env.mono || env.design == 3;
+        spec.digits = env.digits;
+        spec.trunc = env.trunc;
+        spec.baseline = env.baseline;
+        spec.case_fold = env.case_fold;
+        spec.tighten = env.tighten;
+        spec.min_scale = env.min_scale;
+        spec.lines = env.max_lines;
+        spec.underline = env.underline;
+        spec.italic = env.italic;
+        spec.line_pat = env.under_pat;
+        spec.under_color = env.under_color;
+        spec.strike_pat = env.strike_pat;
+        spec.strike_color = env.strike_color;
+        spec.reserve = env.reserve_lines;
+        spec
     }
 
     fn hairline(&self) -> f64 {
@@ -1198,13 +1359,22 @@ impl Ctx<'_> {
 
     #[allow(clippy::too_many_arguments)]
     fn text_lay_runs(&mut self, id: &str, text: &str, spec: FontSpec, color: Color, wrap: Option<f32>, spans: Vec<Span>) -> Lay {
-        let (w, h) = self.fonts.measure(text, &spec, wrap, &spans);
+        let (text, spans) = fold_label(text, spans, spec.case_fold);
+        let (spec, spans) = self.fit_text(&text, spec, wrap, spans);
+        let (w, mut h) = self.fonts.measure(&text, &spec, wrap, &spans);
+        // A positive baselineOffset lengthens the line downward; the glyphs stay at the top.
+        // A negative one lengthens it and the draw shifts the glyphs down into that space.
+        let (rise, sink) = crate::text::baseline_extent(&spec, &spans);
+        h += f64::from(rise - sink);
+        if let Some(n) = spec.reserve.filter(|n| *n > 1) {
+            h = h.max(spec.line_height as f64 + (n - 1) as f64 * spec.pitch as f64);
+        }
         // SwiftUI rounds text sizes up to the device pixel.
         let w = (w * self.scale).ceil() / self.scale;
         let mut n = Node::new(id, "text");
-        n.text = Some(TextRun { text: text.to_string(), font: spec, color, strike: false, offset_x: 0.0, spans });
+        n.label = Some(text.clone());
+        n.text = Some(TextRun { text, font: spec, color, strike: false, offset_x: 0.0, spans });
         n.role = Role::Text;
-        n.label = Some(text.to_string());
         Lay::new(Size { w, h }, Some(n), vec![])
     }
 
@@ -1290,8 +1460,13 @@ impl Ctx<'_> {
                 })
             }
             Modifier::Font(f) => {
-                let (size, weight) = self.font_size_weight(f);
-                self.mods(v, rest, p, Env { size: size as f32, base_weight: weight.value(), ..env })
+                let (size, weight, design) = self.font_size_weight(f);
+                let mut env = Env { size: size as f32, base_weight: weight.value(), ..env };
+                if let Some(d) = design {
+                    env.design = d;
+                    env.mono = d == 3;
+                }
+                self.mods(v, rest, p, env)
             }
             Modifier::FontWeight(w) => {
                 let weight = env.weight.or(Some(w.value()));
@@ -1365,14 +1540,54 @@ impl Ctx<'_> {
             | Modifier::ScrollIndicators(_)
             | Modifier::ScrollTargetBehavior(_)
             | Modifier::ScrollPosition => self.mods(v, rest, p, env),
+            Modifier::Kerning(k) => self.mods(v, rest, p, Env { extra: env.extra + *k as f32, ..env }),
+            Modifier::Tracking(k) => self.mods(v, rest, p, Env { extra: env.extra + *k as f32, ..env }),
+            Modifier::BaselineOffset(k) => self.mods(v, rest, p, Env { baseline: *k as f32, ..env }),
+            Modifier::FontDesign(d) => {
+                let design = d.map(design_code).unwrap_or(0);
+                self.mods(v, rest, p, Env { design, mono: design == 3 || (d.is_none() && env.mono), ..env })
+            }
+            Modifier::FontWidth(w) => self.mods(v, rest, p, Env { width: w.map(width_code).unwrap_or(0), ..env }),
+            Modifier::Monospaced(on) => self.mods(v, rest, p, Env { mono: *on, ..env }),
+            Modifier::MonospacedDigit(on) => self.mods(v, rest, p, Env { digits: *on, ..env }),
+            Modifier::TextScale(s) => self.mods(v, rest, p, Env { secondary: *s == onesim_protocol::TextScale::Secondary, ..env }),
+            Modifier::TruncationMode(m) => self.mods(v, rest, p, Env { trunc: trunc_code(*m), ..env }),
+            Modifier::LineLimit(lim) => {
+                let (max_lines, reserve_lines) = lim.map(|l| {
+                    let max = l.max.map(|n| n as usize);
+                    let reserve = if l.reserves { l.max.or(l.min).map(|n| n as usize) } else { l.min.map(|n| n as usize) };
+                    (max, reserve)
+                }).unwrap_or((None, None));
+                self.mods(v, rest, p, Env { max_lines, reserve_lines, ..env })
+            }
+            Modifier::Underline(s) => self.mods(v, rest, p, Env {
+                underline: s.active,
+                under_pat: pattern_code(s.pattern),
+                under_color: s.color.as_ref().map(|c| self.color(c)),
+                ..env
+            }),
+            Modifier::Italic(on) => self.mods(v, rest, p, Env { italic: *on, ..env }),
+            Modifier::TextCase(c) => self.mods(v, rest, p, Env { case_fold: c.map(case_code).unwrap_or(0), ..env }),
+            Modifier::AllowsTightening(on) => self.mods(v, rest, p, Env { tighten: *on, ..env }),
+            Modifier::MinimumScaleFactor(k) => self.mods(v, rest, p, Env { min_scale: (*k as f32).clamp(0.01, 1.0), ..env }),
+            Modifier::SymbolRenderingMode(m) => self.mods(v, rest, p, Env { sym_mode: m.map(symbol_mode_code).unwrap_or(0), ..env }),
+            Modifier::SymbolVariableValueMode(m) => self.mods(v, rest, p, Env { sym_var: m.map(|v| if v == onesim_protocol::SymbolVariable::Draw { 2 } else { 1 }).unwrap_or(0), ..env }),
+            Modifier::SymbolColorRenderingMode(m) => self.mods(v, rest, p, Env { sym_grad: m == &Some(onesim_protocol::SymbolColorMode::Gradient), ..env }),
+            Modifier::AllowedDynamicRange(_) => self.mods(v, rest, p, env),
+            Modifier::StrikethroughStyle(s) => self.mods(v, rest, p, Env {
+                strike: s.active,
+                strike_pat: pattern_code(s.pattern),
+                strike_color: s.color.as_ref().map(|c| self.color(c)),
+                ..env
+            }),
         }
     }
 
-    /// Point size (at the current Dynamic Type size) and weight of a `Font`.
-    fn font_size_weight(&self, f: &Font) -> (f64, onesim_protocol::Weight) {
+    /// Point size (at the current Dynamic Type size), weight and design of a `Font`.
+    fn font_size_weight(&self, f: &Font) -> (f64, onesim_protocol::Weight, Option<u8>) {
         match f {
-            Font::Style { style, weight } => (style.size_at(self.dts), weight.unwrap_or(style.spec().1)),
-            Font::System { size, weight } => (*size, *weight),
+            Font::Style { style, weight } => (style.size_at(self.dts), weight.unwrap_or(style.spec().1), None),
+            Font::System { size, weight, design } => (*size, *weight, design.map(design_code)),
         }
     }
 
@@ -1517,20 +1732,29 @@ impl Ctx<'_> {
             ViewKind::Text { text, runs } => {
                 let wrap = p.w.filter(|w| w.is_finite()).map(|w| w.max(1.0) as f32);
                 let mut spec = self.spec(&env);
-                let spans: Vec<Span> = runs
-                    .iter()
-                    .map(|r| {
-                        let (pt, base) = r.font.as_ref().map_or((env.size, env.base_weight), |f| {
-                            let (s, w) = self.font_size_weight(f);
-                            (s as f32, w.value())
-                        });
-                        let weight = r.font_weight.map(|w| w.value()).or(if r.font.is_some() { None } else { env.weight }).unwrap_or(base);
-                        Span { text: r.text.clone(), pt, weight, color: r.foreground_color.as_ref().map_or(fg, |c| self.color(c)), italic: r.italic, underline: r.underline, strike: r.strikethrough || env.strike, mono: false }
-                    })
-                    .collect();
-                // Line metrics come from the largest run.
+                let spans: Vec<Span> = runs.iter().map(|r| self.span_of(r, &env, fg)).collect();
+                // Line metrics come from the largest run. Keep the paragraph's truncation and tracking.
                 if let Some(big) = spans.iter().max_by(|a, b| a.pt.total_cmp(&b.pt)) {
+                    let keep = spec;
                     spec = FontSpec::new(big.pt, self.line_h(big.pt), big.weight, env.align);
+                    spec.extra = keep.extra;
+                    spec.trunc = keep.trunc;
+                    spec.baseline = keep.baseline;
+                    spec.case_fold = keep.case_fold;
+                    spec.tighten = keep.tighten;
+                    spec.min_scale = keep.min_scale;
+                    spec.lines = keep.lines;
+                    spec.underline = keep.underline;
+                    spec.italic = keep.italic;
+                    spec.line_pat = keep.line_pat;
+                    spec.under_color = keep.under_color;
+                    spec.strike_pat = keep.strike_pat;
+                    spec.strike_color = keep.strike_color;
+                    spec.reserve = keep.reserve;
+                    spec.mono = big.mono;
+                    spec.digits = big.digits;
+                    spec.design = big.design;
+                    spec.width = big.width;
                 }
                 let mut l = self.text_lay_runs(&v.id, text, spec, fg, wrap, spans);
                 if let Some(t) = l.node.as_mut().and_then(|n| n.text.as_mut()) {
@@ -1653,18 +1877,208 @@ impl Ctx<'_> {
             }
             ViewKind::Slider { value, min, max, field, disabled, .. } => self.slider(v, *value, (*min, *max), *field, *disabled, p),
             ViewKind::Progress { value, label } => self.progress(v, *value, label.as_deref(), p, child_env),
-            ViewKind::Image { system_name, resizable, content_mode, scale } => {
-                self.image(v, system_name, *resizable, *content_mode, scale.unwrap_or(env.img), p, env, fg)
+            ViewKind::Image {
+                system_name, resizable, content_mode, scale, rendering_mode, symbol_rendering_mode, interpolation, antialiased,
+                symbol_color_rendering_mode, symbol_variable_value_mode, bitmap, ..
+            } => {
+                let mut env = env;
+                if let Some(m) = symbol_rendering_mode {
+                    env.sym_mode = symbol_mode_code(*m);
+                }
+                if let Some(m) = rendering_mode {
+                    match m {
+                        onesim_protocol::TemplateMode::Template => {
+                            env.sym_mode = 0;
+                            env.sym_grad = false;
+                            env.sym_original = false;
+                        }
+                        onesim_protocol::TemplateMode::Original => env.sym_original = true,
+                    }
+                }
+                if let Some(m) = interpolation {
+                    env.img_filter = match m {
+                        onesim_protocol::Interpolation::None => 0,
+                        onesim_protocol::Interpolation::Low => 1,
+                        onesim_protocol::Interpolation::Medium | onesim_protocol::Interpolation::High => 2,
+                    };
+                }
+                if *antialiased == Some(false) {
+                    env.img_filter = 0;
+                }
+                if let Some(m) = symbol_color_rendering_mode {
+                    env.sym_grad = *m == onesim_protocol::SymbolColorMode::Gradient;
+                }
+                if let Some(m) = symbol_variable_value_mode {
+                    env.sym_var = if *m == onesim_protocol::SymbolVariable::Draw { 2 } else { 1 };
+                }
+                if let Some(bm) = bitmap {
+                    self.bitmap_image(v, bm, *resizable, *content_mode, env.img_filter, p)
+                } else {
+                    self.image(v, system_name, *resizable, *content_mode, scale.unwrap_or(env.img), p, env, fg)
+                }
             }
             ViewKind::Label { title, icon } => self.label(v, title, icon, p, child_env),
         }
+    }
+
+    fn span_of(&self, r: &onesim_protocol::Run, env: &Env, fg: Color) -> Span {
+        let (mut pt, weight, design) = match &r.font {
+            Some(f) => {
+                let (size, w, d) = self.font_size_weight(f);
+                (size as f32, r.font_weight.map(|w| w.value()).unwrap_or(w.value()), d.unwrap_or(env.design))
+            }
+            None => (env.size, r.font_weight.map(|w| w.value()).unwrap_or(env.weight.unwrap_or(env.base_weight)), env.design),
+        };
+        let secondary = match r.text_scale {
+            Some(onesim_protocol::TextScale::Secondary) => true,
+            Some(onesim_protocol::TextScale::Default) => false,
+            None => env.secondary,
+        };
+        if secondary {
+            pt *= crate::text::SECONDARY_TEXT_SCALE;
+        }
+        let design = r.font_design.map(design_code).unwrap_or(design);
+        let width = r.font_width.map(width_code).unwrap_or(env.width);
+        // A run's kerning and tracking add to the parent's. They do not replace it.
+        let extra = env.extra + r.kerning.unwrap_or(0.0) as f32 + r.tracking.unwrap_or(0.0) as f32;
+        let color = r.foreground_color.as_ref().map(|c| self.color(c)).unwrap_or(fg);
+        Span {
+            italic: r.italic || env.italic,
+            underline: r.underline || env.underline,
+            strike: r.strikethrough || env.strike,
+            mono: r.monospaced || env.mono || design == 3,
+            extra,
+            design,
+            width,
+            digits: r.monospaced_digit || env.digits,
+            baseline: r.baseline_offset.map(|b| b as f32).unwrap_or(env.baseline),
+            line_pat: r.underline_pattern.map(pattern_code).unwrap_or(env.under_pat),
+            under_color: r.underline_color.as_ref().map(|c| self.color(c)).or(env.under_color),
+            strike_pat: r.strikethrough_pattern.map(pattern_code).unwrap_or(env.strike_pat),
+            strike_color: r.strikethrough_color.as_ref().map(|c| self.color(c)).or(env.strike_color),
+            ..Span::basic(&r.text, pt, weight, color)
+        }
+    }
+
+    /// Tighten tracking, then scale down to `min_scale`, when the text is wider than the wrap or uses more lines than the cap.
+    fn fit_text(&mut self, text: &str, spec: FontSpec, wrap: Option<f32>, spans: Vec<Span>) -> (FontSpec, Vec<Span>) {
+        let Some(limit) = wrap else { return (spec, spans) };
+        let overflows = |fonts: &mut Fonts, spec: &FontSpec, spans: &[Span]| {
+            let probe = FontSpec { lines: None, ..*spec };
+            let (w, h) = fonts.measure(text, &probe, Some(limit), spans);
+            if w > limit as f64 + 0.51 {
+                return true;
+            }
+            let Some(max) = spec.lines else { return false };
+            let cap = f64::from(spec.line_height) + (max.saturating_sub(1) as f64) * f64::from(spec.pitch);
+            h > cap + 0.51
+        };
+        if !overflows(self.fonts, &spec, &spans) {
+            return (spec, spans);
+        }
+        let (mut spec, mut spans) = (spec, spans);
+        if spec.tighten {
+            let max_pull = 0.05 * spec.pt;
+            let mut lo = 0.0f32;
+            let mut hi = max_pull;
+            for _ in 0..7 {
+                let mid = (lo + hi) / 2.0;
+                let (ts, tsp) = pull_tracking(&spec, &spans, mid);
+                if overflows(self.fonts, &ts, &tsp) { lo = mid; } else { hi = mid; }
+            }
+            (spec, spans) = pull_tracking(&spec, &spans, hi);
+        }
+        if spec.min_scale < 0.999 && overflows(self.fonts, &spec, &spans) {
+            let floor = spec.min_scale;
+            let mut lo = floor;
+            let mut hi = 1.0f32;
+            for _ in 0..7 {
+                let mid = (lo + hi) / 2.0;
+                let (ts, tsp) = self.scale_type(&spec, &spans, mid);
+                if overflows(self.fonts, &ts, &tsp) { hi = mid; } else { lo = mid; }
+            }
+            let (trial, trial_spans) = self.scale_type(&spec, &spans, lo);
+            let k = if overflows(self.fonts, &trial, &trial_spans) { floor } else { lo };
+            (spec, spans) = self.scale_type(&spec, &spans, k);
+        }
+        (spec, spans)
+    }
+
+    fn scale_type(&self, spec: &FontSpec, spans: &[Span], k: f32) -> (FontSpec, Vec<Span>) {
+        let mut s = *spec;
+        let pt = (spec.pt * k).max(1.0);
+        let ratio = if spec.pt > 0.0 { spec.size / spec.pt } else { 1.0 };
+        s.pt = pt;
+        s.size = pt * ratio;
+        s.line_height = self.line_h(pt);
+        s.pitch = if pt > 34.0 { pt * 1.12 + 2.64 } else { s.line_height.max(pt * 22.0 / 17.0) };
+        s.extra *= k;
+        s.baseline *= k;
+        s.tracking = crate::text::tracking_em(pt, s.weight);
+        let spans = spans.iter().map(|sp| Span { pt: sp.pt * k, extra: sp.extra * k, baseline: sp.baseline * k, ..sp.clone() }).collect();
+        (s, spans)
+    }
+
+    fn bitmap_image(&mut self, v: &ViewNode, bm: &onesim_protocol::Bitmap, resizable: bool, mode: Option<ContentMode>, filter: u8, p: Prop) -> Lay {
+        let pixmap = crate::image::load(&bm.path);
+        let scale = if bm.scale > 0.0 { bm.scale } else { 1.0 };
+        let (pw, ph) = pixmap.as_ref().map(|m| (m.width() as f64 / scale, m.height() as f64 / scale)).unwrap_or((1.0, 1.0));
+        let (nw, nh) = (if bm.width > 0.0 { bm.width } else { pw }, if bm.height > 0.0 { bm.height } else { ph });
+        let ratio = if nh > 0.0 { nw / nh } else { 1.0 };
+        let fin = |x: Option<f64>| x.filter(|x| x.is_finite());
+        let (pw, ph) = (fin(p.w), fin(p.h));
+        let (size, dest) = if !resizable {
+            (Size { w: nw, h: nh }, Rect { x: 0.0, y: 0.0, w: nw, h: nh })
+        } else {
+            match mode {
+                None => {
+                    let s = Size { w: pw.unwrap_or(nw), h: ph.unwrap_or(nh) };
+                    (s, Rect { x: 0.0, y: 0.0, w: s.w, h: s.h })
+                }
+                Some(m) => {
+                    let (bw, bh) = match (pw, ph) {
+                        (Some(w), Some(h)) => (w, h),
+                        (Some(w), None) => (w, w / ratio),
+                        (None, Some(h)) => (h * ratio, h),
+                        (None, None) => (nw, nh),
+                    };
+                    let by_w = (bw, bw / ratio);
+                    let by_h = (bh * ratio, bh);
+                    let fit = if by_w.1 <= bh { by_w } else { by_h };
+                    let fill = if by_w.1 >= bh { by_w } else { by_h };
+                    match m {
+                        ContentMode::Fit => (Size { w: fit.0, h: fit.1 }, Rect { x: 0.0, y: 0.0, w: fit.0, h: fit.1 }),
+                        ContentMode::Fill => {
+                            let dx = (bw - fill.0) / 2.0;
+                            let dy = (bh - fill.1) / 2.0;
+                            (Size { w: bw, h: bh }, Rect { x: dx, y: dy, w: fill.0, h: fill.1 })
+                        }
+                    }
+                }
+            }
+        };
+        let mut n = Node::new(&v.id, "image");
+        n.role = Role::Image;
+        if let Some(pixmap) = pixmap {
+            n.image = Some(crate::scene::ImageRun { pixmap, dest, rotation: 0.0, filter });
+        }
+        Lay::new(size, Some(n), vec![])
     }
 
     /// SF Symbol. Non-resizable images are glyph-sized from the font; resizable ones stretch to
     /// the proposal (or fit / fill it keeping the symbol's aspect ratio).
     #[allow(clippy::too_many_arguments)]
     fn image(&mut self, v: &ViewNode, name: &str, resizable: bool, mode: Option<ContentMode>, scale: ImageScale, p: Prop, env: Env, fg: Color) -> Lay {
-        let spec = SymbolSpec { name: name.to_string(), point_size: env.size as f64, weight: env.weight.unwrap_or(env.base_weight), scale };
+        let sym_mode = if env.sym_original && env.sym_mode == 0 { 3 } else { env.sym_mode };
+        let spec = SymbolSpec {
+            name: name.to_string(),
+            point_size: env.size as f64,
+            weight: env.weight.unwrap_or(env.base_weight),
+            scale,
+            mode: sym_mode,
+            variable: env.sym_var,
+            gradient: env.sym_grad,
+        };
         let nat = symbols::metrics(&spec);
         let fin = |x: Option<f64>| x.filter(|x| x.is_finite());
         let (nw, nh) = nat.map_or((env.size as f64, env.size as f64), |m| (m.w, m.h));
@@ -1891,7 +2305,7 @@ impl Ctx<'_> {
 
     /// An SF Symbol leaf at `pt` points.
     fn symbol_lay(&mut self, id: String, name: &str, pt: f64, weight: u16, color: Color) -> Lay {
-        let spec = SymbolSpec { name: name.into(), point_size: pt, weight, scale: ImageScale::Medium };
+        let spec = SymbolSpec { name: name.into(), point_size: pt, weight, scale: ImageScale::Medium, ..SymbolSpec::default() };
         let (w, h) = symbols::metrics(&spec).map_or((pt, pt), |m| (m.w, m.h));
         let mut n = Node::new(id, "image");
         n.symbol = Some(SymbolRun { spec, color, size: (w, h) });
@@ -2637,9 +3051,9 @@ impl Ctx<'_> {
             if let Some(pm) = path.and_then(|p| crate::image::load(p)) {
                 isz = (pm.width() as f64 / self.scale, pm.height() as f64 / self.scale);
                 let dest = Rect { x: 0.0, y: 0.0, w: isz.0, h: isz.1 };
-                icon.image = super::rn::tinted(&pm, tint).map(|pixmap| crate::ImageRun { pixmap, dest, rotation: 0.0 });
+                icon.image = super::rn::tinted(&pm, tint).map(|pixmap| crate::ImageRun { pixmap, dest, rotation: 0.0, filter: 2 });
             } else if let Some(name) = &tab.symbol {
-                let spec = crate::SymbolSpec { name: name.clone(), point_size: 22.0, weight: 400, scale: ImageScale::Medium };
+                let spec = crate::SymbolSpec { name: name.clone(), point_size: 22.0, weight: 400, scale: ImageScale::Medium, ..Default::default() };
                 isz = crate::symbols::metrics(&spec).map_or((22.0, 22.0), |m| (m.w, m.h));
                 icon.symbol = Some(crate::SymbolRun { spec, color: tint, size: isz });
             }
@@ -2684,7 +3098,7 @@ impl Ctx<'_> {
                 // Tab bars draw the filled variant of a symbol when there is one.
                 let symbol = t.system_image.as_ref().map(|s| {
                     let fill = format!("{s}.fill");
-                    let spec = crate::SymbolSpec { name: fill.clone(), point_size: 22.0, weight: 400, scale: ImageScale::Medium };
+                    let spec = crate::SymbolSpec { name: fill.clone(), point_size: 22.0, weight: 400, scale: ImageScale::Medium, ..Default::default() };
                     if s.ends_with(".fill") || crate::symbols::metrics(&spec).is_none() { s.clone() } else { fill }
                 });
                 TabBarItem { key: i.to_string(), title: t.title.clone(), icon: None, selected_icon: None, symbol, badge: t.badge.clone(), action: Some(t.action) }
@@ -2781,14 +3195,24 @@ impl Ctx<'_> {
                 let kf = k as f32;
                 (t.font.size, t.font.pt, t.font.line_height, t.font.pitch) = (t.font.size * kf, t.font.pt * kf, t.font.line_height * kf, t.font.pitch * kf);
                 t.offset_x *= kf;
+                t.font.extra *= kf;
+                t.font.baseline *= kf;
                 for sp in t.spans.iter_mut() {
                     sp.pt *= kf;
+                    sp.extra *= kf;
+                    sp.baseline *= kf;
                 }
                 // Smaller type tracks differently: re-measure a single line so it never wraps at its own width.
                 if one_line {
                     let (w, _) = self.fonts.measure(&t.text, &FontSpec { align: TextAlign::Leading, ..t.font }, None, &t.spans);
                     l.size.w = (w * self.scale).ceil() / self.scale;
                 }
+            }
+            if let Some(im) = n.image.as_mut() {
+                im.dest.x *= k;
+                im.dest.y *= k;
+                im.dest.w *= k;
+                im.dest.h *= k;
             }
             if let Some(sy) = n.symbol.as_mut() {
                 sy.spec.point_size *= k;
@@ -3309,6 +3733,97 @@ mod tests {
     }
 
     #[test]
+    fn type_style_changes_measure_case_and_scale() {
+        let plain = scene(r#"{"kind":"text","id":"t","text":"Tracking","modifiers":[{"font":{"size":17,"weight":"regular"}}]}"#, (400.0, 80.0));
+        let wide = scene(r#"{"kind":"text","id":"t","text":"Tracking","modifiers":[{"tracking":4},{"font":{"size":17,"weight":"regular"}}]}"#, (400.0, 80.0));
+        assert!(by_id(&wide, "t").bounds.w > by_id(&plain, "t").bounds.w + 3.0, "tracking should widen the word");
+        let tracked = scene(
+            r#"{"kind":"text","id":"t","text":"WW","modifiers":[{"tracking":4},{"font":{"size":17,"weight":"regular"}}]}"#,
+            (400.0, 80.0),
+        );
+        let run = scene(
+            r#"{"kind":"text","id":"t","text":"WW","runs":[{"text":"WW","kerning":4}],"modifiers":[{"tracking":4},{"font":{"size":17,"weight":"regular"}}]}"#,
+            (400.0, 80.0),
+        );
+        assert!(
+            by_id(&run, "t").bounds.w > by_id(&tracked, "t").bounds.w + 2.0,
+            "a run's kerning adds to the parent's tracking"
+        );
+        let upper = scene(r#"{"kind":"text","id":"t","text":"Hello","modifiers":[{"textCase":"uppercase"}]}"#, (200.0, 80.0));
+        assert_eq!(by_id(&upper, "t").label.as_deref(), Some("HELLO"));
+        let word = "Supercalifragilistic";
+        let full = scene(&format!(r#"{{"kind":"text","id":"t","text":"{word}","modifiers":[{{"font":{{"size":17,"weight":"regular"}}}}]}}"#), (400.0, 80.0));
+        let shrunk = scene(
+            &format!(r#"{{"kind":"text","id":"t","text":"{word}","modifiers":[{{"font":{{"size":17,"weight":"regular"}}}},{{"minimumScaleFactor":0.5}},{{"frame":{{"width":40,"height":30}}}}]}}"#),
+            (400.0, 80.0),
+        );
+        assert!(by_id(&shrunk, "t").bounds.w < by_id(&full, "t").bounds.w * 0.75, "minimumScaleFactor shrinks a word that does not fit");
+        let sentence = "alpha beta gamma delta";
+        let open = scene(
+            &format!(r#"{{"kind":"text","id":"t","text":"{sentence}","modifiers":[{{"font":{{"size":17,"weight":"regular"}}}},{{"lineLimit":{{"max":1}}}},{{"minimumScaleFactor":0.5}},{{"frame":{{"width":220,"height":40}}}}]}}"#),
+            (400.0, 80.0),
+        );
+        let tight = scene(
+            &format!(r#"{{"kind":"text","id":"t","text":"{sentence}","modifiers":[{{"font":{{"size":17,"weight":"regular"}}}},{{"lineLimit":{{"max":1}}}},{{"minimumScaleFactor":0.5}},{{"frame":{{"width":80,"height":40}}}}]}}"#),
+            (400.0, 80.0),
+        );
+        let open_pt = by_id(&open, "t").text.as_ref().unwrap().font.pt;
+        let tight_pt = by_id(&tight, "t").text.as_ref().unwrap().font.pt;
+        assert!(tight_pt < open_pt - 0.5, "lineLimit 1 scales a sentence that wraps: {tight_pt} vs {open_pt}");
+        let one = scene(r#"{"kind":"text","id":"t","text":"Line","modifiers":[{"font":{"size":17,"weight":"regular"}}]}"#, (200.0, 80.0));
+        let two = scene(r#"{"kind":"text","id":"t","text":"Line","modifiers":[{"font":{"size":17,"weight":"regular"}},{"lineLimit":{"min":2}}]}"#, (200.0, 120.0));
+        assert!(by_id(&two, "t").bounds.h > by_id(&one, "t").bounds.h * 1.6, "a lower line limit reserves a second line");
+    }
+
+    #[test]
+    fn baseline_offset_grows_the_line_and_pushes_the_next_row() {
+        let plain = scene(
+            r#"{"kind":"vstack","id":"v","spacing":0,"children":[
+                {"kind":"text","id":"a","text":"Before"},
+                {"kind":"text","id":"b","text":"Up"},
+                {"kind":"text","id":"c","text":"After"}]}"#,
+            (200.0, 200.0),
+        );
+        let raised = scene(
+            r#"{"kind":"vstack","id":"v","spacing":0,"children":[
+                {"kind":"text","id":"a","text":"Before"},
+                {"kind":"text","id":"b","text":"Up","modifiers":[{"baselineOffset":6}]},
+                {"kind":"text","id":"c","text":"After"}]}"#,
+            (200.0, 200.0),
+        );
+        let pb = by_id(&plain, "b").bounds;
+        let rb = by_id(&raised, "b").bounds;
+        let pa = by_id(&plain, "a").bounds;
+        let ra = by_id(&raised, "a").bounds;
+        // The scene centers the stack, so compare gaps, not absolute y.
+        near(rb.y - ra.y, pb.y - pa.y);
+        near(rb.h, pb.h + 6.0);
+        near(by_id(&raised, "c").bounds.y - rb.y, by_id(&plain, "c").bounds.y - pb.y + 6.0);
+        let row = scene(
+            r#"{"kind":"hstack","id":"h","alignment":"center","spacing":8,"children":[
+                {"kind":"text","id":"up","text":"Up","modifiers":[{"baselineOffset":6}]},
+                {"kind":"text","id":"base","text":"Base"}]}"#,
+            (300.0, 80.0),
+        );
+        let up = by_id(&row, "up").bounds;
+        let base = by_id(&row, "base").bounds;
+        near(base.y - up.y, (up.h - base.h) / 2.0);
+    }
+
+    #[test]
+    fn secondary_text_scale_keeps_the_body_line_box() {
+        let body = scene(r#"{"kind":"text","id":"t","text":"Secondary","modifiers":[{"font":{"size":17,"weight":"regular"}}]}"#, (400.0, 80.0));
+        let sec = scene(
+            r#"{"kind":"text","id":"t","text":"Secondary","modifiers":[{"font":{"size":17,"weight":"regular"}},{"textScale":"secondary"}]}"#,
+            (400.0, 80.0),
+        );
+        near(by_id(&sec, "t").bounds.h, by_id(&body, "t").bounds.h);
+        let bw = by_id(&body, "t").bounds.w;
+        let sw = by_id(&sec, "t").bounds.w;
+        assert!(sw < bw * 0.92 && sw > bw * 0.78, "secondary width {sw} vs body {bw}");
+    }
+
+    #[test]
     fn tab_view_bar_badge_and_inset() {
         let s = phone(
             r#"{"kind":"tabview","id":"t","selected":1,"tabs":[{"title":"Home","systemImage":"house","action":1},{"title":"Counter","action":2},{"title":"Settings","systemImage":"gearshape","badge":"3","action":3}],
@@ -3422,8 +3937,15 @@ mod tests {
         for i in 0..30 {
             json = format!(r#"{{"kind":"vstack","id":"v{i}","alignment":"center","children":[{json},{{"kind":"spacer","id":"s{i}"}}]}}"#);
         }
+        // Debug layout frames are large (the match keeps every arm's locals). 30 stacks overflow the
+        // test thread's 2 MB stack; the check is time, not that limit.
         let t = std::time::Instant::now();
-        let s = scene(&json, (393.0, 852.0));
+        let s = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || scene(&json, (393.0, 852.0)))
+            .unwrap()
+            .join()
+            .unwrap();
         assert!(by_id(&s, "t").bounds.w > 0.0);
         assert!(t.elapsed().as_secs() < 5, "layout is exponential in depth");
     }
@@ -3737,7 +4259,7 @@ mod tests {
         // AppKit symbol boxes vary with the host macOS release. Check layout against the active
         // symbol metrics, using the expected point size, weight and scale for each image.
         let metrics = |name: &str, scale| {
-            symbols::metrics(&SymbolSpec { name: name.into(), point_size: 17.0, weight: 400, scale }).unwrap()
+            symbols::metrics(&SymbolSpec { name: name.into(), point_size: 17.0, weight: 400, scale, ..SymbolSpec::default() }).unwrap()
         };
         let star = by_id(&s, "lab.i");
         assert!(star.symbol.is_some());

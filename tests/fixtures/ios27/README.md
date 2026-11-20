@@ -2,7 +2,7 @@
 
 The iOS 27 reference set, captured 2026-11-18/19 on the **iPhone 18 Pro** simulator, iOS 27.2 (24B8117), Xcode 27.2
 (402 x 874 pt, scale 3, PNGs 1206 x 2622). Same apps, states and capture method as the iOS 26.5 set one level up
-(`../showcase-ios`, `../swiftui-tabs-ios`, `../swiftui-gestures-ios`, `../rn-showcase-ios`, `../rn-router-ios`, `../devices`); each subfolder's README
+(`../showcase-ios`, `../swiftui-tabs-ios`, `../swiftui-gestures-ios`, `../swiftui-shapes-ios`, `../swiftui-type-ios`, `../rn-showcase-ios`, `../rn-router-ios`, `../devices`); each subfolder's README
 lists only what differs. `scripts/compare-ios.sh` renders every state with `--ios 27.2 --device iphone-18-pro`.
 
 | folder | app | states |
@@ -11,6 +11,7 @@ lists only what differs. `scripts/compare-ios.sh` renders every state with `--io
 | `swiftui-tabs-ios` | `examples/swiftui-tabs` | the 5 states of `../swiftui-tabs-ios` |
 | `swiftui-gestures-ios` | `examples/swiftui-gestures` | the 6 states of `../swiftui-gestures-ios` |
 | `swiftui-shapes-ios` | `examples/swiftui-shapes` | the 2 states of `../swiftui-shapes-ios` |
+| `swiftui-type-ios` | `examples/swiftui-type` | the 2 states of `../swiftui-type-ios` |
 | `rn-showcase-ios` | `examples/expo-showcase` in Expo Go 58.0.7 | the 18 states of `../rn-showcase-ios` |
 | `rn-router-ios` | `examples/expo-default`, `examples/expo-router-stack` in Expo Go 58.0.7 | the 9 states of `../rn-router-ios` |
 | `devices` | `examples/swiftui-showcase` `home` + `keyboard-shift` | iPhone 18 Pro Max, 17e, Duo |

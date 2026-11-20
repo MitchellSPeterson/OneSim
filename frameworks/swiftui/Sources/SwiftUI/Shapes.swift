@@ -1227,15 +1227,45 @@ public struct Font {
         public static let bold = Weight(name: "bold"), heavy = Weight(name: "heavy"), black = Weight(name: "black")
     }
     public enum Design { case `default`, serif, rounded, monospaced }
+    /// Numeric width. Statics: compressed -0.3, condensed -0.2, standard 0, expanded 0.3.
+    public struct Width: Hashable {
+        public var value: CGFloat
+        public static let compressed = Width(-0.3)
+        public static let condensed = Width(-0.2)
+        public static let standard = Width(0)
+        public static let expanded = Width(0.3)
+        public init(_ value: CGFloat) { self.value = value }
+        /// <= -0.25 compressed, < -0.05 condensed, > 0.05 expanded, else standard.
+        var _wire: String {
+            if value <= -0.25 { return "compressed" }
+            if value < -0.05 { return "condensed" }
+            if value > 0.05 { return "expanded" }
+            return "standard"
+        }
+    }
     static func style(_ s: String) -> Font { Font(json: ["style": s]) }
     public static let largeTitle = style("largeTitle"), title = style("title"), title2 = style("title2"), title3 = style("title3")
     public static let headline = style("headline"), subheadline = style("subheadline"), body = style("body"), callout = style("callout")
     public static let footnote = style("footnote"), caption = style("caption"), caption2 = style("caption2")
     public static func system(size: CGFloat, weight: Weight = .regular, design: Design = .default) -> Font {
-        Font(json: ["size": Double(size), "weight": weight.name])
+        var j: Node = ["size": Double(size), "weight": weight.name]
+        // Omit `.default` so a system font without a design still decodes as the old JSON.
+        if case .default = design {} else { j["design"] = design._wire }
+        return Font(json: j)
     }
     public func weight(_ weight: Weight) -> Font { var j = json; j["weight"] = weight.name; return Font(json: j) }
     public func bold() -> Font { weight(.bold) }
+}
+
+extension Font.Design {
+    var _wire: String {
+        switch self {
+        case .default: return "default"
+        case .serif: return "serif"
+        case .rounded: return "rounded"
+        case .monospaced: return "monospaced"
+        }
+    }
 }
 
 public enum TextAlignment { case leading, center, trailing }
@@ -1265,8 +1295,12 @@ struct _CtxView<Content: View>: View, _Flattenable {
     func _children(_ path: String) -> [Node] {
         let rt = _Runtime.shared
         let saved = (rt.disabled, rt.buttonStyle, rt.pickerStyle, rt.pageTabStyle, rt.pageIndexStyle)
-        apply(rt)
         defer { (rt.disabled, rt.buttonStyle, rt.pickerStyle, rt.pageTabStyle, rt.pageIndexStyle) = saved }
+        #if !os(WASI)
+        let imageSession = rt.imageSession
+        defer { rt.imageSession = imageSession }
+        #endif
+        apply(rt)
         return SwiftUI._children(content, path)
     }
 }
@@ -1276,6 +1310,45 @@ extension View {
     public func fontWeight(_ weight: Font.Weight?) -> some View { _modified { ["fontWeight": weight?.name ?? "regular"] } }
     public func bold() -> some View { _modified { ["fontWeight": "bold"] } }
     public func strikethrough(_ active: Bool = true) -> some View { _modified { ["strikethrough": active] } }
+    /// No default on `pattern`: the bool overload already exists.
+    public func strikethrough(_ isActive: Bool, pattern: Text.LineStyle.Pattern, color: Color? = nil) -> some View {
+        _modified { ["strikethroughStyle": _lineStyle(isActive, pattern, color)] }
+    }
+    public func underline(_ isActive: Bool = true, pattern: Text.LineStyle.Pattern = .solid, color: Color? = nil) -> some View {
+        _modified { ["underline": _lineStyle(isActive, pattern, color)] }
+    }
+    public func italic(_ isActive: Bool = true) -> some View { _modified { ["italic": isActive] } }
+    public func kerning(_ kerning: CGFloat) -> some View { _modified { ["kerning": Double(kerning)] } }
+    public func tracking(_ tracking: CGFloat) -> some View { _modified { ["tracking": Double(tracking)] } }
+    public func baselineOffset(_ baselineOffset: CGFloat) -> some View { _modified { ["baselineOffset": Double(baselineOffset)] } }
+    public func fontDesign(_ design: Font.Design?) -> some View { _modified { ["fontDesign": _orNull(design?._wire)] } }
+    public func fontWidth(_ width: Font.Width?) -> some View { _modified { ["fontWidth": _orNull(width?._wire)] } }
+    public func monospaced(_ isActive: Bool = true) -> some View { _modified { ["monospaced": isActive] } }
+    public func monospacedDigit() -> some View { _modified { ["monospacedDigit": true] } }
+    public func textScale(_ scale: Text.Scale, isEnabled: Bool = true) -> some View {
+        _modified { ["textScale": scale == .secondary && isEnabled ? "secondary" : "default"] }
+    }
+    public func truncationMode(_ mode: Text.TruncationMode) -> some View { _modified { ["truncationMode": mode._wire] } }
+    public func lineLimit(_ number: Int?) -> some View {
+        _modified { ["lineLimit": number.map { ["max": $0] as Node } ?? NSNull()] }
+    }
+    public func lineLimit(_ limit: Int, reservesSpace: Bool) -> some View {
+        var box: Node = ["max": limit]
+        if reservesSpace { box["reserves"] = true }
+        return _modified { ["lineLimit": box] }
+    }
+    public func lineLimit(_ limit: PartialRangeFrom<Int>) -> some View {
+        _modified { ["lineLimit": ["min": limit.lowerBound]] }
+    }
+    public func lineLimit(_ limit: PartialRangeThrough<Int>) -> some View {
+        _modified { ["lineLimit": ["max": limit.upperBound]] }
+    }
+    public func lineLimit(_ limit: ClosedRange<Int>) -> some View {
+        _modified { ["lineLimit": ["min": limit.lowerBound, "max": limit.upperBound]] }
+    }
+    public func allowsTightening(_ flag: Bool) -> some View { _modified { ["allowsTightening": flag] } }
+    public func minimumScaleFactor(_ factor: CGFloat) -> some View { _modified { ["minimumScaleFactor": Double(factor)] } }
+    public func textCase(_ textCase: Text.Case?) -> some View { _modified { ["textCase": _orNull(textCase?._wire)] } }
     public func multilineTextAlignment(_ a: TextAlignment) -> some View {
         _modified { ["multilineTextAlignment": a == .leading ? "leading" : a == .center ? "center" : "trailing"] }
     }
@@ -1304,4 +1377,10 @@ extension View {
             return ["containerShape": spec]
         }
     }
+}
+
+func _lineStyle(_ active: Bool, _ pattern: Text.LineStyle.Pattern, _ color: Color?) -> Node {
+    var box: Node = ["active": active, "pattern": pattern._wire]
+    if let color { box["color"] = color.json }
+    return box
 }

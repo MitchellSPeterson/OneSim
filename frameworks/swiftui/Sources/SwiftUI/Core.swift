@@ -154,6 +154,10 @@ final class _Runtime {
     var anchorScroll: [String: String] = [:]
     var scrolledTo: [String: String?] = [:]
     var scrollPos: [String: (String?) -> Void] = [:]
+    #if !os(WASI)
+    /// `AsyncImage` HTTP loads. Nil uses `URLSession.shared`. Set by `.asyncImageURLSession`.
+    var imageSession: URLSession?
+    #endif
 
     /// Compare `value` with the previous pass's; queue `fire(old, new)` on a change (or on first sight when `initial`).
     func noteChange<V: Equatable>(_ path: String, _ value: V, initial: Bool, _ fire: @escaping (V, V) -> Void) {
@@ -200,6 +204,9 @@ final class _Runtime {
         fields.removeAll(keepingCapacity: true)
         disabled = false; buttonStyle = "automatic"; pickerStyle = "menu"; tags = [:]; nav = nil; envObjects = [:]
         pageTabStyle = nil; pageIndexStyle = .init(); pageIsActive = true
+        #if !os(WASI)
+        imageSession = nil
+        #endif
         layers = []; autoDismiss = nil; dismissHook = nil
         lifecycleNow = [:]; lifecycleOrder = []; changeNow = [:]; changePending = []
         gestures = [:]; gesturesOff = false
@@ -281,6 +288,9 @@ public func _onesimRun<V: View>(_ root: V) -> Never {
     if let d = env["SIMCORE_DYNAMIC_TYPE"], let s = DynamicTypeSize.allCases.first(where: { "\($0)" == d }) { rt.dynamicType = s }
     rt.render = { _eval(root, "0") }
     _onesimRegisterCallbacks()
+    #if !os(WASI)
+    _installImageWake()
+    #endif
     rt.submitTree()
     exit(simcore_runtime_run())
 }

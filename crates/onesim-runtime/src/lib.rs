@@ -11,6 +11,8 @@ pub type EnvCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char, f64, f6
 pub type GestureCb = Option<unsafe extern "C" fn(*mut c_void, i32, f64, *const f64, usize, *const *const c_char, *const f64, usize)>;
 /// (ctx, whole host JSON line for `geometry`, `scroll_position`, or `layout`).
 pub type LayoutCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char)>;
+/// Guest work finished off the runtime thread (an `AsyncImage` HTTP completion). Same ctx as the other callbacks.
+pub type WakeCb = Option<unsafe extern "C" fn(*mut c_void)>;
 
 #[derive(Default)]
 struct State {
@@ -22,6 +24,9 @@ struct State {
     on_text: TextCb,
     on_gesture: GestureCb,
     on_layout: LayoutCb,
+    on_wake: WakeCb,
+    /// Read end of the guest's wake pipe. `None` keeps the blocking stdin loop.
+    wake_fd: Option<i32>,
 }
 
 thread_local! {
@@ -242,7 +247,29 @@ pub unsafe extern "C" fn simcore_report_error(msg: *const c_char) {
 }
 
 #[no_mangle]
+pub extern "C" fn simcore_runtime_set_wake(fd: i32, on_wake: WakeCb) {
+    #[cfg(unix)]
+    if fd >= 0 {
+        unsafe {
+            let flags = libc::fcntl(fd, libc::F_GETFL);
+            if flags >= 0 {
+                libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+            }
+        }
+    }
+    STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        s.wake_fd = (fd >= 0).then_some(fd);
+        s.on_wake = on_wake;
+    });
+}
+
+#[no_mangle]
 pub extern "C" fn simcore_runtime_run() -> i32 {
+    #[cfg(unix)]
+    if STATE.with(|s| s.borrow().wake_fd.is_some()) {
+        return run_with_wake(libc::STDIN_FILENO);
+    }
     let stdin = std::io::stdin();
     let mut line = String::new();
     loop {
@@ -251,6 +278,105 @@ pub extern "C" fn simcore_runtime_run() -> i32 {
             Ok(0) => return 0,
             Ok(_) => if !handle_line(&line) { return 0 },
             Err(e) => { set_err(format!("stdin read failed: {e}")); return 1 }
+        }
+    }
+}
+
+/// Stdin plus the wake pipe. The callback runs on this thread, with no `STATE` borrow held.
+#[cfg(unix)]
+fn run_with_wake(stdin_fd: i32) -> i32 {
+    let mut carry = Vec::<u8>::new();
+    loop {
+        let wake_fd = STATE.with(|s| s.borrow().wake_fd);
+        let mut fds = [
+            libc::pollfd { fd: stdin_fd, events: libc::POLLIN, revents: 0 },
+            libc::pollfd { fd: wake_fd.unwrap_or(-1), events: libc::POLLIN, revents: 0 },
+        ];
+        let nfd: libc::nfds_t = if wake_fd.is_some() { 2 } else { 1 };
+        loop {
+            let rc = unsafe { libc::poll(fds.as_mut_ptr(), nfd, -1) };
+            if rc < 0 {
+                let err = std::io::Error::last_os_error();
+                if err.kind() == std::io::ErrorKind::Interrupted {
+                    continue;
+                }
+                set_err(format!("poll failed: {err}"));
+                return 1;
+            }
+            break;
+        }
+        let hot = libc::POLLIN | libc::POLLHUP | libc::POLLERR;
+        if fds[0].revents & hot != 0 {
+            match read_some(stdin_fd, &mut carry) {
+                Ok(None) => return 0,
+                Ok(Some(lines)) => {
+                    for line in lines {
+                        if !handle_line(&line) {
+                            return 0;
+                        }
+                    }
+                }
+                Err(e) => {
+                    set_err(format!("stdin read failed: {e}"));
+                    return 1;
+                }
+            }
+        }
+        if nfd == 2 && fds[1].revents & hot != 0 {
+            if let Some(fd) = wake_fd {
+                drain_fd(fd);
+            }
+            let (ctx, cb) = STATE.with(|s| {
+                let s = s.borrow();
+                (s.ctx, s.on_wake)
+            });
+            if let Some(cb) = cb {
+                unsafe { cb(ctx as *mut c_void) };
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+fn read_some(fd: i32, carry: &mut Vec<u8>) -> std::io::Result<Option<Vec<String>>> {
+    let mut buf = [0u8; 8192];
+    let n = loop {
+        let n = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+        if n < 0 {
+            let err = std::io::Error::last_os_error();
+            if err.kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(err);
+        }
+        break n;
+    };
+    if n == 0 {
+        return Ok(None);
+    }
+    carry.extend_from_slice(&buf[..n as usize]);
+    let mut lines = Vec::new();
+    while let Some(i) = carry.iter().position(|&b| b == b'\n') {
+        let raw: Vec<u8> = carry.drain(..=i).collect();
+        lines.push(String::from_utf8_lossy(&raw).into_owned());
+    }
+    Ok(Some(lines))
+}
+
+#[cfg(unix)]
+fn drain_fd(fd: i32) {
+    let mut buf = [0u8; 256];
+    loop {
+        let n = unsafe { libc::read(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len()) };
+        if n < 0 {
+            let err = std::io::Error::last_os_error();
+            if err.kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            break;
+        }
+        if n == 0 {
+            break;
         }
     }
 }
@@ -273,6 +399,7 @@ mod tests {
     }
 
     thread_local!(static SEEN: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) });
+    thread_local!(static STOP_FD: RefCell<i32> = const { RefCell::new(-1) });
     unsafe extern "C" fn on_action(_: *mut c_void, id: u64) { SEEN.with(|s| s.borrow_mut().push(format!("a{id}"))) }
     unsafe extern "C" fn on_env(_: *mut c_void, a: *const c_char, w: f64, h: f64) {
         SEEN.with(|s| s.borrow_mut().push(format!("e{}{w}x{h}", CStr::from_ptr(a).to_str().unwrap())))
@@ -374,5 +501,32 @@ mod tests {
         assert!(!handle_line(r#"{"type":"shutdown"}"#));
         SEEN.with(|s| assert_eq!(*s.borrow(), vec!["a7", "edark10x20", "t4=hi é"]));
         assert!(lines(&b).last().unwrap().contains(r#""type":"error""#));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn wake_callback_runs_from_the_event_loop() {
+        unsafe extern "C" fn on_wake(_: *mut c_void) {
+            SEEN.with(|s| s.borrow_mut().push("wake".into()));
+            let fd = STOP_FD.with(|s| *s.borrow());
+            let msg = b"{\"type\":\"shutdown\"}\n";
+            unsafe { libc::write(fd, msg.as_ptr() as *const libc::c_void, msg.len()); }
+        }
+        let mut stdin_fds = [0i32; 2];
+        let mut wake_fds = [0i32; 2];
+        assert_eq!(unsafe { libc::pipe(stdin_fds.as_mut_ptr()) }, 0);
+        assert_eq!(unsafe { libc::pipe(wake_fds.as_mut_ptr()) }, 0);
+        STATE.with(|s| *s.borrow_mut() = State::default());
+        SEEN.with(|s| s.borrow_mut().clear());
+        STOP_FD.with(|s| *s.borrow_mut() = stdin_fds[1]);
+        simcore_runtime_set_wake(wake_fds[0], Some(on_wake));
+        let byte = 1u8;
+        assert_eq!(unsafe { libc::write(wake_fds[1], &byte as *const u8 as *const libc::c_void, 1) }, 1);
+        assert_eq!(run_with_wake(stdin_fds[0]), 0);
+        SEEN.with(|s| assert_eq!(s.borrow().as_slice(), ["wake".to_string()]));
+        STATE.with(|s| *s.borrow_mut() = State::default());
+        for fd in [stdin_fds[0], stdin_fds[1], wake_fds[0], wake_fds[1]] {
+            unsafe { libc::close(fd) };
+        }
     }
 }
