@@ -1,5 +1,7 @@
 package androidx.compose.ui.text.style
 
+import kotlin.jvm.JvmInline
+
 @JvmInline
 value class TextAlign(val value: Int) {
     companion object {

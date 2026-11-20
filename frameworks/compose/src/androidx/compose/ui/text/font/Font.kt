@@ -1,6 +1,7 @@
 package androidx.compose.ui.text.font
 
 import androidx.compose.runtime.Immutable
+import kotlin.jvm.JvmInline
 
 @Immutable
 data class FontWeight(val weight: Int) : Comparable<FontWeight> {
