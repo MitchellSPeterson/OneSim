@@ -120,6 +120,7 @@ final class _Runtime {
     var disabled = false
     var buttonStyle = "automatic"
     var pickerStyle = "menu"
+    var styles = _Styles()   // control styles and environment values (section N)
     var tags: [String: AnyHashable] = [:]   // `.tag(_:)` values by node id, read by `Picker`
     var nav: _NavState?
     var envObjects: [ObjectIdentifier: AnyObject] = [:]
@@ -190,7 +191,7 @@ final class _Runtime {
     private func _evaluate() -> Node {
         actions.removeAll(keepingCapacity: true)
         fields.removeAll(keepingCapacity: true)
-        disabled = false; buttonStyle = "automatic"; pickerStyle = "menu"; tags = [:]; nav = nil; envObjects = [:]
+        disabled = false; buttonStyle = "automatic"; pickerStyle = "menu"; styles = _Styles(); tags = [:]; nav = nil; envObjects = [:]
         layers = []; autoDismiss = nil; dismissHook = nil
         lifecycleNow = [:]; lifecycleOrder = []; changeNow = [:]; changePending = []
         gestures = [:]; gesturesOff = false

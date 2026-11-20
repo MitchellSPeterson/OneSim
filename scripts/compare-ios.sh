@@ -29,11 +29,13 @@ app="$guests/showcase"
 tabs="$guests/tabs"
 gest="$guests/gestures"
 layout="$guests/layout"
+controls="$guests/controls"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
   scripts/build-swift-app.sh examples/swiftui-tabs "$tabs"
   scripts/build-swift-app.sh examples/swiftui-gestures "$gest"
   scripts/build-swift-app.sh examples/swiftui-layout "$layout"
+  scripts/build-swift-app.sh examples/swiftui-controls "$controls"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
 # (docs/compatibility/versions.json): 26.5 on the iPhone 17 Pro in tests/fixtures/, 27.2 on the iPhone 18 Pro
@@ -119,6 +121,21 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     lshot layout-paged --scroll 201,658,320,0
     echo "== SwiftUI layout (swiftui-layout, iOS $ios)"
     python3 scripts/compare_ios.py $fx/swiftui-layout-ios "$lout/onesim" "$lout" || rc=1
+    # SwiftUI controls: tests/fixtures/swiftui-controls-ios (see its README). Targets by label, picker rows by point.
+    cout=$out/swiftui-controls; mkdir -p "$cout/onesim"
+    cshot() { local name=$1; shift; ./target/debug/onesim run "$controls" "${base[@]}" "$@" --screenshot "$cout/onesim/$name.png" >/dev/null; }
+    cshot controls
+    cshot controls-dark     --dark
+    cshot controls-menu     --click Actions
+    cshot controls-changed  --click Bold --click "I agree" --click "Pill 0"
+    cshot pickers           --click Pickers
+    cshot pickers-dark      --dark --click Pickers
+    cshot pickers-pushed    --click Pickers --click Size
+    cshot pickers-changed   --click Pickers --click Green --click Star --click 10:00
+    cshot indicators        --click Indicators
+    cshot indicators-dark   --dark --click Indicators
+    echo "== SwiftUI controls (swiftui-controls, iOS $ios)"
+    python3 scripts/compare_ios.py $fx/swiftui-controls-ios "$cout/onesim" "$cout" || rc=1
   fi
   # React Native / Expo showcase: tests/fixtures/rn-showcase-ios (see its README). Needs node + `npm install` in the example.
   if want expo; then

@@ -120,11 +120,34 @@ public struct NavigationBarItem {
 
 // MARK: - Button styles
 
-public protocol PrimitiveButtonStyle { var _styleName: String { get } }
-public struct DefaultButtonStyle: PrimitiveButtonStyle { public var _styleName: String { "automatic" } }
-public struct PlainButtonStyle: PrimitiveButtonStyle { public var _styleName: String { "plain" } }
-public struct BorderedButtonStyle: PrimitiveButtonStyle { public var _styleName: String { "bordered" } }
-public struct BorderedProminentButtonStyle: PrimitiveButtonStyle { public var _styleName: String { "borderedProminent" } }
+/// Built-in styles are wire names (`_styleName`); a custom style's `makeBody` replaces the button (section N).
+public protocol PrimitiveButtonStyle {
+    associatedtype Body: View
+    typealias Configuration = PrimitiveButtonStyleConfiguration
+    @ViewBuilder func makeBody(configuration: Configuration) -> Body
+    var _styleName: String? { get }
+}
+extension PrimitiveButtonStyle { public var _styleName: String? { nil } }
+public struct DefaultButtonStyle: PrimitiveButtonStyle {
+    public init() {}
+    public var _styleName: String? { "automatic" }
+    public func makeBody(configuration: Configuration) -> Never { fatalError() }
+}
+public struct PlainButtonStyle: PrimitiveButtonStyle {
+    public init() {}
+    public var _styleName: String? { "plain" }
+    public func makeBody(configuration: Configuration) -> Never { fatalError() }
+}
+public struct BorderedButtonStyle: PrimitiveButtonStyle {
+    public init() {}
+    public var _styleName: String? { "bordered" }
+    public func makeBody(configuration: Configuration) -> Never { fatalError() }
+}
+public struct BorderedProminentButtonStyle: PrimitiveButtonStyle {
+    public init() {}
+    public var _styleName: String? { "borderedProminent" }
+    public func makeBody(configuration: Configuration) -> Never { fatalError() }
+}
 extension PrimitiveButtonStyle where Self == DefaultButtonStyle { public static var automatic: DefaultButtonStyle { .init() } }
 extension PrimitiveButtonStyle where Self == PlainButtonStyle { public static var plain: PlainButtonStyle { .init() } }
 extension PrimitiveButtonStyle where Self == BorderedButtonStyle { public static var bordered: BorderedButtonStyle { .init() } }
@@ -138,9 +161,9 @@ struct _CtxView<Content: View>: View, _Flattenable {
     let apply: (_Runtime) -> Void
     func _children(_ path: String) -> [Node] {
         let rt = _Runtime.shared
-        let saved = (rt.disabled, rt.buttonStyle, rt.pickerStyle)
+        let saved = (rt.disabled, rt.buttonStyle, rt.pickerStyle, rt.styles)
         apply(rt)
-        defer { (rt.disabled, rt.buttonStyle, rt.pickerStyle) = saved }
+        defer { (rt.disabled, rt.buttonStyle, rt.pickerStyle, rt.styles) = saved }
         return SwiftUI._children(content, path)
     }
 }
@@ -167,7 +190,10 @@ extension View {
         _modified { ["navigationBarTitleDisplayMode": mode == .inline ? "inline" : "large"] }   // lifted + stripped by NavigationStack
     }
     public func buttonStyle<S: PrimitiveButtonStyle>(_ style: S) -> some View {
-        _CtxView(content: self) { $0.buttonStyle = style._styleName }
+        _CtxView(content: self) { rt in
+            if let name = style._styleName { rt.buttonStyle = name; rt.styles.button = nil }
+            else { rt.styles.button = .primitive { cfg, p in _eval(style.makeBody(configuration: cfg), p) } }
+        }
     }
     public func disabled(_ disabled: Bool) -> some View {
         _CtxView(content: self) { $0.disabled = $0.disabled || disabled }

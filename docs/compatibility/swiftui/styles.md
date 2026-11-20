@@ -4,10 +4,10 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 
 | API | Since | iOS | Issue | Notes |
 |---|---|---|---|---|
-| `AccessoryCircularCapacityGaugeStyle` | 16 | ⬜ |  |  |
-| `AccessoryCircularGaugeStyle` | 16 | ⬜ |  |  |
-| `AccessoryLinearCapacityGaugeStyle` | 16 | ⬜ |  |  |
-| `AccessoryLinearGaugeStyle` | 16 | ⬜ |  |  |
+| `AccessoryCircularCapacityGaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
+| `AccessoryCircularGaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
+| `AccessoryLinearCapacityGaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
+| `AccessoryLinearGaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `AnyShapeStyle` | 15 | ⬜ |  |  |
 | `ArrangementViewStyle` | 13 | ⬜ |  |  |
 | `AutomaticArrangementViewStyle` | 13 | ⬜ |  |  |
@@ -23,12 +23,12 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `BorderedButtonStyle` | 15 | ✅ |  |  |
 | `BorderedProminentButtonStyle` | 15 | ✅ |  |  |
 | `BorderedTextFieldStyle` | 13 | ⬜ |  |  |
-| `BorderlessButtonMenuStyle` | 14 | ⬜ |  | Deprecated |
-| `BorderlessButtonStyle` | 13 | ⬜ |  |  |
-| `ButtonMenuStyle` | 16 | ⬜ |  |  |
-| `ButtonStyle` | 13 | ⬜ |  |  |
-| `ButtonToggleStyle` | 15 | ⬜ |  |  |
-| `CircularProgressViewStyle` | 14 | ⬜ |  |  |
+| `BorderlessButtonMenuStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Deprecated |
+| `BorderlessButtonStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
+| `ButtonMenuStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
+| `ButtonStyle` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | `isPressed` is always false |
+| `ButtonToggleStyle` | 15 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
+| `CircularProgressViewStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Always the spinner, as on iOS |
 | `ColumnNavigationViewStyle` | 15 | ⬜ |  | Deprecated |
 | `ColumnsFormStyle` | 16 | ⬜ |  |  |
 | `CompactDatePickerStyle` | 14 | ⬜ |  |  |
@@ -37,24 +37,24 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `DatePickerStyle` | 13 | ⬜ |  |  |
 | `DefaultButtonStyle` | 13 | ✅ |  |  |
 | `DefaultDatePickerStyle` | 13 | ⬜ |  |  |
-| `DefaultGaugeStyle` | 16 | ⬜ |  |  |
+| `DefaultGaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `DefaultGroupBoxStyle` | 14 | ⬜ |  |  |
 | `DefaultLabelStyle` | 14 | ⬜ |  |  |
 | `DefaultListStyle` | 13 | ⬜ |  |  |
-| `DefaultMenuStyle` | 14 | ⬜ |  |  |
+| `DefaultMenuStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `DefaultNavigationViewStyle` | 13 | ⬜ |  | Deprecated |
-| `DefaultPickerStyle` | 13 | ✅ |  |  |
-| `DefaultProgressViewStyle` | 14 | ⬜ |  |  |
+| `DefaultPickerStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
+| `DefaultProgressViewStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `DefaultTabViewStyle` | 14 | ⬜ |  |  |
 | `DefaultTextFieldStyle` | 13 | ⬜ |  |  |
-| `DefaultToggleStyle` | 13 | ⬜ |  |  |
+| `DefaultToggleStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `DisclosureGroupStyle` | 16 | ⬜ |  |  |
 | `DoubleColumnNavigationViewStyle` | 13 | ⬜ |  | Deprecated |
 | `FillShapeStyle` | 17 | ⬜ |  |  |
 | `FillStyle` | 13 | ⬜ |  |  |
 | `ForegroundStyle` | 13 | ⬜ |  |  |
 | `FormStyle` | 16 | ⬜ |  |  |
-| `GaugeStyle` | 16 | ⬜ |  |  |
+| `GaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `GlassButtonStyle` | 26 | ✅ |  |  |
 | `GlassProminentButtonStyle` | 26 | ✅ |  |  |
 | `GraphicalDatePickerStyle` | 14 | ⬜ |  |  |
@@ -64,41 +64,41 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `HierarchicalShapeStyle` | 15 | ✅ |  |  |
 | `IconOnlyLabelStyle` | 14 | ⬜ |  |  |
 | `IndexViewStyle` | 14 | ⬜ |  |  |
-| `InlinePickerStyle` | 14 | ⬜ |  |  |
+| `InlinePickerStyle` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | No label row in a list |
 | `InsetGroupedListStyle` | 14 | ⬜ |  |  |
 | `InsetListStyle` | 14 | ⬜ |  |  |
 | `InsetTableStyle` | 16 | ⬜ |  |  |
 | `LabeledContentStyle` | 16 | ⬜ |  |  |
 | `LabelStyle` | 14 | ⬜ |  |  |
-| `LinearCapacityGaugeStyle` | 16 | ⬜ |  |  |
-| `LinearProgressViewStyle` | 14 | ⬜ |  |  |
+| `LinearCapacityGaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
+| `LinearProgressViewStyle` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Without a value it draws the spinner |
 | `LinkShapeStyle` | 17 | ⬜ |  |  |
 | `ListStyle` | 13 | ⬜ |  |  |
 | `MenuControlGroupStyle` | 16.4 | ⬜ |  |  |
-| `MenuPickerStyle` | 14 | ✅ |  |  |
-| `MenuStyle` | 14 | ⬜ |  |  |
+| `MenuPickerStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
+| `MenuStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `NavigationControlGroupStyle` | 15 | ⬜ |  |  |
-| `NavigationLinkPickerStyle` | 16 | ⬜ |  |  |
+| `NavigationLinkPickerStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `NavigationSplitViewStyle` | 16 | ⬜ |  |  |
 | `NavigationViewStyle` | 13 | ⬜ |  | Deprecated |
 | `OverlayArrangementViewStyle` | 13 | ⬜ |  |  |
 | `PageIndexViewStyle` | 14 | ⬜ |  |  |
 | `PageTabViewStyle` | 14 | ⬜ |  |  |
 | `PaletteControlGroupStyle` | 17 | ⬜ |  |  |
-| `PalettePickerStyle` | 17 | ⬜ |  |  |
-| `PickerStyle` | 13 | ✅ |  |  |
+| `PalettePickerStyle` | 17 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Drawn as a segmented control (as outside a menu); no palette row inside a `Menu` |
+| `PickerStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `PlaceholderTextShapeStyle` | 17 | ⬜ |  |  |
 | `PlainButtonStyle` | 13 | ✅ |  |  |
 | `PlainListStyle` | 13 | ⬜ |  |  |
 | `PlainTextEditorStyle` | 17 | ⬜ |  |  |
 | `PlainTextFieldStyle` | 13 | ⬜ |  |  |
-| `PrimitiveButtonStyle` | 13 | ✅ |  |  |
-| `ProgressViewStyle` | 14 | ⬜ |  |  |
+| `PrimitiveButtonStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
+| `ProgressViewStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `ProminentDetailNavigationSplitViewStyle` | 16 | ⬜ |  |  |
 | `RoundedBorderTextFieldStyle` | 13 | ⬜ |  | Deprecated |
 | `RoundedCornerStyle` | 13 | ⬜ |  |  |
 | `ScrollEdgeEffectStyle` | 26 | ⬜ |  |  |
-| `SegmentedPickerStyle` | 13 | ✅ |  |  |
+| `SegmentedPickerStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `SelectionShapeStyle` | 15 | ⬜ |  |  |
 | `SeparatorShapeStyle` | 17 | ⬜ |  |  |
 | `ShadowStyle` | 16 | ⬜ |  |  |
@@ -108,7 +108,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `SplitArrangementViewStyle` | 13 | ⬜ |  |  |
 | `StackNavigationViewStyle` | 13 | ⬜ |  | Deprecated |
 | `StrokeStyle` | 13 | ⬜ |  |  |
-| `SwitchToggleStyle` | 13 | ⬜ |  |  |
+| `SwitchToggleStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `SystemFormatStyle` | 18 | ⬜ |  |  |
 | `TabBarOnlyTabViewStyle` | 18 | ⬜ |  |  |
 | `TableStyle` | 16 | ⬜ |  |  |
@@ -119,8 +119,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `TintShapeStyle` | 15 | ⬜ |  |  |
 | `TitleAndIconLabelStyle` | 14.5 | ⬜ |  |  |
 | `TitleOnlyLabelStyle` | 14 | ⬜ |  |  |
-| `ToggleStyle` | 13 | ⬜ |  |  |
+| `ToggleStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `ToolbarLabelStyle` | 18 | ⬜ |  |  |
 | `WheelDatePickerStyle` | 13 | ⬜ |  |  |
-| `WheelPickerStyle` | 13 | ⬜ |  |  |
+| `WheelPickerStyle` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | A tap on a row selects it; no spinning or momentum |
 | `WindowBackgroundShapeStyle` | 17 | ⬜ |  |  |

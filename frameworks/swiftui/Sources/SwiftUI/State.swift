@@ -137,6 +137,7 @@ public struct DismissAction {
 public struct EnvironmentValues {
     var nav: _NavState? = _Runtime.shared.nav   // captured at body time so `dismiss` still works from an action later
     var sheetDismiss: (() -> Void)? = _Runtime.shared.dismissHook
+    var _openURL: OpenURLAction? = _Runtime.shared.styles.openURL
     public init() {}
     public var colorScheme: ColorScheme { _Runtime.shared.appearance == "dark" ? .dark : .light }
     public var dynamicTypeSize: DynamicTypeSize { _Runtime.shared.dynamicType }

@@ -1,3 +1,8 @@
+// Apple's SwiftUI re-exports Foundation; apps use `URL` (Link) without importing it.
+#if !os(WASI)
+@_exported import struct Foundation.URL
+#endif
+
 // WASI build (docs/web.md): no Foundation (it is huge). Minimal stand-ins for what the module used from it.
 #if os(WASI)
 public typealias CGFloat = Double
@@ -24,6 +29,12 @@ public struct Date: Equatable, Hashable, Comparable {
     public static func < (a: Date, b: Date) -> Bool { a.timeIntervalSince1970 < b.timeIntervalSince1970 }
 }
 struct NSNull {}  // serialized as null by _json
+
+/// `Link` destinations. Only the string is kept.
+public struct URL: Equatable, Hashable {
+    public let absoluteString: String
+    public init?(string: String) { if string.isEmpty { return nil }; absoluteString = string }
+}
 
 /// Compact JSON for the `Node` tree (the only shapes the module emits: strings, numbers, bools, arrays, objects).
 func _json(_ v: Any, _ out: inout String) {

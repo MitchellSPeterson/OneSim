@@ -72,7 +72,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.buttonBorderShape` | 15 | ⬜ |  |  |
 | `.buttonRepeatBehavior` | 17 | ⬜ |  |  |
 | `.buttonSizing` | 26 | ⬜ |  |  |
-| `.buttonStyle` | 13 | ✅ |  |  |
+| `.buttonStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `.clipped` | 13 | ⬜ |  |  |
 | `.clipShape` | 13 | ⬜ |  |  |
 | `.colorEffect` | 17 | ⬜ |  |  |
@@ -126,7 +126,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.dropDestination` | 16 | ⬜ |  |  |
 | `.dynamicTypeSize` | 15 | ⬜ |  |  |
 | `.edgesIgnoringSafeArea` | 13 | ⬜ |  | Deprecated |
-| `.environment` | 13 | ⬜ |  |  |
+| `.environment` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Writable values: `\.openURL` only |
 | `.environmentObject` | 13 | ✅ |  |  |
 | `.equatable` | 13 | ⬜ |  |  |
 | `.fileDialogBrowserOptions` | 17 | ⬜ |  |  |
@@ -160,7 +160,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.formStyle` | 16 | ⬜ |  |  |
 | `.frame` | 13 | ✅ |  |  |
 | `.fullScreenCover` | 14 | ✅ |  | Settled states only (no animation) |
-| `.gaugeStyle` | 16 | ⬜ |  |  |
+| `.gaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `.geometryGroup` | 17 | ⬜ |  |  |
 | `.gesture` | 13 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | A gesture never waits for a higher-priority one to fail (a double tap also fires a single tap on the same view) |
 | `.glassEffect` | 26 | 🟠 |  | `interactive` has no visual effect |
@@ -200,7 +200,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.labeledContentStyle` | 16 | ⬜ |  |  |
 | `.labelIconToTitleSpacing` | 26 | ⬜ |  |  |
 | `.labelReservedIconWidth` | 26 | ⬜ |  |  |
-| `.labelsHidden` | 13 | ⬜ |  |  |
+| `.labelsHidden` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Pickers and toggles |
 | `.labelStyle` | 14 | ⬜ |  |  |
 | `.labelsVisibility` | 18 | ⬜ |  |  |
 | `.layerEffect` | 17 | ⬜ |  |  |
@@ -230,7 +230,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.menuActionDismissBehavior` | 16.4 | ⬜ |  |  |
 | `.menuIndicator` | 15 | ⬜ |  |  |
 | `.menuOrder` | 16 | ⬜ |  |  |
-| `.menuStyle` | 14 | ⬜ |  |  |
+| `.menuStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `.minimumScaleFactor` | 13 | ⬜ |  |  |
 | `.modifier` | 13 | ⬜ |  |  |
 | `.monospaced` | 16 | ⬜ |  |  |
@@ -287,7 +287,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.pasteDestination` | 27 | ⬜ |  |  |
 | `.persistentSystemOverlays` | 16 | ⬜ |  |  |
 | `.phaseAnimator` | 17 | ⬜ |  |  |
-| `.pickerStyle` | 13 | 🟠 |  | `.automatic`, `.menu`, `.segmented` only |
+| `.pickerStyle` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | No `.tabs` |
 | `.popover` | 13 | ⬜ |  |  |
 | `.position` | 13 | ⬜ |  |  |
 | `.preference` | 13 | ⬜ |  |  |
@@ -307,7 +307,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.previewInterfaceOrientation` | 15 | ⬜ |  |  |
 | `.previewLayout` | 13 | ⬜ |  |  |
 | `.privacySensitive` | 15 | ⬜ |  |  |
-| `.progressViewStyle` | 14 | ⬜ |  |  |
+| `.progressViewStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `.projectionEffect` | 13 | ⬜ |  |  |
 | `.redacted` | 14 | ⬜ |  |  |
 | `.refreshable` | 15 | ⬜ |  |  |
@@ -402,7 +402,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.textSelection` | 15 | ⬜ |  |  |
 | `.textSelectionAffinity` | 18 | ⬜ |  |  |
 | `.tint` | 15 | ⬜ |  |  |
-| `.toggleStyle` | 13 | ⬜ |  |  |
+| `.toggleStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `.toolbar` | 14 | ⬜ |  |  |
 | `.toolbarBackground` | 16 | ⬜ |  |  |
 | `.toolbarBackgroundVisibility` | 18 | ⬜ |  |  |

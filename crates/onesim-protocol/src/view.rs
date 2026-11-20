@@ -423,10 +423,13 @@ pub enum Layer {
         #[serde(default)]
         dismiss: Option<u64>,
     },
-    /// Menu of a menu-style `Picker`, anchored to it; `dismiss` closes it (tap outside).
+    /// Menu of a menu-style `Picker` or a `Menu`, anchored to it; `dismiss` closes it (tap outside).
     Menu {
         #[serde(default)]
         anchor: Option<String>,
+        /// `Menu`: the card is centred on the anchor instead of hanging from its trailing edge (`Picker`).
+        #[serde(default, skip_serializing_if = "is_false")]
+        centered: bool,
         #[serde(default)]
         items: Vec<PickerOption>,
         #[serde(default)]
@@ -440,9 +443,24 @@ pub enum PickerStyle {
     #[default]
     Menu,
     Segmented,
+    /// Wheel: the options on a drum, the selected one in a highlight band (section N).
+    Wheel,
 }
 
-/// One `Picker` choice: its label text and the action that selects it.
+/// `Gauge` styles (section N). `Automatic` is the iOS default (a linear capacity bar with its labels).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum GaugeStyle {
+    #[default]
+    Automatic,
+    LinearCapacity,
+    AccessoryLinear,
+    AccessoryLinearCapacity,
+    AccessoryCircular,
+    AccessoryCircularCapacity,
+}
+
+/// One `Picker` choice or `Menu` item: its label text and the action that selects or runs it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PickerOption {
     pub text: String,
@@ -450,6 +468,15 @@ pub struct PickerOption {
     /// Menu layers only: the selected item (drawn with a checkmark).
     #[serde(default, skip_serializing_if = "is_false")]
     pub checked: bool,
+    /// Menu layers only: SF Symbol drawn before the text.
+    #[serde(default, rename = "systemImage", skip_serializing_if = "Option::is_none")]
+    pub system_image: Option<String>,
+    /// Menu layers only: drawn in red (`Button(role: .destructive)`).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub destructive: bool,
+    /// Menu layers only: a separator (`Divider` or a new `Section`) sits above this item.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub divider: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -673,6 +700,9 @@ pub enum ViewKind {
         disabled: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         role: Option<ButtonRole>,
+        /// `.toggleStyle(.button)`: the toggle's state. Selected buttons sit in an accent-tinted capsule.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        selected: Option<bool>,
     },
     /// Modal layer above the whole navigation tree; present only while an alert or sheet is shown.
     Presentation {
@@ -783,6 +813,23 @@ pub enum ViewKind {
         value: Option<f64>,
         #[serde(default)]
         label: Option<Box<ViewNode>>,
+        /// Shown under a linear bar (section N).
+        #[serde(default, rename = "currentValueLabel", skip_serializing_if = "Option::is_none")]
+        current_value_label: Option<Box<ViewNode>>,
+    },
+    /// `Gauge` (section N): `value` is the fraction of the range (0...1).
+    Gauge {
+        #[serde(default)]
+        style: GaugeStyle,
+        value: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label: Option<Box<ViewNode>>,
+        #[serde(default, rename = "currentValueLabel", skip_serializing_if = "Option::is_none")]
+        current_value_label: Option<Box<ViewNode>>,
+        #[serde(default, rename = "minimumValueLabel", skip_serializing_if = "Option::is_none")]
+        minimum_value_label: Option<Box<ViewNode>>,
+        #[serde(default, rename = "maximumValueLabel", skip_serializing_if = "Option::is_none")]
+        maximum_value_label: Option<Box<ViewNode>>,
     },
     /// SF Symbol (host capability).
     Image {
@@ -965,6 +1012,52 @@ mod tests {
         assert!(matches!(&icon.kind, ViewKind::Image { resizable: true, content_mode: Some(ContentMode::Fit), scale: None, .. }));
         let again: ViewNode = serde_json::from_value(serde_json::to_value(&n).unwrap()).unwrap();
         assert_eq!(n, again);
+    }
+
+    #[test]
+    fn section_n_round_trip() {
+        let t = |id: &str, s: &str| json!({"kind": "text", "id": id, "text": s});
+        let gauge: ViewNode = serde_json::from_value(json!({
+            "kind": "gauge", "id": "g", "style": "accessoryCircular", "value": 0.3,
+            "label": t("g/l", "Arc"), "currentValueLabel": t("g/c", "30"),
+            "minimumValueLabel": t("g/min", "0"), "maximumValueLabel": t("g/max", "100")
+        })).unwrap();
+        let ViewKind::Gauge { style, value, label, current_value_label, minimum_value_label, maximum_value_label } = &gauge.kind else { panic!() };
+        assert_eq!((*style, *value), (GaugeStyle::AccessoryCircular, 0.3));
+        assert!(label.is_some() && current_value_label.is_some() && minimum_value_label.is_some() && maximum_value_label.is_some());
+        let plain: ViewNode = serde_json::from_value(json!({"kind": "gauge", "id": "g2", "value": 1.0})).unwrap();
+        assert!(matches!(plain.kind, ViewKind::Gauge { style: GaugeStyle::Automatic, label: None, .. }));
+        let wheel: ViewNode = serde_json::from_value(json!({
+            "kind": "picker", "id": "p", "style": "wheel", "label": t("p/l", "Hour"),
+            "options": [{"text": "9:00", "action": 3}], "selected": 0
+        })).unwrap();
+        assert!(matches!(wheel.kind, ViewKind::Picker { style: PickerStyle::Wheel, .. }));
+        let progress: ViewNode = serde_json::from_value(json!({
+            "kind": "progress", "id": "pr", "value": 0.3, "currentValueLabel": t("pr/c", "30%")
+        })).unwrap();
+        assert!(matches!(progress.kind, ViewKind::Progress { current_value_label: Some(_), .. }));
+        let toggle: ViewNode = serde_json::from_value(json!({
+            "kind": "button", "id": "b", "action": 1, "selected": true, "label": t("b/l", "Bold")
+        })).unwrap();
+        assert!(matches!(toggle.kind, ViewKind::Button { selected: Some(true), .. }));
+        let menu: Layer = serde_json::from_value(json!({
+            "kind": "menu", "anchor": "m", "centered": true, "dismiss": 9, "items": [
+                {"text": "Duplicate", "action": 1, "systemImage": "plus.square.on.square"},
+                {"text": "Delete", "action": 2, "systemImage": "trash", "destructive": true, "divider": true}
+            ]
+        })).unwrap();
+        let Layer::Menu { items, centered: true, .. } = &menu else { panic!() };
+        assert_eq!(items[0].system_image.as_deref(), Some("plus.square.on.square"));
+        assert!(items[1].destructive && items[1].divider && !items[0].divider);
+        for node in [&gauge, &plain, &wheel, &progress, &toggle] {
+            let again: ViewNode = serde_json::from_value(serde_json::to_value(node).unwrap()).unwrap();
+            assert_eq!(node, &again);
+        }
+        let again: Layer = serde_json::from_value(serde_json::to_value(&menu).unwrap()).unwrap();
+        assert_eq!(menu, again);
+        // A picker menu (no new fields) still parses.
+        let old: Layer = serde_json::from_value(json!({"kind": "menu", "items": [{"text": "A", "action": 1, "checked": true}]})).unwrap();
+        assert!(matches!(old, Layer::Menu { centered: false, .. }));
     }
 
     #[test]

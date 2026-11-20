@@ -408,6 +408,17 @@ fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: 
                 .collect();
             stroke_pts(pm, &points, c, width, xf, mask);
         }
+        Glyph::Arc { from, to, width } => {
+            let sw = width as f32 / 100.0;
+            let r = (w.min(h) - sw) / 2.0;
+            let (a0, a1) = (from as f32, to as f32);
+            let steps = (((a1 - a0).abs() / 3.0).ceil() as usize).max(2);
+            let pts: Vec<_> = (0..=steps)
+                .map(|i| (a0 + (a1 - a0) * i as f32 / steps as f32).to_radians())
+                .map(|a| (cx + r * a.sin(), cy - r * a.cos()))
+                .collect();
+            stroke_pts(pm, &pts, c, sw, xf, mask);
+        }
         Glyph::Spinner | Glyph::SpinnerLarge => {
             // 8 rounded spokes, the leading one opaque, the rest fading (the indicator at rest).
             let s = w.min(h);

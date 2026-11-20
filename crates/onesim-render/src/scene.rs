@@ -121,6 +121,9 @@ pub enum Glyph {
     SpinnerLarge,
     /// Android circular activity indicator in a settled frame.
     AndroidSpinner,
+    /// Stroked arc with round caps, centred in the box and touching its edges: degrees clockwise from the top,
+    /// stroke width in hundredths of a point (SwiftUI `Gauge`).
+    Arc { from: i16, to: i16, width: u16 },
 }
 
 /// An SF Symbol painted as an alpha mask in `color`, `size` points, centred in the node's bounds

@@ -503,4 +503,60 @@ send(p, type="action", id=button(t, "Jump")["action"], version=t["version"])
 line = recv(p)
 assert line["type"] == "scroll_to_id" and isinstance(line.get("scroll"), str) and line["scroll"] and line["target"] == "there", line
 finish(p)
+
+# --- controls (protocol section N)
+p = spawn(sys.argv[10]); assert recv(p)["type"] == "hello"; t = recv(p)
+def tree(t): return t["root"]["content"] if t["root"]["kind"] == "presentation" else t["root"]
+def layers(t): return t["root"].get("layers", []) if t["root"]["kind"] == "presentation" else []
+def btn(t, label): return next(m for m in walk(tree(t)) if m.get("kind") == "button" and label in alltexts(m))
+def has(t, s): return any(s in x for x in alltexts(tree(t)))
+def node(t, kind): return [m for m in walk(tree(t)) if m.get("kind") == kind]
+# Menu: a button that opens a centred menu layer; items carry icon, role and dividers (Divider and Section).
+t = act(p, t, btn(t, "Menu")["action"])
+menu = next(l for l in layers(t) if l["kind"] == "menu")
+assert menu["centered"] and [i["text"] for i in menu["items"]] == ["Alpha", "Delete", "Inside"], menu
+assert menu["items"][0].get("systemImage") == "star" and not menu["items"][0].get("divider"), menu
+assert menu["items"][1].get("destructive") and menu["items"][1].get("divider") and menu["items"][2].get("divider"), menu
+t = act(p, t, menu["items"][0]["action"])
+assert has(t, "last Alpha") and not layers(t), "an item runs its action and closes the menu"
+t = act(p, t, btn(t, "Menu")["action"]); t = act(p, t, next(l for l in layers(t) if l["kind"] == "menu")["dismiss"])
+assert not layers(t) and has(t, "last Alpha"), "tap outside only closes"
+faded = btn(t, "Faded")
+assert {"opacity": 0.5} in faded.get("modifiers", []), "a custom MenuStyle wraps the menu"
+t = act(p, t, faded["action"]); t = act(p, t, next(l for l in layers(t) if l["kind"] == "menu")["items"][0]["action"])
+assert has(t, "last Beta"), "the styled menu still works"
+# Link: runs the environment's openURL; the system action reports the URL on stderr.
+t = act(p, t, btn(t, "Docs")["action"]); assert has(t, "opened https://docs.test"), alltexts(tree(t))
+send(p, type="action", id=btn(t, "Plain")["action"], version=t["version"])
+# Toggle styles: .button is a selectable button; a custom ToggleStyle draws its own body.
+tbn = btn(t, "TB"); assert tbn["selected"] is False and tbn["style"] == "automatic", tbn
+t = act(p, t, tbn["action"]); assert btn(t, "TB")["selected"] is True
+chk = btn(t, "Check"); assert any(m.get("systemName") == "square" for m in walk(chk)), chk
+t = act(p, t, chk["action"]); assert any(m.get("systemName") == "checkmark.square.fill" for m in walk(btn(t, "Check")))
+# Button styles: ButtonStyle styles the label of a plain button; PrimitiveButtonStyle's trigger() runs the action.
+sb = btn(t, "Styled"); assert sb["style"] == "plain" and any("background" in x for x in sb["label"].get("modifiers", [])), sb
+t = act(p, t, sb["action"]); t = act(p, t, btn(t, "Prim")["action"]); assert has(t, "styled 1 prim 1"), alltexts(tree(t))
+# Slider value labels sit beside it; onEditingChanged brackets each change.
+row = next(m for m in walk(tree(t)) if m.get("kind") == "hstack" and any(c.get("kind") == "slider" for c in m["children"]))
+assert [alltexts(c) for c in row["children"] if c.get("kind") == "text"] == [["Lo"], ["Hi"]], row
+sl = next(c for c in row["children"] if c.get("kind") == "slider")
+send(p, type="text_input", field=sl["field"], version=t["version"], text="0.5"); t = recv(p)
+assert has(t, "edits tf 0.5"), alltexts(tree(t))
+# Progress and gauge styles.
+assert has(t, "pct 50"), "custom ProgressViewStyle"
+assert any(m.get("value") is None for m in node(t, "progress")), ".circular is the spinner"
+g = node(t, "gauge"); assert len(g) == 1 and g[0]["value"] == 0.25 and g[0]["style"] == "automatic" and alltexts(g[0]["label"]) == ["Fuel"], g
+assert has(t, "G 0.25"), "custom GaugeStyle gets the fraction"
+# Pickers: inline rows in a list, navigationLink pushes a list and pops on a choice, wheel options select.
+one, two = btn(t, "One"), btn(t, "Two"); assert one.get("value") == "checked" and two.get("value") is None, (one, two)
+t = act(p, t, two["action"]); assert has(t, "pick 2") and btn(t, "Two").get("value") == "checked"
+sz = btn(t, "Size"); assert sz["style"] == "navigationLink" and "S" in alltexts(sz), sz
+t = act(p, t, sz["action"]); nav = t["root"]
+assert nav["kind"] == "navigation" and nav["title"] == "Size" and nav["displayMode"] == "inline" and "back" in nav, nav
+t = act(p, t, btn(t, "L")["action"]); assert "back" not in t["root"] and has(t, "size L"), "choosing pops back"
+wh = next(m for m in node(t, "picker") if m["style"] == "wheel"); assert wh["selected"] == 1 and len(wh["options"]) == 4, wh
+t = act(p, t, wh["options"][2]["action"]); assert has(t, "hour 2")
+fl = next(m for m in node(t, "picker") if m["style"] == "menu"); assert fl["label"]["kind"] == "empty", "labelsHidden"
+finish(p)
+assert "onesim: open URL https://plain.test" in p.stderr.read(), "system openURL reports the URL"
 print("PASS")

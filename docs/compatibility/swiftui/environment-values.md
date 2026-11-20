@@ -84,7 +84,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.minimumScaleFactor` | 13 | ⬜ |  |  |
 | `\.multilineTextAlignment` | 13 | ⬜ |  |  |
 | `\.navigationLinkIndicatorVisibility` | 17 | ⬜ |  |  |
-| `\.openURL` | 14 | ⬜ |  |  |
+| `\.openURL` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | The system action writes the URL to stderr |
 | `\.openWindow` | 16 | ⬜ |  |  |
 | `\.overlayArrangementZIndex` | 13 | ⬜ |  |  |
 | `\.pixelLength` | 13 | ⬜ |  |  |
