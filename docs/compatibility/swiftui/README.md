@@ -32,12 +32,12 @@ are the ones that matter most.
 | [Styles](styles.md) | 33% (39/120) |
 | [Gestures](gestures.md) | 79% (11/14) |
 | [Scenes](scenes.md) | 2% (0.5/23) |
-| [Property wrappers](property-wrappers.md) | 30% (6/20) |
-| [Environment values](environment-values.md) | 3% (3/118) |
-| [Protocols](protocols.md) | 10% (8/78) |
-| [Other types](other-types.md) | 11% (46/410) |
-| [Outside SwiftUI](outside-swiftui.md) | 50% (1.5/3) |
-| **Total** | **19% (259/1382)** |
+| [Property wrappers](property-wrappers.md) | 45% (9/20) |
+| [Environment values](environment-values.md) | 6% (6.5/118) |
+| [Protocols](protocols.md) | 12% (9/78) |
+| [Other types](other-types.md) | 12% (48/410) |
+| [Outside SwiftUI](outside-swiftui.md) | 83% (2.5/3) |
+| **Total** | **20% (269.5/1382)** |
 <!-- coverage:end -->
 
 Refresh with `node scripts/api-coverage.mjs`; CI runs it with `--check`.

@@ -561,9 +561,9 @@ public struct NavigationStack<Root: View>: View, _Primitive {
             let prefix = d == 0 ? "\(path)/0" : "\(path)/s\(d)"
             for k in rt.slots.keys where k.hasPrefix(prefix + "/") || k.hasPrefix(prefix + "#") { rt.touched.insert(k) }
         }
-        let saved = (rt.nav, rt.disabled, rt.buttonStyle, rt.styles.inList)
-        rt.nav = st; rt.disabled = false; rt.buttonStyle = "automatic"; rt.styles.inList = false
-        defer { (rt.nav, rt.disabled, rt.buttonStyle, rt.styles.inList) = saved }
+        let saved = (rt.nav, rt.disabled, rt.buttonStyle, rt.envLocal, rt.styles.inList)
+        rt.nav = st; rt.disabled = false; rt.buttonStyle = "automatic"; rt.envLocal = []; rt.styles.inList = false
+        defer { (rt.nav, rt.disabled, rt.buttonStyle, rt.envLocal, rt.styles.inList) = saved }
         var content = depth == 0 ? _eval(root, "\(path)/0") : st.screen(depth - 1, "\(path)/s\(depth)")
 
         var title: String?, mode = "large"
@@ -583,22 +583,13 @@ public struct NavigationStack<Root: View>: View, _Primitive {
     }
 }
 
-/// Evaluates a pushed destination with the environment captured where its link was declared: environment objects
-/// and the `openURL` action (other styles reset for the new screen, as on iOS).
-func _withDestinationEnv<T>(_ env: [ObjectIdentifier: AnyObject], _ url: OpenURLAction?, _ f: () -> T) -> T {
-    let rt = _Runtime.shared, saved = rt.styles.openURL
-    rt.styles.openURL = url
-    defer { rt.styles.openURL = saved }
-    return _withEnv(env, f)
-}
-
 struct _DestinationView<Content: View, T: Hashable, D: View>: View, _Flattenable {
     typealias Body = Never
     var body: Never { fatalError() }
     let content: Content, destination: (T) -> D
     func _children(_ path: String) -> [Node] {
-        let rt = _Runtime.shared, env = rt.envObjects, url = rt.styles.openURL, dest = destination
-        rt.nav?.destinations[ObjectIdentifier(T.self)] = { v, p in _withDestinationEnv(env, url) { _eval(dest(v as! T), p) } }
+        let rt = _Runtime.shared, env = _localEnv(), dest = destination
+        rt.nav?.destinations[ObjectIdentifier(T.self)] = { v, p in _withEnv(env) { _eval(dest(v as! T), p) } }
         return SwiftUI._children(content, path)
     }
 }
@@ -616,10 +607,10 @@ public struct NavigationLink<Label: View, Destination: View>: View, _Primitive {
         self.destination = destination(); push = nil; self.label = label()
     }
     func _emit(_ path: String) -> Node {
-        let rt = _Runtime.shared, nav = rt.nav, env = rt.envObjects, url = rt.styles.openURL
+        let rt = _Runtime.shared, nav = rt.nav, env = _localEnv()
         let action: () -> Void
         if let push { action = { if let nav { push(nav) } } }
-        else { let d = destination!; action = { nav?.push(_NavScreen { p in _withDestinationEnv(env, url) { _eval(d, p) } }) } }
+        else { let d = destination!; action = { nav?.push(_NavScreen { p in _withEnv(env) { _eval(d, p) } }) } }
         // A list row with a chevron in a List / Form; elsewhere an ordinary (accent) button.
         return ["kind": "button", "id": path, "style": rt.styles.inList ? "navigationLink" : rt.buttonStyle, "disabled": rt.disabled,
                 "action": rt.disabled ? 0 : rt.registerAction(action), "label": _eval(label, path + "/0")]

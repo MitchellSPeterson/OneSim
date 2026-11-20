@@ -32,7 +32,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `DynamicTableRowContent` | 16 | ⬜ |  |  |
 | `DynamicViewContent` | 13 | ⬜ |  |  |
 | `EnvironmentalModifier` | 13 | ⬜ |  |  |
-| `EnvironmentKey` | 13 | ⬜ |  |  |
+| `EnvironmentKey` | 13 | ✅ | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) |  |
 | `FileDocument` | 14 | ⬜ |  | Deprecated |
 | `FocusedValueKey` | 14 | ⬜ |  |  |
 | `GeometryEffect` | 13 | ⬜ |  |  |

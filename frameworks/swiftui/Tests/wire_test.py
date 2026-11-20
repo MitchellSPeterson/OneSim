@@ -571,8 +571,45 @@ assert bm["bitmap"]["path"].endswith("onesim-typelab.png"), bm
 assert bm["bitmap"]["width"] == 8 and bm["bitmap"]["height"] == 8, bm
 finish(p)
 
+# --- state and environment (#47)
+p = spawn(sys.argv[12], env={**os.environ, "SIMCORE_DYNAMIC_TYPE": "accessibility1"})
+assert recv(p)["type"] == "hello"; t = recv(p)
+tx = alltexts(t["root"])
+assert tx[:4] == ["Accent: plain enabled: true", "Accent: loud enabled: true", "Accent: outer enabled: false",
+                  "Accent: inner enabled: false"], tx  # nearest .environment wins; .disabled reaches isEnabled
+assert "Size: compact/regular" in tx, tx  # portrait iPhone
+assert "Badge: ada 0 some" in tx, tx
+# body 17 -> 28 at accessibility1, caption 12 -> 22 (Apple's Dynamic Type table)
+assert f"Metric: {10 * 28 / 17} 22.0 active" in tx, tx
+assert "Metric: 10.0 12.0 active" in tx, tx  # .environment(\.dynamicTypeSize, .large) override
+assert button(t, "Inner")["disabled"], button(t, "Inner")
+t = act(p, t, [m for m in walk(t["root"]) if m.get("kind") == "button" and "Draft: none" in alltexts(m)][0]["action"])
+assert alltexts(t["root"]).count("Draft: saved") == 2, alltexts(t["root"])  # both views share the key
+send(p, type="action", id=button(t, "Open")["action"], version=t["version"])
+ev = recv(p)  # system open: reported to the host, no state change, so no tree follows
+assert ev == {"type": "event", "name": "module.called",
+              "detail": {"module": "OpenURLAction", "method": "openURL", "args": ["https://example.com/a"]}}, ev
+t = act(p, t, button(t, "Local")["action"])  # handled in-app: no event, completion(true)
+assert "Result: true" in alltexts(t["root"]), alltexts(t["root"])
+t = act(p, t, button(t, "Like")["action"])
+assert "Badge: ada 1 some" in alltexts(t["root"]), alltexts(t["root"])  # @Observable mutation re-renders
+fld = next(m for m in walk(t["root"]) if m.get("kind") == "text_field")
+send(p, type="text_input", field=fld["field"], version=t["version"], text="grace"); t = recv(p)
+assert "Badge: grace 1 some" in alltexts(t["root"]), alltexts(t["root"])  # $bindable.name writes through
+send(p, type="environment", appearance="light", viewport={"width": 956, "height": 440}); t = recv(p)
+assert "Size: regular/compact" in alltexts(t["root"]), alltexts(t["root"])  # Pro Max landscape
+send(p, type="environment", appearance="light", viewport={"width": 874, "height": 402}); t = recv(p)
+assert "Size: compact/compact" in alltexts(t["root"]), alltexts(t["root"])  # Pro landscape
+send(p, type="environment", appearance="light", viewport={"width": 1032, "height": 1376}); t = recv(p)
+assert "Size: regular/regular" in alltexts(t["root"]), alltexts(t["root"])  # iPad
+t = act(p, t, button(t, "Push")["action"])
+assert "Pushed: day inner" in alltexts(t["root"]), alltexts(t["root"])
+t = act(p, t, button(t, "Pushed: day inner")["action"])  # changes the value set above the NavigationStack
+assert "Pushed: night inner" in alltexts(t["root"]), alltexts(t["root"])
+finish(p)
+
 # --- controls (protocol section P)
-p = spawn(sys.argv[12]); assert recv(p)["type"] == "hello"; t = recv(p)
+p = spawn(sys.argv[13]); assert recv(p)["type"] == "hello"; t = recv(p)
 def tree(t): return t["root"]["content"] if t["root"]["kind"] == "presentation" else t["root"]
 def layers(t): return t["root"].get("layers", []) if t["root"]["kind"] == "presentation" else []
 def btn(t, label): return next(m for m in walk(tree(t)) if m.get("kind") == "button" and label in alltexts(m))
@@ -602,8 +639,13 @@ t = act(p, t, faded["action"]); t = act(p, t, next(l for l in layers(t) if l["ki
 assert has(t, "last Beta"), "the styled menu still works"
 # Link: runs the environment's openURL; the system action reports the URL on stderr.
 t = act(p, t, btn(t, "Docs")["action"]); assert has(t, "opened https://docs.test"), alltexts(tree(t))
-for name in ("Plain", "Dropped", "Redirect"):
-    send(p, type="action", id=btn(t, name)["action"], version=t["version"])
+def opened_event(url): return {"type": "event", "name": "module.called", "detail": {"module": "OpenURLAction", "method": "openURL", "args": [url]}}
+# .discarded opens nothing (no event, no tree); the system action is reported as an event, redirected by systemAction(url).
+send(p, type="action", id=btn(t, "Dropped")["action"], version=t["version"])
+send(p, type="action", id=btn(t, "Plain")["action"], version=t["version"])
+ev = recv(p); assert ev == opened_event("https://plain.test"), ev
+send(p, type="action", id=btn(t, "Redirect")["action"], version=t["version"])
+ev = recv(p); assert ev == opened_event("https://to.test"), ev
 # Toggle styles: .button is a selectable button; a custom ToggleStyle draws its own body.
 tbn = btn(t, "TB"); assert tbn["selected"] is False and tbn["style"] == "automatic", tbn
 t = act(p, t, tbn["action"]); assert btn(t, "TB")["selected"] is True
@@ -643,8 +685,4 @@ t = act(p, t, wh["options"][2]["action"]); assert has(t, "hour 2")
 fl = next(m for m in node(t, "picker") if m["style"] == "menu"); assert fl["label"]["kind"] == "empty", "labelsHidden"
 assert any(m["label"]["kind"] == "empty" for m in node(t, "toggle")), "labelsHidden hides a toggle's label"
 finish(p)
-err = p.stderr.read()
-assert "onesim: open URL https://plain.test" in err and "https://to.test" in err, "system openURL reports the (redirected) URL"
-assert "inner.test" not in err, "the destination used the declared openURL handler"
-assert "dropped.test" not in err and "from.test" not in err, ".discarded opens nothing"
 print("PASS")

@@ -53,7 +53,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `LazyVGrid` | 14 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Eager. `pinnedViews` is ignored |
 | `LazyVStack` | 14 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Eager. Section headers pin; footers do not |
 | `LinearGradient` | 13 | ⬜ |  |  |
-| `Link` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | No browser: the system action writes `onesim: open URL <url>` to the guest's stderr; `\.openURL` handlers run |
+| `Link` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | No browser: `\.openURL` handlers run and the system action is reported as a `module.called` event; does nothing on the web build |
 | `List` | 13 | ✅ |  |  |
 | `Menu` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | A tap opens it; with `primaryAction` a tap runs that and the menu needs a long press, which OneSim does not offer. A nested `Menu` opens its own card. No section headers, `menuOrder` or `menuIndicator` |
 | `MeshGradient` | 18 | ⬜ |  |  |

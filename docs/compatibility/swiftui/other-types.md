@@ -129,7 +129,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `EmptyVisualEffect` | 17 | ⬜ |  |  |
 | `EmptyWidgetConfiguration` | 14 | ⬜ |  |  |
 | `EnabledTextSelectability` | 15 | ⬜ |  |  |
-| `EnvironmentValues` | 13 | 🟠 |  | `colorScheme`, `dismiss`, `dynamicTypeSize` only |
+| `EnvironmentValues` | 13 | 🟠 | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) | `colorScheme`, `dismiss`, `dynamicTypeSize`, size classes, `isEnabled`, `openURL`, `scenePhase`, `EnvironmentKey` subscripts |
 | `EventModifiers` | 13 | ⬜ |  |  |
 | `EveryMinuteTimelineSchedule` | 15 | ⬜ |  |  |
 | `ExplicitTimelineSchedule` | 15 | ⬜ |  |  |
@@ -220,7 +220,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `OffsetTransition` | 17 | ⬜ |  |  |
 | `OnInsertTableRowModifier` | 16 | ⬜ |  |  |
 | `OpacityTransition` | 17 | ⬜ |  |  |
-| `OpenURLAction` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | The system action writes the URL to stderr |
+| `OpenURLAction` | 14 | 🟠 | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) | `handled`, `discarded`, `systemAction` (reported as an event); not on the web build |
 | `OpenWindowAction` | 16 | ⬜ |  |  |
 | `PagePresentationSizing` | 18 | ⬜ |  |  |
 | `PagingScrollTargetBehavior` | 17 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
@@ -264,7 +264,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ScaleTransition` | 17 | ⬜ |  |  |
 | `SceneBuilder` | 14 | 🟠 |  | Single scene only |
 | `ScenePadding` | 16 | ⬜ |  |  |
-| `ScenePhase` | 14 | ⬜ |  |  |
+| `ScenePhase` | 14 | ✅ | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) |  |
 | `SceneRestorationBehavior` | 18 | ⬜ |  |  |
 | `ScrollAnchorRole` | 18 | ⬜ |  |  |
 | `ScrollBounceBehavior` | 16.4 | ⬜ |  |  |
@@ -397,7 +397,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `UnitCurve` | 17 | ⬜ |  |  |
 | `UnitPoint` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
 | `URLDocumentConfiguration` | 13 | ⬜ |  |  |
-| `UserInterfaceSizeClass` | 13 | ⬜ |  |  |
+| `UserInterfaceSizeClass` | 13 | ✅ | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) |  |
 | `VerticalAlignment` | 13 | ✅ |  |  |
 | `VerticalDirection` | 18 | ⬜ |  |  |
 | `VerticalEdge` | 15 | ⬜ |  |  |

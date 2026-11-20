@@ -45,7 +45,6 @@ struct _Styles {
     var labelsHidden = false
     /// Inside a `List` / `Form`: inline pickers become rows.
     var inList = false
-    var openURL: OpenURLAction?
 }
 
 /// Run `f` with one style cleared (a custom style's own body draws its controls unstyled).
@@ -461,56 +460,18 @@ extension Menu where Label == MenuStyleConfiguration.Label, Content == MenuStyle
 
 // MARK: - Link and openURL
 
-public struct OpenURLAction {
-    public struct Result {
-        let open: URL?, system: Bool
-        public static let handled = Result(open: nil, system: false)
-        public static let discarded = Result(open: nil, system: false)
-        public static let systemAction = Result(open: nil, system: true)
-        public static func systemAction(_ url: URL) -> Result { Result(open: url, system: true) }
-    }
-    let handler: (URL) -> Result
-    public init(handler: @escaping (URL) -> Result) { self.handler = handler }
-    public func callAsFunction(_ url: URL) {
-        let r = handler(url)
-        if r.system { _systemOpen(r.open ?? url) }
-    }
-    static let system = OpenURLAction { _ in .systemAction }
-}
-
-/// The simulator has no browser: the system action reports the URL on the guest's stderr.
-func _systemOpen(_ url: URL) {
-    #if !os(WASI)
-    fputs("onesim: open URL \(url.absoluteString)\n", stderr)
-    #endif
-}
-
-extension EnvironmentValues {
-    public var openURL: OpenURLAction {
-        get { _openURL ?? .system }
-        set { _openURL = newValue }
-    }
-}
-
-extension View {
-    /// Sets a writable environment value (`\.openURL`) for the subtree.
-    public func environment<V>(_ keyPath: WritableKeyPath<EnvironmentValues, V>, _ value: V) -> some View {
-        _CtxView(content: self) { rt in
-            var e = EnvironmentValues()
-            e[keyPath: keyPath] = value
-            rt.styles.openURL = e._openURL
-        }
-    }
-}
-
 public struct Link<Label: View>: View, _Primitive {
     public typealias Body = Never
     public var body: Never { fatalError() }
     let destination: URL, label: Label
     public init(destination: URL, @ViewBuilder label: () -> Label) { self.destination = destination; self.label = label() }
     func _emit(_ path: String) -> Node {
-        let open = _Runtime.shared.styles.openURL ?? .system, url = destination
+        #if os(WASI)
+        return Button(action: {}) { label }._emit(path)   // no openURL on the web build
+        #else
+        let open = EnvironmentValues().openURL, url = destination
         return Button(action: { open(url) }) { label }._emit(path)
+        #endif
     }
 }
 extension Link where Label == Text {
