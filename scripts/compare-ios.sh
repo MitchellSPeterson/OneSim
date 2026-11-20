@@ -29,11 +29,13 @@ app="$guests/showcase"
 tabs="$guests/tabs"
 gest="$guests/gestures"
 layout="$guests/layout"
+typeapp="$guests/type"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
   scripts/build-swift-app.sh examples/swiftui-tabs "$tabs"
   scripts/build-swift-app.sh examples/swiftui-gestures "$gest"
   scripts/build-swift-app.sh examples/swiftui-layout "$layout"
+  scripts/build-swift-app.sh examples/swiftui-type "$typeapp"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
 # (docs/compatibility/versions.json): 26.5 on the iPhone 17 Pro in tests/fixtures/, 27.2 on the iPhone 18 Pro
@@ -119,6 +121,13 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     lshot layout-paged --scroll 201,658,320,0
     echo "== SwiftUI layout (swiftui-layout, iOS $ios)"
     python3 scripts/compare_ios.py $fx/swiftui-layout-ios "$lout/onesim" "$lout" || rc=1
+    # SwiftUI type: tests/fixtures/swiftui-type-ios (see its README).
+    yout=$out/swiftui-type; mkdir -p "$yout/onesim"
+    yshot() { local name=$1; shift; ./target/debug/onesim run "$typeapp" "${base[@]}" "$@" --screenshot "$yout/onesim/$name.png" >/dev/null; }
+    yshot type
+    yshot type-dark --dark
+    echo "== SwiftUI type (swiftui-type, iOS $ios)"
+    python3 scripts/compare_ios.py $fx/swiftui-type-ios "$yout/onesim" "$yout" || rc=1
   fi
   # React Native / Expo showcase: tests/fixtures/rn-showcase-ios (see its README). Needs node + `npm install` in the example.
   if want expo; then

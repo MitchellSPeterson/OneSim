@@ -232,7 +232,7 @@ not the font. A resizable image takes the proposal; with `contentMode` it keeps 
 `fill` occupies the whole proposal and crops). The glyph is rasterized at device scale into an alpha mask, tinted with the foreground color
 and cached by (name, size, weight, scale, device scale, target size). In a list row, `label` puts the icon (imageScale large) centered in a
 24pt leading column and starts the title 16pt later (title at row content x + 40); the row separator aligns with the title.
-Rendering is monochrome only (multicolor, hierarchical and palette modes are out of scope). For a name with no mapping the
+The default is a monochrome alpha mask tinted with the foreground. Hierarchical, palette, multicolor and gradient modes are section N. For a name with no mapping the
 host draws a rounded-square outline placeholder and records one `get_errors` entry per name, `{"source":"host","message":"unsupported_symbol: ..."}`.
 
 ### Software keyboard (host chrome)
@@ -300,7 +300,7 @@ System chrome uses the same effect:
 
 ## G. v1 additions: Text runs, button roles, presentation layers (additive)
 
-- `text` may carry `"runs": [{"text", "font"?: Font, "fontWeight"?: Weight, "foregroundColor"?: Color, "italic"?: bool, "underline"?: bool, "strikethrough"?: bool}]` (from `Text + Text`, or a lone `Text` with `.italic()` / `.underline()`); `"text"` is the plain concatenation (labels, inspection). Unset fields inherit the environment. Runs lay out and wrap as one paragraph; line metrics come from the largest run. Italic is the font's oblique (synthesized when the face has none); underline is drawn 2pt below the baseline, 1pt thick, in the run's color, spanning the run's glyphs. A lone styled `Text` without italic/underline still uses plain modifiers.
+- `text` may carry `"runs"` (from `Text + Text`, or a lone `Text` whose styling is not a modifier). `"text"` is the plain concatenation (labels, inspection). Unset fields inherit the environment. Runs lay out and wrap as one paragraph; line metrics come from the largest run. Italic is the font's oblique (synthesized when the face has none). Underline and strikethrough are rules under or through the glyphs, in the run's color unless a line color is set (section N). A lone styled `Text` whose only styles are modifiers still uses those modifiers.
 - `button` gains `"role"?: "cancel"|"destructive"`.
 - New kind `presentation`: `{"kind":"presentation","id","content": ViewNode, "layers": [Layer]}`. The guest emits it as the root only while something is presented (otherwise the tree is unchanged); `content` is the normal tree and `layers` run bottom to top. A layer presented from inside another layer's content comes after it. `Layer` is one of:
 
@@ -708,3 +708,50 @@ Host → guest:
 - `.paging` stops on multiples of the scroll view's main-axis size, including the max offset. `.viewAligned` stops on the content origin of each `scrollTargetLayout` child. A finger that lifts at rest springs to the nearest stop. A coast springs there when its velocity hits zero. A resting CLI `--scroll` does not snap. A large-title collapse snap still wins inside its band.
 - `scrollTo` aligns the target's anchor with the same anchor of the scroll viewport: `offset = content - (viewport - targetSize) * anchor`, clamped to the max offset. `content` is the target's position in the scrolled content.
 - `.scrollPosition` writeback sends the anchored id whose content position is the greatest that is still at or above the top edge (within 1 pt). Setting the binding to a new id sends `scroll_to_id`. A writeback of the same id does not.
+
+## N. v1 additions: text and image styling (additive, protocol version stays 1)
+
+Existing `text` and `image` documents parse unchanged. New fields are omitted when absent. `Font` system fonts gain an optional `"design"` (`"default"`, `"serif"`, `"rounded"`, `"monospaced"`).
+
+### Run fields
+
+A run may also carry `kerning`, `tracking`, `baselineOffset` (points), `fontDesign`, `fontWidth`, `monospaced`, `monospacedDigit`, `textScale` (`"default"` or `"secondary"`), `underlinePattern`, `underlineColor`, `strikethroughPattern`, `strikethroughColor`. `underline` and `strikethrough` stay booleans. Pattern and color are separate keys so a lone run can still emit underline as a modifier.
+
+### Modifiers
+
+| JSON | SwiftUI |
+|---|---|
+| `{"kerning": points}` | `.kerning(_:)`. Added to the font's fitted tracking. |
+| `{"tracking": points}` | `.tracking(_:)`. Added the same way. Kerning and tracking add when both are set. |
+| `{"baselineOffset": points}` | `.baselineOffset(_:)`. Positive lengthens the line downward and leaves the glyphs at the top, so a center-aligned sibling sits lower by half the offset. Negative moves the glyphs down and lengthens the line by the same amount. |
+| `{"fontDesign": FontDesign or null}` | `.fontDesign(_:)`. `null` restores the default design. |
+| `{"fontWidth": FontWidth or null}` | `.fontWidth(_:)`. `compressed`, `condensed`, `standard`, `expanded`. `null` is standard. |
+| `{"monospaced": bool}` | `.monospaced(_:)`. |
+| `{"monospacedDigit": bool}` | `.monospacedDigit()`. OpenType `tnum`. |
+| `{"textScale": "default"\|"secondary"}` | `.textScale(_:isEnabled:)`. Secondary glyphs are 0.86 of the current size. The line box stays the unscaled size. |
+| `{"truncationMode": "head"\|"tail"\|"middle"}` | `.truncationMode(_:)`. The ellipsis is `…`. Default is tail. |
+| `{"lineLimit": null}` or `{"lineLimit": {"min"?, "max"?, "reserves"?}}` | `.lineLimit`. `max` truncates. `min` reserves that many lines of height. `reserves: true` reserves `max` when set, otherwise `min`. `null` clears both. |
+| `{"underline": {"active", "pattern"?, "color"?}}` | `.underline(_:pattern:color:)`. |
+| `{"italic": bool}` | `.italic(_:)`. |
+| `{"textCase": "uppercase"\|"lowercase" or null}` | `.textCase(_:)`. The stored label is the folded string. `null` restores the original case. |
+| `{"allowsTightening": bool}` | `.allowsTightening(_:)`. Pulls tracking by up to 5% of the point size when a line overflows, then scales. |
+| `{"minimumScaleFactor": factor}` | `.minimumScaleFactor(_:)`. Scales the type down to `factor` before truncation. |
+| `{"symbolRenderingMode": SymbolMode or null}` | `.symbolRenderingMode(_:)`. `monochrome`, `hierarchical`, `palette`, `multicolor`. `null` is monochrome. |
+| `{"symbolVariableValueMode": "color"\|"draw" or null}` | `.symbolVariableValueMode(_:)`. There is no variable value on the wire, so the mode selects the AppKit configuration only. |
+| `{"symbolColorRenderingMode": "flat"\|"gradient" or null}` | `.symbolColorRenderingMode(_:)`. |
+| `{"allowedDynamicRange": "standard"\|"constrainedHigh"\|"high" or null}` | `.allowedDynamicRange(_:)`. Parsed. Drawing stays standard range. |
+| `{"strikethroughStyle": LineStyle}` | `.strikethrough(_:pattern:color:)`. The bool overload stays `{"strikethrough": bool}`. |
+
+`LineStyle.pattern` is `solid` (default), `dot`, `dash`, `dashDot`, or `dashDotDot`.
+
+### Image fields
+
+`image` gains optional `renderingMode` (`"template"` or `"original"`), `symbolRenderingMode`, `interpolation` (`"none"`, `"low"`, `"medium"`, `"high"`), `antialiased`, `symbolColorRenderingMode`, `symbolVariableValueMode`, `dynamicRange`, and `bitmap`.
+
+`template` forces a monochrome symbol. `original` uses multicolor when no symbol mode is set. Interpolation `none` is nearest, `low` is bilinear, `medium` and `high` are bicubic (the default). `antialiased: false` forces nearest. `bitmap` is `{"path", "width", "height", "scale"}`: a file the guest already loaded (an `AsyncImage` file URL). `width` and `height` are points (pixels divided by `scale`; `scale` of `0` means 1). When they are `0`, the host uses the file's pixel size divided by `scale`. The destination is local to the image node.
+
+### Host notes
+
+- Serif uses `.New York` when that family is installed, otherwise a generic serif. Rounded uses `.SF NS Rounded` when installed, otherwise SF Pro. Monospaced uses `.SF NS Mono` when installed. Optical tracking stays on the default SF sans and is dropped for serif, rounded, and mono. The `wdth` axis is not driven: condensed is 0.80 of the standard face's advance, compressed is 0.70, and expanded stays the standard face. A missing face is a gap, not a protocol change.
+- Colored symbols (hierarchical, palette, multicolor, gradient, or a non-automatic variable mode) are an AppKit RGBA bitmap on macOS when the pixels have chroma. Palette is the foreground at full, 0.6 and 0.3 alpha. The Phosphor fallback stays an alpha mask. The default monochrome path is unchanged.
+- `textCase` is folded before measure. Tightening runs before `minimumScaleFactor`, and truncation runs on the scaled text. The probe that decides to scale ignores the line cap, so an ellipsis cannot hide an overflow.

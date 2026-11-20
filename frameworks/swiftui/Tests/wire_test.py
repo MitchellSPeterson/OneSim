@@ -503,4 +503,25 @@ send(p, type="action", id=button(t, "Jump")["action"], version=t["version"])
 line = recv(p)
 assert line["type"] == "scroll_to_id" and isinstance(line.get("scroll"), str) and line["scroll"] and line["target"] == "there", line
 finish(p)
+
+# --- type (protocol section N)
+p = spawn(sys.argv[10]); assert recv(p)["type"] == "hello"; t = recv(p)
+hello = next(m for m in walk(t["root"]) if m.get("text") == "Hello")
+assert any(m.get("textCase") == "uppercase" for m in hello.get("modifiers", [])), hello
+joined = next(m for m in walk(t["root"]) if m.get("text") == "AB")
+runs = joined["runs"]
+assert runs[0].get("italic") is True and runs[1].get("kerning") == 2, joined
+dotted = next(m for m in walk(t["root"]) if m.get("text") == "DotEnd")
+assert dotted["runs"][0].get("underline") is True and dotted["runs"][0].get("underlinePattern") == "dot", dotted
+fox = next(m for m in walk(t["root"]) if isinstance(m.get("text"), str) and m["text"].startswith("The quick"))
+mm = fox.get("modifiers", [])
+assert any(m.get("truncationMode") == "middle" for m in mm), mm
+assert any(isinstance(m.get("lineLimit"), dict) and m["lineLimit"].get("max") == 1 for m in mm), mm
+star = next(m for m in walk(t["root"]) if m.get("kind") == "image" and m.get("systemName") == "star.fill")
+assert star.get("symbolRenderingMode") == "hierarchical", star
+assert any(m.get("kind") == "empty" for m in walk(t["root"]))
+bm = next(m for m in walk(t["root"]) if m.get("kind") == "image" and "bitmap" in m)
+assert bm["bitmap"]["path"].endswith("onesim-typelab.png"), bm
+assert bm["bitmap"]["width"] == 8 and bm["bitmap"]["height"] == 8, bm
+finish(p)
 print("PASS")

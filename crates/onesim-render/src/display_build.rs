@@ -270,7 +270,12 @@ impl Builder {
         if clipped {
             dl.ops.push(Op::PushClip(coverage));
         }
-        dl.ops.push(Op::Image { id, transform: m, sampling: Sampling::Bicubic, opacity: n.opacity, shape: rotated.then_some(coverage) });
+        let sampling = match im.filter {
+            0 => Sampling::Nearest,
+            1 => Sampling::Bilinear,
+            _ => Sampling::Bicubic,
+        };
+        dl.ops.push(Op::Image { id, transform: m, sampling, opacity: n.opacity, shape: rotated.then_some(coverage) });
         if clipped {
             dl.ops.push(Op::PopClip);
         }
