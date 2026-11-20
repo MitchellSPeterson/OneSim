@@ -72,6 +72,7 @@ Guest → host:
   resends every `layout` frame and forgets the touch in progress
 - `{"type":"tree","version":<u64>,"root":<ViewNode>}`
 - `{"type":"error","message":"..."}`
+- `{"type":"event","name":"module.called","detail":{"module":"OpenURLAction","method":"openURL","args":["<url>"]}}` — SwiftUI `openURL` handed to the system (nothing opens). The host forwards it to the client event stream.
 
 Host → guest (guest stdin):
 - `{"type":"action","id":<u64>,"version":<u64>}` — `version` = tree version the
