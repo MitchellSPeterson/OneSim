@@ -15,7 +15,8 @@ OUT="$(mktemp -d)"; trap 'rm -rf "$OUT"' EXIT
 "$ROOT/scripts/build-swift-app.sh" "$(dirname "$0")/LayoutLab.swift" "$OUT/layoutlab" LayoutLab
 "$ROOT/scripts/build-swift-app.sh" "$(dirname "$0")/StateLab.swift" "$OUT/statelab" StateLab
 "$ROOT/scripts/build-swift-app.sh" "$(dirname "$0")/TypeLab.swift" "$OUT/typelab"
-for exe in counter entry showcase dataflow presentation tabs tabsmodern gesturelab layoutlab shapelab typelab statelab; do
+"$ROOT/scripts/build-swift-app.sh" "$(dirname "$0")/AnimationLab.swift" "$OUT/animlab" AnimationLab
+for exe in counter entry showcase dataflow presentation tabs tabsmodern gesturelab layoutlab shapelab typelab animlab statelab; do
   if otool -L "$OUT/$exe" | grep -q 'SwiftUI.framework'; then echo "FAIL: $exe links Apple SwiftUI" >&2; exit 1; fi
 done
-/usr/bin/python3 -I "$(dirname "$0")/wire_test.py" "$OUT/counter" "$OUT/entry" "$OUT/showcase" "$OUT/dataflow" "$OUT/presentation" "$OUT/tabs" "$OUT/tabsmodern" "$OUT/gesturelab" "$OUT/layoutlab" "$OUT/shapelab" "$OUT/typelab" "$OUT/statelab"
+/usr/bin/python3 -I "$(dirname "$0")/wire_test.py" "$OUT/counter" "$OUT/entry" "$OUT/showcase" "$OUT/dataflow" "$OUT/presentation" "$OUT/tabs" "$OUT/tabsmodern" "$OUT/gesturelab" "$OUT/layoutlab" "$OUT/shapelab" "$OUT/typelab" "$OUT/animlab" "$OUT/statelab"

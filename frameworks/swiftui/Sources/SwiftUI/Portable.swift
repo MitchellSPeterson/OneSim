@@ -2,6 +2,7 @@
 #if os(WASI)
 import WASILibc
 public typealias CGFloat = Double
+public typealias TimeInterval = Double
 
 public struct CGPoint: Equatable, Hashable, Sendable {
     public var x: CGFloat, y: CGFloat
@@ -71,11 +72,18 @@ public struct CGRect: Equatable, Hashable, Sendable {
     }
 }
 
-/// Seconds since 1970 (gesture value times).
-public struct Date: Equatable, Hashable, Comparable {
+/// Seconds since 1970 (gesture value times and TimelineView dates).
+public struct Date: Equatable, Hashable, Comparable, Sendable {
     public var timeIntervalSince1970: Double
+    public init() { timeIntervalSince1970 = _Runtime.shared.baseEpoch + _Runtime.shared.clockMs / 1000.0 }
     public init(timeIntervalSince1970 t: Double) { timeIntervalSince1970 = t }
+    public static var now: Date { Date() }
+    public static let distantPast = Date(timeIntervalSince1970: -62135769600.0)
+    public static let distantFuture = Date(timeIntervalSince1970: 64092211200.0)
     public func timeIntervalSince(_ d: Date) -> Double { timeIntervalSince1970 - d.timeIntervalSince1970 }
+    public func addingTimeInterval(_ ti: TimeInterval) -> Date { Date(timeIntervalSince1970: timeIntervalSince1970 + ti) }
+    public static func + (d: Date, ti: TimeInterval) -> Date { d.addingTimeInterval(ti) }
+    public static func - (a: Date, b: Date) -> TimeInterval { a.timeIntervalSince(b) }
     public static func < (a: Date, b: Date) -> Bool { a.timeIntervalSince1970 < b.timeIntervalSince1970 }
 }
 struct NSNull {}  // serialized as null by _json

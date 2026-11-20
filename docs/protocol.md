@@ -774,3 +774,42 @@ A run may also carry `kerning`, `tracking`, `baselineOffset` (points), `fontDesi
 - Serif uses `.New York` when that family is installed, otherwise a generic serif. Rounded uses `.SF NS Rounded` when installed, otherwise SF Pro. Monospaced uses `.SF NS Mono` when installed. Optical tracking stays on the default SF sans and is dropped for serif, rounded, and mono. The `wdth` axis is not driven: condensed is 0.80 of the standard face's advance, compressed is 0.70, and expanded stays the standard face. A missing face is a gap, not a protocol change.
 - Colored symbols (hierarchical, palette, multicolor, gradient, or a non-automatic variable mode) are an AppKit RGBA bitmap on macOS when the pixels have chroma. Palette is the foreground at full, 0.6 and 0.3 alpha. The Phosphor fallback stays an alpha mask. The default monochrome path is unchanged.
 - `textCase` is folded before measure. Tightening runs before `minimumScaleFactor`, and truncation runs on the scaled text. The probe that decides to scale counts wrapped lines against the line cap, so a one-line limit scales a sentence that would otherwise wrap. Shaping uses the visual width divided by the font-width scale, and truncation keeps each surviving run's original index.
+
+## P. v1 additions: SwiftUI animation and transitions (additive, protocol version stays 1)
+
+Existing view trees parse unchanged. New modifiers are omitted when absent.
+
+### Modifiers
+
+| JSON | SwiftUI |
+|---|---|
+| `{"animation": AnimationSpec \| null}` | `withAnimation` (on root), `.animation(_:value:)`, `.animation(_:)`, `.transaction`. `null` disables animation for the subtree. `AnimationSpec` is `{"curve", "duration", "delay", "speed", "repeat"?: u32 \| "forever", "autoreverses", "token"}`. `curve` is `"linear"`, `"easeIn"`, `"easeOut"`, `"easeInOut"`, `{"bezier": [x1, y1, x2, y2]}`, `{"spring": {"mass", "stiffness", "damping", "initialVelocity", "settling"}}`, or `{"samples": [f64...]}` (for `CustomAnimation`). `token > 0` fires once when bumped; `token == 0` animates any property change. |
+| `{"transition": {"insertion": Effect, "removal": Effect, "animation"?: AnimationSpec}}` | `.transition(_:)`. `Effect` holds optional `opacity`, `scale`, `anchor`, `offset` (`[x, y]`), and `edge` (`"top"\|"bottom"\|"leading"\|"trailing"`). |
+| `{"matchedGeometry": {"id", "namespace", "properties": "frame"\|"position"\|"size", "anchor": [x, y], "isSource": bool}}` | `.matchedGeometryEffect(id:in:properties:anchor:isSource:)` with `@Namespace`. |
+| `{"contentTransition": "identity"\|"interpolate"\|"opacity"\|"numericTextUp"\|"numericTextDown"\|"symbolEffect"}` | `.contentTransition(_:)`. Inherited by `text` and `image` descendants. |
+
+### Messages
+
+Guest → host (not version-gated, sent via `simcore_send_line`):
+
+```json
+{"type":"schedule","afterMs":16.0}
+```
+
+Requests a `tick` in `afterMs` ms (omitted/`null` cancels pending ticks). Used by `TimelineView`, `PhaseAnimator`, `KeyframeAnimator`, and `withAnimation` completion callbacks.
+
+Host → guest (delivered to `simcore_runtime_set_layout_callback`):
+
+```json
+{"type":"tick","time":16.0}
+```
+
+Advances the guest's monotonic animation clock (`time` in ms; starts at 0). On normal renders (`action`, launch, `environment`), any changed `schedule` line is emitted before `tree`; in response to `tick`, the guest emits any new `tree` first and always terminates with a `schedule` line so the host observes both atomically. The guest optionally reads `SIMCORE_TIME` (Unix epoch seconds as a decimal float) at launch to anchor `TimelineView` / `Date` deterministically in tests.
+
+### Host animation semantics
+
+- `onesim_render::Animator` diffs each new target `Scene` against the previously displayed `Scene` (by `(node.id, node.anchor)`), interpolating `bounds`, `opacity`, `fill`, `stroke`, `radius`, `text.color`, `symbol.color`, and `glyph.color` with the node's `AnimationSpec` (retaining spring velocity on interruption).
+- Inserted/removed subtrees under an animated update play their `.transition` (defaulting to `.opacity` when no explicit transition is attached); removed subtrees render as non-interactive ghosts until settled.
+- Same-frame `.matchedGeometryEffect(isSource: false)` aligns the non-source subtree to its matching `isSource: true` frame during layout; cross-frame pairs morph bounds and cross-fade between exiting and entering nodes.
+- `.contentTransition` cross-fades (`.opacity` / `.symbolEffect`) or rolls (`.numericText`) text and symbol changes.
+- CLI: `--wait MS` steps the session clock deterministically in frame slices. Live viewers (`onesim window`, `onesim-web`) advance animations via `tick(dt)` while `is_animating` is true and go idle once settled.

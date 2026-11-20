@@ -25,6 +25,12 @@ pub enum GuestMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         anchor: Option<[f64; 2]>,
     },
+    /// SwiftUI animation/timeline wake-up request (section P): ask host for a `tick` after `afterMs` ms,
+    /// or cancel pending guest ticks when `None`.
+    Schedule {
+        #[serde(default, rename = "afterMs", skip_serializing_if = "Option::is_none")]
+        after_ms: Option<f64>,
+    },
     /// Lifecycle event (`bundle.loaded`, `bundle.reloaded`, `bundle.error`, `refresh.applied`).
     Event { name: String, #[serde(default)] detail: serde_json::Value },
     /// React Native native-module inventory, once after boot (same shape as the API's `modules.list`).
@@ -229,6 +235,9 @@ pub enum HostMessage {
     /// SwiftUI `.scrollPosition` writeback: the id of the topmost visible anchored view, or null.
     #[serde(rename = "scroll_position")]
     ScrollPosition { scroll: String, target: Option<String> },
+    /// SwiftUI guest clock tick (section P): session animation time in ms for `TimelineView`,
+    /// `PhaseAnimator`, `KeyframeAnimator`, and animation completion callbacks.
+    Tick { time: f64 },
     /// React Native: host focus moved to / away from the text input `tag`.
     Focus { tag: u64 },
     Blur { tag: u64 },
@@ -375,5 +384,14 @@ mod tests {
             serde_json::to_string(&HostMessage::TextInput { field: 4, version: 2, text: "hi".into() }).unwrap(),
             r#"{"type":"text_input","field":4,"version":2,"text":"hi"}"#
         );
+        let sch = GuestMessage::Schedule { after_ms: Some(16.0) };
+        let schj = serde_json::to_string(&sch).unwrap();
+        assert_eq!(schj, r#"{"type":"schedule","afterMs":16.0}"#);
+        assert_eq!(serde_json::from_str::<GuestMessage>(&schj).unwrap(), sch);
+        assert_eq!(serde_json::from_str::<GuestMessage>(r#"{"type":"schedule"}"#).unwrap(), GuestMessage::Schedule { after_ms: None });
+        let tk = HostMessage::Tick { time: 250.5 };
+        let tkj = serde_json::to_string(&tk).unwrap();
+        assert_eq!(tkj, r#"{"type":"tick","time":250.5}"#);
+        assert_eq!(serde_json::from_str::<HostMessage>(&tkj).unwrap(), tk);
     }
 }
