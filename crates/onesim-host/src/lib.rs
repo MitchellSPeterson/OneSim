@@ -492,11 +492,28 @@ impl Host {
         Ok((scene, version, s.scale))
     }
 
+    /// Keep the SwiftUI guest's monotonic clock aligned with host `clock_ms` before an input
+    /// starts new timers, animators, or completion callbacks.
+    fn sync_guest_clock(&mut self, id: &str) -> Result<(), ApiError> {
+        let needs_sync = {
+            let s = self.get(id)?;
+            s.is_swiftui() && s.state() == State::Running && (s.clock_ms - s.guest_clock_ms).abs() > 1e-6
+        };
+        if needs_sync {
+            let tree_arrived = self.get(id)?.send_tick_and_wait()?;
+            if tree_arrived {
+                let _ = self.scene(id)?;
+            }
+        }
+        Ok(())
+    }
+
     /// Returns `(hit node id, action dispatched)`. `click` = down + up. A hit on a text field
     /// focuses it (action = false); any other click unfocuses. `scroll` hits the scroller and
     /// never reaches the guest. The state machine is `onesim_render::Interaction`.
     pub fn pointer(&mut self, id: &str, ev: PointerEvent) -> Result<(Option<String>, bool), ApiError> {
         self.get(id)?.require_running()?;
+        self.sync_guest_clock(id)?;
         let (scene, version, _) = self.scene(id)?;
         if self.get(id)?.is_rn() {
             return self.rn_pointer(id, &scene, version, ev);
@@ -601,6 +618,7 @@ impl Host {
     /// React Native receives each phase on the same Fabric target and supplies its own gesture behavior.
     pub fn drag(&mut self, id: &str, phase: onesim_render::DragPhase, x: f64, y: f64, t_ms: f64) -> Result<bool, ApiError> {
         self.get(id)?.require_running()?;
+        self.sync_guest_clock(id)?;
         let (scene, version, _) = self.scene(id)?;
         let s = self.get(id)?;
         // React Native receives each phase on the touched Fabric view; later trees arrive through render.updated,
@@ -622,6 +640,7 @@ impl Host {
     /// to the guest as `text_input`.
     pub fn keyboard(&mut self, id: &str, ev: KeyboardEvent) -> Result<(), ApiError> {
         self.get(id)?.require_running()?;
+        self.sync_guest_clock(id)?;
         if let KeyboardEvent::Key { key } = &ev {
             if !matches!(key.as_str(), "backspace" | "enter") {
                 return Err(err(ErrorCode::Unsupported, format!("unknown key {key:?} (backspace, enter)")));

@@ -541,12 +541,22 @@ assert len(trs) == 2, trs
 assert trs[0]["insertion"]["edge"] == "leading" and trs[0]["insertion"]["opacity"] == 0 and trs[0]["removal"]["scale"] == 0.5, trs[0]
 assert trs[1]["insertion"]["opacity"] == 0 and trs[1]["insertion"]["offset"] == [-20, 0] and trs[1]["removal"]["offset"] == [20, 0], trs[1]
 
-# Advance clock to 200 ms -> completion fires (done:1) and one-shot keyframeAnimator finishes at offset.x == 40.
+# Advance clock to 200 ms -> completion fires ONCE even though two @State props mutated (done:1, multi:1), and one-shot keyframeAnimator finishes at offset.x == 40.
 send(p, type="tick", time=200.0)
 t, _ = recv_tree(p)
-assert any("done:1" in s for s in alltexts(t["root"])), alltexts(t["root"])
+assert any("done:1 multi:1" in s for s in alltexts(t["root"])), alltexts(t["root"])
 oneshot_node = next(n for n in walk(t["root"]) if n.get("text") == "oneshot")
 assert any(m.get("offset", {}).get("x") == 40 for m in oneshot_node.get("modifiers", [])), oneshot_node
+
+# onChange calling withAnimation consumes its transaction on the same submission without leaking to the next action.
+send(p, type="action", id=button(t, "OnChg")["action"], version=t["version"])
+t, _ = recv_tree(p)
+assert any("oc:1" in s for s in alltexts(t["root"])), alltexts(t["root"])
+oc_anims = [m["animation"] for m in t["root"].get("modifiers", []) if "animation" in m]
+assert len(oc_anims) == 1 and oc_anims[0]["duration"] == 0.25, oc_anims
+send(p, type="action", id=button(t, "Other")["action"], version=t["version"])
+t, _ = recv_tree(p)
+assert not any("animation" in m for m in t["root"].get("modifiers", [])), "onChange transaction must not leak"
 
 # .animation(_:value:) fires ONLY when `count` changes, NOT when `other` changes; .animation(nil, value:) emits null.
 send(p, type="action", id=button(t, "Inc")["action"], version=t["version"])

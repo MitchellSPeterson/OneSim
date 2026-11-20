@@ -173,16 +173,22 @@ final class _Runtime {
         return animToken
     }
 
+    private func _mergeTransaction(_ prev: Transaction?, _ tx: Transaction) -> Transaction {
+        guard var merged = prev else { return tx }
+        if tx.disablesAnimations { merged.disablesAnimations = true }
+        if let a = tx.animation { merged.animation = a }
+        for (k, v) in tx.custom { merged.custom[k] = v }
+        merged.completions.append(contentsOf: tx.completions)
+        return merged
+    }
+
     func markDirty() {
         dirty = true
-        if let tx = currentTransaction {
-            if var prev = pendingTransaction {
-                if tx.disablesAnimations { prev.disablesAnimations = true }
-                if let a = tx.animation { prev.animation = a }
-                prev.completions.append(contentsOf: tx.completions)
-                pendingTransaction = prev
-            } else {
-                pendingTransaction = tx
+        if var tx = currentTransaction {
+            pendingTransaction = _mergeTransaction(pendingTransaction, tx)
+            if !tx.completions.isEmpty {
+                tx.completions.removeAll()
+                currentTransaction = tx
             }
         }
     }
@@ -267,15 +273,21 @@ final class _Runtime {
     }
 
     private func _submitTree(emitSchedule: Bool = true) {
-        let tx = pendingTransaction
+        var tx = pendingTransaction
         pendingTransaction = nil
         activeTransaction = tx
         var tree = _evaluate()
-        // Lifecycle callbacks run after the pass; if they dirtied state, re-evaluate (capped against onAppear loops).
+        // Lifecycle callbacks run after the pass; if they dirtied state (including via withAnimation /
+        // withTransaction), consume their transaction into this submission and re-evaluate (capped).
         for _ in 0..<8 {
             _lifecycle()
             let fire = changePending; changePending = []
             fire.forEach { $0() }
+            if let nextTx = pendingTransaction {
+                pendingTransaction = nil
+                tx = _mergeTransaction(tx, nextTx)
+                activeTransaction = tx
+            }
             guard dirty else { break }
             tree = _evaluate()
         }

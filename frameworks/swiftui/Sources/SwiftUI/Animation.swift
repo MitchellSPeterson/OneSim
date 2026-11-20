@@ -571,9 +571,10 @@ public func withTransaction<Result>(_ transaction: Transaction, _ body: () throw
     rt.currentTransaction = transaction
     defer { rt.currentTransaction = saved }
     let result = try body()
-    // If nothing mutated state inside `withTransaction`, run completions immediately.
-    if !rt.dirty && !transaction.completions.isEmpty {
-        for fn in transaction.completions { fn() }
+    // If nothing inside `withTransaction` drained the completions via `markDirty()`, run them immediately.
+    if let rem = rt.currentTransaction?.completions, !rem.isEmpty {
+        rt.currentTransaction?.completions.removeAll()
+        for fn in rem { fn() }
     }
     return result
 }

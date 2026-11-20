@@ -44,6 +44,7 @@ struct State {
     inter: Interaction,
     anim: Animator,
     clock_ms: f64,
+    guest_clock_ms: f64,
     guest_due_ms: Option<f64>,
     last_anim_ver: Option<u64>,
     /// Set before a guest callback; a tree submit clears it by drawing.
@@ -79,7 +80,7 @@ thread_local! {
     static STATE: RefCell<State> = RefCell::new(State {
         ctx: 0, on_action: None, on_env: None, on_text: None, on_gesture: None, on_layout: None, in_layout: false, version: None, tree: None, scene: None,
         fonts: None, device: device(DEFAULT_DEVICE).unwrap(), viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios27, inter: Interaction::default(),
-        anim: Animator::new(), clock_ms: 0.0, guest_due_ms: None, last_anim_ver: None,
+        anim: Animator::new(), clock_ms: 0.0, guest_clock_ms: 0.0, guest_due_ms: None, last_anim_ver: None,
         stale: false, initialized: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), output: 0, builder: Builder::new(), dl: Vec::new(), unread: None, buf: Vec::new(), rn: None,
     });
     static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
@@ -516,6 +517,23 @@ fn dispatch(e: Effect) -> i32 {
     1
 }
 
+/// Synchronize the SwiftUI guest's clock with `clock_ms` before an input starts new timers.
+fn sync_guest_clock() {
+    let sync = with(|s| {
+        if s.rn.is_none() && (s.clock_ms - s.guest_clock_ms).abs() > 1e-6 {
+            s.guest_clock_ms = s.clock_ms;
+            s.on_layout.map(|cb| (s.ctx, cb, s.clock_ms))
+        } else {
+            None
+        }
+    });
+    if let Some((ctx, cb, time)) = sync {
+        if let Ok(msg) = CString::new(format!(r#"{{"type":"tick","time":{time}}}"#)) {
+            unsafe { cb(ctx as *mut c_void, msg.as_ptr()) };
+        }
+    }
+}
+
 /// kind: 0 down, 1 up, 2 click. x, y in points. Returns 1 if the interaction changed anything.
 #[no_mangle]
 pub extern "C" fn simcore_web_pointer(kind: i32, x: f64, y: f64) -> i32 {
@@ -525,6 +543,7 @@ pub extern "C" fn simcore_web_pointer(kind: i32, x: f64, y: f64) -> i32 {
         _ => PointerKind::Click,
     };
     rn_pointer(PointerEvent::new(kind, x, y)).unwrap_or_else(|| {
+        sync_guest_clock();
         let e = with(|s| s.scene.as_ref().map(|sc| s.inter.pointer(sc, PointerEvent::new(kind, x, y))));
         e.map_or(0, dispatch)
     })
@@ -586,6 +605,7 @@ pub extern "C" fn simcore_web_drag(phase: i32, x: f64, y: f64, t: f64) -> i32 {
     if let Some(Some(out)) = with_rn(|rn, inter, cx| rn.drag(inter, cx.scene, phase, x, y, t)) {
         return deliver(out);
     }
+    sync_guest_clock();
     let e = with(|s| s.scene.as_ref().map(|sc| s.inter.drag(sc, phase, x, y, t)));
     e.map_or(0, dispatch)
 }
@@ -600,6 +620,7 @@ pub extern "C" fn simcore_web_tick(dt_ms: f64) -> i32 {
         s.clock_ms += dt_ms;
         if s.guest_due_ms.is_some_and(|due| s.clock_ms + 1e-6 >= due) {
             s.guest_due_ms = None;
+            s.guest_clock_ms = s.clock_ms;
             Some((s.ctx, s.on_layout, s.clock_ms))
         } else {
             None
@@ -649,6 +670,7 @@ pub extern "C" fn simcore_web_key(kind: i32, len: usize) -> i32 {
             _ => -1,
         };
     }
+    sync_guest_clock();
     let e = with(|s| {
         let sc = s.scene.as_ref().ok_or("no scene")?;
         let r = s.inter.keyboard(sc, ev);

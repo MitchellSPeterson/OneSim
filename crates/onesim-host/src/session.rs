@@ -145,6 +145,8 @@ pub struct Session {
     pub anim: Animator,
     /// Monotonic animation clock in milliseconds (starts at 0).
     pub clock_ms: f64,
+    /// Last `clock_ms` delivered to the SwiftUI guest via `HostMessage::Tick`.
+    pub guest_clock_ms: f64,
     /// Next `clock_ms` at which the SwiftUI guest needs a `tick` message.
     pub guest_due_ms: Option<f64>,
     /// Tree generation last ingested by `anim.update`.
@@ -264,6 +266,7 @@ impl Session {
             inter: Interaction::default(),
             anim: Animator::new(),
             clock_ms: 0.0,
+            guest_clock_ms: 0.0,
             guest_due_ms: None,
             last_anim_gen: 0,
             rn: RnInput::default(),
@@ -585,6 +588,7 @@ impl Session {
         };
         let msg = HostMessage::Tick { time: self.clock_ms };
         self.send(&msg)?;
+        self.guest_clock_ms = self.clock_ms;
         let g = self
             .shared
             .cv

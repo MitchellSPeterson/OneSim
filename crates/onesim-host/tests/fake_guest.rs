@@ -430,6 +430,13 @@ fn animation_and_schedule_flow() {
     assert!((w_end - 200.0).abs() < 0.5, "settled width {w_end}");
     assert!(!host.is_animating(&id), "animation and schedule should have settled");
 
+    // Waiting 1000ms while idle advances host clock to 1500ms; the next input must sync guest clock first.
+    host.wait(&id, 1000.0).unwrap();
+    let (_, acted) = click(&mut host, &id, &labelled("button", "Toggle"));
+    assert!(acted);
+    let root = host.inspect(&id).unwrap().1;
+    assert!(find(&root, &|n| n.text.as_deref() == Some("Clock: 1500")).is_some(), "guest clock should sync to 1500ms before action");
+
     host.shutdown();
     let _ = std::fs::remove_dir_all(dir);
 }

@@ -36,12 +36,15 @@ struct ContentTransitionReader: View {
 struct AnimationLab: View {
     @Namespace private var ns
     @State private var shown = false
+    @State private var multi = 0
     @State private var count = 0
     @State private var other = 0
     @State private var completed = 0
     @State private var phaseTrigger = 0
     @State private var kfTrigger = 0
     @State private var txVal = 0
+    @State private var onChgSrc = 0
+    @State private var onChgDst = 0
 
     // Base epoch 1_700_000_000 (set via SIMCORE_TIME in wire_test.py).
     let t0 = Date(timeIntervalSince1970: 1_700_000_000)
@@ -54,6 +57,7 @@ struct AnimationLab: View {
                 Button("Toggle") {
                     withAnimation(.linear(duration: 0.2)) {
                         shown.toggle()
+                        multi += 1
                     } completion: {
                         completed += 1
                     }
@@ -67,9 +71,15 @@ struct AnimationLab: View {
                     tx[CustomTxKey.self] = 7
                     withTransaction(tx) { txVal = tx[CustomTxKey.self] }
                 }
+                Button("OnChg") { onChgSrc += 1 }
             }
 
-            Text("done:\(completed) tx:\(txVal) other:\(other)")
+            Text("done:\(completed) multi:\(multi) tx:\(txVal) other:\(other) oc:\(onChgDst)")
+                .onChange(of: onChgSrc) {
+                    withAnimation(.linear(duration: 0.25)) {
+                        onChgDst += 1
+                    }
+                }
 
             if shown {
                 Text("Card")

@@ -204,7 +204,7 @@ fn send(v: serde_json::Value) {
     o.flush().unwrap();
 }
 
-fn anim_tree(expanded: bool, ticks: u32) -> serde_json::Value {
+fn anim_tree(expanded: bool, ticks: u32, clock_ms: u64) -> serde_json::Value {
     let w = if expanded { 200.0 } else { 40.0 };
     json!({
         "kind": "vstack", "id": "a.root", "spacing": 16.0, "alignment": "center",
@@ -214,6 +214,7 @@ fn anim_tree(expanded: bool, ticks: u32) -> serde_json::Value {
                 {"animation": {"curve": "linear", "duration": 0.4}}
             ]},
             {"kind": "text", "id": "a.ticks", "text": format!("Tick: {ticks}")},
+            {"kind": "text", "id": "a.clock", "text": format!("Clock: {clock_ms}")},
             {"kind": "button", "id": "a.toggle", "action": 1, "label": {
                 "kind": "text", "id": "a.toggle.l", "text": "Toggle",
                 "modifiers": [{"padding": {"top": 10.0, "leading": 20.0, "bottom": 10.0, "trailing": 20.0}}]
@@ -223,9 +224,9 @@ fn anim_tree(expanded: bool, ticks: u32) -> serde_json::Value {
 }
 
 fn run_anim() {
-    let (mut expanded, mut ticks, mut version) = (false, 0u32, 1u64);
+    let (mut expanded, mut ticks, mut clock_ms, mut version) = (false, 0u32, 0u64, 1u64);
     send(json!({"type": "hello", "protocol": 1}));
-    send(json!({"type": "tree", "version": version, "root": anim_tree(expanded, ticks)}));
+    send(json!({"type": "tree", "version": version, "root": anim_tree(expanded, ticks, clock_ms)}));
     for line in std::io::stdin().lock().lines() {
         let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line.unwrap_or_default()) else { continue };
         match msg["type"].as_str() {
@@ -233,12 +234,13 @@ fn run_anim() {
                 expanded = !expanded;
                 send(json!({"type": "schedule", "afterMs": 100.0}));
                 version += 1;
-                send(json!({"type": "tree", "version": version, "root": anim_tree(expanded, ticks)}));
+                send(json!({"type": "tree", "version": version, "root": anim_tree(expanded, ticks, clock_ms)}));
             }
             Some("tick") => {
                 ticks += 1;
+                clock_ms = msg["time"].as_f64().unwrap_or(0.0).round() as u64;
                 version += 1;
-                send(json!({"type": "tree", "version": version, "root": anim_tree(expanded, ticks)}));
+                send(json!({"type": "tree", "version": version, "root": anim_tree(expanded, ticks, clock_ms)}));
                 send(json!({"type": "schedule"}));
             }
             Some("shutdown") => return,
