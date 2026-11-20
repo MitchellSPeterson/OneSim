@@ -49,7 +49,7 @@ void simcore_runtime_set_text_callback(simcore_text_cb on_text);
 /* Optional. Registers the gesture callback; `ctx` is the one passed to simcore_runtime_set_callbacks. */
 void simcore_runtime_set_gesture_callback(simcore_gesture_cb on_gesture);
 
-/* layout (protocol section M): the whole host JSON line (`geometry` or `scroll_position`),
+/* Layout (protocol sections M and N): the whole host JSON line (`geometry`, `scroll_position`, or `layout`),
  * NUL-terminated, owned by Rust, valid only during the callback. Not version-gated. */
 typedef void (*simcore_layout_cb)(void *ctx, const char *line);
 

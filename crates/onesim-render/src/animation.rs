@@ -373,6 +373,8 @@ struct PropTrack {
     opacity: Option<(f32, f32)>,
     fill: Option<(Color, Color)>,
     stroke: Option<((Color, f64), (Color, f64))>,
+    vector_fill: Option<(Color, Color)>,
+    vector_stroke: Option<((Color, f64), (Color, f64))>,
     radius: Option<(f64, f64)>,
     text_color: Option<(Color, Color)>,
     symbol_color: Option<(Color, Color)>,
@@ -401,6 +403,17 @@ impl PropTrack {
         }
         if let Some(((ca, wa), (cb, wb))) = self.stroke {
             n.stroke = Some((lerp_color(ca, cb, p), lerp(wa, wb, p).max(0.0)));
+        }
+        if let Some((a, b)) = self.vector_fill {
+            if let Some(vf) = n.vector.as_mut().and_then(|v| v.fill.as_mut()) {
+                vf.color = lerp_color(a, b, p);
+            }
+        }
+        if let Some(((ca, wa), (cb, wb))) = self.vector_stroke {
+            if let Some(vs) = n.vector.as_mut().and_then(|v| v.stroke.as_mut()) {
+                vs.color = lerp_color(ca, cb, p);
+                vs.line_width = lerp(wa, wb, p).max(0.0);
+            }
         }
         if let Some((a, b)) = self.radius {
             n.radius = lerp(a, b, p).max(0.0);
@@ -610,6 +623,16 @@ impl Animator {
                 (Some((ca, wa)), Some((cb, wb))) => color_diff(ca, cb) || (wa - wb).abs() > 0.05,
                 _ => false,
             };
+            let vfill_pair = match (pn.vector.as_ref().and_then(|v| v.fill), n.vector.as_ref().and_then(|v| v.fill)) {
+                (Some(a), Some(b)) if color_diff(a.color, b.color) => Some((a.color, b.color)),
+                _ => None,
+            };
+            let vstroke_pair = match (pn.vector.as_ref().and_then(|v| v.stroke.as_ref()), n.vector.as_ref().and_then(|v| v.stroke.as_ref())) {
+                (Some(a), Some(b)) if color_diff(a.color, b.color) || (a.line_width - b.line_width).abs() > 0.05 => {
+                    Some(((a.color, a.line_width), (b.color, b.line_width)))
+                }
+                _ => None,
+            };
             let rad_chg = (pn.radius - n.radius).abs() > 0.05 && pn.radius < 1e4 && n.radius < 1e4;
             let text_col_chg = match (&pn.text, &n.text) {
                 (Some(a), Some(b)) => color_diff(a.color, b.color),
@@ -623,7 +646,16 @@ impl Animator {
                 (Some((_, a)), Some((_, b))) => color_diff(a, b),
                 _ => false,
             };
-            let any_prop_chg = bounds_chg || op_chg || fill_chg || stroke_chg || rad_chg || text_col_chg || sym_col_chg || glyph_col_chg;
+            let any_prop_chg = bounds_chg
+                || op_chg
+                || fill_chg
+                || stroke_chg
+                || vfill_pair.is_some()
+                || vstroke_pair.is_some()
+                || rad_chg
+                || text_col_chg
+                || sym_col_chg
+                || glyph_col_chg;
 
             if should_animate && any_prop_chg {
                 // `prev` already holds the displayed frame; let the new PropTrack take over smoothly.
@@ -641,6 +673,8 @@ impl Animator {
                         opacity: op_chg.then_some((pn.opacity, n.opacity)),
                         fill: fill_chg.then(|| (pn.fill.unwrap(), n.fill.unwrap())),
                         stroke: stroke_chg.then(|| (pn.stroke.unwrap(), n.stroke.unwrap())),
+                        vector_fill: vfill_pair,
+                        vector_stroke: vstroke_pair,
                         radius: rad_chg.then_some((pn.radius, n.radius)),
                         text_color: text_col_chg.then(|| (pn.text.as_ref().unwrap().color, n.text.as_ref().unwrap().color)),
                         symbol_color: sym_col_chg.then(|| (pn.symbol.as_ref().unwrap().color, n.symbol.as_ref().unwrap().color)),

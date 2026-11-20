@@ -37,7 +37,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `FocusedValueKey` | 14 | ⬜ |  |  |
 | `GeometryEffect` | 13 | ⬜ |  |  |
 | `Gesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | Custom gestures recognize their `body` |
-| `InsettableShape` | 13 | ⬜ |  |  |
+| `InsettableShape` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `Keyframes` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `KeyframeTrackContent` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `Layout` | 16 | ⬜ |  |  |
@@ -52,12 +52,12 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `PreviewProvider` | 13 | ⬜ |  |  |
 | `ReadableDocument` | 27 | ⬜ |  |  |
 | `ReferenceFileDocument` | 14 | ⬜ |  | Deprecated |
-| `RoundedRectangularShape` | 26 | ⬜ |  |  |
+| `RoundedRectangularShape` | 26 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `Scene` | 14 | ✅ |  |  |
 | `SceneAccessoryContent` | 27 | ⬜ |  |  |
 | `ScrollTargetBehavior` | 17 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | `updateTarget` is not called. `.paging` and `.viewAligned` are recognized by type |
-| `Shape` | 13 | 🟠 |  | Built-in shapes only; no custom `path(in:)` |
-| `ShapeView` | 17 | ⬜ |  |  |
+| `Shape` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) | Custom `path(in:)` evaluated for laid-out bounds (protocol section N) |
+| `ShapeView` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) | Supports chained `.fill` / `.stroke` / `.strokeBorder` |
 | `SliderTickContent` | 26 | ⬜ |  |  |
 | `TabContent` | 18 | ⬜ |  |  |
 | `TableColumnContent` | 16 | ⬜ |  |  |

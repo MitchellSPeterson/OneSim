@@ -9,8 +9,21 @@ import { Presenter, preferredRenderer } from "./renderer.js";
 // falls back from WebGPU to the 2D context (web/renderer.js).
 const stage = document.getElementById("stage");
 const diag = document.getElementById("diag");
+const loader = document.getElementById("loader");
 const q = new URLSearchParams(location.search);
 const num = (k) => (q.has(k) && Number.isFinite(Number(q.get(k))) && Number(q.get(k)) > 0 ? Number(q.get(k)) : null);
+
+function formatDeviceName(name) {
+  if (name === "iphone-se-3") return "iPhone SE (3rd gen)";
+  if (name === "iphone-se-2") return "iPhone SE (2nd gen)";
+  return name.split("-").map((part) => {
+    if (part === "iphone") return "iPhone";
+    if (part === "ipad") return "iPad";
+    if (part === "pixel") return "Pixel";
+    if (/^\d+[a-z]$/.test(part)) return part;
+    return part.charAt(0).toUpperCase() + part.slice(1);
+  }).join(" ");
+}
 
 function viewportFromUrl(devices, defaultName) {
   const name = q.get("device") ?? defaultName;
@@ -19,15 +32,105 @@ function viewportFromUrl(devices, defaultName) {
   return { device: name, width: num("width") ?? dev.width, height: num("height") ?? dev.height, scale: num("scale"), dev };
 }
 
+function initHeaderChrome() {
+  const index = document.body.dataset.index;
+  const title = q.get("title") || document.body.dataset.title;
+  const framework = q.get("framework") || document.body.dataset.framework;
+  if (index) {
+    const back = document.getElementById("back");
+    back.href = index;
+    back.hidden = false;
+  }
+  if (title) {
+    document.title = `${title} — OneSim`;
+    document.getElementById("meta-name").textContent = title;
+    const fwEl = document.getElementById("meta-fw");
+    if (framework) {
+      document.body.dataset.framework = framework.toLowerCase();
+      fwEl.textContent = framework;
+      fwEl.hidden = false;
+    } else {
+      fwEl.hidden = true;
+    }
+    document.getElementById("app-meta").hidden = false;
+  }
+}
+
 async function main() {
+  initHeaderChrome();
   const rn = q.has("metro") || q.has("bundle"), android = q.get("platform") === "android";
   // React Native mode never calls the module's JS-guest imports (Compose's); the Worker is the guest.
   const sim = await load(await fetch("app.wasm"), rn ? { guest: {} } : {});
-  const vp = viewportFromUrl(sim.devices, rn ? sim.devices.find((d) => d.android === android).name : sim.defaultDevice.name);
-  const dark = q.has("dark") ? q.get("dark") !== "0" : matchMedia("(prefers-color-scheme: dark)").matches;
+  const devices = sim.devices;
+  const vp = viewportFromUrl(devices, rn ? devices.find((d) => d.android === android).name : sim.defaultDevice.name);
+  const platform = rn ? (android ? "android" : "ios") : sim.platform;
+  stage.dataset.platform = platform; // picks the iPhone or Pixel frame in index.html
+  document.body.dataset.platform = platform;
+  if (vp.device.startsWith("iphone-se")) stage.dataset.classic = "true";
+
+  let dark = document.documentElement.dataset.theme === "dark";
+  const applyPageTheme = (isDark) => {
+    dark = isDark;
+    document.documentElement.dataset.theme = isDark ? "dark" : "light";
+    const btn = document.getElementById("theme-btn");
+    const next = isDark ? "Switch to light mode" : "Switch to dark mode";
+    btn.title = next;
+    btn.setAttribute("aria-label", next);
+  };
+  applyPageTheme(dark);
+
   const presenter = new Presenter({ sim, stage, canvas: document.getElementById("screen"), preference: preferredRenderer(q), diag });
-  if (q.has("diag")) diag.hidden = false;
+  const rendererBtn = document.getElementById("renderer-btn");
+  const rendererDot = document.getElementById("renderer-dot");
+  const rendererText = document.getElementById("renderer-text");
+  let shownMode = "";
+  const syncRendererUi = () => {
+    if (shownMode === presenter.mode) return;
+    shownMode = presenter.mode;
+    rendererDot.dataset.mode = presenter.mode;
+    rendererText.textContent = presenter.mode === "gpu" ? "WebGPU" : "CPU";
+    rendererBtn.title = diag.textContent || `Renderer: ${rendererText.textContent}`;
+  };
+  if (q.has("diag")) {
+    diag.hidden = false;
+    rendererBtn.setAttribute("aria-pressed", "true");
+  }
+  rendererBtn.addEventListener("click", () => {
+    diag.hidden = !diag.hidden;
+    rendererBtn.setAttribute("aria-pressed", String(!diag.hidden));
+  });
+
+  // Device selector / label filtered to this build's platform.
+  const platformDevices = devices.filter((d) => (platform === "android" ? d.android : !d.android));
+  const deviceWrap = document.getElementById("device-wrap");
+  const deviceSep = document.getElementById("device-sep");
+  const deviceLabel = document.getElementById("device-label");
+  if (platformDevices.length > 0) {
+    deviceLabel.textContent = formatDeviceName(vp.device);
+    deviceLabel.hidden = false;
+    deviceWrap.hidden = false;
+    deviceSep.hidden = false;
+  }
+  if (platformDevices.length > 1) {
+    const select = document.getElementById("device-select");
+    for (const d of platformDevices) {
+      const opt = document.createElement("option");
+      opt.value = d.name;
+      opt.textContent = formatDeviceName(d.name);
+      if (d.name === vp.device) opt.selected = true;
+      select.append(opt);
+    }
+    select.hidden = false;
+    deviceWrap.classList.add("interactive");
+    select.addEventListener("change", () => {
+      const next = new URLSearchParams(location.search);
+      next.set("device", select.value);
+      location.search = next.toString();
+    });
+  }
+
   await presenter.start(); // before init: the first frame is made in the chosen form
+  syncRendererUi();
   const dpr = () => window.devicePixelRatio || 1;
 
   // Fit the canvas into the window keeping the aspect ratio; render at the physical resolution
@@ -35,7 +138,10 @@ async function main() {
   let cssScale = 1; // CSS px per point
   function fit() {
     const w = sim.width || vp.width, h = sim.height || vp.height; // before init() the sim has no size yet
-    cssScale = Math.min(innerWidth / w, innerHeight / h);
+    // Leave room for the phone frame (bezel + hardware buttons) and the top studio toolbar.
+    const fw = w + 46, fh = h + (stage.dataset.classic ? 104 : 38);
+    cssScale = Math.max(0.2, Math.min(1, (innerWidth - 40) / fw, (innerHeight - 116) / fh));
+    stage.style.setProperty("--s", cssScale);
     presenter.canvas.style.width = `${w * cssScale}px`;
     presenter.canvas.style.height = `${h * cssScale}px`;
     return vp.scale ?? Math.min(4, Math.max(1, Math.round(cssScale * dpr() * 4) / 4));
@@ -43,7 +149,14 @@ async function main() {
   let shown = !rn; // React Native: nothing to show before the guest's first tree
   let flush = () => {}; // React Native: post the host messages input produced to the guest
   let trees = 0; // React Native: trees received (tests wait for them to stop)
-  const present = () => { if (shown) presenter.present(); flush(); };
+  const present = () => {
+    if (shown) {
+      presenter.present();
+      syncRendererUi();
+      if (loader && !loader.hidden) loader.hidden = true;
+    }
+    flush();
+  };
   // Run an input/environment change, then show the new frame.
   // Animation clock: after any input, run frames while momentum/bounce is moving.
   let ticking = false;
@@ -92,6 +205,13 @@ async function main() {
   }
   present();
   if (!rn) animate();
+
+  document.getElementById("theme-btn").addEventListener("click", () => {
+    const nextDark = !dark;
+    applyPageTheme(nextDark);
+    try { localStorage.setItem("onesim.theme", nextDark ? "dark" : "light"); } catch {}
+    act(() => sim.setAppearance(nextDark ? "dark" : "light"));
+  });
   let resizing = 0;
   addEventListener("resize", () => {
     cancelAnimationFrame(resizing);
@@ -165,8 +285,8 @@ async function main() {
       if (scale !== sim.scale) sim.setScale(scale);
       return changed;
     }),
-    setAppearance: (mode) => act(() => sim.setAppearance(mode)),
-    setDark: (d) => act(() => sim.setAppearance(d ? "dark" : "light")),
+    setAppearance: (mode) => { applyPageTheme(mode === "dark"); return act(() => sim.setAppearance(mode)); },
+    setDark: (d) => { applyPageTheme(Boolean(d)); return act(() => sim.setAppearance(d ? "dark" : "light")); },
     pointer: (kind, x, y) => act(() => sim.pointer(["down", "up", "click"][kind] ?? kind, x, y)), // points
     scroll: (x, y, dx, dy) => act(() => sim.scroll(x, y, dx, dy)),
     drag: (phase, x, y, t) => act(() => sim.drag(phase, x, y, t)),
@@ -185,8 +305,12 @@ async function main() {
     get info() { return presenter.info; },
     get frames() { return presenter.frames; },
     get canvas() { return presenter.canvas; },
-    fallback: (reason = "forced") => presenter.fallback(reason),
+    fallback: (reason = "forced") => { presenter.fallback(reason); syncRendererUi(); },
   };
 }
 
-main().catch((e) => { document.getElementById("err").textContent = String(e.stack || e); console.error(e); });
+main().catch((e) => {
+  if (loader) loader.hidden = true;
+  document.getElementById("err").textContent = String(e.stack || e);
+  console.error(e);
+});

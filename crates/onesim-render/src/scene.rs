@@ -189,7 +189,7 @@ pub struct ScrollInfo {
     pub aligned: bool,
 }
 
-/// SwiftUI animation / transition metadata attached to a scene node (protocol section N).
+/// SwiftUI animation / transition metadata attached to a scene node (protocol section O).
 /// Boxed on `Node` so non-animated nodes pay only a null pointer.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct NodeAnim {
@@ -197,6 +197,62 @@ pub struct NodeAnim {
     pub transition: Option<onesim_protocol::TransitionSpec>,
     pub matched: Option<onesim_protocol::MatchedGeometryMod>,
     pub content_transition: onesim_protocol::ContentTransitionKind,
+}
+
+/// Fill configuration for a [`VectorShape`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct VectorFill {
+    pub color: Color,
+    pub eo_fill: bool,
+    pub antialiased: bool,
+}
+
+/// Evaluation state of a custom SwiftUI `Shape` whose `path(in:)` runs on the guest for its laid-out bounds.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CustomShapeEval {
+    Pending,
+    Evaluated([f64; 2]),
+}
+
+/// Stroke configuration for a [`VectorShape`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct VectorStroke {
+    pub color: Color,
+    pub line_width: f64,
+    pub line_cap: onesim_protocol::LineCap,
+    pub line_join: onesim_protocol::LineJoin,
+    pub miter_limit: f64,
+    pub dash: Vec<f64>,
+    pub dash_phase: f64,
+    pub antialiased: bool,
+    pub inset: f64,
+}
+
+/// Geometry of a [`VectorShape`], in the node's bounds.
+#[derive(Debug, Clone, PartialEq)]
+pub enum VectorGeom {
+    Ellipse,
+    RoundedRect {
+        /// `[top_left, top_right, bottom_right, bottom_left]` each `(rx, ry)` in points.
+        radii: [(f64, f64); 4],
+        continuous: bool,
+    },
+    Path {
+        ops: Vec<onesim_protocol::PathOp>,
+        mirror_x: bool,
+    },
+    /// Resolved after layout flattening from the nearest ancestor's `container_shape`.
+    ContainerRelative,
+    /// Resolved after layout flattening from the nearest ancestor's `container_shape`.
+    Concentric(onesim_protocol::ConcentricCorners),
+}
+
+/// Rich vector shape (ellipse, uneven/continuous rounded rect, custom path, styled fill/stroke).
+#[derive(Debug, Clone, PartialEq)]
+pub struct VectorShape {
+    pub geom: VectorGeom,
+    pub fill: Option<VectorFill>,
+    pub stroke: Option<VectorStroke>,
 }
 
 /// One positioned element. `bounds` are absolute, in points.
@@ -211,6 +267,12 @@ pub struct Node {
     pub radius: f64,
     /// Stroke centred on the node's outline.
     pub stroke: Option<(Color, f64)>,
+    /// Rich vector shape (boxed to keep `Node` small on the stack during layout recursion).
+    pub vector: Option<Box<VectorShape>>,
+    /// `.containerShape(_:)` carried by a layout-only container node for descendant relative/concentric shapes.
+    pub container_shape: Option<Box<onesim_protocol::ContainerShapeSpec>>,
+    /// Custom SwiftUI `Shape` whose `path(in:)` is evaluated by the guest for its laid-out size.
+    pub custom_shape: Option<CustomShapeEval>,
     pub shadow: Option<Shadow>,
     /// Liquid Glass backdrop effect painted before this node's own fill and content.
     pub glass: Option<crate::glass::GlassSpec>,
@@ -268,6 +330,9 @@ impl Node {
             fill: None,
             radius: 0.0,
             stroke: None,
+            vector: None,
+            container_shape: None,
+            custom_shape: None,
             shadow: None,
             glass: None,
             edge: None,
@@ -395,6 +460,21 @@ impl Scene {
                 out.push(i);
             }
             p = self.nodes[i].parent;
+        }
+        out
+    }
+
+    /// Custom SwiftUI shape nodes whose laid-out size differs from the size the guest last evaluated `path(in:)` for.
+    pub fn pending_shape_frames(&self) -> std::collections::BTreeMap<String, [f64; 4]> {
+        let mut out = std::collections::BTreeMap::new();
+        for n in &self.nodes {
+            if let Some(eval) = n.custom_shape {
+                let (w, h) = (n.bounds.w, n.bounds.h);
+                let matches = matches!(eval, CustomShapeEval::Evaluated([ew, eh]) if (ew - w).abs() < 0.01 && (eh - h).abs() < 0.01);
+                if !matches && w > 0.0 && h > 0.0 {
+                    out.insert(n.id.clone(), [n.bounds.x, n.bounds.y, w, h]);
+                }
+            }
         }
         out
     }
