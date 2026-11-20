@@ -123,6 +123,7 @@ final class _Runtime {
     var tags: [String: AnyHashable] = [:]   // `.tag(_:)` values by node id, read by `Picker`
     var nav: _NavState?
     var envObjects: [ObjectIdentifier: Any] = [:]   // `.environmentObject` / `.environment` objects and EnvironmentKey values
+    var envLocal = Set<ObjectIdentifier>()   // envObjects keys set inside the enclosing NavigationStack (pushed screens re-apply only these)
     // Presentation layer: set by .alert / .sheet while evaluating; hoisted above the tree by `_evaluate`.
     var layers: [Node] = []          // alerts, dialogs, sheets, covers, bottom to top (a sheet reserves its slot before its content)
     var autoDismiss: (() -> Void)?   // runs after any Button in an alert's actions
@@ -194,7 +195,7 @@ final class _Runtime {
     private func _evaluate() -> Node {
         actions.removeAll(keepingCapacity: true)
         fields.removeAll(keepingCapacity: true)
-        disabled = false; buttonStyle = "automatic"; pickerStyle = "menu"; tags = [:]; nav = nil; envObjects = [:]
+        disabled = false; buttonStyle = "automatic"; pickerStyle = "menu"; tags = [:]; nav = nil; envObjects = [:]; envLocal = []
         layers = []; autoDismiss = nil; dismissHook = nil
         lifecycleNow = [:]; lifecycleOrder = []; changeNow = [:]; changePending = []
         gestures = [:]; gesturesOff = false

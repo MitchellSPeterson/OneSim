@@ -65,6 +65,33 @@ struct Links: View {
     }
 }
 
+struct ToneKey: EnvironmentKey { static let defaultValue = "none" }
+extension EnvironmentValues {
+    var tone: String {
+        get { self[ToneKey.self] }
+        set { self[ToneKey.self] = newValue }
+    }
+}
+
+struct PushedTheme: View {
+    @Environment(\.accent) var accent
+    @Environment(\.tone) var tone
+    let bump: () -> Void
+    var body: some View { Button("Pushed: \(accent) \(tone)") { bump() } }
+}
+
+// A pushed screen sees later changes to values set above the stack, and keeps the ones set between stack and link.
+struct NavEnv: View {
+    @State var theme = "day"
+    var body: some View {
+        NavigationStack {
+            NavigationLink("Push", destination: { PushedTheme { theme = "night" } })
+                .environment(\.tone, "inner")
+        }
+        .environment(\.accent, theme)
+    }
+}
+
 struct StateLab: View {
     @State var profile = Profile()
     @Environment(\.horizontalSizeClass) var h
@@ -87,6 +114,7 @@ struct StateLab: View {
             Group {
                 Metrics()
                 Metrics().environment(\.dynamicTypeSize, .large)
+                NavEnv()
             }
             Links()
             Text("Size: \(h == .compact ? "compact" : "regular")/\(v == .compact ? "compact" : "regular")")

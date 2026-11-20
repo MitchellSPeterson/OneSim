@@ -213,6 +213,7 @@ extension EnvironmentValues {
 
 public struct EnvironmentValues {
     var values: [ObjectIdentifier: Any] = _Runtime.shared.envObjects   // `.environment` values and objects in scope
+    var setKeys = Set<ObjectIdentifier>()   // keys this copy's subscript wrote
     var nav: _NavState? = _Runtime.shared.nav   // captured at body time so `dismiss` still works from an action later
     var sheetDismiss: (() -> Void)? = _Runtime.shared.dismissHook
     /// Stored, not keyed: `.disabled` sets it, and `.environment(\.isEnabled, false)` disables controls below.
@@ -220,7 +221,7 @@ public struct EnvironmentValues {
     public init() {}
     public subscript<K: EnvironmentKey>(key: K.Type) -> K.Value {
         get { if let v = values[ObjectIdentifier(key)] { return v as! K.Value }; return K.defaultValue }
-        set { values[ObjectIdentifier(key)] = newValue }
+        set { values[ObjectIdentifier(key)] = newValue; setKeys.insert(ObjectIdentifier(key)) }
     }
     public var colorScheme: ColorScheme { get { self[_ColorSchemeKey.self] } set { self[_ColorSchemeKey.self] = newValue } }
     public var dynamicTypeSize: DynamicTypeSize { get { self[_DynamicTypeKey.self] } set { self[_DynamicTypeKey.self] = newValue } }
@@ -273,10 +274,18 @@ public struct EnvironmentObject<ObjectType: ObservableObject>: _StateProperty {
     public var projectedValue: ObservedObject<ObjectType>.Wrapper { .init(object: wrappedValue) }
 }
 
-func _withEnv<T>(_ env: [ObjectIdentifier: Any], _ f: () -> T) -> T {
-    let rt = _Runtime.shared, saved = rt.envObjects
-    rt.envObjects = env
-    defer { rt.envObjects = saved }
+/// The environment set between the current `NavigationStack` and here; a pushed screen re-applies it on top of
+/// the stack's live environment, so values set above the stack stay current.
+func _localEnv() -> [ObjectIdentifier: Any] {
+    let rt = _Runtime.shared
+    return rt.envObjects.filter { rt.envLocal.contains($0.key) }
+}
+
+func _withEnv<T>(_ local: [ObjectIdentifier: Any], _ f: () -> T) -> T {
+    let rt = _Runtime.shared, saved = (rt.envObjects, rt.envLocal)
+    rt.envObjects.merge(local) { $1 }
+    rt.envLocal = Set(local.keys)
+    defer { (rt.envObjects, rt.envLocal) = saved }
     return f()
 }
 
@@ -292,16 +301,17 @@ struct _LifecycleView<Content: View>: View, _Flattenable {
 
 extension View {
     public func environmentObject<O: ObservableObject>(_ object: O) -> some View {
-        _CtxView(content: self) { $0.envObjects[ObjectIdentifier(O.self)] = object }
+        _CtxView(content: self) { $0.envObjects[ObjectIdentifier(O.self)] = object; $0.envLocal.insert(ObjectIdentifier(O.self)) }
     }
     public func environment<T: AnyObject & Observable>(_ object: T?) -> some View {
-        _CtxView(content: self) { $0.envObjects[ObjectIdentifier(T.self)] = object }
+        _CtxView(content: self) { $0.envObjects[ObjectIdentifier(T.self)] = object; $0.envLocal.insert(ObjectIdentifier(T.self)) }
     }
     public func environment<V>(_ keyPath: WritableKeyPath<EnvironmentValues, V>, _ value: V) -> some View {
         _CtxView(content: self) { rt in
             var env = EnvironmentValues()
             env[keyPath: keyPath] = value
             rt.envObjects = env.values
+            rt.envLocal.formUnion(env.setKeys)
             rt.disabled = rt.disabled || !env.isEnabled   // a disabled ancestor wins, as with `.disabled`
         }
     }

@@ -581,5 +581,9 @@ send(p, type="environment", appearance="light", viewport={"width": 874, "height"
 assert "Size: compact/compact" in alltexts(t["root"]), alltexts(t["root"])  # Pro landscape
 send(p, type="environment", appearance="light", viewport={"width": 1032, "height": 1376}); t = recv(p)
 assert "Size: regular/regular" in alltexts(t["root"]), alltexts(t["root"])  # iPad
+t = act(p, t, button(t, "Push")["action"])
+assert "Pushed: day inner" in alltexts(t["root"]), alltexts(t["root"])
+t = act(p, t, button(t, "Pushed: day inner")["action"])  # changes the value set above the NavigationStack
+assert "Pushed: night inner" in alltexts(t["root"]), alltexts(t["root"])
 finish(p)
 print("PASS")
