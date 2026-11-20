@@ -59,7 +59,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ButtonRepeatBehavior` | 17 | ⬜ |  |  |
 | `ButtonRole` | 15 | ✅ |  |  |
 | `ButtonSizing` | 26 | ⬜ |  |  |
-| `ButtonStyleConfiguration` | 13 | ⬜ |  |  |
+| `ButtonStyleConfiguration` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | `isPressed` is always false |
 | `CameraCaptureAccessory` | 27.1 | ⬜ |  |  |
 | `ColorMatrix` | 15 | ⬜ |  |  |
 | `ColorRenderingMode` | 13 | ⬜ |  |  |
@@ -152,7 +152,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ForEachSubviewCollection` | 18 | ⬜ |  |  |
 | `FormPresentationSizing` | 18 | ⬜ |  |  |
 | `FormStyleConfiguration` | 16 | ⬜ |  |  |
-| `GaugeStyleConfiguration` | 16 | ⬜ |  |  |
+| `GaugeStyleConfiguration` | 16 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | No `markedValueLabels` |
 | `GeometryProxy` | 13 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | `size` and `safeAreaInsets` from the host frame. `frame(in: .local)` origin is zero; `.global` and a named space are the host screen frame |
 | `GestureInputKinds` | 13 | ⬜ |  |  |
 | `GestureMask` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
@@ -208,7 +208,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `MaterialActiveAppearance` | 18 | ⬜ |  |  |
 | `MenuActionDismissBehavior` | 16.4 | ⬜ |  |  |
 | `MenuOrder` | 16 | ⬜ |  |  |
-| `MenuStyleConfiguration` | 14 | ⬜ |  |  |
+| `MenuStyleConfiguration` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `MoveKeyframe` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `MoveTransition` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `NamedCoordinateSpace` | 17 | ⬜ |  |  |
@@ -244,8 +244,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `PresentationSizingRoot` | 18 | ⬜ |  |  |
 | `PreviewDevice` | 13 | ⬜ |  |  |
 | `PreviewPlatform` | 13 | ⬜ |  |  |
-| `PrimitiveButtonStyleConfiguration` | 13 | ⬜ |  |  |
-| `ProgressViewStyleConfiguration` | 14 | ⬜ |  |  |
+| `PrimitiveButtonStyleConfiguration` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
+| `ProgressViewStyleConfiguration` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `ProjectionTransform` | 13 | ⬜ |  |  |
 | `Prominence` | 15 | ⬜ |  |  |
 | `ProposedViewSize` | 16 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
@@ -357,7 +357,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `TextSelectionAffinity` | 18 | ⬜ |  |  |
 | `TimeDataSource` | 18 | ⬜ |  |  |
 | `TimelineScheduleMode` | 15 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `ToggleStyleConfiguration` | 13 | ⬜ |  |  |
+| `ToggleStyleConfiguration` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | `isMixed` is always false |
 | `ToolbarCommands` | 14 | ⬜ |  |  |
 | `ToolbarContentBuilder` | 14 | ⬜ |  |  |
 | `ToolbarCustomizationBehavior` | 16 | ⬜ |  |  |

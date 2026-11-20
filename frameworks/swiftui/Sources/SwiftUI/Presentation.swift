@@ -74,11 +74,11 @@ struct _SheetView<Content: View, S: View>: View, _Flattenable {
         rt.noteLifecycle(spath + "#presented", nil, onDismiss)
         rt.layers.append([:])
         let slot = rt.layers.count - 1   // below anything presented from inside
-        let saved = (rt.nav, rt.disabled, rt.buttonStyle, rt.dismissHook, rt.autoDismiss)
-        // The sheet is its own screen: not inside the presenting navigation stack.
-        rt.nav = nil; rt.disabled = false; rt.buttonStyle = "automatic"; rt.autoDismiss = nil
+        let saved = (rt.nav, rt.disabled, rt.buttonStyle, rt.dismissHook, rt.autoDismiss, rt.styles.inList)
+        // The sheet is its own screen: not inside the presenting navigation stack or list.
+        rt.nav = nil; rt.disabled = false; rt.buttonStyle = "automatic"; rt.autoDismiss = nil; rt.styles.inList = false
         rt.dismissHook = { b.wrappedValue = false }
-        defer { (rt.nav, rt.disabled, rt.buttonStyle, rt.dismissHook, rt.autoDismiss) = saved }
+        defer { (rt.nav, rt.disabled, rt.buttonStyle, rt.dismissHook, rt.autoDismiss, rt.styles.inList) = saved }
         var node = _eval(sheet, spath)
         var detents: [Node] = [], indicator = false, locked = false
         let mods = (node["modifiers"] as? [Node]) ?? []

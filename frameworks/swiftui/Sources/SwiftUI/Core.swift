@@ -120,6 +120,7 @@ final class _Runtime {
     var disabled = false
     var buttonStyle = "automatic"
     var pickerStyle = "menu"
+    var styles = _Styles()   // control styles and environment values (section Q)
     var pageTabStyle: PageTabViewStyle?
     var pageIndexStyle = PageIndexViewStyle()
     var pageIsActive = true   // adjacent pages are laid out for swiping but do not appear or present yet
@@ -261,7 +262,7 @@ final class _Runtime {
     private func _evaluate() -> Node {
         actions.removeAll(keepingCapacity: true)
         fields.removeAll(keepingCapacity: true)
-        disabled = false; buttonStyle = "automatic"; pickerStyle = "menu"; tags = [:]; nav = nil; envObjects = [:]; envLocal = []
+        disabled = false; buttonStyle = "automatic"; pickerStyle = "menu"; styles = _Styles(); tags = [:]; nav = nil; envObjects = [:]; envLocal = []
         pageTabStyle = nil; pageIndexStyle = .init(); pageIsActive = true
         #if !os(WASI)
         imageSession = nil
