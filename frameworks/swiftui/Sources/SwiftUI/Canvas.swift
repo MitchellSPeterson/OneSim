@@ -201,7 +201,7 @@ public struct GraphicsContext {
         private static func absolute(_ gradient: AnyGradient, kind: String, fields: Node, options: GradientOptions) -> Self {
             var location = fields
             location["absolute"] = true
-            location["options"] = options.rawValue
+            location["options"] = UInt64(options.rawValue)
             var result = gradient.paint(kind, location)
             if options.contains(.linearColor), var paint = result["gradient"] as? Node {
                 paint["colorSpace"] = "linear"
