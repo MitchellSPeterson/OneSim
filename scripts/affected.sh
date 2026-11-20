@@ -54,6 +54,7 @@ expo     tests/fixtures/ios27/expo-*
 web      web/*
 web      scripts/build-web.sh
 web      scripts/compare-web.sh
+web      scripts/compare-web-expo.sh
 web      scripts/compare-web-compose.sh
 none     docs/*
 none     *.md
@@ -147,4 +148,9 @@ if has web; then
   step scripts/compare-web.sh
   step scripts/compare-web-compose.sh
   step node web/test/run.mjs --suite compose-input
+fi
+if has web || has expo; then
+  # Expo in the browser: the guest (frameworks/react-native) in a Web Worker + the Rust renderer in Wasm. No Swift needed.
+  step scripts/build-web.sh --expo
+  step scripts/compare-web-expo.sh
 fi

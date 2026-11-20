@@ -1,5 +1,7 @@
 // OneSim in the browser: draws the framebuffer of web/onesim.js's driver to a <canvas> and turns
 // DOM events (pointer, wheel, drag, keyboard, resize) into points-space input.
+// ?metro=URL or ?bundle=URL (a `scripts/build-web.sh --expo` site): an Expo / React Native app whose JavaScript runs in
+// a Web Worker (web/expo/guest.js); its trees are drawn here and input goes back to it as messages.
 import { load } from "./onesim.js";
 import { Presenter, preferredRenderer } from "./renderer.js";
 
@@ -14,12 +16,14 @@ function viewportFromUrl(devices, defaultName) {
   const name = q.get("device") ?? defaultName;
   const dev = devices.find((d) => d.name === name);
   if (!dev) throw new Error(`unknown device ${JSON.stringify(name)} (known: ${devices.map((d) => d.name).join(", ")})`);
-  return { device: name, width: num("width") ?? dev.width, height: num("height") ?? dev.height, scale: num("scale") };
+  return { device: name, width: num("width") ?? dev.width, height: num("height") ?? dev.height, scale: num("scale"), dev };
 }
 
 async function main() {
-  const sim = await load(await fetch("app.wasm"));
-  const vp = viewportFromUrl(sim.devices, sim.defaultDevice.name);
+  const rn = q.has("metro") || q.has("bundle"), android = q.get("platform") === "android";
+  // React Native mode never calls the module's JS-guest imports (Compose's); the Worker is the guest.
+  const sim = await load(await fetch("app.wasm"), rn ? { guest: {} } : {});
+  const vp = viewportFromUrl(sim.devices, rn ? sim.devices.find((d) => d.android === android).name : sim.defaultDevice.name);
   const dark = q.has("dark") ? q.get("dark") !== "0" : matchMedia("(prefers-color-scheme: dark)").matches;
   const presenter = new Presenter({ sim, stage, canvas: document.getElementById("screen"), preference: preferredRenderer(q), diag });
   if (q.has("diag")) diag.hidden = false;
@@ -36,7 +40,10 @@ async function main() {
     presenter.canvas.style.height = `${h * cssScale}px`;
     return vp.scale ?? Math.min(4, Math.max(1, Math.round(cssScale * dpr() * 4) / 4));
   }
-  const present = () => presenter.present();
+  let shown = !rn; // React Native: nothing to show before the guest's first tree
+  let flush = () => {}; // React Native: post the host messages input produced to the guest
+  let trees = 0; // React Native: trees received (tests wait for them to stop)
+  const present = () => { if (shown) presenter.present(); flush(); };
   // Run an input/environment change, then show the new frame.
   // Animation clock: after any input, run frames while momentum/bounce is moving.
   let ticking = false;
@@ -47,14 +54,42 @@ async function main() {
     const frame = (now) => {
       const moved = sim.tick(Math.min(now - last, 100)); // a stalled tab must not teleport
       last = now;
-      if (moved) present();
+      if (moved) present(); else flush();
       if (moved) requestAnimationFrame(frame); else ticking = false;
     };
     requestAnimationFrame(frame);
   };
   const act = (f) => { const r = f(); present(); animate(); return r; };
 
-  sim.init({ device: vp.device, width: vp.width, height: vp.height, scale: fit(), dark, dynamicType: q.get("dynamicType") ?? "large" });
+  if (rn) {
+    sim.initRn({ device: vp.device, width: vp.width, height: vp.height, scale: fit(), dark, android });
+    const ios = q.get("ios") ?? "27.2";
+    if (!android) sim.wasm.simcore_web_set_ios(ios.startsWith("26") ? 0 : 1);
+    const { startGuest } = await import("./expo/guest.js");
+    const env = {
+      SIMCORE_PLATFORM: android ? "android" : "ios", SIMCORE_DEVICE: vp.device, SIMCORE_OS_VERSION: android ? "17" : ios,
+      SIMCORE_VIEWPORT: `${vp.width}x${vp.height}`, SIMCORE_SCALE: String(vp.dev.scale), SIMCORE_APPEARANCE: dark ? "dark" : "light",
+      SIMCORE_INSETS: `${vp.dev.safeTop},${vp.dev.safeBottom}`, SIMCORE_DYNAMIC_TYPE: q.get("dynamicType") ?? "large",
+      ...(q.has("metro") ? { SIMCORE_METRO_URL: q.get("metro") } : { SIMCORE_BUNDLE_URL: q.get("bundle"), SIMCORE_HMR: "0" }),
+    };
+    const guest = startGuest({
+      workerUrl: new URL("guest/browser-worker.js", location.href),
+      env,
+      onMessage(m) {
+        if (m.type === "hello" || m.type === "tree" || m.type === "focus_request" || m.type === "scroll_to") {
+          if (m.type === "tree") trees++;
+          try { if (sim.receive(m)) shown = true; } catch (e) { console.warn("onesim:", e.message); }
+          present();
+        } else if (m.type === "error") console.error("guest:", m.message);
+        else if (m.type === "event") console.debug("guest event", m.name, m.detail);
+      },
+      onFile(path, bytes) { if (sim.putImage(path, bytes)) present(); },
+    });
+    flush = () => { for (const m of sim.outbox()) guest.post(m); };
+    window.onesimGuest = guest;
+  } else {
+    sim.init({ device: vp.device, width: vp.width, height: vp.height, scale: fit(), dark, dynamicType: q.get("dynamicType") ?? "large" });
+  }
   present();
   let resizing = 0;
   addEventListener("resize", () => {
@@ -120,6 +155,7 @@ async function main() {
   // Debug/test hooks.
   window.onesim = window.simcore = {
     ready: true,
+    get trees() { return trees; },
     lastTreeText: () => sim.lastTreeText(),
     inspect: () => sim.inspect(),
     setViewport: (w, h) => act(() => {
@@ -137,6 +173,7 @@ async function main() {
     key: (name) => act(() => sim.key(name)),
     click: (label) => act(() => sim.clickLabel(label)),
     find: (label) => sim.find(label),
+    present,
     sim,
   };
   // Which backend is showing and why: mode "gpu" | "cpu", `reason` = why it is CPU when WebGPU was not used.

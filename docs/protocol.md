@@ -68,7 +68,8 @@ then `dup2(2, 1)`, so app `print()` output goes to stderr and never corrupts the
 wire. Host reads guest stderr into the session's log/errors.
 
 Guest → host:
-- `{"type":"hello","protocol":1}`
+- `{"type":"hello","protocol":1}` — React Native: sent again each time the guest restarts (reload); the host then
+  resends every `layout` frame and forgets the touch in progress
 - `{"type":"tree","version":<u64>,"root":<ViewNode>}`
 - `{"type":"error","message":"..."}`
 
@@ -357,6 +358,8 @@ It loads the app bundle from Metro and runs React Native's own Fabric renderer; 
 `SIMCORE_METRO_URL`, `SIMCORE_PLATFORM` (`ios` or `android`), `SIMCORE_VIEWPORT`, `SIMCORE_APPEARANCE`,
 `SIMCORE_SESSION_ID`, `SIMCORE_SCALE`, and `SIMCORE_INSETS=top,bottom` (profile insets used on Android).
 Optional: `SIMCORE_HMR=1` (connect Metro `/hot`), `SIMCORE_DEBUG=1`.
+`SIMCORE_BUNDLE_URL` loads that prebuilt bundle instead (`npx expo export --platform <p> --no-bytecode --no-minify`,
+the `_expo/static/js/<p>/*.js` file): no manifest, no HMR.
 The guest loads `launchAsset.url` from the Expo manifest at `GET <metro>/` with `expo-platform` set
 to the session platform. Plain Metro uses `/index.bundle?platform=<platform>&dev=true&minify=false`.
 

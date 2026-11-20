@@ -14,7 +14,8 @@ use base64::Engine;
 use serde::Serialize;
 use serde_json::{json, Value};
 use onesim_protocol::*;
-use onesim_render::{build_scene, Fonts, Role, Scene, SceneParams};
+use onesim_render::rn_input::RnCtx;
+use onesim_render::{build_scene, Fonts, Scene, SceneParams};
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::time::{Duration, Instant};
@@ -50,10 +51,6 @@ pub struct Host {
     fonts: Option<Fonts>,
     renderer: renderer::RendererSlot,
     greeted: bool,
-}
-
-fn rn_touch_message(phase: TouchPhase, n: &onesim_render::Node, x: f64, y: f64, timestamp: f64) -> HostMessage {
-    HostMessage::Touch { phase, tag: n.tag.unwrap_or(0), x, y, lx: x - n.bounds.x, ly: y - n.bounds.y, timestamp }
 }
 
 impl Default for Host {
@@ -257,35 +254,17 @@ impl Host {
     /// Returns whether the interaction state changed (the scene must be rebuilt).
     fn rn_apply_requests(&mut self, id: &str, scene: &Scene) -> bool {
         let Some(s) = self.sessions.get_mut(id) else { return false };
-        let before = s.inter.focus.clone();
-        let field = |tag: &str| scene.nodes.iter().find(|n| n.id == tag && n.field.is_some());
-        if before.as_deref().is_some_and(|f| field(f).is_none()) {
-            s.inter.focus = None;
-        }
-        let mut changed = s.inter.focus != before;
-        for r in s.take_requests() {
-            match r {
-                GuestMessage::FocusRequest { tag } => {
-                    let new = tag.map(|t| t.to_string()).and_then(|t| field(&t).map(|n| (t, n.value.clone().unwrap_or_default())));
-                    let old = s.inter.focus.clone();
-                    if old.as_ref() != new.as_ref().map(|n| &n.0) {
-                        s.inter.shift = new.as_ref().is_some_and(|n| onesim_render::autocap(&n.1));
-                        s.inter.focus = new.map(|n| n.0);
-                        let _ = s.sync_focus(old);
-                    }
-                }
-                GuestMessage::ScrollTo { tag, x, y } => {
-                    let Some(n) = scene.nodes.iter().find(|n| n.id == tag.to_string() && n.scroll.is_some()) else { continue };
-                    let max = n.scroll.map_or((0.0, 0.0), |i| i.max);
-                    let off = (x.resolve(max.0).clamp(0.0, max.0), y.resolve(max.1).clamp(0.0, max.1));
-                    s.inter.scroll.insert(n.id.clone(), off);
-                    let _ = s.send_scroll(n, ScrollPhase::End, off);
-                }
-                _ => {}
-            }
-            changed = true;
-        }
+        let Some((_, root)) = s.tree() else { return false };
+        let cx = RnCtx { scene, root: &root, keyboard: s.keyboard_height() };
+        let requests = s.take_requests();
+        let (changed, out) = s.rn.apply_requests(&mut s.inter, &cx, requests);
+        let _ = s.send_out(out);
         changed
+    }
+
+    /// The tree a React Native input is interpreted against (`RnCtx::root`).
+    fn rn_root(s: &Session) -> Result<ViewNode, ApiError> {
+        s.tree().map(|t| t.1).ok_or_else(|| err(ErrorCode::InvalidState, "no tree"))
     }
 
     fn build(&mut self, id: &str) -> Result<(Scene, u64, f64), ApiError> {
@@ -335,138 +314,16 @@ impl Host {
         Ok(out)
     }
 
-    /// React Native pointer input: scrolls become `scroll` events, the software keyboard is the
-    /// interaction state machine's, everything else is a touch (and a tap on a text input focuses it).
+    /// React Native pointer input (`onesim_render::rn_input`), then settle and push the new layout.
     fn rn_pointer(&mut self, id: &str, scene: &Scene, version: u64, ev: PointerEvent) -> Result<(Option<String>, bool), ApiError> {
         let s = self.get(id)?;
         s.inter.version = version;
-        if ev.kind == PointerKind::Scroll {
-            let effect = s.inter.pointer(scene, ev);
-            let out = (s.inter.hit.clone(), false);
-            if effect == onesim_render::Effect::Redraw {
-                let n = scene.nodes.iter().find(|n| Some(&n.id) == out.0.as_ref());
-                let new = out.0.as_ref().and_then(|h| s.inter.scroll.get(h)).copied();
-                if let (Some(n), Some(new)) = (n, new) {
-                    let old = n.scroll.map_or(new, |i| i.offset);
-                    s.send_scroll(n, ScrollPhase::Begin, old)?;
-                    s.send_scroll(n, ScrollPhase::Scroll, new)?;
-                    s.send_scroll(n, ScrollPhase::End, new)?;
-                }
-            } else if let Some(n) = scene.nodes.iter().find(|n| Some(&n.id) == out.0.as_ref()) {
-                // Pulled down past the top: iOS reports the rubber-band overscroll as a negative offset (a RefreshControl
-                // fires on it); the content springs back to 0 on release.
-                // ponytail: no rubber-band drawing, the overscroll is only reported.
-                if n.scroll.is_some_and(|i| i.vertical && i.offset.1 <= 0.0) && ev.dy < 0.0 {
-                    s.send_scroll(n, ScrollPhase::Begin, (0.0, 0.0))?;
-                    s.send_scroll(n, ScrollPhase::Scroll, (0.0, ev.dy))?;
-                    s.send_scroll(n, ScrollPhase::End, (0.0, 0.0))?;
-                }
-            }
-            self.scene(id)?; // settle: FlatList renders the rows the scroll revealed
-            return Ok(out);
-        }
-        let on_keyboard = scene.nodes.iter().any(|n| n.kind == "keyboard" && n.bounds.contains(ev.x, ev.y));
-        let hit = scene.hit_test(ev.x, ev.y).map(|i| &scene.nodes[i]);
-        // Native chrome: a stack header's back pill (`<stack>#back`) and tab bar items (`<tabs>#tab-<key>`).
-        if let Some(n) = hit {
-            let (tag, key) = n.id.split_once('#').map_or((n.id.as_str(), ""), |(t, k)| (t, k));
-            let msg = match (tag.parse::<u64>(), key) {
-                (Ok(tag), "back") => Some(HostMessage::NativeBack { tag }),
-                (Ok(tag), k) if k.starts_with("tab-") && !k.contains('#') => Some(HostMessage::SelectTab { tag, key: k[4..].to_string() }),
-                _ => None,
-            };
-            if let Some(msg) = msg {
-                let out = (Some(n.id.clone()), ev.kind != PointerKind::Down);
-                if ev.kind != PointerKind::Down {
-                    s.send_and_settle(&msg)?;
-                    let _ = self.scene(id);
-                }
-                return Ok(out);
-            }
-        }
-        // Native actions and sliders hosted inside React Native use the same interaction as standalone views.
-        let hosted_scroll = ev.kind == PointerKind::Drag
-            && scene.scroll_target(ev.x, ev.y).is_some_and(|i| scene.nodes[i].tag.is_none());
-        if hosted_scroll || hit.is_some_and(|n| n.action.is_some() || n.role == Role::Slider) {
-            let focus = s.inter.focus.clone();
-            let effect = s.inter.pointer(scene, ev);
-            s.inter.focus = focus;
-            let out = (s.inter.hit.clone(), s.inter.acted);
-            s.send_effect(effect)?;
-            self.scene(id)?;
-            return Ok(out);
-        }
-        if on_keyboard {
-            let before = s.inter.focus.clone();
-            let returned = ev.kind != PointerKind::Down
-                && hit.is_some_and(|n| n.role == Role::Key && n.label.as_deref() == Some("return"));
-            let effect = s.inter.pointer(scene, ev);
-            let out = (s.inter.hit.clone(), s.inter.acted);
-            s.send_effect(effect)?;
-            match before {
-                Some(b) if returned => s.submit(&b)?,
-                b => s.sync_focus(b)?,
-            }
-            self.scene(id)?;
-            return Ok(out);
-        }
-        self.rn_touch(id, scene, ev)
-    }
-
-    /// React Native touches: down = `start` on the deepest tag, up = `end` on the same tag, click = both,
-    /// drag = `start`, `move`s along (dx, dy) (one per 16 ms of timestamps), `end`, all on the start's target.
-    /// After `end` wait for the next tree, but a tap that changes nothing is fine.
-    fn rn_touch(&mut self, id: &str, scene: &Scene, ev: PointerEvent) -> Result<(Option<String>, bool), ApiError> {
-        let s = self.get(id)?;
-        let hit = scene.hit_test(ev.x, ev.y).map(|i| &scene.nodes[i]);
-        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64() * 1000.0);
-        let touch = |phase, n: &onesim_render::Node| rn_touch_message(phase, n, ev.x, ev.y, now);
-        let mut target = hit;
-        match ev.kind {
-            PointerKind::Drag => {
-                if let Some(n) = hit.filter(|n| n.tag.is_some()) {
-                    const STEPS: u32 = 8;
-                    s.send(&touch(TouchPhase::Start, n))?;
-                    for i in 1..=STEPS {
-                        let f = f64::from(i) / f64::from(STEPS);
-                        s.send(&rn_touch_message(TouchPhase::Move, n, ev.x + ev.dx * f, ev.y + ev.dy * f, now + 16.0 * f64::from(i)))?;
-                    }
-                    let end = now + 16.0 * f64::from(STEPS + 1);
-                    s.send_and_settle(&rn_touch_message(TouchPhase::End, n, ev.x + ev.dx, ev.y + ev.dy, end))?;
-                }
-            }
-            PointerKind::Down => {
-                s.touch = hit.and_then(|n| n.tag);
-                if let Some(n) = hit.filter(|n| n.tag.is_some()) {
-                    s.send(&touch(TouchPhase::Start, n))?;
-                }
-            }
-            PointerKind::Up => {
-                target = s.touch.take().and_then(|t| scene.nodes.iter().find(|n| n.tag == Some(t))).or(hit);
-                if let Some(n) = target.filter(|n| n.tag.is_some()) {
-                    s.send_and_settle(&touch(TouchPhase::End, n))?;
-                }
-            }
-            _ => {
-                if let Some(n) = hit.filter(|n| n.tag.is_some()) {
-                    s.send(&touch(TouchPhase::Start, n))?;
-                    s.send_and_settle(&touch(TouchPhase::End, n))?;
-                }
-            }
-        }
-        // A tap on a text input focuses it (RN never blurs on a tap elsewhere; `Keyboard.dismiss` does).
-        let s = self.get(id)?;
-        if let Some(field) = hit.filter(|n| ev.kind != PointerKind::Down && n.field.is_some()) {
-            let before = s.inter.focus.clone();
-            if before.as_deref() != Some(field.id.as_str()) {
-                s.inter.shift = field.value.as_deref().is_some_and(onesim_render::autocap);
-                s.inter.focus = Some(field.id.clone());
-                s.sync_focus(before)?;
-            }
-        }
-        let out = (target.map(|n| n.id.clone()), ev.kind != PointerKind::Down && target.is_some());
-        let _ = self.scene(id); // settle and push the new layout
-        Ok(out)
+        let root = Self::rn_root(s)?;
+        let cx = RnCtx { scene, root: &root, keyboard: s.keyboard_height() };
+        let (hit, acted, out) = s.rn.pointer(&mut s.inter, &cx, ev);
+        s.send_out(out)?;
+        let _ = self.scene(id);
+        Ok((hit, acted))
     }
 
     /// Live viewers (native window): lay out the current tree and hand the scene, the shared fonts and the tree
@@ -497,30 +354,16 @@ impl Host {
     /// with its release velocity (see [`Host::tick`]); sheets follow too. Returns whether the scene changed.
     /// React Native receives each phase on the same Fabric target and supplies its own gesture behavior.
     pub fn drag(&mut self, id: &str, phase: onesim_render::DragPhase, x: f64, y: f64, t_ms: f64) -> Result<bool, ApiError> {
-        use onesim_render::DragPhase;
         self.get(id)?.require_running()?;
         let (scene, version, _) = self.scene(id)?;
         let s = self.get(id)?;
-        let native_drag = if phase == DragPhase::Begin {
-            scene.hit_test(x, y).is_some_and(|i| scene.nodes[i].role == Role::Slider)
-                || scene.scroll_target(x, y).is_some_and(|i| scene.nodes[i].tag.is_none())
-        } else {
-            s.inter.has_drag_target()
-        };
-        if s.is_rn() && !native_drag {
-            let (phase, tag) = match phase {
-                DragPhase::Begin => {
-                    s.touch = scene.hit_test(x, y).and_then(|i| scene.nodes[i].tag);
-                    (TouchPhase::Start, s.touch)
-                }
-                DragPhase::Move => (TouchPhase::Move, s.touch),
-                DragPhase::End => (TouchPhase::End, s.touch.take()),
-            };
-            if let Some(n) = tag.and_then(|tag| scene.nodes.iter().find(|n| n.tag == Some(tag))) {
-                s.send(&rn_touch_message(phase, n, x, y, t_ms))?;
+        // React Native receives each phase on the touched Fabric view; later trees arrive through render.updated,
+        // so the live caller never waits for a commit.
+        if s.is_rn() {
+            if let Some(out) = s.rn.drag(&s.inter, &scene, phase, x, y, t_ms) {
+                s.send_out(out)?;
+                return Ok(false);
             }
-            // Later trees arrive through render.updated, so the live caller never waits for a commit.
-            return Ok(false);
         }
         s.inter.version = version;
         let effect = s.inter.drag(&scene, phase, x, y, t_ms);
@@ -541,21 +384,16 @@ impl Host {
         let (scene, version, _) = self.scene(id)?;
         let s = self.get(id)?;
         s.inter.version = version;
-        let before = s.inter.focus.clone();
-        let effect = s.inter.keyboard(&scene, ev).map_err(|m| err(ErrorCode::InvalidState, m))?;
-        if let (true, onesim_render::Effect::TextInput { text, .. }) = (s.is_rn(), &effect) {
-            s.inter.shift = onesim_render::autocap(text); // typed text drops (or raises) shift like the real keyboard
-        }
-        s.send_effect(effect)?;
         if s.is_rn() {
-            // `enter` dropped the focus: that is a return press. The field decides whether to blur.
-            match before {
-                Some(b) if s.inter.focus.is_none() => s.submit(&b)?,
-                b => s.sync_focus(b)?,
-            }
+            let root = Self::rn_root(s)?;
+            let cx = RnCtx { scene: &scene, root: &root, keyboard: s.keyboard_height() };
+            let out = s.rn.keyboard(&mut s.inter, &cx, ev).map_err(|m| err(ErrorCode::InvalidState, m))?;
+            s.send_out(out)?;
             self.scene(id)?;
+            return Ok(());
         }
-        Ok(())
+        let effect = s.inter.keyboard(&scene, ev).map_err(|m| err(ErrorCode::InvalidState, m))?;
+        s.send_effect(effect)
     }
 
     /// PNG bytes plus pixel size.

@@ -2,12 +2,13 @@
 
 # OneSim in the browser
 
-Run SwiftUI or Jetpack Compose apps in a browser tab from a static file server alone — no native host process, no JVM, and no frame streaming.
+Run SwiftUI, Jetpack Compose, or Expo / React Native apps in a browser tab from a static file server alone — no native host process, no JVM, and no frame streaming.
 
 - **SwiftUI**: the app, OneSim's SwiftUI module, and the Rust CPU renderer compile into one WebAssembly module (`app.wasm`).
 - **Jetpack Compose**: the app, OneSim's Compose UI layer, and the real AndroidX Compose runtime compile to Kotlin/Wasm (`guest/guest.wasm` + `guest/guest.mjs`), connected over JS glue to the standalone `onesim-web` renderer (`app.wasm`).
+- **Expo / React Native**: the tab's own JavaScript engine runs the app in a Web Worker and the same standalone renderer draws it ([below](#expo-and-react-native)).
 
-Both paths share the same page, interaction state machine, and optional WebGPU presenter (`gpu/onesim_web_gpu*.{js,wasm}`). The preview responds to taps, drag and wheel scrolling, sliders, and text input from the on-screen or physical keyboard.
+All paths share the same page, interaction state machine, and optional WebGPU presenter (`gpu/onesim_web_gpu*.{js,wasm}`). The preview responds to taps, drag and wheel scrolling, sliders, and text input from the on-screen or physical keyboard.
 
 ## Install the toolchain
 
@@ -69,6 +70,35 @@ The canvas preserves its aspect ratio and redraws when the window resizes.
 
 Call `window.onesim.setViewport(w, h)` or `window.onesim.setAppearance('dark'|'light')` to update the layout and Swift environment. To drive the app, call `click(label)`, `type(text)`, `key('backspace'|'enter')`, or `scroll(x,y,dx,dy)` on the same object. Read the UI tree with `inspect()` or `lastTreeText()`.
 
+## Expo and React Native
+
+The app's JavaScript runs in a Web Worker (`frameworks/react-native/guest/browser-worker.js`: the same guest as
+`onesim expo`, with small stand-ins for the Node built-ins it uses). The page (`web/expo/guest.js`) does the worker's
+HTTP and WebSockets, and `app.wasm` is the Rust renderer alone: it lays out and draws the guest's trees and turns input
+into the guest's touch, scroll, focus and text messages (`onesim_render::rn_input`, shared with the native host).
+No Swift toolchain is needed.
+
+```sh
+scripts/build-web.sh --expo                                    # -> target/web-expo/
+(cd examples/expo-showcase && npm ci && npx expo start --port 8081)
+node web/expo/serve.mjs --metro http://localhost:8081          # static site + same-origin Metro proxy, port 8000
+```
+
+Open [http://localhost:8000/?metro=/metro](http://localhost:8000/?metro=/metro). Metro sends no CORS headers, so the
+bundle comes through the proxy (`/metro/*`, plus Metro's own `/*.bundle`, `/assets/*` and the `/hot` WebSocket).
+Saving a file in the example applies through Fast Refresh, as with `onesim expo --url`. A reload of the app
+(`window.onesimGuest.post({type: "reload"})`) starts a new Worker.
+
+| Query parameter | Effect |
+| --- | --- |
+| `?metro=<url>` | Load the app from Metro (relative URLs resolve against the page). |
+| `?bundle=<url>` | Load a prebuilt bundle instead: no Metro, no live updates. Make it with `npx expo export --platform ios --no-bytecode --no-minify` and serve `dist/` (its `assets/` at the site root); the URL is the `_expo/static/js/ios/*.js` file. |
+| `?platform=android` | Android look, device and `Platform.OS` (the bundle must be for the same platform). |
+| `?ios=26.5\|27.2` | Simulated iOS release (default 27.2). |
+
+The viewport, `?dark`, `?renderer` and `?diag` parameters work as for SwiftUI. Files the app writes live in memory
+for the page's lifetime (they survive app reloads, not page reloads).
+
 ## GPU rendering
 
 Two Wasm modules. `app.wasm` (wasm32-wasip1: Swift + layout + fonts + CPU raster) stays the runtime. With
@@ -112,6 +142,12 @@ version, and an incompatible pair triggers CPU fallback.
   from the scratch buffer; only while a field is focused), `set_viewport`, `set_dark`, `set_ios` (0 = 26.5, 1 = 27.2),
   `set_dynamic_type` (index into the 12 Dynamic Type sizes), `set_scale`, `focused`,
   `inspect`, `find`, and `fb_ptr/len/width/height`. The browser page and Node harness share the `web/onesim.js` driver.
+- **React Native exports.** `simcore_web_rn_init(w,h,scale,dark,android)` replaces `init`;
+  `simcore_web_rn_receive(len)` takes a guest message (JSON, protocol section H) and draws a `tree`;
+  `simcore_web_rn_outbox()` hands the page the host messages to post to the guest (touches, scrolls, `layout`,
+  focus, keyboard, environment); `simcore_web_put_image(len)` supplies an image file the guest wrote (path, NUL,
+  bytes). The same pointer/drag/key exports drive both modes. The React Native build is the same standalone
+  `cdylib` (`js-guest` feature) as Compose's; React Native mode never calls its `onesim_guest` imports.
 - **Input (main.js).** Pointer events map CSS px to points; moving more than 8 px turns a press into a
   touch drag (`Interaction::drag`: rubber band past the edges, then UIScrollView momentum and a critically
   damped bounce after lifting; a touch on moving content stops it). A `requestAnimationFrame` loop calls
@@ -137,6 +173,8 @@ node web/test/presenter.mjs --app                      # check the built SwiftUI
 node web/test/presenter.mjs --compose                  # check the built Compose app on CPU and WebGPU
 scripts/compare-web.sh                                # compare each SwiftUI showcase state with native fallback, each < 2%
 scripts/compare-web-compose.sh                        # compare each Compose state with native Compose, each < 2%
+node web/test/expo.mjs --metro http://localhost:8081 --click Controls --expect "Count: 0"   # Expo build, headless Chrome
+scripts/compare-web-expo.sh                           # Expo showcase states, browser vs native fallback, each < 2%
 ```
 The `web` CI job installs Swift 6.4.2, its Wasm SDK, Java 17, and wasm-bindgen-cli 0.2.130. It builds both SwiftUI and Compose examples,
 tests the Chrome presenter on both, and compares screenshots. CPU fallback is tested even when the runner has no WebGPU adapter.
@@ -144,4 +182,8 @@ tests the Chrome presenter on both, and compares screenshots. CPU fallback is te
 ## Gaps
 
 Device profiles come from `DEVICES` (`crates/onesim-render/src/device.rs`, shared with the native host); other sizes via `?width=&height=`. The software keyboard has no
-number/emoji layers (as native). No IME/composition input and no multi-touch. `wasm-opt` flags assume binaryen 133+.
+number/emoji layers (as native). No IME/composition input and no multi-touch.
+Expo in the browser: only `crypto.createHash('sha1')` is available to the guest (md5/sha256 digests throw), `statfs`
+is missing, Reanimated worklets share the Worker's realm, and `fetch` cannot read `set-cookie` or manual redirects. A touch
+drag on a React Native `ScrollView`/`FlatList` does not scroll it (as in `onesim expo`; the wheel does). Tested in
+Chrome; Safari is untested. `wasm-opt` flags assume binaryen 133+.
