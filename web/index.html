@@ -4,18 +4,472 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>OneSim Web</title>
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  let theme = q.has("dark") ? (q.get("dark") !== "0" ? "dark" : "light") : null;
+  if (!theme) { try { const s = localStorage.getItem("onesim.theme"); if (s === "dark" || s === "light") theme = s; } catch {} }
+  if (!theme) theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  document.documentElement.dataset.theme = theme;
+})();
+</script>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #1c1c1e; }
-  body { display: flex; align-items: center; justify-content: center; }
-  /* main.js sizes the canvas to fit the window (aspect ratio kept, render resolution = CSS px x devicePixelRatio). */
+  :root {
+    --bg: #eef0f4;
+    --bg-spot: #ffffff;
+    --dot: rgba(15, 23, 42, 0.05);
+    --surface: rgba(255, 255, 255, 0.78);
+    --surface-hover: rgba(255, 255, 255, 0.96);
+    --border: rgba(15, 23, 42, 0.09);
+    --border-strong: rgba(15, 23, 42, 0.16);
+    --ink: #111318;
+    --ink-sub: #5b6270;
+    --ink-muted: #868e9c;
+    --accent: #0066ff;
+    --ios: #0071e3;
+    --android: #10b981;
+    --expo: #7c3aed;
+    --gpu: #10b981;
+    --cpu: #f59e0b;
+    --shadow-pill: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -8px rgba(15, 23, 42, 0.12);
+    --shadow-device:
+      0 calc(2px * var(--s)) calc(4px * var(--s)) rgba(15, 23, 42, 0.16),
+      0 calc(16px * var(--s)) calc(36px * var(--s)) calc(-8px * var(--s)) rgba(15, 23, 42, 0.22),
+      0 calc(42px * var(--s)) calc(90px * var(--s)) calc(-18px * var(--s)) rgba(15, 23, 42, 0.26);
+    --frame-metal: #8a8a92;
+    --frame-rim: #3a3a40;
+    --frame-btn: #6f6f77;
+    --frame-android-metal: #525258;
+    --frame-android-rim: #26262a;
+    --frame-android-btn: #46464c;
+    color-scheme: light;
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #08090c;
+    --bg-spot: #1b2130;
+    --dot: rgba(255, 255, 255, 0.045);
+    --surface: rgba(22, 24, 31, 0.8);
+    --surface-hover: rgba(34, 37, 48, 0.94);
+    --border: rgba(255, 255, 255, 0.1);
+    --border-strong: rgba(255, 255, 255, 0.2);
+    --ink: #f3f4f6;
+    --ink-sub: #9ba3b2;
+    --ink-muted: #687080;
+    --accent: #3b82f6;
+    --ios: #3b82f6;
+    --android: #34d399;
+    --expo: #a78bfa;
+    --gpu: #34d399;
+    --cpu: #fbbf24;
+    --shadow-pill: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 10px 28px -8px rgba(0, 0, 0, 0.65);
+    --shadow-device:
+      0 0 0 calc(5px * var(--s)) rgba(255, 255, 255, 0.06),
+      0 calc(2px * var(--s)) calc(8px * var(--s)) rgba(0, 0, 0, 0.6),
+      0 calc(24px * var(--s)) calc(52px * var(--s)) calc(-8px * var(--s)) rgba(0, 0, 0, 0.75),
+      0 calc(52px * var(--s)) calc(120px * var(--s)) calc(-12px * var(--s)) rgba(0, 0, 0, 0.88);
+    --frame-metal: #767884;
+    --frame-rim: #353740;
+    --frame-btn: #686a76;
+    --frame-android-metal: #5c5e68;
+    --frame-android-rim: #2c2e36;
+    --frame-android-btn: #52545e;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 44px;
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+    color: var(--ink);
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(circle at 1px 1px, var(--dot) 1px, transparent 0),
+      radial-gradient(ellipse 68% 58% at 50% 42%, var(--bg-spot), transparent 74%);
+    background-size: 24px 24px, 100% 100%;
+    -webkit-font-smoothing: antialiased;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  /* Floating studio topbar */
+  #topbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 20;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 20px;
+    pointer-events: none;
+  }
+  .bar-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    pointer-events: auto;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 36px;
+    padding: 0 13px;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-pill);
+    backdrop-filter: blur(18px) saturate(180%);
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease, color 0.15s ease;
+  }
+  a.pill:hover, a.pill:focus-visible {
+    background: var(--surface-hover);
+    border-color: var(--border-strong);
+    outline: none;
+  }
+  .back-pill svg {
+    width: 14px;
+    height: 14px;
+    color: var(--ink-sub);
+    transition: transform 0.15s ease, color 0.15s ease;
+  }
+  .back-pill:hover svg { transform: translateX(-2px); color: var(--ink); }
+
+  .meta-pill {
+    gap: 8px;
+    padding: 0 14px;
+    max-width: 280px;
+    overflow: hidden;
+  }
+  .meta-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex: none;
+    background: var(--ios);
+  }
+  body[data-platform="android"] .meta-dot { background: var(--android); }
+  body[data-framework="expo"] .meta-dot { background: var(--expo); }
+  .meta-name {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .meta-fw {
+    color: var(--ink-sub);
+    font-size: 12px;
+    font-weight: 500;
+    padding-left: 8px;
+    border-left: 1px solid var(--border);
+  }
+
+  /* Unified right control pill */
+  .toolbar {
+    padding: 3px;
+    gap: 2px;
+  }
+  .ctrl-btn {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--ink-sub);
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .ctrl-btn:hover, .ctrl-btn:focus-visible {
+    background: rgba(127, 127, 127, 0.14);
+    color: var(--ink);
+    outline: none;
+  }
+  .ctrl-btn.icon-only {
+    width: 28px;
+    padding: 0;
+    justify-content: center;
+  }
+  .ctrl-btn svg { width: 14px; height: 14px; flex: none; }
+  .sep {
+    width: 1px;
+    height: 16px;
+    background: var(--border);
+    margin: 0 2px;
+    flex: none;
+  }
+  .device-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 999px;
+    color: var(--ink);
+    font-size: 12.5px;
+    font-weight: 500;
+    transition: background 0.15s ease;
+  }
+  .device-wrap.interactive:hover,
+  .device-wrap.interactive:has(:focus-visible) { background: rgba(127, 127, 127, 0.14); }
+  .device-wrap svg.dev-ico { width: 13px; height: 13px; color: var(--ink-sub); flex: none; }
+  .device-wrap svg.chev { width: 12px; height: 12px; color: var(--ink-muted); flex: none; pointer-events: none; margin-left: -1px; display: none; }
+  .device-wrap.interactive svg.chev { display: block; }
+  #device-select {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+    font: inherit;
+  }
+  #device-select option { background: var(--bg); color: var(--ink); }
+  #device-label { color: var(--ink); pointer-events: none; }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--ink-muted);
+    flex: none;
+  }
+  .status-dot[data-mode="gpu"] {
+    background: var(--gpu);
+    box-shadow: 0 0 0 2.5px rgba(16, 185, 129, 0.22);
+  }
+  .status-dot[data-mode="cpu"] {
+    background: var(--cpu);
+    box-shadow: 0 0 0 2.5px rgba(245, 158, 11, 0.22);
+  }
+  #renderer-btn[aria-pressed="true"] {
+    background: rgba(127, 127, 127, 0.16);
+    color: var(--ink);
+  }
+
+  /* Icon swap for light/dark toggle */
+  :root[data-theme="dark"] .ico-moon { display: none; }
+  :root:not([data-theme="dark"]) .ico-sun { display: none; }
+
+  /* main.js sizes the canvas to fit the window (aspect ratio kept, render resolution = CSS px x devicePixelRatio)
+     and sets --s (CSS px per point) so the phone frame scales with it. */
   #stage, canvas { touch-action: none; cursor: pointer; user-select: none; -webkit-user-select: none; }
-  #stage { display: block; line-height: 0; }
-  #diag { color: #8e8e93; font: 11px monospace; position: fixed; left: 6px; bottom: 4px; pointer-events: none; }
-  #err { color: #ff6961; font: 14px monospace; white-space: pre-wrap; padding: 1em; position: fixed; left: 0; top: 0; }
+
+  /* iPhone frame by default; main.js sets data-platform="android" for Compose (Pixel frame). */
+  #stage {
+    --s: 1;
+    --bezel: 13px;
+    --r: 68px;
+    --sr: 55px;
+    --edge: var(--frame-metal);
+    --rim: var(--frame-rim);
+    --btn: var(--frame-btn);
+    display: block;
+    line-height: 0;
+    position: relative;
+    padding: calc(var(--bezel) * var(--s));
+    border-radius: calc(var(--r) * var(--s));
+    background: linear-gradient(160deg, #17171a 0%, #09090b 35%, #050506 100%);
+    box-shadow:
+      inset 0 0 0 calc(1px * var(--s)) rgba(255, 255, 255, 0.13),
+      0 0 0 calc(1px * var(--s)) #141417,
+      0 0 0 calc(3.2px * var(--s)) var(--edge),
+      0 0 0 calc(4.2px * var(--s)) var(--rim),
+      var(--shadow-device);
+  }
+  #stage[data-classic="true"] {
+    --bezel: 14px;
+    --r: 42px;
+    --sr: 2px;
+    padding: calc(46px * var(--s)) calc(var(--bezel) * var(--s));
+  }
+  #stage[data-platform="android"] {
+    --bezel: 11px;
+    --r: 44px;
+    --sr: 34px;
+    --edge: var(--frame-android-metal);
+    --rim: var(--frame-android-rim);
+    --btn: var(--frame-android-btn);
+  }
+  #stage canvas {
+    display: block;
+    border-radius: calc(var(--sr) * var(--s));
+    box-shadow: 0 0 0 calc(0.5px * var(--s)) rgba(255, 255, 255, 0.08);
+  }
+  #stage::before, #stage::after {
+    content: "";
+    position: absolute;
+    width: calc(3.5px * var(--s));
+    background: var(--btn);
+  }
+  /* iPhone: action + two longer volume buttons on the left, side button on the right. */
+  #stage::before {
+    left: calc(-7.5px * var(--s));
+    top: calc(148px * var(--s));
+    height: calc(28px * var(--s));
+    border-radius: calc(2px * var(--s)) 0 0 calc(2px * var(--s));
+    box-shadow:
+      0 calc(54px * var(--s)) 0 0 var(--btn),
+      0 calc(76px * var(--s)) 0 0 var(--btn),
+      0 calc(118px * var(--s)) 0 0 var(--btn),
+      0 calc(140px * var(--s)) 0 0 var(--btn);
+  }
+  #stage::after {
+    right: calc(-7.5px * var(--s));
+    top: calc(218px * var(--s));
+    height: calc(94px * var(--s));
+    border-radius: 0 calc(2px * var(--s)) calc(2px * var(--s)) 0;
+  }
+  /* Pixel: power above the volume rocker, both on the right. */
+  #stage[data-platform="android"]::before {
+    left: auto;
+    right: calc(-7.5px * var(--s));
+    top: calc(268px * var(--s));
+    height: calc(92px * var(--s));
+    border-radius: 0 calc(2px * var(--s)) calc(2px * var(--s)) 0;
+    box-shadow: none;
+  }
+  #stage[data-platform="android"]::after {
+    top: calc(182px * var(--s));
+    height: calc(50px * var(--s));
+  }
+
+  /* Subtle boot loader inside the frame before first frame renders */
+  #loader {
+    position: absolute;
+    inset: calc(var(--bezel) * var(--s));
+    border-radius: calc(var(--sr) * var(--s));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: #0d0e12;
+    color: #9ba3b2;
+    font: 500 12px/1.3 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    letter-spacing: 0.01em;
+    pointer-events: none;
+  }
+  #loader[hidden] { display: none; }
+  .spinner {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.12);
+    border-top-color: rgba(255, 255, 255, 0.72);
+    animation: spin 0.75s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Diagnostics footer pill (hidden unless ?diag or clicked) */
+  #diag {
+    position: fixed;
+    left: 16px;
+    bottom: 14px;
+    z-index: 20;
+    padding: 6px 11px;
+    border-radius: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-pill);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    color: var(--ink-sub);
+    font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    pointer-events: none;
+    max-width: calc(100vw - 32px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #err {
+    position: fixed;
+    left: 20px;
+    bottom: 20px;
+    right: 20px;
+    z-index: 30;
+    color: #ef4444;
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre-wrap;
+    pointer-events: none;
+  }
+  #err:not(:empty) {
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    backdrop-filter: blur(12px);
+    pointer-events: auto;
+  }
+
+  @media (max-width: 640px) {
+    #topbar { padding: 10px 12px; }
+    .meta-pill { display: none; }
+    .pill { height: 34px; padding: 0 11px; font-size: 12.5px; }
+    .toolbar { padding: 2px; }
+    #renderer-text { display: none; }
+  }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
-<div id="stage"><canvas id="screen" width="402" height="874"></canvas></div>
+<header id="topbar">
+  <div class="bar-group">
+    <a id="back" class="pill back-pill" href="../" hidden>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3.5 5.5 8 10 12.5"/></svg>
+      <span>All builds</span>
+    </a>
+    <div id="app-meta" class="pill meta-pill" hidden>
+      <span class="meta-dot" aria-hidden="true"></span>
+      <span id="meta-name" class="meta-name"></span>
+      <span id="meta-fw" class="meta-fw"></span>
+    </div>
+  </div>
+  <div class="bar-group">
+    <div class="pill toolbar" role="toolbar" aria-label="Simulator controls">
+      <div id="device-wrap" class="device-wrap" hidden>
+        <svg class="dev-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="4" y="1.5" width="8" height="13" rx="2"/><path d="M7 12.5h2" stroke-linecap="round"/></svg>
+        <select id="device-select" aria-label="Simulated device" hidden></select>
+        <span id="device-label" hidden></span>
+        <svg id="device-chev" class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5"/></svg>
+      </div>
+      <span id="device-sep" class="sep" hidden></span>
+      <button id="theme-btn" class="ctrl-btn icon-only" type="button" title="Toggle appearance" aria-label="Toggle appearance">
+        <svg class="ico-sun" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.4M8 13.1v1.4M1.5 8h1.4M13.1 8h1.4M3.4 3.4l1 1M11.6 11.6l1 1M12.6 3.4l-1 1M4.4 11.6l-1 1"/></svg>
+        <svg class="ico-moon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.2 9.8A5.5 5.5 0 0 1 6.2 2.8a5.5 5.5 0 1 0 7 7Z"/></svg>
+      </button>
+      <span class="sep"></span>
+      <button id="renderer-btn" class="ctrl-btn" type="button" title="Toggle renderer diagnostics" aria-pressed="false">
+        <span id="renderer-dot" class="status-dot" aria-hidden="true"></span>
+        <span id="renderer-text">Loading</span>
+      </button>
+    </div>
+  </div>
+</header>
+<div id="stage">
+  <canvas id="screen" width="402" height="874"></canvas>
+  <div id="loader" aria-hidden="true"><div class="spinner"></div><span>Starting simulator…</span></div>
+</div>
 <div id="diag" hidden></div>
 <div id="err"></div>
 <script type="module" src="main.js"></script>

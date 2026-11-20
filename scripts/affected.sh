@@ -56,6 +56,7 @@ web      scripts/build-web.sh
 web      scripts/compare-web.sh
 web      scripts/compare-web-expo.sh
 web      scripts/compare-web-compose.sh
+web      scripts/serve-web.sh
 none     docs/*
 none     *.md
 none     LICENSE
