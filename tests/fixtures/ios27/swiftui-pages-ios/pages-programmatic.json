@@ -1,0 +1,328 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "rect": {
+          "y": 0,
+          "height": 874,
+          "width": 402,
+          "x": 0
+        },
+        "enabled": true,
+        "index": 0,
+        "type": "Application",
+        "hittable": false,
+        "depth": 0,
+        "label": "PagesReference",
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "parentIndex": 0,
+        "rect": {
+          "y": 230.33333333333334,
+          "height": 20.333333333333343,
+          "width": 89.33333333333334,
+          "x": 156.33333333333334
+        },
+        "enabled": true,
+        "index": 1,
+        "type": "StaticText",
+        "hittable": true,
+        "depth": 1,
+        "label": "Page 2 of 3",
+        "ref": "e2",
+        "kind": "text"
+      },
+      {
+        "parentIndex": 0,
+        "rect": {
+          "y": 262.66666666666663,
+          "height": 360,
+          "width": 402,
+          "x": 0
+        },
+        "enabled": true,
+        "index": 2,
+        "type": "CollectionView",
+        "hittable": true,
+        "depth": 1,
+        "ref": "e3",
+        "kind": "collection"
+      },
+      {
+        "parentIndex": 2,
+        "rect": {
+          "y": 262.66666666666663,
+          "height": 360,
+          "width": 402,
+          "x": 0
+        },
+        "enabled": true,
+        "index": 3,
+        "type": "Cell",
+        "hittable": true,
+        "depth": 2,
+        "ref": "e4",
+        "kind": "cell"
+      },
+      {
+        "parentIndex": 3,
+        "rect": {
+          "y": 495.66666666666663,
+          "height": 33.66666666666663,
+          "width": 75.33333333333334,
+          "x": 163.33333333333334
+        },
+        "enabled": true,
+        "index": 4,
+        "type": "StaticText",
+        "hittable": true,
+        "depth": 3,
+        "label": "Forest",
+        "ref": "e5",
+        "kind": "text"
+      },
+      {
+        "parentIndex": 3,
+        "rect": {
+          "y": 545.3333333333333,
+          "height": 20.333333333333258,
+          "width": 35.66666666666666,
+          "x": 183.33333333333331
+        },
+        "enabled": true,
+        "index": 5,
+        "type": "Button",
+        "hittable": true,
+        "depth": 3,
+        "label": "Next",
+        "ref": "e6",
+        "kind": "button"
+      },
+      {
+        "parentIndex": 2,
+        "rect": {
+          "y": 262.66666666666663,
+          "height": 360,
+          "width": 30,
+          "x": 369
+        },
+        "enabled": true,
+        "index": 6,
+        "type": "Other",
+        "hittable": true,
+        "depth": 2,
+        "label": "Vertical scroll bar, 3 pages",
+        "value": "0%",
+        "ref": "e7",
+        "kind": "other"
+      },
+      {
+        "parentIndex": 2,
+        "rect": {
+          "y": 262.66666666666663,
+          "height": 360,
+          "width": 30,
+          "x": 369
+        },
+        "enabled": true,
+        "index": 7,
+        "type": "Other",
+        "hittable": true,
+        "depth": 2,
+        "label": "Vertical scroll bar, 3 pages",
+        "value": "0%",
+        "ref": "e8",
+        "kind": "other"
+      },
+      {
+        "parentIndex": 0,
+        "rect": {
+          "y": 585,
+          "height": 30.66666666666663,
+          "width": 402,
+          "x": 0
+        },
+        "enabled": true,
+        "index": 8,
+        "type": "Element(34)",
+        "hittable": true,
+        "depth": 1,
+        "value": "page 2 of 3",
+        "ref": "e9",
+        "kind": "element(34)"
+      },
+      {
+        "parentIndex": 0,
+        "rect": {
+          "y": 791,
+          "height": 83,
+          "width": 402,
+          "x": 0
+        },
+        "enabled": true,
+        "index": 9,
+        "type": "TabBar",
+        "hittable": true,
+        "depth": 1,
+        "label": "Tab Bar",
+        "ref": "e10",
+        "kind": "tab-bar"
+      },
+      {
+        "parentIndex": 9,
+        "enabled": true,
+        "rect": {
+          "x": 68,
+          "y": 795,
+          "width": 94,
+          "height": 54
+        },
+        "index": 10,
+        "type": "Button",
+        "hittable": true,
+        "depth": 2,
+        "label": "Pages",
+        "selected": true,
+        "ref": "e11",
+        "kind": "button"
+      },
+      {
+        "parentIndex": 10,
+        "identifier": "book.fill",
+        "rect": {
+          "x": 99,
+          "y": 802.3333333333334,
+          "width": 32.33333333333334,
+          "height": 25
+        },
+        "enabled": true,
+        "index": 11,
+        "type": "Image",
+        "hittable": true,
+        "depth": 3,
+        "label": "bookmark",
+        "ref": "e12",
+        "kind": "image"
+      },
+      {
+        "parentIndex": 9,
+        "rect": {
+          "x": 154,
+          "y": 795,
+          "width": 94,
+          "height": 54
+        },
+        "enabled": true,
+        "index": 12,
+        "type": "Button",
+        "hittable": true,
+        "depth": 2,
+        "label": "Inbox",
+        "value": "New",
+        "ref": "e13",
+        "kind": "button"
+      },
+      {
+        "parentIndex": 12,
+        "identifier": "tray.fill",
+        "rect": {
+          "x": 184.66666666666669,
+          "y": 803,
+          "width": 33,
+          "height": 23.66666666666663
+        },
+        "enabled": true,
+        "index": 13,
+        "type": "Image",
+        "hittable": true,
+        "depth": 3,
+        "label": "inbox",
+        "ref": "e14",
+        "kind": "image"
+      },
+      {
+        "parentIndex": 9,
+        "rect": {
+          "x": 240,
+          "y": 795,
+          "width": 94,
+          "height": 54
+        },
+        "enabled": true,
+        "index": 14,
+        "type": "Button",
+        "hittable": true,
+        "depth": 2,
+        "label": "Alerts",
+        "value": "12 items",
+        "ref": "e15",
+        "kind": "button"
+      },
+      {
+        "parentIndex": 14,
+        "identifier": "bell.fill",
+        "rect": {
+          "x": 274,
+          "y": 801,
+          "width": 26.333333333333314,
+          "height": 28
+        },
+        "enabled": true,
+        "index": 15,
+        "type": "Image",
+        "hittable": true,
+        "depth": 3,
+        "label": "notifications",
+        "ref": "e16",
+        "kind": "image"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.pages",
+    "appBundleId": "dev.simcore.pages",
+    "visibility": {
+      "partial": true,
+      "visibleNodeCount": 16,
+      "totalNodeCount": 16,
+      "reasons": [
+        "scroll-hidden-below"
+      ]
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "unknown",
+    "snapshotQuality": {
+      "state": "recovered",
+      "backend": "private-ax",
+      "reason": "XCTest-backed snapshot tiers were deferred after recent slow accessibility work on this screen",
+      "reasonCode": "deferred",
+      "timing": {
+        "acquisitionMs": 387.10498809814453,
+        "presentationMs": 4.5250654220581055
+      }
+    },
+    "warnings": [
+      "Detected an overly complex or slow accessibility tree. Fell back to the private-ax snapshot backend. It is OK to continue; use --json to inspect snapshotQuality.reason if you need recovery details.",
+      "Simulator AX snapshot unavailable (circuit-disabled); used XCTest for this app generation."
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 6,
+        "p50Ms": 417,
+        "p95Ms": 45397,
+        "maxMs": 45397,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 6
+        }
+      }
+    },
+    "refsGeneration": 643432
+  }
+}

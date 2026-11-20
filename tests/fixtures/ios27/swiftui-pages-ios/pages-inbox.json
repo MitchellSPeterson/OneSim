@@ -1,0 +1,209 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "height": 874,
+          "width": 402
+        },
+        "enabled": true,
+        "hittable": false,
+        "type": "Application",
+        "depth": 0,
+        "label": "PagesReference",
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "index": 1,
+        "value": "New",
+        "rect": {
+          "x": 161.33333333333334,
+          "y": 406.1666666666667,
+          "height": 40.666666666666686,
+          "width": 79.33333333333334
+        },
+        "enabled": true,
+        "type": "StaticText",
+        "hittable": true,
+        "depth": 1,
+        "label": "Inbox",
+        "parentIndex": 0,
+        "ref": "e2",
+        "kind": "text"
+      },
+      {
+        "index": 2,
+        "rect": {
+          "x": 0,
+          "y": 791,
+          "height": 83,
+          "width": 402
+        },
+        "enabled": true,
+        "hittable": true,
+        "type": "TabBar",
+        "depth": 1,
+        "label": "Tab Bar",
+        "parentIndex": 0,
+        "ref": "e3",
+        "kind": "tab-bar"
+      },
+      {
+        "index": 3,
+        "rect": {
+          "x": 68,
+          "y": 795,
+          "height": 54,
+          "width": 94
+        },
+        "enabled": true,
+        "hittable": true,
+        "type": "Button",
+        "depth": 2,
+        "label": "Pages",
+        "parentIndex": 2,
+        "ref": "e4",
+        "kind": "button"
+      },
+      {
+        "index": 4,
+        "identifier": "book.fill",
+        "rect": {
+          "x": 99,
+          "y": 802.3333333333334,
+          "width": 32.33333333333334,
+          "height": 25
+        },
+        "enabled": true,
+        "type": "Image",
+        "hittable": true,
+        "depth": 3,
+        "label": "bookmark",
+        "parentIndex": 3,
+        "ref": "e5",
+        "kind": "image"
+      },
+      {
+        "index": 5,
+        "value": "New",
+        "rect": {
+          "x": 154,
+          "y": 795,
+          "width": 94,
+          "height": 54
+        },
+        "enabled": true,
+        "type": "Button",
+        "hittable": true,
+        "depth": 2,
+        "label": "Inbox",
+        "selected": true,
+        "parentIndex": 2,
+        "ref": "e6",
+        "kind": "button"
+      },
+      {
+        "index": 6,
+        "identifier": "tray.fill",
+        "rect": {
+          "x": 184.66666666666669,
+          "y": 803,
+          "width": 33,
+          "height": 23.66666666666663
+        },
+        "enabled": true,
+        "type": "Image",
+        "hittable": true,
+        "depth": 3,
+        "label": "inbox",
+        "parentIndex": 5,
+        "ref": "e7",
+        "kind": "image"
+      },
+      {
+        "index": 7,
+        "value": "12 items",
+        "rect": {
+          "x": 240,
+          "y": 795,
+          "width": 94,
+          "height": 54
+        },
+        "enabled": true,
+        "type": "Button",
+        "hittable": true,
+        "depth": 2,
+        "label": "Alerts",
+        "parentIndex": 2,
+        "ref": "e8",
+        "kind": "button"
+      },
+      {
+        "index": 8,
+        "identifier": "bell.fill",
+        "rect": {
+          "x": 274,
+          "y": 801,
+          "width": 26.333333333333314,
+          "height": 28
+        },
+        "enabled": true,
+        "type": "Image",
+        "hittable": true,
+        "depth": 3,
+        "label": "notifications",
+        "parentIndex": 7,
+        "ref": "e9",
+        "kind": "image"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.pages",
+    "appBundleId": "dev.simcore.pages",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 9,
+      "totalNodeCount": 9,
+      "reasons": []
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "unknown",
+    "snapshotQuality": {
+      "state": "recovered",
+      "backend": "private-ax",
+      "reason": "XCTest-backed snapshot tiers were deferred after recent slow accessibility work on this screen",
+      "reasonCode": "deferred",
+      "timing": {
+        "acquisitionMs": 328.5970687866211,
+        "presentationMs": 0.21004676818847656
+      }
+    },
+    "warnings": [
+      "Detected an overly complex or slow accessibility tree. Fell back to the private-ax snapshot backend. It is OK to continue; use --json to inspect snapshotQuality.reason if you need recovery details.",
+      "Simulator AX snapshot unavailable (circuit-disabled); used XCTest for this app generation."
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 24,
+        "p50Ms": 398,
+        "p95Ms": 3859,
+        "maxMs": 45397,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 24
+        }
+      },
+      "warning": "Warning: ios snapshots are slow in this run: p95 3341ms over 23 captures. Possible causes: device load, app or dev server stuck, helper fallback, or stale daemon."
+    },
+    "refsGeneration": 643443
+  }
+}
