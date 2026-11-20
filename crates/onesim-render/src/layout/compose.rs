@@ -510,7 +510,9 @@ impl Cx<'_> {
         let weight = f(p, "fontWeight").unwrap_or(400.0) as u16;
         let align = match p.get("textAlign").and_then(Value::as_str) {
             Some("center") => TextAlign::Center,
-            Some("end") => TextAlign::Trailing,
+            Some("end") => TextAlign::End,
+            Some("right") => TextAlign::Trailing,
+            Some("left") => TextAlign::Left,
             Some("justify") => TextAlign::Justify,
             _ => TextAlign::Leading,
         };
@@ -568,6 +570,7 @@ impl Cx<'_> {
         spec.tracking = f(p, "letterSpacingEm").map(|em| em as f32)
             .unwrap_or_else(|| f(p, "letterSpacing").map_or(0.0, |ls| ls as f32 / size));
         spec.android = true;
+        spec.compose_direction = p["textDirection"].as_u64().and_then(|n| u8::try_from(n).ok()).unwrap_or(0);
         spec.fixed_pitch = true;
         spec.no_wrap = p["softWrap"] == false;
         spec.compose_overflow = Some(match p["textOverflow"].as_str() {
@@ -619,7 +622,12 @@ impl Cx<'_> {
         });
         let size = auto_size.unwrap_or(base_size);
         let inline = resize_inline(size);
-        let run = self.text_run(text, p, size.max(0.001), &inline);
+        let mut run = self.text_run(text, p, size.max(0.001), &inline);
+        if c.max_h.is_finite() && run.font.compose_overflow == Some(ComposeOverflow::Ellipsis)
+            && run.font.lines != Some(1) && !run.font.no_wrap
+        {
+            run.font.lines = Some(self.fonts.compose_ellipsis_lines(&run, maxw, c.max_h));
+        }
         let spec = run.font;
         let (tw, th) = self.fonts.measure(text, &spec, maxw, &run.spans);
         let min_h = f(p, "minLines").unwrap_or(1.0) * f64::from(spec.line_height);

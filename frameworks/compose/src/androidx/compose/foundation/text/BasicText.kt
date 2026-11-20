@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.drawscope.wire
 import androidx.compose.ui.jsonNum
 import androidx.compose.ui.jsonString
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.ParagraphStyle
@@ -37,6 +38,7 @@ import androidx.compose.ui.text.TtsAnnotation
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.Hyphens
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.intl.Locale
@@ -158,6 +160,7 @@ private fun TextContent(
     var shaderLayout by remember { mutableStateOf<ShaderLayout?>(null) }
     val shaderSize = shaderLayout?.size
     val uriHandler = LocalUriHandler.current
+    val layoutDirection = LocalLayoutDirection.current
     val size = if (style.fontSize.isSpecified) style.fontSize.value else 14f
     val p = buildString {
         append("\"text\":").append(jsonString(displayText))
@@ -174,7 +177,7 @@ private fun TextContent(
                 .append(autoSize.maximum.wireUnit()).append(',').append(autoSize.step.wireUnit()).append(']')
         }
         appendInlineObjects(text, slots, size, InlineTextContent::placeholder)
-        appendTextStyle(style, c, chosenColor, annotated, shaderSize, maxLines, minLines, softWrap, overflow)
+        appendTextStyle(style, c, chosenColor, annotated, shaderSize, maxLines, minLines, softWrap, overflow, layoutDirection)
         selectionColors?.let {
             append(",\"selectionColor\":").append(it.backgroundColor.wire())
             append(",\"selectionHandleColor\":").append(it.handleColor.wire())
@@ -213,10 +216,10 @@ private fun TextContent(
             }
             append(']')
         }
-        appendAnnotatedStyles(annotated, style, displayText, links, shaderLayout)
+        appendAnnotatedStyles(annotated, style, displayText, links, shaderLayout, layoutDirection)
     }
     val onLayout: ((String) -> Unit)? = if (onTextLayout == null && customState == null && !needsBrushSize) null else {
-        val input = TextLayoutInput(textInput, style, maxLines, softWrap, overflow,
+        val input = TextLayoutInput(textInput, style, maxLines, softWrap, overflow, layoutDirection = layoutDirection,
             placeholders = slots.map { AnnotatedString.Range(it.content.placeholder, it.originalStart, it.originalEnd) })
         val deliver: (String) -> Unit = { data ->
             val result = TextLayoutResult.decode(input, data)
@@ -300,6 +303,7 @@ internal fun paragraphDefaults(baseStyle: TextStyle, annotated: AnnotatedString?
             current.merge(TextStyle(
                 textAlign = range.item.textAlign, lineHeight = range.item.lineHeight,
                 lineBreak = range.item.lineBreak, hyphens = range.item.hyphens,
+                textDirection = range.item.textDirection,
             ))
         } else current
     }
@@ -315,6 +319,7 @@ internal fun StringBuilder.appendTextStyle(
     minLines: Int,
     softWrap: Boolean,
     overflow: TextOverflow,
+    layoutDirection: LayoutDirection,
 ) {
     val size = if (style.fontSize.isSpecified) style.fontSize.value else 14f
     append(",\"color\":").append(c.wire())
@@ -341,8 +346,12 @@ internal fun StringBuilder.appendTextStyle(
     when (style.textAlign) {
         TextAlign.Center -> append(",\"textAlign\":\"center\"")
         TextAlign.Justify -> append(",\"textAlign\":\"justify\"")
-        TextAlign.End, TextAlign.Right -> append(",\"textAlign\":\"end\"")
+        TextAlign.End -> append(",\"textAlign\":\"end\"")
+        TextAlign.Right -> append(",\"textAlign\":\"right\"")
+        TextAlign.Left -> append(",\"textAlign\":\"left\"")
     }
+    val direction = style.textDirection.resolve(layoutDirection)
+    if (direction != TextDirection.ContentOrLtr) append(",\"textDirection\":").append(direction.value)
     if (maxLines != Int.MAX_VALUE) append(",\"maxLines\":").append(maxLines)
     if (minLines != 1) append(",\"minLines\":").append(minLines)
     if (!softWrap) append(",\"softWrap\":false")
@@ -364,6 +373,7 @@ internal fun StringBuilder.appendAnnotatedStyles(
     displayText: String,
     links: List<AnnotatedString.Range<LinkAnnotation>>,
     shaderLayout: ShaderLayout? = null,
+    layoutDirection: LayoutDirection,
 ) {
     val shaderSize = shaderLayout?.size
     val spans = annotated?.spanStyles.orEmpty() + links.mapNotNull { link ->
@@ -385,6 +395,9 @@ internal fun StringBuilder.appendAnnotatedStyles(
             if (spans.isNotEmpty() || i > 0) append(',')
             append("{\"start\":").append(range.start).append(",\"end\":").append(range.end)
             append(",\"paragraph\":").append(i + 1)
+            range.item.textDirection.takeUnless { it == TextDirection.Unspecified }?.let {
+                append(",\"paragraphDirection\":").append(it.resolve(layoutDirection).value)
+            }
             appendParagraphBreak(range.item.lineBreak, range.item.hyphens)
             range.item.textIndent?.takeIf { it.firstLine.isSpecified && it.restLine.isSpecified }?.let {
                 append(",\"paragraphIndent\":[").append(it.firstLine.wireUnit()).append(',').append(it.restLine.wireUnit()).append(']')
@@ -396,8 +409,10 @@ internal fun StringBuilder.appendAnnotatedStyles(
             when (range.item.textAlign) {
                 TextAlign.Center -> append(",\"paragraphAlign\":\"center\"")
                 TextAlign.Justify -> append(",\"paragraphAlign\":\"justify\"")
-                TextAlign.End, TextAlign.Right -> append(",\"paragraphAlign\":\"end\"")
-                TextAlign.Left, TextAlign.Start -> append(",\"paragraphAlign\":\"start\"")
+                TextAlign.End -> append(",\"paragraphAlign\":\"end\"")
+                TextAlign.Start -> append(",\"paragraphAlign\":\"start\"")
+                TextAlign.Left -> append(",\"paragraphAlign\":\"left\"")
+                TextAlign.Right -> append(",\"paragraphAlign\":\"right\"")
             }
             append('}')
         }
@@ -425,6 +440,12 @@ internal fun StringBuilder.appendAnnotatedStyles(
         }
         append(']')
     }
+}
+
+private fun TextDirection.resolve(layoutDirection: LayoutDirection): TextDirection = when (this) {
+    TextDirection.Unspecified, TextDirection.Content ->
+        if (layoutDirection == LayoutDirection.Rtl) TextDirection.ContentOrRtl else TextDirection.ContentOrLtr
+    else -> this
 }
 
 internal data class ShaderLayout(

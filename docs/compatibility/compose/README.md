@@ -33,8 +33,8 @@ the ones that matter most. Notes mark APIs that are `Deprecated` or `Experimenta
 | [Modifiers](modifiers.md) | 18% (30/163) |
 | [Runtime (state, effects, composition)](runtime.md) | 100% (151/151) |
 | [Other functions and properties](functions.md) | 3% (18.5/671) |
-| [Types](types.md) | 5% (46/983) |
-| **Total** | **12% (266.5/2181)** |
+| [Types](types.md) | 5% (48/983) |
+| **Total** | **12% (268.5/2181)** |
 <!-- coverage:end -->
 
 Refresh with `node scripts/api-coverage.mjs`; CI runs it with `--check`.

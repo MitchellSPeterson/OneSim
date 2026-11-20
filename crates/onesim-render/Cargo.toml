@@ -16,6 +16,7 @@ onesim-protocol = { path = "../onesim-protocol" }
 tiny-skia = "0.11"
 cosmic-text = "0.19"
 unicode-segmentation = "1"
+unicode-bidi = "0.3"
 taffy = "0.15"
 resvg = { version = "0.45", default-features = false }
 winit = { version = "0.30", optional = true }

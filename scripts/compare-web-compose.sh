@@ -55,6 +55,9 @@ node web/test/run.mjs --screenshot "$out/web/text-effects.png" --expect "Measure
 scripts/build-web.sh examples/compose-text TextPaintDemo
 ./target/debug/onesim run examples/compose-text --root-view TextPaintDemo --screenshot "$out/native/text-paint.png" >/dev/null 2>&1
 node web/test/run.mjs --screenshot "$out/web/text-paint.png" --expect "Measured 2 lines, 1 placeholder"
+scripts/build-web.sh examples/compose-text TextDirectionDemo
+./target/debug/onesim run examples/compose-text --root-view TextDirectionDemo --screenshot "$out/native/text-direction.png" >/dev/null 2>&1
+node web/test/run.mjs --screenshot "$out/web/text-direction.png" --expect "ABC (123)"
 
 scripts/build-web.sh frameworks/compose/tests/TextWireTest.kt TestText
 node web/test/run.mjs --expect "Layout lines: 1"

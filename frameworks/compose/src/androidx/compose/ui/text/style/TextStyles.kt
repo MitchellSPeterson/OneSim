@@ -46,6 +46,29 @@ class TextDecoration private constructor(val mask: Int) {
 enum class ResolvedTextDirection { Ltr, Rtl }
 
 @JvmInline
+value class TextDirection private constructor(val value: Int) {
+    override fun toString(): String = names[value]
+
+    companion object {
+        val Unspecified = TextDirection(0)
+        val Ltr = TextDirection(1)
+        val Rtl = TextDirection(2)
+        val Content = TextDirection(3)
+        val ContentOrLtr = TextDirection(4)
+        val ContentOrRtl = TextDirection(5)
+        private val names = listOf("Unspecified", "Ltr", "Rtl", "Content", "ContentOrLtr", "ContentOrRtl")
+
+        fun valueOf(value: Int): TextDirection {
+            require(value in names.indices) { "Invalid TextDirection: $value" }
+            return TextDirection(value)
+        }
+    }
+}
+
+val TextDirection.isSpecified: Boolean get() = this != TextDirection.Unspecified
+inline fun TextDirection.takeOrElse(block: () -> TextDirection): TextDirection = if (isSpecified) this else block()
+
+@JvmInline
 value class BaselineShift(val multiplier: Float) {
     companion object {
         val None = BaselineShift(0f)

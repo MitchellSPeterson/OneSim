@@ -51,6 +51,8 @@ pub enum TextAlign {
     Center,
     Trailing,
     Justify,
+    Left,
+    End,
 }
 
 /// One styled run of a concatenated `Text` (SwiftUI) or nested React Native `Text`: its own size
@@ -134,6 +136,7 @@ pub struct ComposeSpanStyle {
     pub locale: Option<String>,
     pub paragraph: Option<usize>,
     pub paragraph_align: Option<TextAlign>,
+    pub paragraph_direction: Option<u8>,
     pub paragraph_height: Option<f32>,
     pub paragraph_indent: Option<[f32; 2]>,
     pub bullet: Option<TextBullet>,
@@ -214,6 +217,7 @@ pub struct FontSpec {
     pub reserve: Option<usize>,
     /// Compose's line limit applies across paragraphs. Other clients use their existing line-cap rules.
     pub compose_overflow: Option<ComposeOverflow>,
+    pub compose_direction: u8,
     pub no_wrap: bool,
 }
 
@@ -235,6 +239,7 @@ impl FontSpec {
             inter_point_tracking: false,
             android: false,
             compose_overflow: None,
+            compose_direction: 0,
             no_wrap: false,
             extra: 0.0,
             design: 0,
@@ -933,10 +938,22 @@ impl Fonts {
             && f64::from(text_height) <= height + 1e-4
     }
 
+    /// Android keeps at least one line when fitting end ellipsis to a height constraint.
+    pub(crate) fn compose_ellipsis_lines(&mut self, run: &crate::TextRun, width: Option<f32>, height: f64) -> usize {
+        let spec = FontSpec { lines: None, compose_overflow: Some(ComposeOverflow::Clip), ..run.font };
+        let buffer = self.buffer(&run.text, &spec, width, &run.spans);
+        buffer.layout_runs()
+            .take_while(|line| f64::from(line.line_top + line.line_height) <= height + 0.001)
+            .take(run.font.lines.unwrap_or(usize::MAX))
+            .count()
+            .max(1)
+    }
+
     /// Size of `text`, wrapping at `width` when given.
     pub fn measure(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span]) -> (f64, f64) {
         // Styled advances vary independently of the default cache key.
-        let styled = f.extra != 0.0 || f.design != 0 || f.width != 0 || f.digits || f.trunc != 0 || f.case_fold != 0 || f.italic || f.mono;
+        let styled = f.extra != 0.0 || f.design != 0 || f.width != 0 || f.digits || f.trunc != 0 || f.case_fold != 0 || f.italic || f.mono
+            || f.compose_direction != 0;
         let key = (spans.is_empty() && f.lines.is_none() && !f.no_wrap && !styled && text.len() <= MEASURE_MAX_TEXT_BYTES).then(|| {
             // Android text carries its own tracking (Compose letterSpacing) and face; iOS tracking follows size and weight.
             let tracking = if f.android { f.tracking.to_bits() ^ 0x8000_0000 } else { 0 };
@@ -1259,6 +1276,8 @@ fn buffer_align(align: TextAlign) -> Option<Align> {
         TextAlign::Center => Some(Align::Center),
         TextAlign::Trailing => Some(Align::Right),
         TextAlign::Justify => Some(Align::Justified),
+        TextAlign::Left => Some(Align::Left),
+        TextAlign::End => Some(Align::End),
     }
 }
 
@@ -1442,6 +1461,20 @@ mod span_tests {
         let buffer = fonts.buffer("first\nsecond", &spec, Some(150.0), &[]);
         let first = buffer.layout_runs().next().unwrap();
         assert_eq!(first.text, "first…");
+    }
+
+    #[test]
+    fn compose_end_ellipsis_fits_the_height_without_exceeding_max_lines() {
+        let mut fonts = Fonts::with_fallback(true);
+        let font = FontSpec { android: true, lines: Some(2),
+            compose_overflow: Some(ComposeOverflow::Ellipsis), ..FontSpec::new(14.0, 18.0, 400, TextAlign::Leading) };
+        let run = crate::TextRun {
+            text: "One\nTwo\nThree".into(), font, color: crate::Color::rgba(0.0, 0.0, 0.0, 1.0),
+            strike: false, offset_x: 0.0, spans: vec![],
+        };
+        assert_eq!(fonts.compose_ellipsis_lines(&run, Some(120.0), 0.0), 1);
+        assert_eq!(fonts.compose_ellipsis_lines(&run, Some(120.0), 31.0), 1);
+        assert_eq!(fonts.compose_ellipsis_lines(&run, Some(120.0), 120.0), 2);
     }
 
     #[test]

@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -51,10 +52,12 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFontFamilyResolver
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.Bullet
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.MultiParagraph
+import androidx.compose.ui.text.ParagraphStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.Placeholder
 import androidx.compose.ui.text.PlaceholderVerticalAlign
@@ -70,6 +73,9 @@ import androidx.compose.ui.text.toUpperCase
 import androidx.compose.ui.text.style.TextGeometricTransform
 import androidx.compose.ui.text.style.Hyphens
 import androidx.compose.ui.text.style.LineBreak
+import androidx.compose.ui.text.style.ResolvedTextDirection
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.withLink
@@ -388,6 +394,49 @@ fun TextPaintDemo() {
             }
             val layoutWidth = if (paragraph.getBoundingBox(0).width > 0f) "Measured" else "Empty"
             Text("$layoutWidth ${result.lineCount} lines, ${result.placeholderRects.count { it != null }} placeholder", color = blue)
+        }
+    }
+}
+
+class TextDirectionActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent { TextDirectionDemo() }
+    }
+}
+
+@Composable
+fun TextDirectionDemo() {
+    val box = Modifier.size(width = 260.dp, height = 38.dp)
+    val style = TextStyle(fontSize = 22.sp, color = Color(0xFF224F91))
+    MaterialTheme {
+        Column(Modifier.padding(start = 24.dp, top = 104.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            BasicText("ABC (123)", box, style.copy(textDirection = TextDirection.Rtl, textAlign = TextAlign.Start))
+            BasicText("ABC (123)", box, style.copy(textDirection = TextDirection.Rtl, textAlign = TextAlign.End))
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                BasicText("123 - 456", box, style.copy(textDirection = TextDirection.Content))
+            }
+            BasicText(buildAnnotatedString {
+                withStyle(ParagraphStyle(textDirection = TextDirection.ContentOrRtl, textAlign = TextAlign.Left)) {
+                    append("[123 - 456]")
+                }
+            }, box, style)
+            val measurer = rememberTextMeasurer()
+            val result = measurer.measure("ABC (123)", style.copy(textDirection = TextDirection.Rtl))
+            check(result.getParagraphDirection(0) == ResolvedTextDirection.Rtl)
+            check(result.getBidiRunDirection(0) == ResolvedTextDirection.Ltr)
+            check(result.getLineStart(0) == 0 && result.getLineEnd(0) == 9)
+            val density = LocalDensity.current
+            val constrained = measurer.measure(
+                "A paragraph long enough to wrap onto multiple lines.",
+                style,
+                overflow = TextOverflow.Ellipsis,
+                constraints = Constraints(
+                    maxWidth = with(density) { 140.dp.toPx().toInt() },
+                    maxHeight = with(density) { 28.dp.toPx().toInt() },
+                ),
+            )
+            check(constrained.lineCount == 1 && constrained.isLineEllipsized(0))
         }
     }
 }

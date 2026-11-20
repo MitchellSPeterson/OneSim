@@ -9,6 +9,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.style.takeOrElse
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.text.style.Hyphens
@@ -38,6 +40,7 @@ data class TextStyle(
     val drawStyle: DrawStyle? = null,
     val textGeometricTransform: TextGeometricTransform? = null,
     val localeList: LocaleList? = null,
+    val textDirection: TextDirection = TextDirection.Unspecified,
 ) {
     /** `other`'s specified values win. */
     fun merge(other: TextStyle?): TextStyle {
@@ -62,6 +65,7 @@ data class TextStyle(
             drawStyle = other.drawStyle ?: drawStyle,
             textGeometricTransform = other.textGeometricTransform ?: textGeometricTransform,
             localeList = other.localeList ?: localeList,
+            textDirection = other.textDirection.takeOrElse { textDirection },
         )
     }
 

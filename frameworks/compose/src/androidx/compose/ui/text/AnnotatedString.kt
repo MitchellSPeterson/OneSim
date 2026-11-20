@@ -10,6 +10,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.text.style.Hyphens
@@ -47,6 +48,7 @@ data class ParagraphStyle(
     val textIndent: TextIndent? = null,
     val lineBreak: LineBreak = LineBreak.Unspecified,
     val hyphens: Hyphens = Hyphens.Unspecified,
+    val textDirection: TextDirection = TextDirection.Unspecified,
 ) : AnnotatedString.Annotation
 
 /** Ranges use the same UTF-16 indices as Kotlin strings. */

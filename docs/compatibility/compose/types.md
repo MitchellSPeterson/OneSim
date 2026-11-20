@@ -696,7 +696,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `RepeatableSpec` | animation-core | ⬜ |  |  |
 | `RepeatMode` | animation-core | ⬜ |  |  |
 | `RequestDisallowInterceptTouchEvent` | ui | ⬜ |  |  |
-| `ResolvedTextDirection` | ui-text | ⬜ |  |  |
+| `ResolvedTextDirection` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Reports paragraph base direction and individual bidi run directions. |
 | `ResourceFont` | ui-text | ⬜ |  |  |
 | `ResourceResolutionException` | ui | ⬜ |  |  |
 | `Rgb` | ui-graphics | ⬜ |  |  |
@@ -851,7 +851,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `TextContextMenuSession` | foundation | ⬜ |  |  |
 | `TextDecoration` | ui-text | ⬜ |  |  |
 | `TextDecorationScope` | foundation | ⬜ |  | Experimental |
-| `TextDirection` | ui-text | ⬜ |  |  |
+| `TextDirection` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Forced LTR and RTL, content direction, layout-direction and locale fallback. |
 | `TextDirectionScope` | foundation | ⬜ |  | Experimental |
 | `TextFieldBuffer` | foundation | ⬜ |  |  |
 | `TextFieldColors` | material3 | ⬜ |  |  |
@@ -871,9 +871,9 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `TextInputService` | ui-text | ⬜ |  | Deprecated |
 | `TextInputSession` | ui-text | ⬜ |  | Deprecated |
 | `TextLayoutInput` | ui-text | ⬜ |  |  |
-| `TextLayoutResult` | ui-text | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Line, glyph, cursor, word and placeholder geometry for composable and standalone text. Forced paragraph direction and Android font-provider resolution remain limited. |
+| `TextLayoutResult` | ui-text | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Line, glyph, cursor, word and placeholder geometry for composable and standalone text. Android font-provider resolution remains unavailable. |
 | `TextLinkStyles` | ui-text | ⬜ |  |  |
-| `TextMeasurer` | ui-text | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Synchronous JVM and browser measurement with constrained wrapping, spans, placeholders and a cache. Forced paragraph direction and Android font-provider resolution remain limited. |
+| `TextMeasurer` | ui-text | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Synchronous JVM and browser measurement with constrained wrapping, spans, placeholders and a cache. Android font-provider resolution remains unavailable. |
 | `TextMotion` | ui-text | ⬜ |  |  |
 | `TextMotionScope` | foundation | ⬜ |  | Experimental |
 | `TextObfuscationMode` | foundation | ⬜ |  |  |

@@ -135,12 +135,15 @@ pub(crate) fn spans(
                         .as_deref()
                         .map(|align| match align {
                             "center" => crate::TextAlign::Center,
-                            "end" => crate::TextAlign::Trailing,
+                            "end" => crate::TextAlign::End,
+                            "right" => crate::TextAlign::Trailing,
+                            "left" => crate::TextAlign::Left,
                             "justify" => crate::TextAlign::Justify,
                             _ => crate::TextAlign::Leading,
                         })
                         .or(extra.paragraph_align);
                 }
+                extra.paragraph_direction = style.paragraph_direction.or(extra.paragraph_direction);
                 extra.paragraph_height = style.paragraph_height_em.map(|em| em * font_size)
                     .or(style.paragraph_height).or(extra.paragraph_height);
                 if let Some(indent) = style.paragraph_indent {

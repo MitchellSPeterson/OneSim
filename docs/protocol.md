@@ -636,6 +636,12 @@ are 1 default, 2 loose, 3 normal, 4 strict. Word break values are 1 default, 2 p
 hyphens produce glyphs with a zero-length source range and are omitted from copy.
 
 Additional paragraph properties include `paragraphAlign`, `paragraphHeight` (sp), `paragraphHeightEm`, and `paragraphIndent`.
+Text `textAlign` and span `paragraphAlign` accept physical `left` and `right` and relative
+`start` and `end`, alongside `center` and `justify`. Text `textDirection` and span
+`paragraphDirection` accept 1 for LTR, 2 for RTL, 4 for content with an LTR fallback,
+and 5 for content with an RTL fallback. The guest resolves `Content` using its environment
+before sending the request. Direction controls the paragraph base level while glyph runs
+retain their own bidi levels and source offsets.
 `paragraph` numbers identify paragraph boundaries. `paragraphIndent` is a pair of first-line and
 continuation-line units. A unit is `[value,isEm]` with sp used when `isEm` is false.
 A `bullet` annotation carries `width`, `height`, and `padding` units plus optional

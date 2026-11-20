@@ -199,7 +199,7 @@ fn justify(line: &mut LayoutLine, text: &str, width: f32) {
     line.w += offset;
 }
 
-pub(crate) fn ellipsize(paragraph: &BufferLine, line: &mut LayoutLine, spec: &FontSpec, width: f32, fonts: &mut FontSystem) {
+pub(crate) fn ellipsize(paragraph: &BufferLine, line: &mut LayoutLine, spec: &FontSpec, width: f32, rtl: bool, fonts: &mut FontSystem) {
     let attrs = line.glyphs.iter().max_by_key(|glyph| glyph.end)
         .map(|last| paragraph.attrs_list().get_span(last.start))
         .unwrap_or_else(|| paragraph.attrs_list().defaults());
@@ -214,11 +214,11 @@ pub(crate) fn ellipsize(paragraph: &BufferLine, line: &mut LayoutLine, spec: &Fo
         let Some((i, _)) = line.glyphs.iter().enumerate().max_by_key(|(_, glyph)| glyph.end) else { break; };
         width_of_glyphs -= line.glyphs.remove(i).w;
     }
-    let rtl = paragraph.shape_opt().is_some_and(|shape| shape.rtl);
     let used = width_of_glyphs + marker.w;
     let alignment = paragraph.align().unwrap_or(if rtl { Align::Right } else { Align::Left });
     let start = match alignment {
         Align::Right => (width - used).max(0.0),
+        Align::End if !rtl => (width - used).max(0.0),
         Align::Center => ((width - used) / 2.0).max(0.0),
         _ => 0.0,
     };

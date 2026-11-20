@@ -61,3 +61,6 @@ automatic hyphenation.
 `text-paint` covers image shaders and chained and stamped path effects. The demo verifies
 synchronous measurement, placeholder geometry, intrinsic widths, and translated,
 clipped bitmap painting before it reports the measured line count.
+
+`text-direction` covers mixed-direction text, neutral text in an RTL environment, and
+the difference between relative and physical alignment.

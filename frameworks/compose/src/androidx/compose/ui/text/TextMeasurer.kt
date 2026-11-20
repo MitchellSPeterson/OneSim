@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFontFamilyResolver
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.text.style.TextOverflow
@@ -101,8 +102,9 @@ class MultiParagraphIntrinsics(
     internal val softWrap: Boolean = true,
     internal val defaultLocaleList: LocaleList = LocaleList.current,
 ) : ParagraphIntrinsics {
+    private val locale = (style.localeList ?: defaultLocaleList).firstOrNull()
     private val input = TextLayoutInput(annotatedString, style.copy(localeList = style.localeList ?: defaultLocaleList),
-        Int.MAX_VALUE, softWrap, TextOverflow.Clip, density, placeholders = placeholders,
+        Int.MAX_VALUE, softWrap, TextOverflow.Clip, density, locale.paragraphDirection(), placeholders = placeholders,
         fontFamilyResolver = fontFamilyResolver)
     override val minIntrinsicWidth: Float by lazy {
         if (softWrap) requestTextMeasurement(input, intrinsic = -1).toFloat() else maxIntrinsicWidth
@@ -115,6 +117,15 @@ class MultiParagraphIntrinsics(
         return measureText(input.copy(constraints = constraints.copy(minWidth = width, minHeight = 0),
             maxLines = maxLines, overflow = overflow))
     }
+}
+
+private fun Locale?.paragraphDirection(): LayoutDirection {
+    val rtl = when (this?.script) {
+        null -> false
+        "" -> language in setOf("ar", "ckb", "dv", "fa", "he", "ks", "lrc", "mzn", "nqo", "ps", "sd", "ug", "ur", "yi")
+        else -> script in setOf("Adlm", "Arab", "Hebr", "Mand", "Mend", "Nkoo", "Rohg", "Samr", "Syrc", "Thaa", "Yezi")
+    }
+    return if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr
 }
 
 internal fun measureText(input: TextLayoutInput): TextLayoutResult =
@@ -166,11 +177,11 @@ internal fun requestTextMeasurement(
     val props = buildString {
         append("{\"text\":").append(jsonString(shaped.text))
         appendTextStyle(style, style.color.takeIf { it.isSpecified } ?: Color.Black, null, shaped, shaderLayout?.size,
-            maxLines, 1, input.softWrap, input.overflow)
+            maxLines, 1, input.softWrap, input.overflow, input.layoutDirection)
         appendInlineObjects(text.text, slots, style.fontSize.takeIf { it.isSpecified }?.value ?: 14f) {
             Placeholder(it.width.scaled(), it.height.scaled(), it.placeholderVerticalAlign)
         }
-        appendAnnotatedStyles(shaped, style, shaped.text, links, shaderLayout)
+        appendAnnotatedStyles(shaped, style, shaped.text, links, shaderLayout, input.layoutDirection)
         append('}')
     }
     val request = buildString {

@@ -242,6 +242,7 @@ pub struct ComposeTextSpan {
     pub auto_hyphens: Option<bool>,
     pub text_locale: Option<String>,
     pub paragraph_align: Option<String>,
+    pub paragraph_direction: Option<u8>,
     pub paragraph_height: Option<f32>,
     pub paragraph_height_em: Option<f32>,
     pub paragraph: Option<usize>,

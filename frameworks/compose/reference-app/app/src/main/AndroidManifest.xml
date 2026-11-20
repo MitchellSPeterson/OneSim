@@ -14,5 +14,6 @@
         <activity android:name="com.example.text.RichTextActivity" android:exported="true" />
         <activity android:name="com.example.text.TextEffectsActivity" android:exported="true" />
         <activity android:name="com.example.text.TextPaintActivity" android:exported="true" />
+        <activity android:name="com.example.text.TextDirectionActivity" android:exported="true" />
     </application>
 </manifest>

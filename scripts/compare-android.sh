@@ -26,4 +26,5 @@ shot compose-text text-link-focused --root-view RichTextDemo --key tab
 shot compose-text text-link-pressed --root-view RichTextDemo --key tab --hold 57.14,329.52
 shot compose-text text-effects --root-view TextEffectsDemo
 shot compose-text text-paint --root-view TextPaintDemo
+shot compose-text text-direction --root-view TextDirectionDemo
 python3 scripts/compare_ios.py tests/fixtures/compose-android "$out/onesim" "$out"

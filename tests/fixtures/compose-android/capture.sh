@@ -66,4 +66,5 @@ shot text-link-pressed
 wait "$hold"
 launch com.example.text.TextEffectsActivity; shot text-effects
 launch com.example.text.TextPaintActivity; shot text-paint
+launch com.example.text.TextDirectionActivity; shot text-direction
 demo exit
