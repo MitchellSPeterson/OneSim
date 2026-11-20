@@ -222,6 +222,7 @@ async function main() {
     window.onesimGuest = guest;
   } else {
     sim.init({ device: vp.device, width: vp.width, height: vp.height, scale: fit(), dark, dynamicType: q.get("dynamicType") ?? "large" });
+    lastTick = performance.now();
   }
   requestFrame();
 
@@ -255,15 +256,15 @@ async function main() {
   stage.addEventListener("pointermove", (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     if (!drag.scrolling && Math.hypot(e.clientX - drag.cx, e.clientY - drag.cy) < 8) return;
-    if (!drag.scrolling) sim.drag("begin", drag.x, drag.y, e.timeStamp);
-    drag.scrolling = true;
-    const samples = e.getCoalescedEvents?.();
-    for (const c of samples?.length ? samples : [e]) {
-      const [x, y] = toPoints(c);
-      sim.drag("move", x, y, c.timeStamp);
-    }
-    flush();
-    requestFrame();
+    act(() => {
+      if (!drag.scrolling) sim.drag("begin", drag.x, drag.y, e.timeStamp);
+      drag.scrolling = true;
+      const samples = e.getCoalescedEvents?.();
+      for (const c of samples?.length ? samples : [e]) {
+        const [x, y] = toPoints(c);
+        sim.drag("move", x, y, c.timeStamp);
+      }
+    });
   });
   const lift = (e) => {
     if (!drag || e.pointerId !== drag.id) return;

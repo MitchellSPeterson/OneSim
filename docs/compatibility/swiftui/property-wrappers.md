@@ -6,20 +6,20 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 |---|---|---|---|---|
 | `AccessibilityFocusState` | 15 | ⬜ |  |  |
 | `AppStorage` | 14 | 🟠 |  | No `store:`, optionals, `URL`/`Data`/`Date`; in-memory on WASI |
-| `Bindable` | 17 | ⬜ |  |  |
+| `Bindable` | 17 | ✅ | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) |  |
 | `Binding` | 13 | ✅ |  |  |
-| `Environment` | 13 | 🟠 |  | `colorScheme`, `dismiss`, `dynamicTypeSize` only |
+| `Environment` | 13 | ✅ | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) | Key paths, `EnvironmentKey` values, `@Observable` objects (`Environment(Model.self)`) |
 | `EnvironmentObject` | 13 | ✅ |  |  |
 | `FetchRequest` | 13 | ⬜ |  |  |
 | `FocusedBinding` | 14 | ⬜ |  |  |
 | `FocusedObject` | 16 | ⬜ |  |  |
 | `FocusedValue` | 14 | ⬜ |  |  |
 | `FocusState` | 15 | ⬜ |  |  |
-| `GestureState` | 13 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | `resetTransaction` is ignored (no animations) |
-| `Namespace` | 14 | ⬜ |  |  |
+| `GestureState` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
+| `Namespace` | 14 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `ObservedObject` | 13 | ✅ |  |  |
-| `ScaledMetric` | 14 | ⬜ |  |  |
-| `SceneStorage` | 14 | ⬜ |  |  |
+| `ScaledMetric` | 14 | ✅ | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) |  |
+| `SceneStorage` | 14 | 🟠 | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) | In memory: not restored after a relaunch; no optionals, `URL`/`Data` |
 | `SectionedFetchRequest` | 15 | ⬜ |  |  |
 | `State` | 13 | 🟠 |  | Only inside `View`s; any change re-evaluates the whole root |
 | `StateObject` | 14 | ✅ |  |  |

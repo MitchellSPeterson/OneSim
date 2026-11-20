@@ -1,0 +1,491 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "type": "Application",
+        "index": 0,
+        "rect": {
+          "y": 0,
+          "x": 0,
+          "height": 874,
+          "width": 402
+        },
+        "enabled": true,
+        "depth": 0,
+        "label": "Controls",
+        "hittable": false,
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "type": "Other",
+        "parentIndex": 0,
+        "index": 1,
+        "rect": {
+          "y": 0,
+          "x": 0,
+          "height": 874,
+          "width": 402
+        },
+        "enabled": true,
+        "depth": 1,
+        "label": "Toolbar",
+        "hittable": true,
+        "ref": "e2",
+        "kind": "other"
+      },
+      {
+        "type": "Other",
+        "parentIndex": 1,
+        "index": 2,
+        "rect": {
+          "y": 0,
+          "x": 0,
+          "height": 874,
+          "width": 402
+        },
+        "enabled": true,
+        "depth": 2,
+        "label": "Controls",
+        "hittable": true,
+        "ref": "e3",
+        "kind": "other"
+      },
+      {
+        "type": "NavigationBar",
+        "parentIndex": 2,
+        "index": 3,
+        "enabled": true,
+        "rect": {
+          "y": 62,
+          "x": 0,
+          "height": 106,
+          "width": 402
+        },
+        "identifier": "Controls",
+        "depth": 3,
+        "label": "Controls",
+        "hittable": true,
+        "ref": "e4",
+        "kind": "navigation-bar"
+      },
+      {
+        "type": "StaticText",
+        "parentIndex": 3,
+        "index": 4,
+        "rect": {
+          "y": 119.66666666666667,
+          "x": 16,
+          "height": 40.66666666666667,
+          "width": 135.66666666666666
+        },
+        "enabled": true,
+        "depth": 4,
+        "label": "Controls",
+        "hittable": true,
+        "ref": "e5",
+        "kind": "text"
+      },
+      {
+        "type": "Other",
+        "parentIndex": 2,
+        "index": 5,
+        "rect": {
+          "y": 0,
+          "x": 0,
+          "height": 874,
+          "width": 402
+        },
+        "enabled": true,
+        "depth": 3,
+        "label": "Actions",
+        "hittable": true,
+        "ref": "e6",
+        "kind": "other"
+      },
+      {
+        "type": "Button",
+        "parentIndex": 5,
+        "index": 6,
+        "rect": {
+          "y": 293.66666666666663,
+          "x": 172.66666666666666,
+          "height": 20.333333333333314,
+          "width": 57
+        },
+        "enabled": true,
+        "depth": 4,
+        "label": "Actions",
+        "hittable": true,
+        "ref": "e7",
+        "kind": "button"
+      },
+      {
+        "type": "StaticText",
+        "parentIndex": 6,
+        "index": 7,
+        "rect": {
+          "y": 293.5,
+          "x": 172.5,
+          "height": 20.333333333333314,
+          "width": 57
+        },
+        "enabled": true,
+        "depth": 5,
+        "label": "Actions",
+        "hittable": true,
+        "ref": "e8",
+        "kind": "text"
+      },
+      {
+        "type": "StaticText",
+        "parentIndex": 5,
+        "index": 8,
+        "rect": {
+          "y": 331.8333333333333,
+          "x": 134.5,
+          "height": 20.333333333333314,
+          "width": 133
+        },
+        "enabled": true,
+        "depth": 4,
+        "label": "Last action: None",
+        "hittable": true,
+        "ref": "e9",
+        "kind": "text"
+      },
+      {
+        "type": "Button",
+        "parentIndex": 5,
+        "index": 9,
+        "enabled": true,
+        "rect": {
+          "width": 88,
+          "height": 34.333333333333314,
+          "x": 157,
+          "y": 370.3333333333333
+        },
+        "depth": 4,
+        "label": "Sort",
+        "hittable": true,
+        "ref": "e10",
+        "kind": "button"
+      },
+      {
+        "type": "StaticText",
+        "parentIndex": 9,
+        "index": 10,
+        "enabled": true,
+        "rect": {
+          "width": 88,
+          "height": 34.333333333333314,
+          "x": 157,
+          "y": 370.3333333333333
+        },
+        "depth": 5,
+        "label": "Sort",
+        "hittable": true,
+        "ref": "e11",
+        "kind": "text"
+      },
+      {
+        "type": "Image",
+        "parentIndex": 9,
+        "index": 11,
+        "enabled": true,
+        "identifier": "arrow.up.arrow.down",
+        "rect": {
+          "width": 19.666667938232422,
+          "height": 16.33333396911621,
+          "x": 171,
+          "y": 379.3333333333333
+        },
+        "depth": 5,
+        "label": "Sort",
+        "hittable": true,
+        "ref": "e12",
+        "kind": "image"
+      },
+      {
+        "type": "Link",
+        "parentIndex": 5,
+        "index": 12,
+        "enabled": true,
+        "rect": {
+          "width": 126,
+          "height": 20.333333333333314,
+          "x": 138,
+          "y": 422.66666666666663
+        },
+        "depth": 4,
+        "label": "Apple Developer",
+        "hittable": true,
+        "ref": "e13",
+        "kind": "link"
+      },
+      {
+        "type": "Button",
+        "parentIndex": 5,
+        "index": 13,
+        "enabled": true,
+        "rect": {
+          "width": 81.66666666666666,
+          "height": 20,
+          "x": 160.33333333333331,
+          "y": 461
+        },
+        "depth": 4,
+        "label": "Borderless",
+        "hittable": true,
+        "ref": "e14",
+        "kind": "button"
+      },
+      {
+        "type": "Button",
+        "parentIndex": 5,
+        "index": 14,
+        "enabled": true,
+        "rect": {
+          "width": 74,
+          "height": 40.33331298828125,
+          "x": 164,
+          "y": 499
+        },
+        "depth": 4,
+        "label": "Pill 1",
+        "hittable": true,
+        "ref": "e15",
+        "kind": "button"
+      },
+      {
+        "value": "1",
+        "type": "Switch",
+        "parentIndex": 5,
+        "index": 15,
+        "enabled": true,
+        "rect": {
+          "width": 58.33332824707031,
+          "height": 34.3333740234375,
+          "x": 172,
+          "y": 557.3333129882812
+        },
+        "depth": 4,
+        "label": "Bold",
+        "hittable": true,
+        "checked": true,
+        "ref": "e16",
+        "kind": "switch"
+      },
+      {
+        "value": "1",
+        "type": "Switch",
+        "parentIndex": 5,
+        "index": 16,
+        "enabled": true,
+        "rect": {
+          "width": 77.33334350585938,
+          "height": 20.33331298828125,
+          "x": 163.3333282470703,
+          "y": 609.8333129882812
+        },
+        "selected": true,
+        "depth": 4,
+        "label": "I agree",
+        "hittable": true,
+        "checked": true,
+        "ref": "e17",
+        "kind": "switch"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "identifier": "checkmark.square.fill",
+        "rect": {
+          "width": 15.333333969116211,
+          "height": 15.333333969116211,
+          "x": 163.33333333333331,
+          "y": 612.3333333333334
+        },
+        "label": "Selected",
+        "depth": 5,
+        "selected": true,
+        "index": 17,
+        "type": "Image",
+        "parentIndex": 16,
+        "ref": "e18",
+        "kind": "image"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 52,
+          "height": 20.33333333333337,
+          "x": 188.66666666666666,
+          "y": 609.8333333333333
+        },
+        "label": "I agree",
+        "depth": 5,
+        "index": 18,
+        "type": "StaticText",
+        "parentIndex": 16,
+        "ref": "e19",
+        "kind": "text"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "parentIndex": 5,
+        "rect": {
+          "width": 322,
+          "height": 28,
+          "x": 40,
+          "y": 648
+        },
+        "label": "Wi-Fi",
+        "depth": 4,
+        "index": 19,
+        "value": "1",
+        "type": "Switch",
+        "checked": true,
+        "ref": "e20",
+        "kind": "switch"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 40.66666666666666,
+          "height": 20.33333333333337,
+          "x": 40,
+          "y": 652
+        },
+        "label": "Wi-Fi",
+        "depth": 5,
+        "index": 20,
+        "type": "StaticText",
+        "parentIndex": 19,
+        "ref": "e21",
+        "kind": "text"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "parentIndex": 19,
+        "rect": {
+          "width": 63,
+          "height": 28,
+          "x": 301,
+          "y": 648
+        },
+        "label": "1",
+        "depth": 5,
+        "index": 21,
+        "value": "1",
+        "type": "Switch",
+        "checked": true,
+        "ref": "e22",
+        "kind": "switch"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 55.333333333333314,
+          "height": 20.33333333333337,
+          "x": 124,
+          "y": 694.3333333333333
+        },
+        "label": "Pickers",
+        "depth": 4,
+        "index": 22,
+        "type": "Button",
+        "parentIndex": 5,
+        "ref": "e23",
+        "kind": "button"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 75,
+          "height": 20.33333333333337,
+          "x": 203.33333333333331,
+          "y": 694.3333333333333
+        },
+        "label": "Indicators",
+        "depth": 4,
+        "index": 23,
+        "type": "Button",
+        "parentIndex": 5,
+        "ref": "e24",
+        "kind": "button"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "identifier": "Toolbar",
+        "rect": {
+          "width": 402,
+          "height": 874,
+          "x": 0,
+          "y": 0
+        },
+        "label": "Toolbar",
+        "depth": 3,
+        "index": 24,
+        "type": "Toolbar",
+        "parentIndex": 2,
+        "ref": "e25",
+        "kind": "toolbar"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.controls",
+    "appBundleId": "dev.simcore.controls",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 25,
+      "totalNodeCount": 25,
+      "reasons": []
+    },
+    "keyboard": {
+      "kind": "absent"
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "unknown",
+    "snapshotQuality": {
+      "state": "recovered",
+      "backend": "tree",
+      "reason": "XCTest-backed snapshot tiers are running with a short recovery probe after recent slow accessibility work on this screen",
+      "reasonCode": "budget",
+      "timing": {
+        "acquisitionMs": 694.0469741821289,
+        "presentationMs": 3.7189722061157227
+      }
+    },
+    "warnings": [
+      "Simulator AX snapshot unavailable (circuit-disabled); used XCTest for this app generation.",
+      "Detected an overly complex or slow accessibility tree. Fell back to the tree snapshot backend. It is OK to continue; use --json to inspect snapshotQuality.reason if you need recovery details."
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 36,
+        "p50Ms": 167,
+        "p95Ms": 17087,
+        "maxMs": 42699,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 36
+        }
+      },
+      "warning": "Warning: ios snapshots are slow in this run: p95 17087ms over 35 captures. Possible causes: device load, app or dev server stuck, helper fallback, or stale daemon."
+    },
+    "refsGeneration": 455785
+  }
+}

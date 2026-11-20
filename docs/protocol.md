@@ -72,6 +72,7 @@ Guest → host:
   resends every `layout` frame and forgets the touch in progress
 - `{"type":"tree","version":<u64>,"root":<ViewNode>}`
 - `{"type":"error","message":"..."}`
+- `{"type":"event","name":"module.called","detail":{"module":"OpenURLAction","method":"openURL","args":["<url>"]}}` — SwiftUI `openURL` handed to the system (nothing opens). The host forwards it to the client event stream.
 
 Host → guest (guest stdin):
 - `{"type":"action","id":<u64>,"version":<u64>}` — `version` = tree version the
@@ -151,6 +152,8 @@ const char *simcore_last_error(void);
 
 All Swift values cross as bytes/C strings; no Swift objects or pointers to
 temporaries are retained by Rust. Single-threaded: all calls from one thread.
+`simcore_runtime_set_wake` registers the read end of a pipe. `simcore_runtime_run` polls it with stdin
+and runs the callback on that same thread. `AsyncImage` HTTP completions use it, because this loop does not service Dispatch.
 
 ---
 
@@ -232,7 +235,7 @@ not the font. A resizable image takes the proposal; with `contentMode` it keeps 
 `fill` occupies the whole proposal and crops). The glyph is rasterized at device scale into an alpha mask, tinted with the foreground color
 and cached by (name, size, weight, scale, device scale, target size). In a list row, `label` puts the icon (imageScale large) centered in a
 24pt leading column and starts the title 16pt later (title at row content x + 40); the row separator aligns with the title.
-Rendering is monochrome only (multicolor, hierarchical and palette modes are out of scope). For a name with no mapping the
+The default is a monochrome alpha mask tinted with the foreground. Hierarchical, palette, multicolor and gradient modes are section O. For a name with no mapping the
 host draws a rounded-square outline placeholder and records one `get_errors` entry per name, `{"source":"host","message":"unsupported_symbol: ..."}`.
 
 ### Software keyboard (host chrome)
@@ -300,7 +303,7 @@ System chrome uses the same effect:
 
 ## G. v1 additions: Text runs, button roles, presentation layers (additive)
 
-- `text` may carry `"runs": [{"text", "font"?: Font, "fontWeight"?: Weight, "foregroundColor"?: Color, "italic"?: bool, "underline"?: bool, "strikethrough"?: bool}]` (from `Text + Text`, or a lone `Text` with `.italic()` / `.underline()`); `"text"` is the plain concatenation (labels, inspection). Unset fields inherit the environment. Runs lay out and wrap as one paragraph; line metrics come from the largest run. Italic is the font's oblique (synthesized when the face has none); underline is drawn 2pt below the baseline, 1pt thick, in the run's color, spanning the run's glyphs. A lone styled `Text` without italic/underline still uses plain modifiers.
+- `text` may carry `"runs"` (from `Text + Text`, or a lone `Text` whose styling is not a modifier). `"text"` is the plain concatenation (labels, inspection). Unset fields inherit the environment. Runs lay out and wrap as one paragraph; line metrics come from the largest run. Italic is the font's oblique (synthesized when the face has none). Underline and strikethrough are rules under or through the glyphs, in the run's color unless a line color is set (section O). A lone styled `Text` whose only styles are modifiers still uses those modifiers.
 - `button` gains `"role"?: "cancel"|"destructive"`.
 - New kind `presentation`: `{"kind":"presentation","id","content": ViewNode, "layers": [Layer]}`. The guest emits it as the root only while something is presented (otherwise the tree is unchanged); `content` is the normal tree and `layers` run bottom to top. A layer presented from inside another layer's content comes after it. `Layer` is one of:
 
@@ -724,3 +727,101 @@ Host → guest:
   - `"fillStyle"?: {"eoFill"?: bool, "antialiased"?: bool}` (`FillStyle`)
 - `stroke` object allows optional `"color"` (omitted means inherit current foreground color, matching `ForegroundStyle`) and gains optional `StrokeStyle` fields: `"lineCap"?: "butt"|"round"|"square"`, `"lineJoin"?: "miter"|"round"|"bevel"`, `"miterLimit"?: f64` (default 10), `"dash"?: [f64]`, `"dashPhase"?: f64`, `"antialiased"?: bool` (default true), `"inset"?: f64` (`InsettableShape.strokeBorder`).
 - New modifier `{"containerShape": {"shape": "...", ...}}` (`.containerShape(_:)`): records the enclosing container shape and its laid-out frame so descendant `ContainerRelativeShape` and `ConcentricRectangle` nodes resolve their corner geometry concentrically against the container's corners and edge insets.
+
+## O. v1 additions: text and image styling (additive, protocol version stays 1)
+
+Existing `text` and `image` documents parse unchanged. New fields are omitted when absent. `Font` system fonts gain an optional `"design"` (`"default"`, `"serif"`, `"rounded"`, `"monospaced"`).
+
+### Run fields
+
+A run may also carry `kerning`, `tracking`, `baselineOffset` (points), `fontDesign`, `fontWidth`, `monospaced`, `monospacedDigit`, `textScale` (`"default"` or `"secondary"`), `underlinePattern`, `underlineColor`, `strikethroughPattern`, `strikethroughColor`. `underline` and `strikethrough` stay booleans. Pattern and color are separate keys so a lone run can still emit underline as a modifier.
+
+### Modifiers
+
+| JSON | SwiftUI |
+|---|---|
+| `{"kerning": points}` | `.kerning(_:)`. Added to the font's fitted tracking. |
+| `{"tracking": points}` | `.tracking(_:)`. Added the same way. Kerning and tracking add when both are set. |
+| `{"baselineOffset": points}` | `.baselineOffset(_:)`. Positive lengthens the line downward and leaves the glyphs at the top, so a center-aligned sibling sits lower by half the offset. Negative moves the glyphs down and lengthens the line by the same amount. |
+| `{"fontDesign": FontDesign or null}` | `.fontDesign(_:)`. `null` restores the default design. |
+| `{"fontWidth": FontWidth or null}` | `.fontWidth(_:)`. `compressed`, `condensed`, `standard`, `expanded`. `null` is standard. |
+| `{"monospaced": bool}` | `.monospaced(_:)`. |
+| `{"monospacedDigit": bool}` | `.monospacedDigit()`. OpenType `tnum`. |
+| `{"textScale": "default"\|"secondary"}` | `.textScale(_:isEnabled:)`. Secondary glyphs are 0.86 of the current size. The line box stays the unscaled size. |
+| `{"truncationMode": "head"\|"tail"\|"middle"}` | `.truncationMode(_:)`. The ellipsis is `…`. Default is tail. |
+| `{"lineLimit": null}` or `{"lineLimit": {"min"?, "max"?, "reserves"?}}` | `.lineLimit`. `max` truncates. `min` reserves that many lines of height. `reserves: true` reserves `max` when set, otherwise `min`. `null` clears both. |
+| `{"underline": {"active", "pattern"?, "color"?}}` | `.underline(_:pattern:color:)`. |
+| `{"italic": bool}` | `.italic(_:)`. |
+| `{"textCase": "uppercase"\|"lowercase" or null}` | `.textCase(_:)`. The stored label is the folded string. `null` restores the original case. |
+| `{"allowsTightening": bool}` | `.allowsTightening(_:)`. Pulls tracking by up to 5% of the point size when a line overflows, then scales. |
+| `{"minimumScaleFactor": factor}` | `.minimumScaleFactor(_:)`. Scales the type down to `factor` before truncation. |
+| `{"symbolRenderingMode": SymbolMode or null}` | `.symbolRenderingMode(_:)`. `monochrome`, `hierarchical`, `palette`, `multicolor`. `null` is monochrome. |
+| `{"symbolVariableValueMode": "color"\|"draw" or null}` | `.symbolVariableValueMode(_:)`. There is no variable value on the wire, so the mode selects the AppKit configuration only. |
+| `{"symbolColorRenderingMode": "flat"\|"gradient" or null}` | `.symbolColorRenderingMode(_:)`. |
+| `{"allowedDynamicRange": "standard"\|"constrainedHigh"\|"high" or null}` | `.allowedDynamicRange(_:)`. Parsed. Drawing stays standard range. |
+| `{"strikethroughStyle": LineStyle}` | `.strikethrough(_:pattern:color:)`. The bool overload stays `{"strikethrough": bool}`. |
+
+`LineStyle.pattern` is `solid` (default), `dot`, `dash`, `dashDot`, or `dashDotDot`.
+
+### Image fields
+
+`image` gains optional `renderingMode` (`"template"` or `"original"`), `symbolRenderingMode`, `interpolation` (`"none"`, `"low"`, `"medium"`, `"high"`), `antialiased`, `symbolColorRenderingMode`, `symbolVariableValueMode`, `dynamicRange`, and `bitmap`.
+
+`template` forces a monochrome symbol. `original` uses multicolor when no symbol mode is set. Interpolation `none` is nearest, `low` is bilinear, `medium` and `high` are bicubic (the default). `antialiased: false` forces nearest. `bitmap` is `{"path", "width", "height", "scale"}`: a file the guest already loaded (an `AsyncImage` file URL). `width` and `height` are points (pixels divided by `scale`; `scale` of `0` means 1). When they are `0`, the host uses the file's pixel size divided by `scale`. The destination is local to the image node.
+
+### Host notes
+
+- Serif uses `.New York` when that family is installed, otherwise a generic serif. Rounded uses `.SF NS Rounded` when installed, otherwise SF Pro. Monospaced uses `.SF NS Mono` when installed. Optical tracking stays on the default SF sans and is dropped for serif, rounded, and mono. The `wdth` axis is not driven: condensed is 0.80 of the standard face's advance, compressed is 0.70, and expanded stays the standard face. A missing face is a gap, not a protocol change.
+- Colored symbols (hierarchical, palette, multicolor, gradient, or a non-automatic variable mode) are an AppKit RGBA bitmap on macOS when the pixels have chroma. Palette is the foreground at full, 0.6 and 0.3 alpha. The Phosphor fallback stays an alpha mask. The default monochrome path is unchanged.
+- `textCase` is folded before measure. Tightening runs before `minimumScaleFactor`, and truncation runs on the scaled text. The probe that decides to scale counts wrapped lines against the line cap, so a one-line limit scales a sentence that would otherwise wrap. Shaping uses the visual width divided by the font-width scale, and truncation keeps each surviving run's original index.
+
+## P. v1 additions: SwiftUI animation and transitions (additive, protocol version stays 1)
+
+Existing view trees parse unchanged. New modifiers are omitted when absent.
+
+### Modifiers
+
+| JSON | SwiftUI |
+|---|---|
+| `{"animation": AnimationSpec \| null}` | `withAnimation` (on root), `.animation(_:value:)`, `.animation(_:)`, `.transaction`. `null` disables animation for the subtree. `AnimationSpec` is `{"curve", "duration", "delay", "speed", "repeat"?: u32 \| "forever", "autoreverses", "token"}`. `curve` is `"linear"`, `"easeIn"`, `"easeOut"`, `"easeInOut"`, `{"bezier": [x1, y1, x2, y2]}`, `{"spring": {"mass", "stiffness", "damping", "initialVelocity", "settling"}}`, or `{"samples": [f64...]}` (for `CustomAnimation`). `token > 0` fires once when bumped; `token == 0` animates any property change. |
+| `{"transition": {"insertion": Effect, "removal": Effect, "animation"?: AnimationSpec}}` | `.transition(_:)`. `Effect` holds optional `opacity`, `scale`, `anchor`, `offset` (`[x, y]`), and `edge` (`"top"\|"bottom"\|"leading"\|"trailing"`). |
+| `{"matchedGeometry": {"id", "namespace", "properties": "frame"\|"position"\|"size", "anchor": [x, y], "isSource": bool}}` | `.matchedGeometryEffect(id:in:properties:anchor:isSource:)` with `@Namespace`. |
+| `{"contentTransition": "identity"\|"interpolate"\|"opacity"\|"numericTextUp"\|"numericTextDown"\|"symbolEffect"}` | `.contentTransition(_:)`. Inherited by `text` and `image` descendants. |
+
+### Messages
+
+Guest → host (not version-gated, sent via `simcore_send_line`):
+
+```json
+{"type":"schedule","afterMs":16.0}
+```
+
+Requests a `tick` in `afterMs` ms (omitted/`null` cancels pending ticks). Used by `TimelineView`, `PhaseAnimator`, `KeyframeAnimator`, and `withAnimation` completion callbacks.
+
+Host → guest (delivered to `simcore_runtime_set_layout_callback`):
+
+```json
+{"type":"tick","time":16.0}
+```
+
+Advances the guest's monotonic animation clock (`time` in ms; starts at 0). On normal renders (`action`, launch, `environment`), any changed `schedule` line is emitted before `tree`; in response to `tick`, the guest emits any new `tree` first and always terminates with a `schedule` line so the host observes both atomically. The guest optionally reads `SIMCORE_TIME` (Unix epoch seconds as a decimal float) at launch to anchor `TimelineView` / `Date` deterministically in tests.
+
+### Host animation semantics
+
+- `onesim_render::Animator` diffs each new target `Scene` against the previously displayed `Scene` (by `(node.id, node.anchor)`), interpolating `bounds`, `opacity`, `fill`, `stroke`, `radius`, `text.color`, `symbol.color`, and `glyph.color` with the node's `AnimationSpec` (retaining spring velocity on interruption).
+- Inserted/removed subtrees under an animated update play their `.transition` (defaulting to `.opacity` when no explicit transition is attached); removed subtrees render as non-interactive ghosts until settled.
+- Same-frame `.matchedGeometryEffect(isSource: false)` aligns the non-source subtree to its matching `isSource: true` frame during layout; cross-frame pairs morph bounds and cross-fade between exiting and entering nodes.
+- `.contentTransition` cross-fades (`.opacity` / `.symbolEffect`) or rolls (`.numericText`) text and symbol changes.
+- CLI: `--wait MS` steps the session clock deterministically in frame slices. Live viewers (`onesim window`, `onesim-web`) advance animations via `tick(dt)` while `is_animating` is true and go idle once settled.
+
+## Q. v1 additions: SwiftUI controls (additive, protocol version stays 1)
+
+Menu, Link, control styles and Gauge (`frameworks/swiftui/Sources/SwiftUI/Styles.swift`). Custom styles (`ButtonStyle`, `ToggleStyle`, `ProgressViewStyle`, `GaugeStyle`, `MenuStyle`) add nothing to the wire: the guest evaluates their `makeBody` in place of the control.
+
+- `button` gains `"selected"?: bool` (`.toggleStyle(.button)`): the toggle's state. The host draws the label in accent with bordered-button padding, inside an accent capsule at 16% alpha while selected; inspection role `toggle`, value `on` / `off`.
+- `picker` `style` gains `"wheel"`: the options on a drum, the selected one centred in a gray highlight band, three rows each side squashed and dimmed. Each visible unselected row is a `button` running that option's action. `.palette` is sent as `segmented`; `.inline` inside a list and `.navigationLink` are built by the guest from `button` rows (`value: "checked"` on the selected row, an accent `checkmark` image) and a `navigationLink`-style button that pushes them as a screen.
+- `NavigationLink` outside a `List` / `Form` is sent with the enclosing button style (default `automatic`) instead of `navigationLink`.
+- Layer `menu` (section I) gains `"centered"?: bool` and item fields `"systemImage"?: string`, `"destructive"?: bool`, `"divider"?: bool`, `"disabled"?: bool` (dimmed, no action). A `Menu` sends a `button` (its label, the enclosing button style) whose action toggles the layer, and while open a layer `{"kind":"menu","anchor": menu id,"centered": true,"items": [...],"dismiss"}`. A centred card is centred on the anchor, its top 10.5 pt above the anchor's centre; items with icons draw the symbol in a leading column; destructive items are red; a `divider` item has a 21 pt gap with a separator above it. Running an item's action runs the button's action and closes the menu. Toggles in a menu are checked items; a picker's options are inline checked items between separators.
+- `progress` gains `"currentValueLabel"?: ViewNode`, drawn under a linear bar (caption, secondary). `.circular` is sent with `value: null` (the spinner).
+- New kind `gauge`: `{"kind":"gauge","id","style": "automatic"|"linearCapacity"|"accessoryLinear"|"accessoryLinearCapacity"|"accessoryCircular"|"accessoryCircularCapacity","value": fraction 0...1,"label"?,"currentValueLabel"?,"minimumValueLabel"?,"maximumValueLabel"?}` (labels are ViewNodes; `EmptyView` ones are omitted). `automatic` and `linearCapacity`: label centred above a 16 pt accent capacity bar, min/max labels beside it, the current value centred below. `accessoryLinearCapacity`: label leading above a 4 pt bar. `accessoryLinear`: an 8 pt primary bar with a dot at the value, no label. `accessoryCircularCapacity`: a 58 pt ring filled clockwise from the top, the current value inside. `accessoryCircular`: a 58 pt arc open at the bottom with a dot at the value, the current value inside and the label in the opening. Inspection value: the fraction.
+- Slider value labels add no kind: the guest sends an `hstack` of the minimum label, the `slider` (id `<id>/s`) and the maximum label. `onEditingChanged` runs `true` then `false` around each `text_input`.

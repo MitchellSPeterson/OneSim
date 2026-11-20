@@ -6,9 +6,9 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 |---|---|---|---|---|
 | `AccessibilityRotorContent` | 15 | ⬜ |  |  |
 | `AlignmentID` | 13 | ⬜ |  |  |
-| `Animatable` | 13 | ⬜ |  |  |
+| `Animatable` | 13 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Used by `KeyframeTimeline` and `KeyframeAnimator`; custom `Animatable` views do not interpolate per frame on `withAnimation` |
 | `AnimatableModifier` | 13 | ⬜ |  | Deprecated |
-| `AnimationStateKey` | 17 | ⬜ |  |  |
+| `AnimationStateKey` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `App` | 14 | 🟠 |  | Single scene; `@main` must start its line |
 | `AttributedTextFormattingDefinition` | 26 | ⬜ |  |  |
 | `AttributedTextValueConstraint` | 26 | ⬜ |  |  |
@@ -19,7 +19,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ControlWidgetConfiguration` | 18 | ⬜ |  |  |
 | `ControlWidgetTemplate` | 18 | ⬜ |  |  |
 | `CoordinateSpaceProtocol` | 17 | ⬜ |  |  |
-| `CustomAnimation` | 17 | ⬜ |  |  |
+| `CustomAnimation` | 17 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Sampled into a curve over up to 2 s; `shouldMerge` is not called |
 | `CustomHoverEffect` | 18 | ⬜ |  |  |
 | `CustomizableToolbarContent` | 14 | ⬜ |  |  |
 | `CustomPresentationDetent` | 16 | ⬜ |  |  |
@@ -32,14 +32,14 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `DynamicTableRowContent` | 16 | ⬜ |  |  |
 | `DynamicViewContent` | 13 | ⬜ |  |  |
 | `EnvironmentalModifier` | 13 | ⬜ |  |  |
-| `EnvironmentKey` | 13 | ⬜ |  |  |
+| `EnvironmentKey` | 13 | ✅ | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) |  |
 | `FileDocument` | 14 | ⬜ |  | Deprecated |
 | `FocusedValueKey` | 14 | ⬜ |  |  |
 | `GeometryEffect` | 13 | ⬜ |  |  |
 | `Gesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | Custom gestures recognize their `body` |
 | `InsettableShape` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
-| `Keyframes` | 17 | ⬜ |  |  |
-| `KeyframeTrackContent` | 17 | ⬜ |  |  |
+| `Keyframes` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
+| `KeyframeTrackContent` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `Layout` | 16 | ⬜ |  |  |
 | `LayoutValueKey` | 16 | ⬜ |  |  |
 | `MatchedTransitionSourceConfiguration` | 18 | ⬜ |  |  |
@@ -66,15 +66,15 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `TextRenderer` | 17 | ⬜ |  |  |
 | `TextSelectability` | 15 | ⬜ |  |  |
 | `TextVariantPreference` | 18 | ⬜ |  |  |
-| `TimelineSchedule` | 15 | ⬜ |  |  |
+| `TimelineSchedule` | 15 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `ToolbarContent` | 14 | ⬜ |  |  |
-| `TransactionKey` | 17 | ⬜ |  |  |
-| `Transition` | 17 | ⬜ |  |  |
+| `TransactionKey` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
+| `Transition` | 17 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Built-in transitions run natively; custom `body(content:phase:)` extracts `opacity` and `offset` |
 | `UIGestureRecognizerRepresentable` | 18 | ⬜ |  |  |
 | `UIHostingSceneDelegate` | 26 | ⬜ |  |  |
 | `UIViewControllerRepresentable` | 13 | ⬜ |  |  |
 | `UIViewRepresentable` | 13 | ⬜ |  |  |
-| `VectorArithmetic` | 13 | ⬜ |  |  |
+| `VectorArithmetic` | 13 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `View` | 13 | ✅ |  |  |
 | `ViewModifier` | 13 | ⬜ |  |  |
 | `VisualEffect` | 17 | ⬜ |  |  |

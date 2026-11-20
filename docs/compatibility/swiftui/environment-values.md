@@ -33,8 +33,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.calendar` | 13 | ⬜ |  |  |
 | `\.colorScheme` | 13 | ✅ |  |  |
 | `\.colorSchemeContrast` | 13 | ⬜ |  |  |
-| `\.contentTransition` | 16 | ⬜ |  |  |
-| `\.contentTransitionAddsDrawingGroup` | 16 | ⬜ |  |  |
+| `\.contentTransition` | 16 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Read reflects `.contentTransition(_:)`; `.environment(\.contentTransition, _)` is ignored |
+| `\.contentTransitionAddsDrawingGroup` | 16 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Read-only default `false`; `.environment(\.contentTransitionAddsDrawingGroup, _)` is ignored |
 | `\.controlSize` | 15 | ⬜ |  |  |
 | `\.defaultMinListHeaderHeight` | 13 | ⬜ |  |  |
 | `\.defaultMinListRowHeight` | 13 | ⬜ |  |  |
@@ -53,9 +53,9 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.headerProminence` | 15 | ⬜ |  |  |
 | `\.horizontalScrollBounceBehavior` | 16.4 | ⬜ |  |  |
 | `\.horizontalScrollIndicatorVisibility` | 16 | ⬜ |  |  |
-| `\.horizontalSizeClass` | 13 | ⬜ |  |  |
+| `\.horizontalSizeClass` | 13 | ✅ | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) | From the viewport: regular on iPad and landscape Plus/Max widths |
 | `\.imageScale` | 13 | ⬜ |  |  |
-| `\.isEnabled` | 13 | ⬜ |  |  |
+| `\.isEnabled` | 13 | ✅ | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) |  |
 | `\.isFocused` | 14 | ⬜ |  |  |
 | `\.isFocusEffectEnabled` | 17 | ⬜ |  |  |
 | `\.isHoverEffectEnabled` | 17 | ⬜ |  |  |
@@ -84,7 +84,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.minimumScaleFactor` | 13 | ⬜ |  |  |
 | `\.multilineTextAlignment` | 13 | ⬜ |  |  |
 | `\.navigationLinkIndicatorVisibility` | 17 | ⬜ |  |  |
-| `\.openURL` | 14 | ⬜ |  |  |
+| `\.openURL` | 14 | 🟠 | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) | System URLs are reported as a `module.called` event (nothing opens); not on the web build |
 | `\.openWindow` | 16 | ⬜ |  |  |
 | `\.overlayArrangementZIndex` | 13 | ⬜ |  |  |
 | `\.pixelLength` | 13 | ⬜ |  |  |
@@ -94,7 +94,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.redactionReasons` | 14 | ⬜ |  |  |
 | `\.refresh` | 15 | ⬜ |  |  |
 | `\.rename` | 16 | ⬜ |  |  |
-| `\.scenePhase` | 14 | ⬜ |  |  |
+| `\.scenePhase` | 14 | 🟠 | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) | Always `.active` |
 | `\.scrollDismissesKeyboardMode` | 16 | ⬜ |  |  |
 | `\.searchSuggestionsPlacement` | 16 | ⬜ |  |  |
 | `\.sidebarRowSize` | 16 | ⬜ |  |  |
@@ -120,5 +120,5 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.undoManager` | 13 | ⬜ |  |  |
 | `\.verticalScrollBounceBehavior` | 16.4 | ⬜ |  |  |
 | `\.verticalScrollIndicatorVisibility` | 16 | ⬜ |  |  |
-| `\.verticalSizeClass` | 13 | ⬜ |  |  |
+| `\.verticalSizeClass` | 13 | ✅ | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) | From the viewport: compact in iPhone landscape |
 | `\.writingToolsBehavior` | 18 | ⬜ |  |  |

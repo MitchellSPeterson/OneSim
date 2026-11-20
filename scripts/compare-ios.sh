@@ -30,12 +30,18 @@ tabs="$guests/tabs"
 gest="$guests/gestures"
 shp="$guests/shapes"
 layout="$guests/layout"
+typeapp="$guests/type"
+anim="$guests/animation"
+controls="$guests/controls"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
   scripts/build-swift-app.sh examples/swiftui-tabs "$tabs"
   scripts/build-swift-app.sh examples/swiftui-gestures "$gest"
   scripts/build-swift-app.sh examples/swiftui-shapes "$shp"
   scripts/build-swift-app.sh examples/swiftui-layout "$layout"
+  scripts/build-swift-app.sh examples/swiftui-type "$typeapp"
+  scripts/build-swift-app.sh examples/swiftui-animation "$anim"
+  scripts/build-swift-app.sh examples/swiftui-controls "$controls"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
 # (docs/compatibility/versions.json): 26.5 on the iPhone 17 Pro in tests/fixtures/, 27.2 on the iPhone 18 Pro
@@ -128,6 +134,36 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     lshot layout-paged --scroll 201,658,320,0
     echo "== SwiftUI layout (swiftui-layout, iOS $ios)"
     python3 scripts/compare_ios.py $fx/swiftui-layout-ios "$lout/onesim" "$lout" || rc=1
+    # SwiftUI type: tests/fixtures/swiftui-type-ios (see its README).
+    yout=$out/swiftui-type; mkdir -p "$yout/onesim"
+    yshot() { local name=$1; shift; ./target/debug/onesim run "$typeapp" "${base[@]}" "$@" --screenshot "$yout/onesim/$name.png" >/dev/null; }
+    yshot type
+    yshot type-dark --dark
+    echo "== SwiftUI type (swiftui-type, iOS $ios)"
+    python3 scripts/compare_ios.py $fx/swiftui-type-ios "$yout/onesim" "$yout" || rc=1
+    # SwiftUI animation: tests/fixtures/swiftui-animation-ios (see its README). --wait 600 settles all spring/ease animations.
+    aout=$out/swiftui-animation; mkdir -p "$aout/onesim"
+    ashot() { local name=$1; shift; ./target/debug/onesim run "$anim" "${base[@]}" "$@" --screenshot "$aout/onesim/$name.png" >/dev/null; }
+    ashot animation
+    ashot animation-dark   --dark
+    ashot animation-active --click Beta --click "Toggle Card" --click Increment --wait 600
+    echo "== SwiftUI animation (swiftui-animation, iOS $ios)"
+    python3 scripts/compare_ios.py $fx/swiftui-animation-ios "$aout/onesim" "$aout" || rc=1
+    # SwiftUI controls: tests/fixtures/swiftui-controls-ios (see its README). Targets by label, picker rows by point.
+    cout=$out/swiftui-controls; mkdir -p "$cout/onesim"
+    cshot() { local name=$1; shift; ./target/debug/onesim run "$controls" "${base[@]}" "$@" --screenshot "$cout/onesim/$name.png" >/dev/null; }
+    cshot controls
+    cshot controls-dark     --dark
+    cshot controls-menu     --click Actions
+    cshot controls-changed  --click Bold --click "I agree" --click "Pill 0"
+    cshot pickers           --click Pickers
+    cshot pickers-dark      --dark --click Pickers
+    cshot pickers-pushed    --click Pickers --click Size
+    cshot pickers-changed   --click Pickers --click Green --click Star --click 10:00
+    cshot indicators        --click Indicators
+    cshot indicators-dark   --dark --click Indicators
+    echo "== SwiftUI controls (swiftui-controls, iOS $ios)"
+    python3 scripts/compare_ios.py $fx/swiftui-controls-ios "$cout/onesim" "$cout" || rc=1
   fi
   # React Native / Expo showcase: tests/fixtures/rn-showcase-ios (see its README). Needs node + `npm install` in the example.
   if want expo; then

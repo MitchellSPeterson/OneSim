@@ -341,7 +341,12 @@ fn draw_image(pm: &mut Pixmap, n: &crate::scene::Node, im: &crate::scene::ImageR
     if im.rotation != 0.0 {
         to_pt = to_pt.post_rotate_at(im.rotation, (d.x + d.w / 2.0) as f32, (d.y + d.h / 2.0) as f32);
     }
-    p.shader = tiny_skia::Pattern::new(im.pixmap.as_ref().as_ref(), tiny_skia::SpreadMode::Pad, tiny_skia::FilterQuality::Bicubic, n.opacity, to_pt);
+    let quality = match im.filter {
+        0 => tiny_skia::FilterQuality::Nearest,
+        1 => tiny_skia::FilterQuality::Bilinear,
+        _ => tiny_skia::FilterQuality::Bicubic,
+    };
+    p.shader = tiny_skia::Pattern::new(im.pixmap.as_ref().as_ref(), tiny_skia::SpreadMode::Pad, quality, n.opacity, to_pt);
     pm.fill_rect(r, &p, xf, Some(&m));
 }
 
@@ -661,6 +666,17 @@ fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: 
                 .collect();
             stroke_pts(pm, &points, c, width, xf, mask);
         }
+        Glyph::Arc { from, to, width } => {
+            let sw = width as f32 / 100.0;
+            let r = (w.min(h) - sw) / 2.0;
+            let (a0, a1) = (from as f32, to as f32);
+            let steps = (((a1 - a0).abs() / 3.0).ceil() as usize).max(2);
+            let pts: Vec<_> = (0..=steps)
+                .map(|i| (a0 + (a1 - a0) * i as f32 / steps as f32).to_radians())
+                .map(|a| (cx + r * a.sin(), cy - r * a.cos()))
+                .collect();
+            stroke_pts(pm, &pts, c, sw, xf, mask);
+        }
         Glyph::Spinner | Glyph::SpinnerLarge => {
             // 8 rounded spokes, the leading one opaque, the rest fading (the indicator at rest).
             let s = w.min(h);
@@ -708,7 +724,8 @@ fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32, f32), op: 
 /// Returns the tile and its device-pixel origin.
 fn symbol_tile(sy: &SymbolRun, b: (f32, f32, f32, f32), op: f32, s: f32) -> Option<(i32, i32, Pixmap)> {
     let (wpx, hpx) = ((sy.size.0 as f32 * s).round().max(1.0) as u32, (sy.size.1 as f32 * s).round().max(1.0) as u32);
-    let m = symbols::mask(&sy.spec, wpx, hpx, s as f64)?;
+    let tint = [(sy.color.r * 255.0).round() as u8, (sy.color.g * 255.0).round() as u8, (sy.color.b * 255.0).round() as u8, (sy.color.a * 255.0).round() as u8];
+    let m = symbols::mask(&sy.spec, wpx, hpx, s as f64, tint)?;
     let (bx, by) = ((b.0 * s).round() as i32, (b.1 * s).round() as i32);
     let (bw, bh) = ((b.2 * s).round() as i32, (b.3 * s).round() as i32);
     let (x0, y0) = (bx + (bw - wpx as i32) / 2, by + (bh - hpx as i32) / 2);
@@ -716,15 +733,25 @@ fn symbol_tile(sy: &SymbolRun, b: (f32, f32, f32, f32), op: f32, s: f32) -> Opti
     let c = sy.color;
     let k = c.a * op;
     let (r, g, bl) = (c.r * 255.0, c.g * 255.0, c.b * 255.0);
+    let colored = !m.rgba.is_empty();
     for (i, px) in tmp.pixels_mut().iter_mut().enumerate() {
         let (x, y) = (x0 + (i as u32 % wpx) as i32, y0 + (i as u32 / wpx) as i32);
         if x < bx || y < by || x >= bx + bw || y >= by + bh {
             continue;
         }
-        let a = m.alpha[i] as f32 / 255.0 * k;
-        let al = (a * 255.0).round() as u8;
-        let ch = |v: f32| ((v * a).round() as u8).min(al);
-        *px = tiny_skia::PremultipliedColorU8::from_rgba(ch(r), ch(g), ch(bl), al).unwrap_or(*px);
+        if colored {
+            let o = i * 4;
+            let a0 = m.rgba[o + 3] as f32;
+            let al = (a0 * k).round() as u8;
+            let scale = if a0 == 0.0 { 0.0 } else { al as f32 / a0 };
+            let ch = |c: u8| (c as f32 * scale).round() as u8;
+            *px = tiny_skia::PremultipliedColorU8::from_rgba(ch(m.rgba[o]), ch(m.rgba[o + 1]), ch(m.rgba[o + 2]), al).unwrap_or(*px);
+        } else {
+            let a = m.alpha[i] as f32 / 255.0 * k;
+            let al = (a * 255.0).round() as u8;
+            let ch = |v: f32| ((v * a).round() as u8).min(al);
+            *px = tiny_skia::PremultipliedColorU8::from_rgba(ch(r), ch(g), ch(bl), al).unwrap_or(*px);
+        }
     }
     Some((x0, y0, tmp))
 }
@@ -924,6 +951,39 @@ fn apply_text_op(pm: &mut Pixmap, op: &TextOp, (dx, dy): (i32, i32), mask: Optio
     }
 }
 
+/// Solid, dotted, dashed, dash-dot, or dash-dot-dot rule. Lengths are device pixels.
+fn emit_rule(emit: &mut impl FnMut(TextOp), x: f32, y: f32, w: f32, th: f32, col: [u8; 4], pat: u8) {
+    if w <= 0.0 {
+        return;
+    }
+    if pat == 0 {
+        emit(TextOp::Rule(x, y, w, th, col));
+        return;
+    }
+    let (dash, gap, dot) = (th * 3.0, th * 2.0, th.max(1.0));
+    let unit: &[f32] = match pat {
+        1 => &[dot, gap],
+        2 => &[dash, gap],
+        3 => &[dash, gap, dot, gap],
+        _ => &[dash, gap, dot, gap, dot, gap],
+    };
+    let mut at = x;
+    let end = x + w;
+    let mut i = 0;
+    while at < end - 0.25 {
+        let mark = i % 2 == 0;
+        let len = unit[i % unit.len()].min(end - at);
+        if mark && len > 0.0 {
+            emit(TextOp::Rule(at, y, len, th, col));
+        }
+        at += len;
+        i += 1;
+        if i > 4096 {
+            break;
+        }
+    }
+}
+
 pub(crate) fn text_geometry(n: &crate::scene::Node, t: &crate::scene::TextRun, fonts: &Fonts, s: f32) -> (FontSpec, f32, (f32, f32)) {
     let b = n.bounds;
     let (bx, by, bw) = (b.x as f32, b.y as f32, b.w as f32);
@@ -953,7 +1013,7 @@ fn paint_text(n: &crate::scene::Node, t: &crate::scene::TextRun, fonts: &mut Fon
     // Styled runs carry their own color (alpha included); only the node opacity is applied on top.
     let base_a = if t.spans.is_empty() { rgba[3] as u32 } else { (n.opacity * 255.0).round() as u32 };
     // Decorations have their own bounds. Keep the full run when they are present.
-    let clip = clip.filter(|_| !t.strike && !t.spans.iter().any(|span| span.strike || span.underline));
+    let clip = clip.filter(|_| !t.strike && !t.font.underline && !t.spans.iter().any(|span| span.strike || span.underline));
     let spans = fonts.draw_if_visible(&t.text, &spec, width, rgba, (ox, oy), &t.spans, clip, |x, y, w, h, c| {
         // cosmic-text replaces the colour alpha with glyph coverage; reapply ours.
         emit(TextOp::Blend(x, y, w, h, [c[0], c[1], c[2], (c[3] as u32 * base_a / 255) as u8]));
@@ -961,16 +1021,25 @@ fn paint_text(n: &crate::scene::Node, t: &crate::scene::TextRun, fonts: &mut Fon
     // Strikethrough / underline: per line, or per styled run (in the run's own color and size).
     for sp in spans {
         let run = sp.run.and_then(|i| t.spans.get(i));
-        let (strike, under) = (t.strike || run.is_some_and(|r| r.strike), run.is_some_and(|r| r.underline));
-        let size = run.map_or(spec.size, |r| spec.size * r.pt / t.font.pt);
+        let strike = t.strike || run.is_some_and(|r| r.strike);
+        let under = t.font.underline || run.is_some_and(|r| r.underline);
+        let size = run.map_or(spec.size, |r| spec.size * r.pt / t.font.pt.max(0.01));
         let col = run.map_or(rgba, |r| [(r.color.r * 255.0).round() as u8, (r.color.g * 255.0).round() as u8, (r.color.b * 255.0).round() as u8, (r.color.a * n.opacity * 255.0).round() as u8]);
-        for (on, drop) in [(strike, 0.27f32), (under, -0.11)] {
+        let paint_col = |over: Option<crate::scene::Color>| {
+            over.map_or(col, |c| [(c.r * 255.0).round() as u8, (c.g * 255.0).round() as u8, (c.b * 255.0).round() as u8, (c.a * n.opacity * 255.0).round() as u8])
+        };
+        let rules = [
+            (strike, 0.27f32, run.map_or(t.font.strike_pat, |r| r.strike_pat), run.and_then(|r| r.strike_color).or(t.font.strike_color)),
+            (under, -0.11, run.map_or(t.font.line_pat, |r| r.line_pat), run.and_then(|r| r.under_color).or(t.font.under_color)),
+        ];
+        for (on, drop, pat, over) in rules {
             if !on {
                 continue;
             }
             let th = (size * 0.065).max(1.0);
+            // `Fonts::draw` already folded baselineOffset into `sp.baseline`.
             let y = oy + sp.baseline - size * drop - th / 2.0;
-            emit(TextOp::Rule(ox + sp.x0, y, (sp.x1 - sp.x0).max(0.0), th, col));
+            emit_rule(&mut emit, ox + sp.x0, y, (sp.x1 - sp.x0).max(0.0), th, paint_col(over), pat);
         }
     }
     Ok(())

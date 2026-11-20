@@ -8,6 +8,7 @@ pub mod layout {
     pub mod rn;
     pub mod swiftui;
 }
+pub mod animation;
 pub mod backend;
 mod chrome;
 mod device;
@@ -25,6 +26,7 @@ mod symbols;
 mod symbols_map;
 mod text;
 
+pub use animation::Animator;
 pub use backend::{BackendKind, BackendPref, CpuRenderer, Diagnostics, Frame, FrameTimings, RenderError, Renderer};
 pub use display_build::{Builder, CACHE_MAX_ENTRIES, CACHE_TTL_FRAMES};
 pub use raster::{apply_backdrop, apply_backdrop_op, clip_chain, clip_radius, needs_backdrop, node_sprite, render, render_png, render_reusing, sprite_key, Sprite, SpriteKey, SpriteLayer};
@@ -33,7 +35,7 @@ pub use chrome::{autocap, ChromeParams};
 pub use device::{device, Device, StatusBar, DEFAULT_ANDROID_DEVICE, DEFAULT_DEVICE, DEVICES};
 pub use interaction::{resolve_label, scroll_anchor_offset, DragPhase, Effect, Interaction};
 pub use layout::swiftui::{SceneParams, SwiftUiLayoutCache};
-pub use scene::{Color, Glyph, Gradient, ImageRun, Node, Rect, Role, Scene, ScrollInfo, SheetInfo, SheetPos, Shadow, SymbolRun, TextRun};
+pub use scene::{Color, Glyph, Gradient, ImageRun, Node, NodeAnim, Rect, Role, Scene, ScrollInfo, SheetInfo, SheetPos, Shadow, SymbolRun, TextRun};
 pub use text::{fonts_capability, inter_tracking_em, tracking_em, FontSpec, Fonts, Span, TextAlign};
 
 use onesim_protocol::ViewNode;

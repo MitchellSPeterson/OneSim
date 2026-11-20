@@ -12,7 +12,7 @@ use crate::scene::{Color, CustomShapeEval, Glyph, Node, Rect, Role, Scene, Scrol
 use crate::symbols::{self, SymbolSpec};
 use crate::text::{FontSpec, Fonts, Span, TextAlign};
 use onesim_protocol::{
-    Alignment, Appearance, Axis, ButtonStyle, ConcentricCorners, ContainerShapeSpec, ContentMode, CornerStyleSpec, Detent, DisplayMode, DynamicTypeSize, Edges, FitAxes, Font, GlassShapeKind, GlassVariant, GridTrack, ImageScale, IosVersion, Layer, LineCap, LineJoin, ListStyle, Modifier, PickerOption, PickerStyle, RoundedCornerStyle, ScrollSnap, Section, Semantic, ShapeKind, ShapeSizeHint, TrackSize, UniformCorners, ViewKind, ViewNode,
+    Alignment, AnimationSpec, Appearance, Axis, ButtonStyle, ConcentricCorners, ContainerShapeSpec, ContentMode, ContentTransitionKind, CornerStyleSpec, Detent, DisplayMode, DynamicTypeSize, Edges, FitAxes, Font, GaugeStyle, GlassShapeKind, GlassVariant, GridTrack, ImageScale, IosVersion, Layer, LineCap, LineJoin, ListStyle, MatchedGeometryMod, MatchedProps, Modifier, PickerOption, PickerStyle, RoundedCornerStyle, ScrollSnap, Section, Semantic, ShapeKind, ShapeSizeHint, TrackSize, TransitionSpec, UniformCorners, ViewKind, ViewNode,
 };
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
@@ -126,6 +126,8 @@ const PROGRESS_H: f64 = 4.0;
 /// Linear progress track (light, dark).
 const PROGRESS_TRACK_FILL: ((u8, u8, u8), (u8, u8, u8)) = ((228, 228, 230), (61, 61, 65));
 const PROGRESS_LABEL_GAP: f64 = 8.0;
+/// Label-to-bar gap of a linear progress view (iOS 27.2, swiftui-controls indicators).
+const PROGRESS_BAR_LABEL_GAP: f64 = 4.67;
 const SPINNER: f64 = 20.0;
 /// Picker menu: row height, vertical padding, text x, right padding, min width, radius,
 /// checkmark (pt, weight) and centre x, offset from the anchor, glass mix (light, dark).
@@ -141,6 +143,44 @@ const MENU_DX: f64 = 0.0;
 /// Half the height of the picker's hit area: the card's bottom lines up with it.
 const MENU_DY: f64 = 17.17;
 const MENU_GLASS: ((f32, f32), (f32, f32)) = ((0.196, 0.76), (0.35, 0.118));
+/// `Menu` card (centred on its button): icon centre and text x when items carry icons, the gap a divider
+/// opens between items, separator side inset, and how far the card's top sits above the button's centre.
+const MENU_ICON_X: f64 = 39.5;
+const MENU_ICON_TEXT_X: f64 = 63.2;
+const MENU_DIVIDER_GAP: f64 = 21.0;
+const MENU_SEP_INSET: f64 = 24.0;
+const MENU_CENTER_DY: f64 = 10.5;
+
+// Section Q controls (iOS 27.2, measured on tests/fixtures/ios27/swiftui-controls-ios).
+/// `.toggleStyle(.button)` when on: accent alpha of its capsule.
+const TOGGLE_BUTTON_ON_A: f32 = 0.16;
+/// Gap between a linear progress bar and its currentValueLabel (caption, secondary).
+const PROGRESS_VALUE_GAP: f64 = 4.0;
+const PROGRESS_VALUE_PT: f32 = 12.0;
+/// Gauge: capacity bar and accessory bar heights; label-to-bar and bar-to-value gaps.
+const GAUGE_BAR: f64 = 16.0;
+const GAUGE_ACC_BAR: f64 = 8.0;
+const GAUGE_LABEL_GAP: f64 = 10.4;
+const GAUGE_VALUE_GAP: f64 = 6.3;
+const GAUGE_ACC_LABEL_GAP: f64 = 4.0;
+/// Accessory circular gauges: box, stroke, track alpha, open arc half-angle (degrees from the top),
+/// marker cut-out and dot diameters (linear / circular), value and label sizes.
+const GAUGE_RING: f64 = 58.0;
+const GAUGE_RING_W: f64 = 5.7;
+const GAUGE_RING_TRACK_A: f32 = 0.35;
+const GAUGE_ARC_ANGLE: f64 = 140.0;
+const GAUGE_MARKER: (f64, f64) = (16.0, 7.33);
+const GAUGE_ARC_MARKER: (f64, f64) = (11.0, 5.5);
+const GAUGE_RING_PT: f32 = 25.0;
+const GAUGE_ARC_LABEL_PT: f32 = 11.0;
+/// Wheel picker: height, (offset from the centre, vertical squash) per row away from the selection,
+/// font size, highlight band (height, side inset, fill), alpha of the unselected rows.
+const WHEEL_H: f64 = 216.0;
+const WHEEL_ROWS: [(f64, f64); 4] = [(0.0, 1.0), (30.0, 0.915), (56.0, 0.745), (75.2, 0.45)];
+const WHEEL_PT: f32 = 22.0;
+const WHEEL_BAND: (f64, f64) = (32.0, 16.67);
+const WHEEL_BAND_FILL: ((u8, u8, u8), (u8, u8, u8)) = ((244, 244, 245), (58, 58, 60));
+const WHEEL_DIM_A: f32 = 0.45;
 
 // iOS 26 measurements (points).
 const ROW_MIN_H: f64 = 52.0;
@@ -165,6 +205,15 @@ const LABEL_ICON_COL: f64 = 24.0;
 const LABEL_ROW_GAP: f64 = 16.0;
 /// Icon-to-title gap of a `Label` outside a list (not measured).
 const LABEL_GAP: f64 = 8.0;
+
+/// The optional views of a `Gauge`.
+#[derive(Clone, Copy)]
+struct GaugeLabels<'a> {
+    label: Option<&'a ViewNode>,
+    current: Option<&'a ViewNode>,
+    min: Option<&'a ViewNode>,
+    max: Option<&'a ViewNode>,
+}
 
 /// Screen geometry shared by the root and the presentation layers.
 #[derive(Clone, Copy)]
@@ -228,6 +277,44 @@ struct Env {
     img: ImageScale,
     /// Laid out as (part of) a list row: `Label` uses the fixed icon column and accent icon.
     in_row: bool,
+    /// Active animation index into `Ctx::anims` (section P); `None` = no animation.
+    anim: Option<u32>,
+    /// Inherited `.contentTransition` (section P).
+    content_transition: ContentTransitionKind,
+    /// Kerning + tracking, in points.
+    extra: f32,
+    /// 0 default, 1 serif, 2 rounded, 3 monospaced.
+    design: u8,
+    /// -2 compressed, -1 condensed, 0 standard, 1 expanded.
+    width: i8,
+    mono: bool,
+    digits: bool,
+    /// `Text.Scale.secondary`.
+    secondary: bool,
+    /// 0 tail, 1 head, 2 middle.
+    trunc: u8,
+    baseline: f32,
+    italic: bool,
+    underline: bool,
+    under_color: Option<Color>,
+    under_pat: u8,
+    strike_color: Option<Color>,
+    strike_pat: u8,
+    /// 0 none, 1 uppercase, 2 lowercase.
+    case_fold: u8,
+    tighten: bool,
+    min_scale: f32,
+    max_lines: Option<usize>,
+    reserve_lines: Option<usize>,
+    /// 0 monochrome, 1 hierarchical, 2 palette, 3 multicolor.
+    sym_mode: u8,
+    /// 0 automatic, 1 color, 2 draw.
+    sym_var: u8,
+    sym_grad: bool,
+    /// `.renderingMode(.original)`.
+    sym_original: bool,
+    /// 0 nearest, 1 bilinear, 2 bicubic.
+    img_filter: u8,
 }
 
 /// Prepared layout for one static SwiftUI list. Clear it before replacing or mutating the view tree
@@ -301,6 +388,32 @@ impl Env {
             bottom_inset: 0.0,
             img: ImageScale::Medium,
             in_row: false,
+            anim: None,
+            content_transition: ContentTransitionKind::Identity,
+            extra: 0.0,
+            design: 0,
+            width: 0,
+            mono: false,
+            digits: false,
+            secondary: false,
+            trunc: 0,
+            baseline: 0.0,
+            italic: false,
+            underline: false,
+            under_color: None,
+            under_pat: 0,
+            strike_color: None,
+            strike_pat: 0,
+            case_fold: 0,
+            tighten: false,
+            min_scale: 1.0,
+            max_lines: None,
+            reserve_lines: None,
+            sym_mode: 0,
+            sym_var: 0,
+            sym_grad: false,
+            sym_original: false,
+            img_filter: 2,
         }
     }
 }
@@ -359,6 +472,8 @@ struct Ctx<'a> {
     desat: bool,
     /// A sheet is up over this screen: its back button loses the glass circle (alerts keep it).
     sheet_up: bool,
+    /// Animation specs referenced by `Env::anim` (keeps `Env` `Copy` and small).
+    anims: Vec<AnimationSpec>,
 }
 
 /// Fill `sw` as an iOS switch track (role, value, fill, disabled dimming; `fill` overrides the state's default color) and return its knob node
@@ -430,6 +545,7 @@ fn ctx<'a>(params: &'a SceneParams, fonts: &'a mut Fonts) -> Ctx<'a> {
         floating: false,
         desat: false,
         sheet_up: false,
+        anims: Vec::new(),
     }
 }
 
@@ -564,6 +680,7 @@ fn layout_inner<'a>(root: &ViewNode, params: &'a SceneParams<'a>, fonts: &'a mut
     let geo = Geo { w: wc, h, safe_top, safe_bottom, dev_bottom, body };
     let lay = cx.place_root(root, &geo);
     flatten(lay, 0.0, 0.0, Some(0), 1.0, &mut nodes);
+    apply_matched_geometry(&mut nodes);
     if wc < w {
         for n in nodes.iter_mut().skip(1) {
             if n.fill.is_some()
@@ -585,9 +702,9 @@ fn layout_inner<'a>(root: &ViewNode, params: &'a SceneParams<'a>, fonts: &'a mut
             }
             Layer::Cover { content } => cx.cover(content, &geo),
             Layer::Alert { title, message, actions } => cx.alert(title, message.as_deref(), actions, &geo),
-            Layer::Menu { anchor, items, dismiss } => {
+            Layer::Menu { anchor, items, dismiss, centered } => {
                 let rect = anchor.as_ref().and_then(|a| nodes.iter().find(|n| &n.id == a)).map(|n| n.bounds);
-                cx.menu(items, rect, *dismiss, &geo)
+                cx.menu(items, rect, *dismiss, *centered, &geo)
             }
             Layer::Dialog { title, title_visible, message, actions, anchor, dismiss } => {
                 // The popover points at the anchor's label (its first text), not the whole row.
@@ -648,6 +765,11 @@ fn flatten_tree(lay: Lay, x: f64, y: f64, mut parent: Option<usize>, mut opacity
     if let Some(mut n) = lay.node {
         let (l, t, r, b) = lay.infl;
         n.bounds = Rect { x: x - l, y: y - t, w: lay.size.w + l + r, h: lay.size.h + t + b };
+        // Bitmap dest is local to the node. RN tab icons overwrite it with the absolute bounds afterwards.
+        if let Some(im) = n.image.as_mut() {
+            im.dest.x += x;
+            im.dest.y += y;
+        }
         n.parent = parent;
         opacity *= n.opacity;
         n.opacity = opacity;
@@ -660,6 +782,78 @@ fn flatten_tree(lay: Lay, x: f64, y: f64, mut parent: Option<usize>, mut opacity
     for (dx, dy, k) in lay.kids {
         flatten_tree(k, x + dx, y + dy, parent, opacity, out, modals);
     }
+}
+
+fn design_code(d: onesim_protocol::FontDesign) -> u8 {
+    match d {
+        onesim_protocol::FontDesign::Default => 0,
+        onesim_protocol::FontDesign::Serif => 1,
+        onesim_protocol::FontDesign::Rounded => 2,
+        onesim_protocol::FontDesign::Monospaced => 3,
+    }
+}
+
+fn width_code(w: onesim_protocol::FontWidth) -> i8 {
+    match w {
+        onesim_protocol::FontWidth::Compressed => -2,
+        onesim_protocol::FontWidth::Condensed => -1,
+        onesim_protocol::FontWidth::Standard => 0,
+        onesim_protocol::FontWidth::Expanded => 1,
+    }
+}
+
+fn trunc_code(m: onesim_protocol::Truncation) -> u8 {
+    match m {
+        onesim_protocol::Truncation::Tail => 0,
+        onesim_protocol::Truncation::Head => 1,
+        onesim_protocol::Truncation::Middle => 2,
+    }
+}
+
+fn pattern_code(p: onesim_protocol::LinePattern) -> u8 {
+    match p {
+        onesim_protocol::LinePattern::Solid => 0,
+        onesim_protocol::LinePattern::Dot => 1,
+        onesim_protocol::LinePattern::Dash => 2,
+        onesim_protocol::LinePattern::DashDot => 3,
+        onesim_protocol::LinePattern::DashDotDot => 4,
+    }
+}
+
+fn case_code(c: onesim_protocol::TextCase) -> u8 {
+    match c {
+        onesim_protocol::TextCase::Uppercase => 1,
+        onesim_protocol::TextCase::Lowercase => 2,
+    }
+}
+
+fn symbol_mode_code(m: onesim_protocol::SymbolMode) -> u8 {
+    match m {
+        onesim_protocol::SymbolMode::Monochrome => 0,
+        onesim_protocol::SymbolMode::Hierarchical => 1,
+        onesim_protocol::SymbolMode::Palette => 2,
+        onesim_protocol::SymbolMode::Multicolor => 3,
+    }
+}
+
+fn pull_tracking(spec: &FontSpec, spans: &[Span], pull: f32) -> (FontSpec, Vec<Span>) {
+    let mut spec = *spec;
+    spec.extra -= pull;
+    let spans = spans.iter().map(|s| Span { extra: s.extra - pull, ..s.clone() }).collect();
+    (spec, spans)
+}
+
+fn fold_label(text: &str, spans: Vec<Span>, case_fold: u8) -> (String, Vec<Span>) {
+    let fold = |s: &str| match case_fold {
+        1 => s.to_uppercase(),
+        2 => s.to_lowercase(),
+        _ => s.to_string(),
+    };
+    if case_fold == 0 {
+        return (text.to_string(), spans);
+    }
+    let spans = spans.into_iter().map(|s| Span { text: fold(&s.text), ..s }).collect();
+    (fold(text), spans)
 }
 
 fn h_frac(a: Alignment) -> f64 {
@@ -730,6 +924,27 @@ fn gesture_layer(id: String, g: &onesim_protocol::GestureMod, inner: Lay) -> Lay
     Lay::new(size, None, vec![(dx, dy, Lay::new(size, Some(n), vec![(-dx, -dy, inner)]))])
 }
 
+/// Wrap `inner` in a layout-only transition or matchedGeometryEffect node (out of line for stack budget).
+#[inline(never)]
+fn anim_layer(
+    id: String,
+    kind: &'static str,
+    inner: Lay,
+    animation: Option<AnimationSpec>,
+    transition: Option<TransitionSpec>,
+    matched: Option<MatchedGeometryMod>,
+) -> Lay {
+    let mut n = Node::new(id, kind);
+    n.anim = Some(Box::new(crate::scene::NodeAnim {
+        animation,
+        transition,
+        matched,
+        content_transition: ContentTransitionKind::Identity,
+    }));
+    n.inspect = false;
+    Lay::new(inner.size, Some(n), vec![(0.0, 0.0, inner)])
+}
+
 /// Wrap `inner` in a `.containerShape(_:)` layout-only node (out of line to keep `mods` stack small).
 #[inline(never)]
 fn container_shape_layer(id: String, spec: ContainerShapeSpec, inner: Lay) -> Lay {
@@ -737,6 +952,89 @@ fn container_shape_layer(id: String, spec: ContainerShapeSpec, inner: Lay) -> La
     n.container_shape = Some(Box::new(spec));
     n.inspect = false;
     Lay::new(inner.size, Some(n), vec![(0.0, 0.0, inner)])
+}
+
+/// Same-frame `.matchedGeometryEffect(isSource: false)`: align each non-source subtree to its
+/// source `(namespace, id)` according to `properties` and `anchor`.
+fn apply_matched_geometry(nodes: &mut [Node]) {
+    let mut sources: HashMap<(String, String), Rect> = HashMap::new();
+    for n in nodes.iter() {
+        if let Some(m) = n.anim.as_ref().and_then(|a| a.matched.as_ref()) {
+            if m.is_source {
+                sources.entry((m.namespace.clone(), m.id.clone())).or_insert(n.bounds);
+            }
+        }
+    }
+    if sources.is_empty() {
+        return;
+    }
+    let targets: Vec<(usize, Rect, MatchedProps, [f64; 2])> = nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(i, n)| {
+            let m = n.anim.as_ref()?.matched.as_ref()?;
+            if m.is_source {
+                return None;
+            }
+            let src = *sources.get(&(m.namespace.clone(), m.id.clone()))?;
+            Some((i, src, m.properties, m.anchor))
+        })
+        .collect();
+
+    for (root_i, src, props, anchor) in targets {
+        let cur = nodes[root_i].bounds;
+        let new_w = match props {
+            MatchedProps::Frame | MatchedProps::Size => src.w,
+            MatchedProps::Position => cur.w,
+        };
+        let new_h = match props {
+            MatchedProps::Frame | MatchedProps::Size => src.h,
+            MatchedProps::Position => cur.h,
+        };
+        let (new_x, new_y) = match props {
+            MatchedProps::Frame | MatchedProps::Position => {
+                let sax = src.x + src.w * anchor[0];
+                let say = src.y + src.h * anchor[1];
+                (sax - new_w * anchor[0], say - new_h * anchor[1])
+            }
+            MatchedProps::Size => {
+                let cax = cur.x + cur.w * anchor[0];
+                let cay = cur.y + cur.h * anchor[1];
+                (cax - new_w * anchor[0], cay - new_h * anchor[1])
+            }
+        };
+        let dx = new_x - cur.x;
+        let dy = new_y - cur.y;
+        let dw = new_w - cur.w;
+        let dh = new_h - cur.h;
+
+        // Collect subtree rooted at `root_i`.
+        let mut in_sub = vec![false; nodes.len()];
+        in_sub[root_i] = true;
+        for j in (root_i + 1)..nodes.len() {
+            if nodes[j].parent.is_some_and(|p| in_sub[p]) {
+                in_sub[j] = true;
+            }
+        }
+        for (j, n) in nodes.iter_mut().enumerate() {
+            if !in_sub[j] {
+                continue;
+            }
+            let fills = (n.bounds.x - cur.x).abs() < 0.5
+                && (n.bounds.y - cur.y).abs() < 0.5
+                && (n.bounds.w - cur.w).abs() < 0.5
+                && (n.bounds.h - cur.h).abs() < 0.5;
+            if j == root_i || fills {
+                n.bounds = Rect { x: new_x, y: new_y, w: new_w, h: new_h };
+            } else {
+                n.bounds.x += dx + dw * anchor[0];
+                n.bounds.y += dy + dh * anchor[1];
+            }
+            if let Some(im) = n.image.as_mut() {
+                im.dest = n.bounds;
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -1226,6 +1524,11 @@ impl Ctx<'_> {
         crate::glass::GlassSpec { variant, tint: tint.map(|c| self.color(c)), interactive, blur: None, mix: None, shadow: None, flat: None }
     }
 
+    /// System red: destructive menu items and tab badges.
+    fn destructive(&self) -> Color {
+        if self.dark { rgba(255, 66, 69, 1.0) } else { rgba(255, 56, 60, 1.0) }
+    }
+
     /// Opaque (light, dark) color pair for the current appearance.
     fn pick(&self, (l, d): ((u8, u8, u8), (u8, u8, u8))) -> Color {
         let c = if self.dark { d } else { l };
@@ -1254,7 +1557,33 @@ impl Ctx<'_> {
     }
 
     fn spec(&self, env: &Env) -> FontSpec {
-        FontSpec::new(env.size, self.line_h(env.size), env.weight.unwrap_or(env.base_weight), env.align)
+        let mut spec = FontSpec::new(env.size, self.line_h(env.size), env.weight.unwrap_or(env.base_weight), env.align);
+        if env.secondary {
+            // Glyphs shrink. The line box stays the body's, so a secondary row keeps the body pitch.
+            let k = crate::text::SECONDARY_TEXT_SCALE;
+            spec.size *= k;
+            spec.pt *= k;
+            spec.tracking = crate::text::tracking_em(spec.pt, spec.weight);
+        }
+        spec.extra = env.extra;
+        spec.design = env.design;
+        spec.width = env.width;
+        spec.mono = env.mono || env.design == 3;
+        spec.digits = env.digits;
+        spec.trunc = env.trunc;
+        spec.baseline = env.baseline;
+        spec.case_fold = env.case_fold;
+        spec.tighten = env.tighten;
+        spec.min_scale = env.min_scale;
+        spec.lines = env.max_lines;
+        spec.underline = env.underline;
+        spec.italic = env.italic;
+        spec.line_pat = env.under_pat;
+        spec.under_color = env.under_color;
+        spec.strike_pat = env.strike_pat;
+        spec.strike_color = env.strike_color;
+        spec.reserve = env.reserve_lines;
+        spec
     }
 
     fn hairline(&self) -> f64 {
@@ -1268,13 +1597,22 @@ impl Ctx<'_> {
 
     #[allow(clippy::too_many_arguments)]
     fn text_lay_runs(&mut self, id: &str, text: &str, spec: FontSpec, color: Color, wrap: Option<f32>, spans: Vec<Span>) -> Lay {
-        let (w, h) = self.fonts.measure(text, &spec, wrap, &spans);
+        let (text, spans) = fold_label(text, spans, spec.case_fold);
+        let (spec, spans) = self.fit_text(&text, spec, wrap, spans);
+        let (w, mut h) = self.fonts.measure(&text, &spec, wrap, &spans);
+        // A positive baselineOffset lengthens the line downward; the glyphs stay at the top.
+        // A negative one lengthens it and the draw shifts the glyphs down into that space.
+        let (rise, sink) = crate::text::baseline_extent(&spec, &spans);
+        h += f64::from(rise - sink);
+        if let Some(n) = spec.reserve.filter(|n| *n > 1) {
+            h = h.max(spec.line_height as f64 + (n - 1) as f64 * spec.pitch as f64);
+        }
         // SwiftUI rounds text sizes up to the device pixel.
         let w = (w * self.scale).ceil() / self.scale;
         let mut n = Node::new(id, "text");
-        n.text = Some(TextRun { text: text.to_string(), font: spec, color, strike: false, offset_x: 0.0, spans });
+        n.label = Some(text.clone());
+        n.text = Some(TextRun { text, font: spec, color, strike: false, offset_x: 0.0, spans });
         n.role = Role::Text;
-        n.label = Some(text.to_string());
         Lay::new(Size { w, h }, Some(n), vec![])
     }
 
@@ -1289,10 +1627,34 @@ impl Ctx<'_> {
         l
     }
 
+    fn push_anim(&mut self, spec: &AnimationSpec) -> u32 {
+        let idx = self.anims.len() as u32;
+        self.anims.push(spec.clone());
+        idx
+    }
+
+    fn stamp_node(&self, n: &mut Node, env: Env) {
+        let anim = env.anim.and_then(|i| self.anims.get(i as usize).cloned());
+        if anim.is_none() && env.content_transition == ContentTransitionKind::Identity {
+            return;
+        }
+        let slot = n.anim.get_or_insert_with(|| Box::new(crate::scene::NodeAnim::default()));
+        if slot.animation.is_none() {
+            slot.animation = anim;
+        }
+        if slot.content_transition == ContentTransitionKind::Identity {
+            slot.content_transition = env.content_transition;
+        }
+    }
+
     /// Applies modifiers outermost-first by recursion (array order is innermost first).
     fn mods(&mut self, v: &ViewNode, mods: &[Modifier], p: Prop, env: Env) -> Lay {
         let Some((last, rest)) = mods.split_last() else {
-            return self.base(v, p, env);
+            let mut out = self.base(v, p, env);
+            if let Some(n) = out.node.as_deref_mut() {
+                self.stamp_node(n, env);
+            }
+            return out;
         };
         match last {
             Modifier::Padding(e) => {
@@ -1349,7 +1711,11 @@ impl Ctx<'_> {
             }
             Modifier::Opacity(o) => {
                 let inner = self.mods(v, rest, p, env);
-                layer(format!("{}#opacity{}", v.id, rest.len()), "opacity", inner, |n| n.opacity = *o as f32)
+                let mut out = layer(format!("{}#opacity{}", v.id, rest.len()), "opacity", inner, |n| n.opacity = *o as f32);
+                if let Some(n) = out.node.as_deref_mut() {
+                    self.stamp_node(n, env);
+                }
+                out
             }
             Modifier::Shadow(s) => {
                 let inner = self.mods(v, rest, p, env);
@@ -1360,8 +1726,13 @@ impl Ctx<'_> {
                 })
             }
             Modifier::Font(f) => {
-                let (size, weight) = self.font_size_weight(f);
-                self.mods(v, rest, p, Env { size: size as f32, base_weight: weight.value(), ..env })
+                let (size, weight, design) = self.font_size_weight(f);
+                let mut env = Env { size: size as f32, base_weight: weight.value(), ..env };
+                if let Some(d) = design {
+                    env.design = d;
+                    env.mono = d == 3;
+                }
+                self.mods(v, rest, p, env)
             }
             Modifier::FontWeight(w) => {
                 let weight = env.weight.or(Some(w.value()));
@@ -1435,14 +1806,69 @@ impl Ctx<'_> {
             | Modifier::ScrollIndicators(_)
             | Modifier::ScrollTargetBehavior(_)
             | Modifier::ScrollPosition => self.mods(v, rest, p, env),
+            Modifier::Animation(opt) => {
+                let anim = opt.as_deref().map(|s| self.push_anim(s));
+                self.mods(v, rest, p, Env { anim, ..env })
+            }
+            Modifier::Transition(t) => {
+                let inner = self.mods(v, rest, p, env);
+                let anim = env.anim.and_then(|i| self.anims.get(i as usize).cloned());
+                anim_layer(format!("{}#transition{}", v.id, rest.len()), "transition", inner, anim, Some((**t).clone()), None)
+            }
+            Modifier::MatchedGeometry(m) => {
+                let inner = self.mods(v, rest, p, env);
+                let anim = env.anim.and_then(|i| self.anims.get(i as usize).cloned());
+                anim_layer(format!("{}#match{}", v.id, rest.len()), "matched", inner, anim, None, Some((**m).clone()))
+            }
+            Modifier::ContentTransition(ct) => self.mods(v, rest, p, Env { content_transition: *ct, ..env }),
+            Modifier::Kerning(k) => self.mods(v, rest, p, Env { extra: env.extra + *k as f32, ..env }),
+            Modifier::Tracking(k) => self.mods(v, rest, p, Env { extra: env.extra + *k as f32, ..env }),
+            Modifier::BaselineOffset(k) => self.mods(v, rest, p, Env { baseline: *k as f32, ..env }),
+            Modifier::FontDesign(d) => {
+                let design = d.map(design_code).unwrap_or(0);
+                self.mods(v, rest, p, Env { design, mono: design == 3 || (d.is_none() && env.mono), ..env })
+            }
+            Modifier::FontWidth(w) => self.mods(v, rest, p, Env { width: w.map(width_code).unwrap_or(0), ..env }),
+            Modifier::Monospaced(on) => self.mods(v, rest, p, Env { mono: *on, ..env }),
+            Modifier::MonospacedDigit(on) => self.mods(v, rest, p, Env { digits: *on, ..env }),
+            Modifier::TextScale(s) => self.mods(v, rest, p, Env { secondary: *s == onesim_protocol::TextScale::Secondary, ..env }),
+            Modifier::TruncationMode(m) => self.mods(v, rest, p, Env { trunc: trunc_code(*m), ..env }),
+            Modifier::LineLimit(lim) => {
+                let (max_lines, reserve_lines) = lim.map(|l| {
+                    let max = l.max.map(|n| n as usize);
+                    let reserve = if l.reserves { l.max.or(l.min).map(|n| n as usize) } else { l.min.map(|n| n as usize) };
+                    (max, reserve)
+                }).unwrap_or((None, None));
+                self.mods(v, rest, p, Env { max_lines, reserve_lines, ..env })
+            }
+            Modifier::Underline(s) => self.mods(v, rest, p, Env {
+                underline: s.active,
+                under_pat: pattern_code(s.pattern),
+                under_color: s.color.as_ref().map(|c| self.color(c)),
+                ..env
+            }),
+            Modifier::Italic(on) => self.mods(v, rest, p, Env { italic: *on, ..env }),
+            Modifier::TextCase(c) => self.mods(v, rest, p, Env { case_fold: c.map(case_code).unwrap_or(0), ..env }),
+            Modifier::AllowsTightening(on) => self.mods(v, rest, p, Env { tighten: *on, ..env }),
+            Modifier::MinimumScaleFactor(k) => self.mods(v, rest, p, Env { min_scale: (*k as f32).clamp(0.01, 1.0), ..env }),
+            Modifier::SymbolRenderingMode(m) => self.mods(v, rest, p, Env { sym_mode: m.map(symbol_mode_code).unwrap_or(0), ..env }),
+            Modifier::SymbolVariableValueMode(m) => self.mods(v, rest, p, Env { sym_var: m.map(|v| if v == onesim_protocol::SymbolVariable::Draw { 2 } else { 1 }).unwrap_or(0), ..env }),
+            Modifier::SymbolColorRenderingMode(m) => self.mods(v, rest, p, Env { sym_grad: m == &Some(onesim_protocol::SymbolColorMode::Gradient), ..env }),
+            Modifier::AllowedDynamicRange(_) => self.mods(v, rest, p, env),
+            Modifier::StrikethroughStyle(s) => self.mods(v, rest, p, Env {
+                strike: s.active,
+                strike_pat: pattern_code(s.pattern),
+                strike_color: s.color.as_ref().map(|c| self.color(c)),
+                ..env
+            }),
         }
     }
 
-    /// Point size (at the current Dynamic Type size) and weight of a `Font`.
-    fn font_size_weight(&self, f: &Font) -> (f64, onesim_protocol::Weight) {
+    /// Point size (at the current Dynamic Type size), weight and design of a `Font`.
+    fn font_size_weight(&self, f: &Font) -> (f64, onesim_protocol::Weight, Option<u8>) {
         match f {
-            Font::Style { style, weight } => (style.size_at(self.dts), weight.unwrap_or(style.spec().1)),
-            Font::System { size, weight } => (*size, *weight),
+            Font::Style { style, weight } => (style.size_at(self.dts), weight.unwrap_or(style.spec().1), None),
+            Font::System { size, weight, design } => (*size, *weight, design.map(design_code)),
         }
     }
 
@@ -1587,20 +2013,29 @@ impl Ctx<'_> {
             ViewKind::Text { text, runs } => {
                 let wrap = p.w.filter(|w| w.is_finite()).map(|w| w.max(1.0) as f32);
                 let mut spec = self.spec(&env);
-                let spans: Vec<Span> = runs
-                    .iter()
-                    .map(|r| {
-                        let (pt, base) = r.font.as_ref().map_or((env.size, env.base_weight), |f| {
-                            let (s, w) = self.font_size_weight(f);
-                            (s as f32, w.value())
-                        });
-                        let weight = r.font_weight.map(|w| w.value()).or(if r.font.is_some() { None } else { env.weight }).unwrap_or(base);
-                        Span { text: r.text.clone(), pt, weight, color: r.foreground_color.as_ref().map_or(fg, |c| self.color(c)), italic: r.italic, underline: r.underline, strike: r.strikethrough || env.strike, mono: false }
-                    })
-                    .collect();
-                // Line metrics come from the largest run.
+                let spans: Vec<Span> = runs.iter().map(|r| self.span_of(r, &env, fg)).collect();
+                // Line metrics come from the largest run. Keep the paragraph's truncation and tracking.
                 if let Some(big) = spans.iter().max_by(|a, b| a.pt.total_cmp(&b.pt)) {
+                    let keep = spec;
                     spec = FontSpec::new(big.pt, self.line_h(big.pt), big.weight, env.align);
+                    spec.extra = keep.extra;
+                    spec.trunc = keep.trunc;
+                    spec.baseline = keep.baseline;
+                    spec.case_fold = keep.case_fold;
+                    spec.tighten = keep.tighten;
+                    spec.min_scale = keep.min_scale;
+                    spec.lines = keep.lines;
+                    spec.underline = keep.underline;
+                    spec.italic = keep.italic;
+                    spec.line_pat = keep.line_pat;
+                    spec.under_color = keep.under_color;
+                    spec.strike_pat = keep.strike_pat;
+                    spec.strike_color = keep.strike_color;
+                    spec.reserve = keep.reserve;
+                    spec.mono = big.mono;
+                    spec.digits = big.digits;
+                    spec.design = big.design;
+                    spec.width = big.width;
                 }
                 let mut l = self.text_lay_runs(&v.id, text, spec, fg, wrap, spans);
                 if let Some(t) = l.node.as_mut().and_then(|n| n.text.as_mut()) {
@@ -1636,7 +2071,10 @@ impl Ctx<'_> {
                 };
                 Lay::new(size, Some(Node::new(&v.id, "spacer")), vec![])
             }
-            ViewKind::Button { action, label, style, disabled, .. } => self.button(v, *action, label, *style, *disabled, p, env),
+            ViewKind::Button { action, label, style, disabled, selected, .. } => match selected {
+                Some(on) => self.toggle_button(v, *action, label, *on, *disabled, p, env),
+                None => self.button(v, *action, label, *style, *disabled, p, env),
+            },
             ViewKind::Color { color } => {
                 let mut n = Node::new(&v.id, "color");
                 n.fill = Some(self.color(color));
@@ -1712,26 +2150,227 @@ impl Ctx<'_> {
                 l
             }
             ViewKind::Picker { label, style, options, selected, open, disabled } => {
-                if *style == PickerStyle::Segmented {
-                    self.segmented(v, options, *selected, *disabled, p)
-                } else {
-                    self.menu_picker(v, label, options, *selected, *open, *disabled, p, child_env)
+                match style {
+                    PickerStyle::Segmented => self.segmented(v, options, *selected, *disabled, p),
+                    PickerStyle::Wheel => self.wheel(v, label, options, *selected, *disabled, p),
+                    PickerStyle::Menu => self.menu_picker(v, label, options, *selected, *open, *disabled, p, child_env),
                 }
             }
             ViewKind::Slider { value, min, max, field, disabled, .. } => self.slider(v, *value, (*min, *max), *field, *disabled, p),
-            ViewKind::Progress { value, label } => self.progress(v, *value, label.as_deref(), p, child_env),
-            ViewKind::Image { system_name, resizable, content_mode, scale } => {
-                self.image(v, system_name, *resizable, *content_mode, scale.unwrap_or(env.img), p, env, fg)
+            ViewKind::Progress { value, label, current_value_label } => {
+                self.progress(v, *value, label.as_deref(), current_value_label.as_deref(), p, child_env)
+            }
+            ViewKind::Gauge { style, value, label, current_value_label, minimum_value_label, maximum_value_label } => {
+                let labels = GaugeLabels {
+                    label: label.as_deref(),
+                    current: current_value_label.as_deref(),
+                    min: minimum_value_label.as_deref(),
+                    max: maximum_value_label.as_deref(),
+                };
+                self.gauge(v, *style, *value, labels, p, child_env)
+            }
+            ViewKind::Image {
+                system_name, resizable, content_mode, scale, rendering_mode, symbol_rendering_mode, interpolation, antialiased,
+                symbol_color_rendering_mode, symbol_variable_value_mode, bitmap, ..
+            } => {
+                let mut env = env;
+                if let Some(m) = symbol_rendering_mode {
+                    env.sym_mode = symbol_mode_code(*m);
+                }
+                if let Some(m) = rendering_mode {
+                    match m {
+                        onesim_protocol::TemplateMode::Template => {
+                            env.sym_mode = 0;
+                            env.sym_grad = false;
+                            env.sym_original = false;
+                        }
+                        onesim_protocol::TemplateMode::Original => env.sym_original = true,
+                    }
+                }
+                if let Some(m) = interpolation {
+                    env.img_filter = match m {
+                        onesim_protocol::Interpolation::None => 0,
+                        onesim_protocol::Interpolation::Low => 1,
+                        onesim_protocol::Interpolation::Medium | onesim_protocol::Interpolation::High => 2,
+                    };
+                }
+                if *antialiased == Some(false) {
+                    env.img_filter = 0;
+                }
+                if let Some(m) = symbol_color_rendering_mode {
+                    env.sym_grad = *m == onesim_protocol::SymbolColorMode::Gradient;
+                }
+                if let Some(m) = symbol_variable_value_mode {
+                    env.sym_var = if *m == onesim_protocol::SymbolVariable::Draw { 2 } else { 1 };
+                }
+                if let Some(bm) = bitmap {
+                    self.bitmap_image(v, bm, *resizable, *content_mode, env.img_filter, p)
+                } else {
+                    self.image(v, system_name, *resizable, *content_mode, scale.unwrap_or(env.img), p, env, fg)
+                }
             }
             ViewKind::Label { title, icon } => self.label(v, title, icon, p, child_env),
         }
+    }
+
+    fn span_of(&self, r: &onesim_protocol::Run, env: &Env, fg: Color) -> Span {
+        let (mut pt, weight, design) = match &r.font {
+            Some(f) => {
+                let (size, w, d) = self.font_size_weight(f);
+                (size as f32, r.font_weight.map(|w| w.value()).unwrap_or(w.value()), d.unwrap_or(env.design))
+            }
+            None => (env.size, r.font_weight.map(|w| w.value()).unwrap_or(env.weight.unwrap_or(env.base_weight)), env.design),
+        };
+        let secondary = match r.text_scale {
+            Some(onesim_protocol::TextScale::Secondary) => true,
+            Some(onesim_protocol::TextScale::Default) => false,
+            None => env.secondary,
+        };
+        if secondary {
+            pt *= crate::text::SECONDARY_TEXT_SCALE;
+        }
+        let design = r.font_design.map(design_code).unwrap_or(design);
+        let width = r.font_width.map(width_code).unwrap_or(env.width);
+        // A run's kerning and tracking add to the parent's. They do not replace it.
+        let extra = env.extra + r.kerning.unwrap_or(0.0) as f32 + r.tracking.unwrap_or(0.0) as f32;
+        let color = r.foreground_color.as_ref().map(|c| self.color(c)).unwrap_or(fg);
+        Span {
+            italic: r.italic || env.italic,
+            underline: r.underline || env.underline,
+            strike: r.strikethrough || env.strike,
+            mono: r.monospaced || env.mono || design == 3,
+            extra,
+            design,
+            width,
+            digits: r.monospaced_digit || env.digits,
+            baseline: r.baseline_offset.map(|b| b as f32).unwrap_or(env.baseline),
+            line_pat: r.underline_pattern.map(pattern_code).unwrap_or(env.under_pat),
+            under_color: r.underline_color.as_ref().map(|c| self.color(c)).or(env.under_color),
+            strike_pat: r.strikethrough_pattern.map(pattern_code).unwrap_or(env.strike_pat),
+            strike_color: r.strikethrough_color.as_ref().map(|c| self.color(c)).or(env.strike_color),
+            ..Span::basic(&r.text, pt, weight, color)
+        }
+    }
+
+    /// Tighten tracking, then scale down to `min_scale`, when the text is wider than the wrap or uses more lines than the cap.
+    fn fit_text(&mut self, text: &str, spec: FontSpec, wrap: Option<f32>, spans: Vec<Span>) -> (FontSpec, Vec<Span>) {
+        let Some(limit) = wrap else { return (spec, spans) };
+        let overflows = |fonts: &mut Fonts, spec: &FontSpec, spans: &[Span]| {
+            let probe = FontSpec { lines: None, ..*spec };
+            let (w, h) = fonts.measure(text, &probe, Some(limit), spans);
+            if w > limit as f64 + 0.51 {
+                return true;
+            }
+            let Some(max) = spec.lines else { return false };
+            let cap = f64::from(spec.line_height) + (max.saturating_sub(1) as f64) * f64::from(spec.pitch);
+            h > cap + 0.51
+        };
+        if !overflows(self.fonts, &spec, &spans) {
+            return (spec, spans);
+        }
+        let (mut spec, mut spans) = (spec, spans);
+        if spec.tighten {
+            let max_pull = 0.05 * spec.pt;
+            let mut lo = 0.0f32;
+            let mut hi = max_pull;
+            for _ in 0..7 {
+                let mid = (lo + hi) / 2.0;
+                let (ts, tsp) = pull_tracking(&spec, &spans, mid);
+                if overflows(self.fonts, &ts, &tsp) { lo = mid; } else { hi = mid; }
+            }
+            (spec, spans) = pull_tracking(&spec, &spans, hi);
+        }
+        if spec.min_scale < 0.999 && overflows(self.fonts, &spec, &spans) {
+            let floor = spec.min_scale;
+            let mut lo = floor;
+            let mut hi = 1.0f32;
+            for _ in 0..7 {
+                let mid = (lo + hi) / 2.0;
+                let (ts, tsp) = self.scale_type(&spec, &spans, mid);
+                if overflows(self.fonts, &ts, &tsp) { hi = mid; } else { lo = mid; }
+            }
+            let (trial, trial_spans) = self.scale_type(&spec, &spans, lo);
+            let k = if overflows(self.fonts, &trial, &trial_spans) { floor } else { lo };
+            (spec, spans) = self.scale_type(&spec, &spans, k);
+        }
+        (spec, spans)
+    }
+
+    fn scale_type(&self, spec: &FontSpec, spans: &[Span], k: f32) -> (FontSpec, Vec<Span>) {
+        let mut s = *spec;
+        let pt = (spec.pt * k).max(1.0);
+        let ratio = if spec.pt > 0.0 { spec.size / spec.pt } else { 1.0 };
+        s.pt = pt;
+        s.size = pt * ratio;
+        s.line_height = self.line_h(pt);
+        s.pitch = if pt > 34.0 { pt * 1.12 + 2.64 } else { s.line_height.max(pt * 22.0 / 17.0) };
+        s.extra *= k;
+        s.baseline *= k;
+        s.tracking = crate::text::tracking_em(pt, s.weight);
+        let spans = spans.iter().map(|sp| Span { pt: sp.pt * k, extra: sp.extra * k, baseline: sp.baseline * k, ..sp.clone() }).collect();
+        (s, spans)
+    }
+
+    fn bitmap_image(&mut self, v: &ViewNode, bm: &onesim_protocol::Bitmap, resizable: bool, mode: Option<ContentMode>, filter: u8, p: Prop) -> Lay {
+        let pixmap = crate::image::load(&bm.path);
+        let scale = if bm.scale > 0.0 { bm.scale } else { 1.0 };
+        let (pw, ph) = pixmap.as_ref().map(|m| (m.width() as f64 / scale, m.height() as f64 / scale)).unwrap_or((1.0, 1.0));
+        let (nw, nh) = (if bm.width > 0.0 { bm.width } else { pw }, if bm.height > 0.0 { bm.height } else { ph });
+        let ratio = if nh > 0.0 { nw / nh } else { 1.0 };
+        let fin = |x: Option<f64>| x.filter(|x| x.is_finite());
+        let (pw, ph) = (fin(p.w), fin(p.h));
+        let (size, dest) = if !resizable {
+            (Size { w: nw, h: nh }, Rect { x: 0.0, y: 0.0, w: nw, h: nh })
+        } else {
+            match mode {
+                None => {
+                    let s = Size { w: pw.unwrap_or(nw), h: ph.unwrap_or(nh) };
+                    (s, Rect { x: 0.0, y: 0.0, w: s.w, h: s.h })
+                }
+                Some(m) => {
+                    let (bw, bh) = match (pw, ph) {
+                        (Some(w), Some(h)) => (w, h),
+                        (Some(w), None) => (w, w / ratio),
+                        (None, Some(h)) => (h * ratio, h),
+                        (None, None) => (nw, nh),
+                    };
+                    let by_w = (bw, bw / ratio);
+                    let by_h = (bh * ratio, bh);
+                    let fit = if by_w.1 <= bh { by_w } else { by_h };
+                    let fill = if by_w.1 >= bh { by_w } else { by_h };
+                    match m {
+                        ContentMode::Fit => (Size { w: fit.0, h: fit.1 }, Rect { x: 0.0, y: 0.0, w: fit.0, h: fit.1 }),
+                        ContentMode::Fill => {
+                            let dx = (bw - fill.0) / 2.0;
+                            let dy = (bh - fill.1) / 2.0;
+                            (Size { w: bw, h: bh }, Rect { x: dx, y: dy, w: fill.0, h: fill.1 })
+                        }
+                    }
+                }
+            }
+        };
+        let mut n = Node::new(&v.id, "image");
+        n.role = Role::Image;
+        if let Some(pixmap) = pixmap {
+            n.image = Some(crate::scene::ImageRun { pixmap, dest, rotation: 0.0, filter });
+        }
+        Lay::new(size, Some(n), vec![])
     }
 
     /// SF Symbol. Non-resizable images are glyph-sized from the font; resizable ones stretch to
     /// the proposal (or fit / fill it keeping the symbol's aspect ratio).
     #[allow(clippy::too_many_arguments)]
     fn image(&mut self, v: &ViewNode, name: &str, resizable: bool, mode: Option<ContentMode>, scale: ImageScale, p: Prop, env: Env, fg: Color) -> Lay {
-        let spec = SymbolSpec { name: name.to_string(), point_size: env.size as f64, weight: env.weight.unwrap_or(env.base_weight), scale };
+        let sym_mode = if env.sym_original && env.sym_mode == 0 { 3 } else { env.sym_mode };
+        let spec = SymbolSpec {
+            name: name.to_string(),
+            point_size: env.size as f64,
+            weight: env.weight.unwrap_or(env.base_weight),
+            scale,
+            mode: sym_mode,
+            variable: env.sym_var,
+            gradient: env.sym_grad,
+        };
         let nat = symbols::metrics(&spec);
         let fin = |x: Option<f64>| x.filter(|x| x.is_finite());
         let (nw, nh) = nat.map_or((env.size as f64, env.size as f64), |m| (m.w, m.h));
@@ -1958,7 +2597,7 @@ impl Ctx<'_> {
 
     /// An SF Symbol leaf at `pt` points.
     fn symbol_lay(&mut self, id: String, name: &str, pt: f64, weight: u16, color: Color) -> Lay {
-        let spec = SymbolSpec { name: name.into(), point_size: pt, weight, scale: ImageScale::Medium };
+        let spec = SymbolSpec { name: name.into(), point_size: pt, weight, scale: ImageScale::Medium, ..SymbolSpec::default() };
         let (w, h) = symbols::metrics(&spec).map_or((pt, pt), |m| (m.w, m.h));
         let mut n = Node::new(id, "image");
         n.symbol = Some(SymbolRun { spec, color, size: (w, h) });
@@ -2078,10 +2717,11 @@ impl Ctx<'_> {
 
     /// `ProgressView`: a linear capsule bar with a value, else the spinner; a label sits above the
     /// bar or below the spinner.
-    fn progress(&mut self, v: &ViewNode, value: Option<f64>, label: Option<&ViewNode>, p: Prop, env: Env) -> Lay {
+    fn progress(&mut self, v: &ViewNode, value: Option<f64>, label: Option<&ViewNode>, current: Option<&ViewNode>, p: Prop, env: Env) -> Lay {
         let fin = p.w.filter(|w| w.is_finite());
         let ll = label.map(|l| self.view(l, Prop { w: fin, h: None }, env));
-        let lh = ll.as_ref().map_or(0.0, |l| l.size.h + PROGRESS_LABEL_GAP);
+        let gap = if value.is_some() { PROGRESS_BAR_LABEL_GAP } else { PROGRESS_LABEL_GAP };
+        let lh = ll.as_ref().map_or(0.0, |l| l.size.h + gap);
         let mut n = Node::new(&v.id, "progress");
         n.value = value.map(|f| format!("{f}"));
         n.label = label.and_then(first_text);
@@ -2102,7 +2742,17 @@ impl Ctx<'_> {
             if let Some(l) = ll {
                 kids.push((0.0, 0.0, l));
             }
-            Size { w, h: lh + PROGRESS_H }
+            let mut h = lh + PROGRESS_H;
+            if let Some(c) = current {
+                // currentValueLabel: caption, secondary, under the bar.
+                let cenv = Env { size: PROGRESS_VALUE_PT, weight: None, fg: Some(self.semantic(Semantic::Secondary)), ..env };
+                let cl = self.view(c, Prop { w: fin, h: None }, cenv);
+                h += PROGRESS_VALUE_GAP;
+                let ch = cl.size.h;
+                kids.push((0.0, h, cl));
+                h += ch;
+            }
+            Size { w, h }
         } else {
             let lw = ll.as_ref().map_or(0.0, |l| l.size.w);
             let w = SPINNER.max(lw);
@@ -2119,46 +2769,268 @@ impl Ctx<'_> {
     }
 
     /// Menu of a menu `Picker` (iOS 26): a glass card under (or over) the anchor row's trailing
-    /// edge, one row per option, a checkmark before the selected one. A tap outside closes it.
-    fn menu(&mut self, items: &[PickerOption], anchor: Option<Rect>, dismiss: Option<u64>, g: &Geo) -> Lay {
+    /// edge, one row per option, a checkmark before the selected one. A `Menu`'s card (`centered`) is
+    /// centred on its button, items may carry a leading icon, red when destructive, and a divider opens a gap
+    /// with a separator. A tap outside closes it.
+    fn menu(&mut self, items: &[PickerOption], anchor: Option<Rect>, dismiss: Option<u64>, centered: bool, g: &Geo) -> Lay {
         let (w, h) = (g.w, g.h);
         let primary = self.semantic(Semantic::Primary);
+        let red = self.destructive();
+        let dim = self.semantic(Semantic::Tertiary);
+        let icons = items.iter().any(|o| o.system_image.is_some());
+        let text_x = if icons { MENU_ICON_TEXT_X } else { MENU_TEXT_X };
         let spec = FontSpec::new(17.0, self.line_h(17.0), 400, TextAlign::Leading);
         let texts: Vec<Lay> = items.iter().enumerate().map(|(i, o)| {
-            let mut t = self.text_lay(&format!("menu#{i}#text"), &o.text, spec, primary, None);
+            let fg = if o.disabled { dim } else if o.destructive { red } else { primary };
+            let mut t = self.text_lay(&format!("menu#{i}#text"), &o.text, spec, fg, None);
             if let Some(n) = t.node.as_mut() {
                 n.inspect = false;
             }
             t
         }).collect();
-        let cw = (texts.iter().map(|t| t.size.w).fold(0.0, f64::max) + MENU_TEXT_X + MENU_PAD_R).clamp(MENU_MIN_W, w - 2.0 * POPOVER_MARGIN);
-        let ch = items.len() as f64 * MENU_ROW_H + 2.0 * MENU_PAD_V;
+        let cw = (texts.iter().map(|t| t.size.w).fold(0.0, f64::max) + text_x + MENU_PAD_R).clamp(MENU_MIN_W, w - 2.0 * POPOVER_MARGIN);
+        let gaps = items.iter().skip(1).filter(|o| o.divider).count() as f64;
+        let ch = items.len() as f64 * MENU_ROW_H + gaps * MENU_DIVIDER_GAP + 2.0 * MENU_PAD_V;
         let mut kids = vec![];
+        let mut y = MENU_PAD_V;
         for (i, (o, t)) in items.iter().zip(texts).enumerate() {
+            if o.divider && i > 0 {
+                let mut sep = Node::new(format!("menu#sep{i}"), "separator");
+                sep.fill = Some(self.semantic(Semantic::Separator));
+                sep.inspect = false;
+                kids.push((MENU_SEP_INSET, y + (MENU_DIVIDER_GAP - 1.0) / 2.0, Lay::new(Size { w: cw - 2.0 * MENU_SEP_INSET, h: 1.0 }, Some(sep), vec![])));
+                y += MENU_DIVIDER_GAP;
+            }
+            let fg = if o.disabled { dim } else if o.destructive { red } else { primary };
             let mut b = Node::new(format!("menu#{i}"), "button");
             b.role = Role::Button;
             b.label = Some(o.text.clone());
-            b.action = Some(o.action);
+            b.action = (!o.disabled).then_some(o.action);
+            b.disabled = o.disabled;
             b.value = o.checked.then(|| "checked".into());
             let th = t.size.h;
-            let mut bk = vec![(MENU_TEXT_X, (MENU_ROW_H - th) / 2.0, t)];
+            let mut bk = vec![(text_x, (MENU_ROW_H - th) / 2.0, t)];
+            if let Some(name) = &o.system_image {
+                let c = self.symbol_lay(format!("menu#{i}#icon"), name, 17.0, 400, fg);
+                let (iw, ih) = (c.size.w, c.size.h);
+                bk.push((MENU_ICON_X - iw / 2.0, (MENU_ROW_H - ih) / 2.0, c));
+            }
             if o.checked {
                 let c = self.symbol_lay(format!("menu#{i}#check"), "checkmark", MENU_CHECK.0, MENU_CHECK.1, primary);
                 let (cw2, chh) = (c.size.w, c.size.h);
                 bk.push((MENU_CHECK_X - cw2 / 2.0, (MENU_ROW_H - chh) / 2.0, c));
             }
-            kids.push((0.0, MENU_PAD_V + i as f64 * MENU_ROW_H, Lay::new(Size { w: cw, h: MENU_ROW_H }, Some(b), bk)));
+            kids.push((0.0, y, Lay::new(Size { w: cw, h: MENU_ROW_H }, Some(b), bk)));
+            y += MENU_ROW_H;
         }
         let mut card = Node::new("menu", "menu");
         card.radius = MENU_RADIUS;
         card.glass = Some(crate::glass::GlassSpec { blur: Some(PRESENT_BLUR), mix: Some(if self.dark { MENU_GLASS.1 } else { MENU_GLASS.0 }), shadow: Some(POPOVER_SHADOW), ..self.glass_spec(GlassVariant::Regular, None, false) });
         let a = anchor.unwrap_or(Rect { x: w / 2.0, y: h / 2.0, w: 0.0, h: 0.0 });
-        // Trailing and bottom edges line up with the picker's button; it hangs down from it when there is no room above.
-        let x = (a.x + a.w - cw + MENU_DX).clamp(POPOVER_MARGIN, w - cw - POPOVER_MARGIN);
-        let (top, bottom) = (a.center().1 - MENU_DY, a.center().1 + MENU_DY);
-        let y = if bottom - ch >= g.safe_top { bottom - ch } else { top.min(h - g.dev_bottom - ch) };
+        let (x, y) = if centered {
+            // Centred on the button, its top just above the button's centre; kept on screen.
+            let x = (a.center().0 - cw / 2.0).clamp(POPOVER_MARGIN, w - cw - POPOVER_MARGIN);
+            (x, (a.center().1 - MENU_CENTER_DY).min(h - g.dev_bottom - ch).max(g.safe_top))
+        } else {
+            // Trailing and bottom edges line up with the picker's button; it hangs down from it when there is no room above.
+            let x = (a.x + a.w - cw + MENU_DX).clamp(POPOVER_MARGIN, w - cw - POPOVER_MARGIN);
+            let (top, bottom) = (a.center().1 - MENU_DY, a.center().1 + MENU_DY);
+            (x, if bottom - ch >= g.safe_top { bottom - ch } else { top.min(h - g.dev_bottom - ch) })
+        };
         let scrim = Lay::new(Size { w, h }, Some(self.scrim("menu#scrim", (w, h), 0.0, dismiss)), vec![]);
         Lay::new(Size { w, h }, None, vec![(0.0, 0.0, scrim), (x, y, Lay::new(Size { w: cw, h: ch }, Some(card), kids))])
+    }
+
+    /// `.toggleStyle(.button)`: bordered-button metrics, accent label; when on, an accent-tinted capsule.
+    #[allow(clippy::too_many_arguments)]
+    fn toggle_button(&mut self, v: &ViewNode, action: u64, label: &ViewNode, on: bool, disabled: bool, p: Prop, env: Env) -> Lay {
+        let accent = self.semantic(Semantic::Accent);
+        let fg = if disabled { self.semantic(Semantic::Tertiary) } else { accent };
+        let mut n = Node::new(&v.id, "button");
+        n.role = Role::Toggle;
+        n.action = (!disabled).then_some(action);
+        n.disabled = disabled;
+        n.label = first_text(label);
+        n.value = Some(if on { "on" } else { "off" }.into());
+        let (hp, vp) = (12.0, 7.0);
+        let inner_p = Prop { w: p.w.map(|w| (w - 2.0 * hp).max(0.0)), h: None };
+        let l = self.view(label, inner_p, Env { fg: Some(fg), tint: None, axis: None, ..env });
+        let size = Size { w: l.size.w + 2.0 * hp, h: l.size.h + 2.0 * vp };
+        if on {
+            n.fill = Some(Color { a: fg.a * TOGGLE_BUTTON_ON_A, ..fg });
+        }
+        n.radius = PILL;
+        Lay::new(size, Some(n), vec![(hp, vp, l)])
+    }
+
+    /// `Gauge`: linear styles are a capsule bar (accent fill on a gray track, or a primary bar with a marker),
+    /// circular ones a ring or an open arc with the current value inside.
+    fn gauge(&mut self, v: &ViewNode, style: GaugeStyle, value: f64, l: GaugeLabels, p: Prop, env: Env) -> Lay {
+        let f = if value.is_finite() { value.clamp(0.0, 1.0) } else { 0.0 };
+        let mut n = Node::new(&v.id, "gauge");
+        n.value = Some(format!("{f}"));
+        n.label = l.label.and_then(first_text);
+        if matches!(style, GaugeStyle::AccessoryCircular | GaugeStyle::AccessoryCircularCapacity) {
+            return self.gauge_circular(v, n, style == GaugeStyle::AccessoryCircular, f, l, env);
+        }
+        let fin = p.w.filter(|w| w.is_finite());
+        let w = fin.unwrap_or(200.0);
+        let primary = self.semantic(Semantic::Primary);
+        let accent = self.semantic(Semantic::Accent);
+        let (bar_h, track_c, gap, leading) = match style {
+            GaugeStyle::AccessoryLinearCapacity => (PROGRESS_H, self.pick(PROGRESS_TRACK_FILL), GAUGE_ACC_LABEL_GAP, true),
+            GaugeStyle::AccessoryLinear => (GAUGE_ACC_BAR, primary, GAUGE_ACC_LABEL_GAP, true),
+            _ => (GAUGE_BAR, self.control_fill(0.12), GAUGE_LABEL_GAP, false),
+        };
+        let marker = style == GaugeStyle::AccessoryLinear;
+        let mut kids = vec![];
+        let mut y = 0.0;
+        // accessoryLinear shows no label (like iOS).
+        if let Some(lv) = l.label.filter(|_| !marker) {
+            let ll = self.view(lv, Prop { w: fin, h: None }, env);
+            let (lw, lh) = (ll.size.w, ll.size.h);
+            kids.push((if leading { 0.0 } else { (w - lw) / 2.0 }, 0.0, ll));
+            y += lh + gap;
+        }
+        let side = |cx: &mut Self, lv: Option<&ViewNode>| lv.map(|lv| cx.view(lv, Prop { w: None, h: None }, env));
+        let (minl, maxl) = (side(self, l.min), side(self, l.max));
+        let lead = minl.as_ref().map_or(0.0, |m| m.size.w + DEFAULT_SPACING);
+        let trail = maxl.as_ref().map_or(0.0, |m| m.size.w + DEFAULT_SPACING);
+        let bw = (w - lead - trail).max(0.0);
+        let row_h = [bar_h, minl.as_ref().map_or(0.0, |m| m.size.h), maxl.as_ref().map_or(0.0, |m| m.size.h)].into_iter().fold(0.0, f64::max);
+        if let Some(m) = minl {
+            let mh = m.size.h;
+            kids.push((0.0, y + (row_h - mh) / 2.0, m));
+        }
+        if let Some(m) = maxl {
+            let (mw, mh) = (m.size.w, m.size.h);
+            kids.push((w - mw, y + (row_h - mh) / 2.0, m));
+        }
+        let mut track = Node::new(format!("{}#track", v.id), "gauge-track");
+        track.fill = Some(track_c);
+        track.radius = PILL;
+        track.inspect = false;
+        let mut tk = vec![];
+        if marker {
+            // A primary dot in a cut-out of the background color.
+            let (cut, dot) = GAUGE_MARKER;
+            let cx = f * bw;
+            let mut m = Node::new(format!("{}#marker", v.id), "gauge-marker");
+            m.fill = Some(self.semantic(Semantic::Background));
+            m.radius = PILL;
+            m.inspect = false;
+            let mut d = Node::new(format!("{}#dot", v.id), "gauge-dot");
+            d.fill = Some(primary);
+            d.radius = PILL;
+            d.inspect = false;
+            let dl = Lay::new(Size { w: dot, h: dot }, Some(d), vec![]);
+            tk.push((cx - cut / 2.0, (bar_h - cut) / 2.0, Lay::new(Size { w: cut, h: cut }, Some(m), vec![((cut - dot) / 2.0, (cut - dot) / 2.0, dl)])));
+        } else {
+            let mut bar = Node::new(format!("{}#bar", v.id), "gauge-bar");
+            bar.fill = Some(accent);
+            bar.radius = PILL;
+            bar.inspect = false;
+            let fw = (bw * f).max(if f > 0.0 { bar_h } else { 0.0 });
+            tk.push((0.0, 0.0, Lay::new(Size { w: fw, h: bar_h }, Some(bar), vec![])));
+        }
+        kids.push((lead, y + (row_h - bar_h) / 2.0, Lay::new(Size { w: bw, h: bar_h }, Some(track), tk)));
+        y += row_h;
+        if let Some(cv) = l.current.filter(|_| !marker) {
+            let cl = self.view(cv, Prop { w: fin, h: None }, env);
+            let (cw, ch) = (cl.size.w, cl.size.h);
+            y += GAUGE_VALUE_GAP;
+            kids.push((if leading { 0.0 } else { (w - cw) / 2.0 }, y, cl));
+            y += ch;
+        }
+        Lay::new(Size { w, h: y }, Some(n), kids)
+    }
+
+    /// `accessoryCircularCapacity`: a ring filled clockwise from the top. `accessoryCircular`: an arc open at the
+    /// bottom with a dot at the value and the label in the opening. Both show the current value inside.
+    fn gauge_circular(&mut self, v: &ViewNode, n: Node, open: bool, f: f64, l: GaugeLabels, env: Env) -> Lay {
+        let s = GAUGE_RING;
+        let primary = self.semantic(Semantic::Primary);
+        let width = (GAUGE_RING_W * 100.0).round() as u16;
+        let arc = |id: String, from: f64, to: f64, c: Color| {
+            let mut a = Node::new(id, "gauge-arc");
+            a.glyph = Some((Glyph::Arc { from: from.round() as i16, to: to.round() as i16, width }, c));
+            a.inspect = false;
+            Lay::new(Size { w: s, h: s }, Some(a), vec![])
+        };
+        let mut kids = vec![];
+        if open {
+            kids.push((0.0, 0.0, arc(format!("{}#track", v.id), -GAUGE_ARC_ANGLE, GAUGE_ARC_ANGLE, primary)));
+            let (cut, dot) = GAUGE_ARC_MARKER;
+            let a = (-GAUGE_ARC_ANGLE + 2.0 * GAUGE_ARC_ANGLE * f).to_radians();
+            let r = (s - GAUGE_RING_W) / 2.0;
+            let (mx, my) = (s / 2.0 + r * a.sin(), s / 2.0 - r * a.cos());
+            let mut m = Node::new(format!("{}#marker", v.id), "gauge-marker");
+            m.fill = Some(self.semantic(Semantic::Background));
+            m.radius = PILL;
+            m.inspect = false;
+            let mut d = Node::new(format!("{}#dot", v.id), "gauge-dot");
+            d.fill = Some(primary);
+            d.radius = PILL;
+            d.inspect = false;
+            let dl = Lay::new(Size { w: dot, h: dot }, Some(d), vec![]);
+            kids.push((mx - cut / 2.0, my - cut / 2.0, Lay::new(Size { w: cut, h: cut }, Some(m), vec![((cut - dot) / 2.0, (cut - dot) / 2.0, dl)])));
+        } else {
+            kids.push((0.0, 0.0, arc(format!("{}#track", v.id), -180.0, 180.0, Color { a: primary.a * GAUGE_RING_TRACK_A, ..primary })));
+            if f > 0.0 {
+                kids.push((0.0, 0.0, arc(format!("{}#bar", v.id), 0.0, 360.0 * f, primary)));
+            }
+        }
+        if let Some(cv) = l.current {
+            let cl = self.view(cv, Prop { w: Some(s - 2.0 * GAUGE_RING_W), h: None }, Env { size: GAUGE_RING_PT, weight: None, align: TextAlign::Center, ..env });
+            let (cw, ch) = (cl.size.w, cl.size.h);
+            let cy = if open { s / 2.0 - 0.9 } else { s / 2.0 };
+            kids.push(((s - cw) / 2.0, cy - ch / 2.0, cl));
+        }
+        if let Some(lv) = l.label.filter(|_| open) {
+            let ll = self.view(lv, Prop { w: None, h: None }, Env { size: GAUGE_ARC_LABEL_PT, weight: Some(600), ..env });
+            let (lw, lh) = (ll.size.w, ll.size.h);
+            kids.push(((s - lw) / 2.0, s / 2.0 + 19.1 - lh / 2.0, ll));
+        }
+        Lay::new(Size { w: s, h: s }, Some(n), kids)
+    }
+
+    /// Wheel `Picker`: the options on a drum around a highlight band, the selection in it. Rows further from
+    /// the centre are squashed and dimmed; tapping one selects it.
+    fn wheel(&mut self, v: &ViewNode, label: &ViewNode, options: &[PickerOption], selected: Option<usize>, disabled: bool, p: Prop) -> Lay {
+        let w = p.w.filter(|w| w.is_finite()).unwrap_or(320.0);
+        let (h, cy) = (WHEEL_H, WHEEL_H / 2.0);
+        let mut root = Node::new(&v.id, "picker");
+        root.label = first_text(label);
+        root.disabled = disabled;
+        root.value = selected.and_then(|i| options.get(i)).map(|o| o.text.clone());
+        let mut band = Node::new(format!("{}#band", v.id), "wheel-band");
+        band.fill = Some(self.pick(WHEEL_BAND_FILL));
+        band.radius = PILL;
+        band.inspect = false;
+        let (bh, inset) = WHEEL_BAND;
+        let mut kids = vec![(inset, cy - bh / 2.0, Lay::new(Size { w: (w - 2.0 * inset).max(0.0), h: bh }, Some(band), vec![]))];
+        let primary = self.semantic(Semantic::Primary);
+        let sel = selected.unwrap_or(0) as isize;
+        for (i, o) in options.iter().enumerate() {
+            let d = i as isize - sel;
+            let Some(&(off, sq)) = WHEEL_ROWS.get(d.unsigned_abs()) else { continue };
+            let pt = WHEEL_PT * sq as f32;
+            let color = if d == 0 { primary } else { Color { a: primary.a * WHEEL_DIM_A, ..primary } };
+            let mut t = self.text_lay(&format!("{}#opt{i}#text", v.id), &o.text, FontSpec::new(pt, self.line_h(pt), 400, TextAlign::Leading), color, None);
+            if let Some(n) = t.node.as_mut() {
+                n.inspect = false;
+            }
+            let rh = WHEEL_ROWS[1].0 * sq;
+            let mut b = Node::new(format!("{}#opt{i}", v.id), "button");
+            b.role = Role::Button;
+            b.label = Some(o.text.clone());
+            b.action = (!disabled && d != 0).then_some(o.action);
+            b.disabled = disabled;
+            let (tw, th) = (t.size.w, t.size.h);
+            let y = cy + off * d.signum() as f64 - rh / 2.0;
+            kids.push((0.0, y, Lay::new(Size { w, h: rh }, Some(b), vec![((w - tw) / 2.0, (rh - th) / 2.0, t)])));
+        }
+        Lay::new(Size { w, h }, Some(root), kids)
     }
 
     /// `Grid`: column widths come from the cells. The grid stays content-sized.
@@ -2412,7 +3284,8 @@ impl Ctx<'_> {
     fn list(&mut self, v: &ViewNode, style: ListStyle, sections: &[Section], p: Prop, env: Env) -> Lay {
         let w = p.w.filter(|w| w.is_finite()).unwrap_or(402.0);
         let fin_h = p.h.filter(|h| h.is_finite());
-        let key = (self.list_cache.is_some() && !env.in_row && w > 0.0 && fin_h.is_some()).then(|| ListLayoutKey {
+        let key = (self.list_cache.is_some() && !env.in_row && w > 0.0 && fin_h.is_some()
+            && env.anim.is_none() && env.content_transition == ContentTransitionKind::Identity).then(|| ListLayoutKey {
             node: v as *const ViewNode as usize,
             width: w,
             env,
@@ -2735,9 +3608,9 @@ impl Ctx<'_> {
             if let Some(pm) = path.and_then(|p| crate::image::load(p)) {
                 isz = (pm.width() as f64 / self.scale, pm.height() as f64 / self.scale);
                 let dest = Rect { x: 0.0, y: 0.0, w: isz.0, h: isz.1 };
-                icon.image = super::rn::tinted(&pm, tint).map(|pixmap| crate::ImageRun { pixmap, dest, rotation: 0.0 });
+                icon.image = super::rn::tinted(&pm, tint).map(|pixmap| crate::ImageRun { pixmap, dest, rotation: 0.0, filter: 2 });
             } else if let Some(name) = &tab.symbol {
-                let spec = crate::SymbolSpec { name: name.clone(), point_size: 22.0, weight: 400, scale: ImageScale::Medium };
+                let spec = crate::SymbolSpec { name: name.clone(), point_size: 22.0, weight: 400, scale: ImageScale::Medium, ..Default::default() };
                 isz = crate::symbols::metrics(&spec).map_or((22.0, 22.0), |m| (m.w, m.h));
                 icon.symbol = Some(crate::SymbolRun { spec, color: tint, size: isz });
             }
@@ -2756,7 +3629,7 @@ impl Ctx<'_> {
                 let mut bn = Node::new(format!("{host}#tab-{}#badge", tab.key), "badge");
                 bn.inspect = false;
                 bn.radius = PILL;
-                bn.fill = Some(if self.dark { rgba(255, 66, 69, 1.0) } else { rgba(255, 56, 60, 1.0) });
+                bn.fill = Some(self.destructive());
                 let mut bt = Node::new(format!("{host}#tab-{}#badge#text", tab.key), "text");
                 bt.inspect = false;
                 bt.text = Some(TextRun { text: b.clone(), font: spec, color: rgba(255, 255, 255, 1.0), strike: false, offset_x: 0.0, spans: vec![] });
@@ -2782,7 +3655,7 @@ impl Ctx<'_> {
                 // Tab bars draw the filled variant of a symbol when there is one.
                 let symbol = t.system_image.as_ref().map(|s| {
                     let fill = format!("{s}.fill");
-                    let spec = crate::SymbolSpec { name: fill.clone(), point_size: 22.0, weight: 400, scale: ImageScale::Medium };
+                    let spec = crate::SymbolSpec { name: fill.clone(), point_size: 22.0, weight: 400, scale: ImageScale::Medium, ..Default::default() };
                     if s.ends_with(".fill") || crate::symbols::metrics(&spec).is_none() { s.clone() } else { fill }
                 });
                 TabBarItem { key: i.to_string(), title: t.title.clone(), icon: None, selected_icon: None, symbol, badge: t.badge.clone(), action: Some(t.action) }
@@ -2810,14 +3683,24 @@ impl Ctx<'_> {
                 let kf = k as f32;
                 (t.font.size, t.font.pt, t.font.line_height, t.font.pitch) = (t.font.size * kf, t.font.pt * kf, t.font.line_height * kf, t.font.pitch * kf);
                 t.offset_x *= kf;
+                t.font.extra *= kf;
+                t.font.baseline *= kf;
                 for sp in t.spans.iter_mut() {
                     sp.pt *= kf;
+                    sp.extra *= kf;
+                    sp.baseline *= kf;
                 }
                 // Smaller type tracks differently: re-measure a single line so it never wraps at its own width.
                 if one_line {
                     let (w, _) = self.fonts.measure(&t.text, &FontSpec { align: TextAlign::Leading, ..t.font }, None, &t.spans);
                     l.size.w = (w * self.scale).ceil() / self.scale;
                 }
+            }
+            if let Some(im) = n.image.as_mut() {
+                im.dest.x *= k;
+                im.dest.y *= k;
+                im.dest.w *= k;
+                im.dest.h *= k;
             }
             if let Some(sy) = n.symbol.as_mut() {
                 sy.spec.point_size *= k;
@@ -3371,6 +4254,97 @@ mod tests {
     }
 
     #[test]
+    fn type_style_changes_measure_case_and_scale() {
+        let plain = scene(r#"{"kind":"text","id":"t","text":"Tracking","modifiers":[{"font":{"size":17,"weight":"regular"}}]}"#, (400.0, 80.0));
+        let wide = scene(r#"{"kind":"text","id":"t","text":"Tracking","modifiers":[{"tracking":4},{"font":{"size":17,"weight":"regular"}}]}"#, (400.0, 80.0));
+        assert!(by_id(&wide, "t").bounds.w > by_id(&plain, "t").bounds.w + 3.0, "tracking should widen the word");
+        let tracked = scene(
+            r#"{"kind":"text","id":"t","text":"WW","modifiers":[{"tracking":4},{"font":{"size":17,"weight":"regular"}}]}"#,
+            (400.0, 80.0),
+        );
+        let run = scene(
+            r#"{"kind":"text","id":"t","text":"WW","runs":[{"text":"WW","kerning":4}],"modifiers":[{"tracking":4},{"font":{"size":17,"weight":"regular"}}]}"#,
+            (400.0, 80.0),
+        );
+        assert!(
+            by_id(&run, "t").bounds.w > by_id(&tracked, "t").bounds.w + 2.0,
+            "a run's kerning adds to the parent's tracking"
+        );
+        let upper = scene(r#"{"kind":"text","id":"t","text":"Hello","modifiers":[{"textCase":"uppercase"}]}"#, (200.0, 80.0));
+        assert_eq!(by_id(&upper, "t").label.as_deref(), Some("HELLO"));
+        let word = "Supercalifragilistic";
+        let full = scene(&format!(r#"{{"kind":"text","id":"t","text":"{word}","modifiers":[{{"font":{{"size":17,"weight":"regular"}}}}]}}"#), (400.0, 80.0));
+        let shrunk = scene(
+            &format!(r#"{{"kind":"text","id":"t","text":"{word}","modifiers":[{{"font":{{"size":17,"weight":"regular"}}}},{{"minimumScaleFactor":0.5}},{{"frame":{{"width":40,"height":30}}}}]}}"#),
+            (400.0, 80.0),
+        );
+        assert!(by_id(&shrunk, "t").bounds.w < by_id(&full, "t").bounds.w * 0.75, "minimumScaleFactor shrinks a word that does not fit");
+        let sentence = "alpha beta gamma delta";
+        let open = scene(
+            &format!(r#"{{"kind":"text","id":"t","text":"{sentence}","modifiers":[{{"font":{{"size":17,"weight":"regular"}}}},{{"lineLimit":{{"max":1}}}},{{"minimumScaleFactor":0.5}},{{"frame":{{"width":220,"height":40}}}}]}}"#),
+            (400.0, 80.0),
+        );
+        let tight = scene(
+            &format!(r#"{{"kind":"text","id":"t","text":"{sentence}","modifiers":[{{"font":{{"size":17,"weight":"regular"}}}},{{"lineLimit":{{"max":1}}}},{{"minimumScaleFactor":0.5}},{{"frame":{{"width":80,"height":40}}}}]}}"#),
+            (400.0, 80.0),
+        );
+        let open_pt = by_id(&open, "t").text.as_ref().unwrap().font.pt;
+        let tight_pt = by_id(&tight, "t").text.as_ref().unwrap().font.pt;
+        assert!(tight_pt < open_pt - 0.5, "lineLimit 1 scales a sentence that wraps: {tight_pt} vs {open_pt}");
+        let one = scene(r#"{"kind":"text","id":"t","text":"Line","modifiers":[{"font":{"size":17,"weight":"regular"}}]}"#, (200.0, 80.0));
+        let two = scene(r#"{"kind":"text","id":"t","text":"Line","modifiers":[{"font":{"size":17,"weight":"regular"}},{"lineLimit":{"min":2}}]}"#, (200.0, 120.0));
+        assert!(by_id(&two, "t").bounds.h > by_id(&one, "t").bounds.h * 1.6, "a lower line limit reserves a second line");
+    }
+
+    #[test]
+    fn baseline_offset_grows_the_line_and_pushes_the_next_row() {
+        let plain = scene(
+            r#"{"kind":"vstack","id":"v","spacing":0,"children":[
+                {"kind":"text","id":"a","text":"Before"},
+                {"kind":"text","id":"b","text":"Up"},
+                {"kind":"text","id":"c","text":"After"}]}"#,
+            (200.0, 200.0),
+        );
+        let raised = scene(
+            r#"{"kind":"vstack","id":"v","spacing":0,"children":[
+                {"kind":"text","id":"a","text":"Before"},
+                {"kind":"text","id":"b","text":"Up","modifiers":[{"baselineOffset":6}]},
+                {"kind":"text","id":"c","text":"After"}]}"#,
+            (200.0, 200.0),
+        );
+        let pb = by_id(&plain, "b").bounds;
+        let rb = by_id(&raised, "b").bounds;
+        let pa = by_id(&plain, "a").bounds;
+        let ra = by_id(&raised, "a").bounds;
+        // The scene centers the stack, so compare gaps, not absolute y.
+        near(rb.y - ra.y, pb.y - pa.y);
+        near(rb.h, pb.h + 6.0);
+        near(by_id(&raised, "c").bounds.y - rb.y, by_id(&plain, "c").bounds.y - pb.y + 6.0);
+        let row = scene(
+            r#"{"kind":"hstack","id":"h","alignment":"center","spacing":8,"children":[
+                {"kind":"text","id":"up","text":"Up","modifiers":[{"baselineOffset":6}]},
+                {"kind":"text","id":"base","text":"Base"}]}"#,
+            (300.0, 80.0),
+        );
+        let up = by_id(&row, "up").bounds;
+        let base = by_id(&row, "base").bounds;
+        near(base.y - up.y, (up.h - base.h) / 2.0);
+    }
+
+    #[test]
+    fn secondary_text_scale_keeps_the_body_line_box() {
+        let body = scene(r#"{"kind":"text","id":"t","text":"Secondary","modifiers":[{"font":{"size":17,"weight":"regular"}}]}"#, (400.0, 80.0));
+        let sec = scene(
+            r#"{"kind":"text","id":"t","text":"Secondary","modifiers":[{"font":{"size":17,"weight":"regular"}},{"textScale":"secondary"}]}"#,
+            (400.0, 80.0),
+        );
+        near(by_id(&sec, "t").bounds.h, by_id(&body, "t").bounds.h);
+        let bw = by_id(&body, "t").bounds.w;
+        let sw = by_id(&sec, "t").bounds.w;
+        assert!(sw < bw * 0.92 && sw > bw * 0.78, "secondary width {sw} vs body {bw}");
+    }
+
+    #[test]
     fn tab_view_bar_badge_and_inset() {
         let s = phone(
             r#"{"kind":"tabview","id":"t","selected":1,"tabs":[{"title":"Home","systemImage":"house","action":1},{"title":"Counter","action":2},{"title":"Settings","systemImage":"gearshape","badge":"3","action":3}],
@@ -3426,8 +4400,15 @@ mod tests {
         for i in 0..30 {
             json = format!(r#"{{"kind":"vstack","id":"v{i}","alignment":"center","children":[{json},{{"kind":"spacer","id":"s{i}"}}]}}"#);
         }
+        // Debug layout frames are large (the match keeps every arm's locals). 30 stacks overflow the
+        // test thread's 2 MB stack; the check is time, not that limit.
         let t = std::time::Instant::now();
-        let s = scene(&json, (393.0, 852.0));
+        let s = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || scene(&json, (393.0, 852.0)))
+            .unwrap()
+            .join()
+            .unwrap();
         assert!(by_id(&s, "t").bounds.w > 0.0);
         assert!(t.elapsed().as_secs() < 5, "layout is exponential in depth");
     }
@@ -3741,7 +4722,7 @@ mod tests {
         // AppKit symbol boxes vary with the host macOS release. Check layout against the active
         // symbol metrics, using the expected point size, weight and scale for each image.
         let metrics = |name: &str, scale| {
-            symbols::metrics(&SymbolSpec { name: name.into(), point_size: 17.0, weight: 400, scale }).unwrap()
+            symbols::metrics(&SymbolSpec { name: name.into(), point_size: 17.0, weight: 400, scale, ..SymbolSpec::default() }).unwrap()
         };
         let star = by_id(&s, "lab.i");
         assert!(star.symbol.is_some());
@@ -3867,6 +4848,79 @@ mod tests {
         let mid = x0 + SLIDER_THUMB.0 / 2.0 + (w - SLIDER_THUMB.0) / 2.0;
         let drag = PointerEvent { dx: mid - (x0 + 5.0), ..PointerEvent::new(PointerKind::Drag, x0 + 5.0, y) };
         assert!((text(it.pointer(&s, drag)) - 50.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn section_q_controls_layout() {
+        let t = |id: &str, s: &str| format!(r#"{{"kind":"text","id":"{id}","text":"{s}"}}"#);
+        let json = format!(
+            r#"{{"kind":"vstack","id":"v","spacing":0,"children":[
+                {{"kind":"button","id":"on","action":1,"selected":true,"label":{}}},
+                {{"kind":"button","id":"off","action":2,"selected":false,"label":{}}},
+                {{"kind":"gauge","id":"lc","style":"linearCapacity","value":0.5,"label":{}}},
+                {{"kind":"gauge","id":"al","style":"accessoryLinear","value":0.5}},
+                {{"kind":"gauge","id":"alc","style":"accessoryLinearCapacity","value":0.25,"label":{}}},
+                {{"kind":"gauge","id":"acc","style":"accessoryCircularCapacity","value":0.6,"currentValueLabel":{}}},
+                {{"kind":"gauge","id":"ac","style":"accessoryCircular","value":0.3,"currentValueLabel":{},"label":{}}},
+                {{"kind":"gauge","id":"dg","value":0.4,"label":{},"minimumValueLabel":{},"maximumValueLabel":{},"currentValueLabel":{}}},
+                {{"kind":"progress","id":"pv","value":0.3,"label":{},"currentValueLabel":{}}},
+                {{"kind":"picker","id":"wh","style":"wheel","label":{},"options":[
+                    {{"text":"6:00","action":10}},{{"text":"7:00","action":11}},{{"text":"8:00","action":12}},{{"text":"9:00","action":13}},
+                    {{"text":"10:00","action":14}},{{"text":"11:00","action":15}},{{"text":"12:00","action":16}}],"selected":3}}
+            ]}}"#,
+            t("on.l", "Bold"), t("off.l", "Bold"), t("lc.l", "Disk"), t("alc.l", "CPU"), t("acc.c", "60"), t("ac.c", "30"), t("ac.l", "Arc"),
+            t("dg.l", "Battery"), t("dg.min", "0"), t("dg.max", "100"), t("dg.c", "40%"), t("pv.l", "Download"), t("pv.c", "30%"), t("wh.l", "Hour"),
+        );
+        let s = scene(&json, (362.0, 1400.0));
+        // `.toggleStyle(.button)`: the same capsule metrics on and off; only the selected one is tinted.
+        let (on, off) = (by_id(&s, "on"), by_id(&s, "off"));
+        near(on.bounds.h, off.bounds.h);
+        assert!(on.fill.is_some() && off.fill.is_none());
+        assert_eq!((on.role, on.value.as_deref(), off.value.as_deref()), (Role::Toggle, Some("on"), Some("off")));
+        // Bars measured on iOS 27.2 (swiftui-controls indicators): capacity 16pt, accessory 8pt / 4pt, full width.
+        near(by_id(&s, "lc#track").bounds.h, 16.0);
+        near(by_id(&s, "lc#track").bounds.w, 362.0);
+        near(by_id(&s, "lc#bar").bounds.w, 181.0);
+        near(by_id(&s, "al#track").bounds.h, 8.0);
+        near(by_id(&s, "al#marker").bounds.center().0, 181.0);
+        near(by_id(&s, "alc#track").bounds.h, 4.0);
+        near(by_id(&s, "acc").bounds.w, 58.0);
+        near(by_id(&s, "acc").bounds.h, 58.0);
+        near(by_id(&s, "ac").bounds.w, 58.0);
+        assert_eq!(by_id(&s, "acc").value.as_deref(), Some("0.6"));
+        // Default gauge: min / max labels beside a capacity bar (8pt gaps), current value under it.
+        let dg = by_id(&s, "dg#track");
+        near(dg.bounds.h, 16.0);
+        assert!(by_id(&s, "dg.c").bounds.y > dg.bounds.y + dg.bounds.h);
+        assert!(by_id(&s, "dg.min").bounds.x + by_id(&s, "dg.min").bounds.w + 8.0 <= dg.bounds.x + 0.5);
+        // currentValueLabel sits under a linear progress bar.
+        assert!(by_id(&s, "pv.c").bounds.y > by_id(&s, "pv#track").bounds.y);
+        // Wheel: the selected row sits in the highlight band at the centre; other rows are tappable.
+        let wh = by_id(&s, "wh");
+        near(by_id(&s, "wh#band").bounds.center().1, wh.bounds.center().1);
+        near(by_id(&s, "wh#opt3").bounds.center().1, wh.bounds.center().1);
+        assert_eq!((by_id(&s, "wh#opt3").action, by_id(&s, "wh#opt4").action), (None, Some(14)));
+        assert_eq!(wh.value.as_deref(), Some("9:00"));
+    }
+
+    #[test]
+    fn menu_layer_centres_on_its_anchor() {
+        let s = phone(
+            r#"{"kind":"presentation","id":"p","content":{"kind":"vstack","id":"v","children":[
+                {"kind":"button","id":"m","action":1,"label":{"kind":"text","id":"m.l","text":"Actions"}}]},
+              "layers":[{"kind":"menu","anchor":"m","centered":true,"dismiss":7,"items":[
+                {"text":"Duplicate","action":2,"systemImage":"plus.square.on.square"},
+                {"text":"Rename","action":3,"systemImage":"pencil"},
+                {"text":"Delete","action":4,"systemImage":"trash","destructive":true,"divider":true}]}]}"#,
+        );
+        let (m, card) = (by_id(&s, "m"), by_id(&s, "menu"));
+        near(card.bounds.center().0, m.bounds.center().0);
+        // iOS 27.2: three rows of 42pt, a 21pt gap at the divider, 10pt padding (166.5pt), top 10pt above the anchor's centre.
+        near(card.bounds.h, 3.0 * 42.0 + 21.0 + 20.0);
+        near(card.bounds.y, m.bounds.center().1 - 10.5);
+        assert_eq!(by_id(&s, "menu#2").action, Some(4));
+        assert!(by_id(&s, "menu#2#icon").symbol.is_some());
+        assert!(s.nodes.iter().any(|n| n.id == "menu#sep2"));
     }
 
     #[test]
@@ -4224,5 +5278,42 @@ mod tests {
         assert_eq!(by_id(&s, "h2").bounds.x, 390.0);
         let s = at(410.0);
         assert_eq!(by_id(&s, "h1").bounds.x, -10.0);
+    }
+
+    #[test]
+    fn matched_geometry_aligns_non_source_to_source() {
+        let json = r#"{
+            "kind": "zstack", "id": "z", "alignment": "topLeading",
+            "children": [
+                {"kind": "shape", "id": "pill", "shape": "capsule",
+                 "modifiers": [{"matchedGeometry": {"id": "tab", "namespace": "ns", "properties": "frame", "anchor": [0.5, 0.5], "isSource": false}}]},
+                {"kind": "hstack", "id": "h", "spacing": 10, "alignment": "center", "children": [
+                    {"kind": "color", "id": "a", "color": {"r": 1, "g": 0, "b": 0, "a": 1}, "modifiers": [{"frame": {"width": 60, "height": 30}}]},
+                    {"kind": "color", "id": "b", "color": {"r": 0, "g": 1, "b": 0, "a": 1},
+                     "modifiers": [{"frame": {"width": 80, "height": 30}}, {"matchedGeometry": {"id": "tab", "namespace": "ns", "isSource": true}}]}
+                ]}
+            ]
+        }"#;
+        let s = scene(json, (200.0, 100.0));
+        assert_eq!(by_id(&s, "pill").bounds, by_id(&s, "b").bounds);
+    }
+
+    #[test]
+    fn animation_and_content_transition_propagate_and_disable() {
+        let json = r#"{
+            "kind": "vstack", "id": "v",
+            "modifiers": [{"animation": {"curve": "linear", "duration": 0.4, "token": 3}}, {"contentTransition": "numericTextUp"}],
+            "children": [
+                {"kind": "text", "id": "a", "text": "1"},
+                {"kind": "text", "id": "b", "text": "2", "modifiers": [{"animation": null}]}
+            ]
+        }"#;
+        let s = scene(json, (200.0, 100.0));
+        let a = by_id(&s, "a").anim.as_ref().expect("a inherits animation");
+        assert_eq!(a.animation.as_ref().unwrap().token, 3);
+        assert_eq!(a.content_transition, ContentTransitionKind::NumericTextUp);
+        let b = by_id(&s, "b").anim.as_ref().expect("b inherits contentTransition");
+        assert!(b.animation.is_none(), "animation(nil) disables outer animation");
+        assert_eq!(b.content_transition, ContentTransitionKind::NumericTextUp);
     }
 }
