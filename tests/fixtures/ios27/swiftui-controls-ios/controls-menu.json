@@ -1,0 +1,320 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "enabled": true,
+        "depth": 0,
+        "type": "Application",
+        "rect": {
+          "x": 0,
+          "width": 402,
+          "height": 874,
+          "y": 0
+        },
+        "label": "Controls",
+        "hittable": false,
+        "index": 0,
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "enabled": true,
+        "depth": 1,
+        "type": "CollectionView",
+        "parentIndex": 0,
+        "rect": {
+          "x": 76.00000000000001,
+          "width": 250,
+          "height": 580.3333333333333,
+          "y": 293.6666666666667
+        },
+        "hittable": true,
+        "index": 1,
+        "ref": "e2",
+        "kind": "collection"
+      },
+      {
+        "enabled": true,
+        "depth": 2,
+        "type": "Cell",
+        "parentIndex": 1,
+        "rect": {
+          "x": 76.00000000000001,
+          "width": 250,
+          "height": 42,
+          "y": 303.6666666666667
+        },
+        "hittable": true,
+        "index": 2,
+        "ref": "e3",
+        "kind": "cell"
+      },
+      {
+        "enabled": true,
+        "depth": 3,
+        "type": "Button",
+        "parentIndex": 2,
+        "rect": {
+          "x": 76.00000000000001,
+          "width": 250,
+          "height": 42,
+          "y": 303.6666666666667
+        },
+        "label": "Duplicate",
+        "identifier": "plus.square.on.square",
+        "hittable": true,
+        "index": 3,
+        "ref": "e4",
+        "kind": "button"
+      },
+      {
+        "enabled": true,
+        "depth": 4,
+        "type": "Image",
+        "parentIndex": 3,
+        "rect": {
+          "width": 21.66666666666667,
+          "height": 20.333333333333314,
+          "x": 105.33333333333334,
+          "y": 314.6666666666667
+        },
+        "label": "duplicate",
+        "identifier": "plus.square.on.square",
+        "hittable": true,
+        "index": 4,
+        "ref": "e5",
+        "kind": "image"
+      },
+      {
+        "depth": 2,
+        "enabled": true,
+        "type": "Cell",
+        "parentIndex": 1,
+        "rect": {
+          "width": 250,
+          "height": 42,
+          "x": 76.00000000000001,
+          "y": 345.6666666666667
+        },
+        "hittable": true,
+        "index": 5,
+        "ref": "e6",
+        "kind": "cell"
+      },
+      {
+        "enabled": true,
+        "depth": 3,
+        "type": "Button",
+        "parentIndex": 5,
+        "rect": {
+          "width": 250,
+          "height": 42,
+          "x": 76.00000000000001,
+          "y": 345.6666666666667
+        },
+        "label": "Rename",
+        "identifier": "pencil",
+        "hittable": true,
+        "index": 6,
+        "ref": "e7",
+        "kind": "button"
+      },
+      {
+        "enabled": true,
+        "depth": 4,
+        "type": "Image",
+        "parentIndex": 6,
+        "rect": {
+          "width": 17.33333333333333,
+          "height": 16,
+          "x": 107.33333333333334,
+          "y": 359
+        },
+        "label": "edit",
+        "identifier": "pencil",
+        "hittable": true,
+        "index": 7,
+        "ref": "e8",
+        "kind": "image"
+      },
+      {
+        "depth": 2,
+        "enabled": true,
+        "type": "Cell",
+        "parentIndex": 1,
+        "rect": {
+          "width": 250,
+          "height": 42,
+          "x": 76.00000000000001,
+          "y": 408.6666666666667
+        },
+        "hittable": true,
+        "index": 8,
+        "ref": "e9",
+        "kind": "cell"
+      },
+      {
+        "enabled": true,
+        "depth": 3,
+        "type": "Button",
+        "parentIndex": 8,
+        "rect": {
+          "width": 250,
+          "height": 42,
+          "x": 76.00000000000001,
+          "y": 408.6666666666667
+        },
+        "label": "Delete",
+        "identifier": "trash",
+        "hittable": true,
+        "index": 9,
+        "ref": "e10",
+        "kind": "button"
+      },
+      {
+        "enabled": true,
+        "depth": 4,
+        "type": "Image",
+        "parentIndex": 9,
+        "rect": {
+          "width": 19,
+          "height": 21.333333333333314,
+          "x": 106.66666666666669,
+          "y": 418.6666666666667
+        },
+        "label": "trash",
+        "identifier": "trash",
+        "hittable": true,
+        "index": 10,
+        "ref": "e11",
+        "kind": "image"
+      },
+      {
+        "enabled": true,
+        "depth": 2,
+        "type": "Other",
+        "parentIndex": 1,
+        "rect": {
+          "width": 30,
+          "height": 107,
+          "x": 293,
+          "y": 323.6666666666667
+        },
+        "label": "Vertical scroll bar, 1 page",
+        "value": "0%",
+        "hittable": true,
+        "index": 11,
+        "ref": "e12",
+        "kind": "other"
+      },
+      {
+        "enabled": true,
+        "depth": 2,
+        "type": "Other",
+        "parentIndex": 1,
+        "rect": {
+          "width": 250,
+          "height": 30,
+          "x": 76.00000000000001,
+          "y": 397.6666666666667
+        },
+        "label": "Horizontal scroll bar, 1 page",
+        "value": "0%",
+        "hittable": true,
+        "index": 12,
+        "ref": "e13",
+        "kind": "other"
+      },
+      {
+        "enabled": true,
+        "depth": 2,
+        "type": "Other",
+        "parentIndex": 1,
+        "rect": {
+          "width": 30,
+          "height": 107,
+          "x": 293,
+          "y": 323.6666666666667
+        },
+        "label": "Vertical scroll bar, 1 page",
+        "value": "0%",
+        "hittable": true,
+        "index": 13,
+        "ref": "e14",
+        "kind": "other"
+      },
+      {
+        "enabled": true,
+        "depth": 2,
+        "type": "Other",
+        "parentIndex": 1,
+        "rect": {
+          "width": 250,
+          "height": 30,
+          "x": 76.00000000000001,
+          "y": 397.6666666666667
+        },
+        "label": "Horizontal scroll bar, 1 page",
+        "value": "0%",
+        "hittable": true,
+        "index": 14,
+        "ref": "e15",
+        "kind": "other"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.controls",
+    "appBundleId": "dev.simcore.controls",
+    "visibility": {
+      "partial": true,
+      "visibleNodeCount": 15,
+      "totalNodeCount": 15,
+      "reasons": [
+        "scroll-hidden-below"
+      ]
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "unknown",
+    "snapshotQuality": {
+      "state": "recovered",
+      "backend": "private-ax",
+      "reason": "XCTest-backed snapshot tiers were deferred after recent slow accessibility work on this screen",
+      "reasonCode": "deferred",
+      "timing": {
+        "acquisitionMs": 725.9320020675659,
+        "presentationMs": 0.6539821624755859
+      }
+    },
+    "snapshotQualityNotes": [
+      {
+        "code": "regular-geometry-clipped",
+        "clippedNodeCount": 1,
+        "droppedNodeCount": 0
+      }
+    ],
+    "warnings": [
+      "Detected an overly complex or slow accessibility tree. Fell back to the private-ax snapshot backend. It is OK to continue; use --json to inspect snapshotQuality.reason if you need recovery details.",
+      "Simulator AX snapshot unavailable (circuit-disabled); used XCTest for this app generation.",
+      "The surface was still changing after open when this tree was read, so it may not match where the surface comes to rest: an element missing from it is not proof of absence."
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 33,
+        "p50Ms": 149,
+        "p95Ms": 7912,
+        "maxMs": 17087,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 33
+        }
+      },
+      "warning": "Warning: ios snapshots are slow in this run: p95 7912ms over 32 captures. Possible causes: device load, app or dev server stuck, helper fallback, or stale daemon."
+    },
+    "refsGeneration": 455783
+  }
+}

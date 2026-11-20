@@ -32,8 +32,8 @@ struct _AlertView<Content: View, A: View, M: View>: View, _Flattenable {
     let dialog: Bool, titleVisible: Bool
     func _children(_ path: String) -> [Node] {
         let out = SwiftUI._children(content, path)
-        guard isPresented.wrappedValue else { return out }
         let rt = _Runtime.shared, b = isPresented
+        guard rt.pageIsActive, b.wrappedValue else { return out }
         let saved = rt.autoDismiss
         rt.autoDismiss = { b.wrappedValue = false }
         defer { rt.autoDismiss = saved }
@@ -67,18 +67,18 @@ struct _SheetView<Content: View, S: View>: View, _Flattenable {
     let content: Content, isPresented: Binding<Bool>, sheet: S, onDismiss: (() -> Void)?, cover: Bool
     func _children(_ path: String) -> [Node] {
         let out = SwiftUI._children(content, path)
-        guard isPresented.wrappedValue else { return out }
         let rt = _Runtime.shared, b = isPresented
+        guard rt.pageIsActive, b.wrappedValue else { return out }
         let spath = path + (cover ? "/cover" : "/sheet")
         // onDismiss runs whenever the presentation stops being evaluated: dismiss(), a swipe, or app code clearing the binding.
         rt.noteLifecycle(spath + "#presented", nil, onDismiss)
         rt.layers.append([:])
         let slot = rt.layers.count - 1   // below anything presented from inside
-        let saved = (rt.nav, rt.disabled, rt.buttonStyle, rt.dismissHook, rt.autoDismiss)
-        // The sheet is its own screen: not inside the presenting navigation stack.
-        rt.nav = nil; rt.disabled = false; rt.buttonStyle = "automatic"; rt.autoDismiss = nil
+        let saved = (rt.nav, rt.disabled, rt.buttonStyle, rt.dismissHook, rt.autoDismiss, rt.styles.inList)
+        // The sheet is its own screen: not inside the presenting navigation stack or list.
+        rt.nav = nil; rt.disabled = false; rt.buttonStyle = "automatic"; rt.autoDismiss = nil; rt.styles.inList = false
         rt.dismissHook = { b.wrappedValue = false }
-        defer { (rt.nav, rt.disabled, rt.buttonStyle, rt.dismissHook, rt.autoDismiss) = saved }
+        defer { (rt.nav, rt.disabled, rt.buttonStyle, rt.dismissHook, rt.autoDismiss, rt.styles.inList) = saved }
         var node = _eval(sheet, spath)
         var detents: [Node] = [], indicator = false, locked = false
         let mods = (node["modifiers"] as? [Node]) ?? []

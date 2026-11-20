@@ -22,7 +22,7 @@ def texts(n):
     return out
 
 def kids(n):
-    out = list(n.get("children", []))
+    out = list(n.get("children", [])) + [page["content"] for page in n.get("pages", [])]
     for k in ("label", "child", "content"):
         if k in n: out.append(n[k])
     for sec in n.get("sections", []): out += sec["rows"]
@@ -397,12 +397,32 @@ t = tab(t, 1); assert "Count: 2" in alltexts(tv(t)), "tab @State survives a swit
 t = tab(t, 0); assert "You picked Apple" in alltexts(tv(t)) and tv(t)["content"]["back"], "pushed screen survives a switch"
 finish(p)
 
-# --- Tab(_:systemImage:value:) with an enum selection, string badge
+# --- Tab(_:systemImage:value:) and tabBarOnly with an enum selection and text badge
 p = spawn(sys.argv[7]); assert recv(p)["type"] == "hello"; t = recv(p)
-assert tv(t)["selected"] == 1 and [(x["title"], x.get("badge")) for x in tv(t)["tabs"]] == [("One", None), ("Two", "New")], tv(t)
+assert tv(t)["selected"] == 1 and [(x["title"], x.get("badge")) for x in tv(t)["tabs"]] == [("One", None), ("Two", "New"), ("Lifecycle", None)], tv(t)
 t = act(p, t, button(t, "two 0")["action"]); assert "two 1" in alltexts(tv(t))
 t = tab(t, 0); assert tv(t)["selected"] == 0 and "one 0" in alltexts(tv(t))
 t = tab(t, 1); assert "two 1" in alltexts(tv(t))
+t = tab(t, 2)
+assert tv(t)["kind"] == "tabview" and "visits 0, sidebar false" in alltexts(tv(t))
+pages = next(m for m in walk(tv(t)) if m["kind"] == "pagetabview")
+t = act(p, t, pages["pages"][1]["action"])
+assert tv(t)["kind"] == "presentation" and tv(t)["layers"][0]["title"] == "Second page alert"
+assert "visits 1, sidebar false" in alltexts(tv(t))
+finish(p)
+
+# --- page selection works in both directions and survives leaving its enclosing tab
+p = spawn(sys.argv[15]); assert recv(p)["type"] == "hello"; t = recv(p)
+def pager(t): return next(m for m in walk(t["root"]) if m["kind"] == "pagetabview")
+assert [item.get("badge") for item in tv(t)["tabs"]] == [None, "New", "12"]
+assert pager(t)["selected"] == 0 and pager(t)["indexBackground"] == "always"
+assert "Page 1 of 3" in alltexts(tv(t)) and len(pager(t)["pages"]) == 3
+t = act(p, t, button(t, "Next")["action"])
+assert pager(t)["selected"] == 1 and "Page 2 of 3" in alltexts(tv(t))
+t = act(p, t, pager(t)["pages"][2]["action"])
+assert pager(t)["selected"] == 2 and "Page 3 of 3" in alltexts(tv(t))
+t = tab(t, 1); assert "Inbox" in alltexts(tv(t)) and not any(m["kind"] == "pagetabview" for m in walk(tv(t)))
+t = tab(t, 0); assert pager(t)["selected"] == 2 and "Page 3 of 3" in alltexts(tv(t))
 finish(p)
 
 # --- gestures (protocol section L): touches at gesture keys drive recognizers, composition and arbitration
@@ -504,6 +524,121 @@ line = recv(p)
 assert line["type"] == "scroll_to_id" and isinstance(line.get("scroll"), str) and line["scroll"] and line["target"] == "there", line
 finish(p)
 
+# --- animation & transitions (protocol section P).
+def recv_tree(p):
+    """Read until the next `tree` message, returning `(tree, schedules)`."""
+    scheds = []
+    while True:
+        m = recv(p)
+        if m["type"] == "tree":
+            return m, scheds
+        if m["type"] == "schedule":
+            scheds.append(m.get("afterMs"))
+
+env = dict(os.environ, SIMCORE_TIME="1700000000")
+p = subprocess.Popen([sys.argv[12]], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+assert recv(p)["type"] == "hello"
+t, scheds = recv_tree(p)
+# One-shot keyframeAnimator(repeating: false) runs from launch (16ms schedule); Periodic/Animation/EveryMinute schedules pass.
+assert scheds and scheds[-1] <= 20.0, scheds
+assert "tl:0" in alltexts(t["root"]) and "ct:numeric" in alltexts(t["root"]) and "sched:ok" in alltexts(t["root"]), alltexts(t["root"])
+assert "phase:0" in alltexts(t["root"]) and "kf:0,0" in alltexts(t["root"]), alltexts(t["root"])
+oneshot_node = next(n for n in walk(t["root"]) if n.get("text") == "oneshot")
+assert any(m.get("offset", {}).get("x") == 0 for m in oneshot_node.get("modifiers", [])), oneshot_node
+
+# @Namespace + matchedGeometryEffect: Src and Dst share the same namespace string.
+mgs = [m["matchedGeometry"] for n in walk(t["root"]) for m in n.get("modifiers", []) if "matchedGeometry" in m]
+assert len(mgs) == 2 and mgs[0]["namespace"] == mgs[1]["namespace"] and mgs[0]["isSource"] is True and mgs[1]["isSource"] is False and mgs[1]["properties"] == "position", mgs
+
+# withAnimation(.linear(duration: 0.2)) + completion + asymmetric & custom Transition.
+send(p, type="action", id=button(t, "Toggle")["action"], version=t["version"])
+t, scheds = recv_tree(p)
+assert scheds and scheds[-1] <= 205.0, scheds
+root_anims = [m["animation"] for m in t["root"].get("modifiers", []) if "animation" in m]
+assert len(root_anims) == 1 and root_anims[0]["curve"] == "linear" and root_anims[0]["duration"] == 0.2 and root_anims[0]["token"] >= 1, root_anims
+trs = [m["transition"] for n in walk(t["root"]) for m in n.get("modifiers", []) if "transition" in m]
+assert len(trs) == 2, trs
+assert trs[0]["insertion"]["edge"] == "leading" and trs[0]["insertion"]["opacity"] == 0 and trs[0]["removal"]["scale"] == 0.5, trs[0]
+assert trs[1]["insertion"]["opacity"] == 0 and trs[1]["insertion"]["offset"] == [-20, 0] and trs[1]["removal"]["offset"] == [20, 0], trs[1]
+
+# Advance clock to 200 ms -> completion fires ONCE even though two @State props mutated (done:1, multi:1), and one-shot keyframeAnimator finishes at offset.x == 40.
+send(p, type="tick", time=200.0)
+t, _ = recv_tree(p)
+assert any("done:1 multi:1" in s for s in alltexts(t["root"])), alltexts(t["root"])
+oneshot_node = next(n for n in walk(t["root"]) if n.get("text") == "oneshot")
+assert any(m.get("offset", {}).get("x") == 40 for m in oneshot_node.get("modifiers", [])), oneshot_node
+
+# onChange calling withAnimation consumes its transaction on the same submission without leaking to the next action.
+send(p, type="action", id=button(t, "OnChg")["action"], version=t["version"])
+t, _ = recv_tree(p)
+assert any("oc:1" in s for s in alltexts(t["root"])), alltexts(t["root"])
+oc_anims = [m["animation"] for m in t["root"].get("modifiers", []) if "animation" in m]
+assert len(oc_anims) == 1 and oc_anims[0]["duration"] == 0.25, oc_anims
+send(p, type="action", id=button(t, "Other")["action"], version=t["version"])
+t, _ = recv_tree(p)
+assert not any("animation" in m for m in t["root"].get("modifiers", [])), "onChange transaction must not leak"
+
+# .animation(_:value:) fires ONLY when `count` changes, NOT when `other` changes; .animation(nil, value:) emits null.
+send(p, type="action", id=button(t, "Inc")["action"], version=t["version"])
+t, _ = recv_tree(p)
+cnt_node = next(n for n in walk(t["root"]) if n.get("text") == "Count:1")
+assert any("animation" in m and m["animation"]["curve"] == "easeInOut" for m in cnt_node.get("modifiers", [])), cnt_node
+assert any(m.get("contentTransition") == "numericTextUp" for m in cnt_node.get("modifiers", [])), cnt_node
+sup_node = next(n for n in walk(t["root"]) if n.get("text") == "Suppressed:1")
+assert any("animation" in m and m["animation"] is None for m in sup_node.get("modifiers", [])), sup_node
+# One-shot keyframeAnimator must hold its final value (40) on subsequent re-renders instead of snapping back to 0.
+oneshot_node = next(n for n in walk(t["root"]) if n.get("text") == "oneshot")
+assert any(m.get("offset", {}).get("x") == 40 for m in oneshot_node.get("modifiers", [])), oneshot_node
+
+send(p, type="action", id=button(t, "Other")["action"], version=t["version"])
+t, _ = recv_tree(p)
+cnt_node = next(n for n in walk(t["root"]) if n.get("text") == "Count:1")
+assert not any("animation" in m for m in cnt_node.get("modifiers", [])), "unchanged value must not re-animate"
+
+# CustomAnimation + TransactionKey via withTransaction + .transaction(_:) reading the active transaction.
+send(p, type="action", id=button(t, "Tx")["action"], version=t["version"])
+t, _ = recv_tree(p)
+assert any("tx:7" in s for s in alltexts(t["root"])), alltexts(t["root"])
+root_anims = [m["animation"] for m in t["root"].get("modifiers", []) if "animation" in m]
+assert len(root_anims) == 1 and "samples" in root_anims[0]["curve"], root_anims
+txmod_node = next(n for n in walk(t["root"]) if n.get("text") == "txmod:7")
+assert any("animation" in m and m["animation"] is None for m in txmod_node.get("modifiers", [])), txmod_node
+
+# PhaseAnimator + .phaseAnimator modifier: trigger advances 0 -> 1 (pm opacity 0.5) immediately, then 1 -> 2 at +100ms, then 2 -> 0 at +200ms and stops.
+send(p, type="action", id=button(t, "Phase")["action"], version=t["version"])
+t, _ = recv_tree(p)
+assert "phase:1" in alltexts(t["root"]), alltexts(t["root"])
+pm_node = next(n for n in walk(t["root"]) if n.get("text") == "pm")
+assert any(m.get("opacity") == 0.5 for m in pm_node.get("modifiers", [])), pm_node
+send(p, type="tick", time=300.0)
+t, _ = recv_tree(p)
+assert "phase:2" in alltexts(t["root"]), alltexts(t["root"])
+send(p, type="tick", time=400.0)
+t, _ = recv_tree(p)
+assert "phase:0" in alltexts(t["root"]), alltexts(t["root"])
+
+# KeyframeAnimator: trigger at t=400ms; at t=500ms (halfway through 0.2s) x == 50 and y between 10 and 50; at t=600ms x == 100, y == 50.
+send(p, type="action", id=button(t, "Keyframe")["action"], version=t["version"])
+t, _ = recv_tree(p)
+send(p, type="tick", time=500.0)
+t, _ = recv_tree(p)
+kf_mid = next(s for s in alltexts(t["root"]) if s.startswith("kf:"))
+assert kf_mid.startswith("kf:50,"), kf_mid
+send(p, type="tick", time=600.0)
+t, _ = recv_tree(p)
+assert "kf:100,50" in alltexts(t["root"]), alltexts(t["root"])
+
+# TimelineView(.explicit): advance to 1000ms -> tl:1 (and kf holds 100,50!), advance to 2000ms -> tl:2 and schedule clears (afterMs absent).
+send(p, type="tick", time=1000.0)
+t, _ = recv_tree(p)
+assert "tl:1" in alltexts(t["root"]) and "kf:100,50" in alltexts(t["root"]), alltexts(t["root"])
+send(p, type="tick", time=2000.0)
+t, _ = recv_tree(p)
+assert "tl:2" in alltexts(t["root"]), alltexts(t["root"])
+sched = recv(p)
+assert sched["type"] == "schedule" and "afterMs" not in sched, f"exhausted timeline should stop scheduling: {sched}"
+finish(p)
+
 # --- shapes & paths (section N)
 p = spawn(sys.argv[10])
 assert recv(p) == {"type": "hello", "protocol": 1}
@@ -548,5 +683,141 @@ assert d2["path"] == [{"m": [40, 0]}, {"l": [80, 30]}, {"l": [40, 60]}, {"l": [0
 assert len(t2["root"]["children"][7]["path"]) > 2 and len(t2["root"]["children"][8]["path"]) > 4
 # Pre-inset Rectangle(inset: 4).strokeBorder(lineWidth: 6) on 40x40 => rect [7..33, 7..33]
 assert t2["root"]["children"][10]["path"] == [{"m": [7, 7]}, {"l": [33, 7]}, {"l": [33, 33]}, {"l": [7, 33]}, "z"], t2["root"]["children"][10]["path"]
+finish(p)
+
+# --- type (protocol section O)
+p = spawn(sys.argv[11]); assert recv(p)["type"] == "hello"; t = recv(p)
+hello = next(m for m in walk(t["root"]) if m.get("text") == "Hello")
+assert any(m.get("textCase") == "uppercase" for m in hello.get("modifiers", [])), hello
+joined = next(m for m in walk(t["root"]) if m.get("text") == "AB")
+runs = joined["runs"]
+assert runs[0].get("italic") is True and runs[1].get("kerning") == 2, joined
+dotted = next(m for m in walk(t["root"]) if m.get("text") == "DotEnd")
+assert dotted["runs"][0].get("underline") is True and dotted["runs"][0].get("underlinePattern") == "dot", dotted
+fox = next(m for m in walk(t["root"]) if isinstance(m.get("text"), str) and m["text"].startswith("The quick"))
+mm = fox.get("modifiers", [])
+assert any(m.get("truncationMode") == "middle" for m in mm), mm
+assert any(isinstance(m.get("lineLimit"), dict) and m["lineLimit"].get("max") == 1 for m in mm), mm
+star = next(m for m in walk(t["root"]) if m.get("kind") == "image" and m.get("systemName") == "star.fill")
+assert star.get("symbolRenderingMode") == "hierarchical", star
+assert any(m.get("kind") == "empty" for m in walk(t["root"]))
+bm = next(m for m in walk(t["root"]) if m.get("kind") == "image" and "bitmap" in m)
+assert bm["bitmap"]["path"].endswith("onesim-typelab.png"), bm
+assert bm["bitmap"]["width"] == 8 and bm["bitmap"]["height"] == 8, bm
+finish(p)
+
+# --- state and environment (#47)
+p = spawn(sys.argv[13], env={**os.environ, "SIMCORE_DYNAMIC_TYPE": "accessibility1"})
+assert recv(p)["type"] == "hello"; t = recv(p)
+tx = alltexts(t["root"])
+assert tx[:4] == ["Accent: plain enabled: true", "Accent: loud enabled: true", "Accent: outer enabled: false",
+                  "Accent: inner enabled: false"], tx  # nearest .environment wins; .disabled reaches isEnabled
+assert "Size: compact/regular" in tx, tx  # portrait iPhone
+assert "Badge: ada 0 some" in tx, tx
+# body 17 -> 28 at accessibility1, caption 12 -> 22 (Apple's Dynamic Type table)
+assert f"Metric: {10 * 28 / 17} 22.0 active" in tx, tx
+assert "Metric: 10.0 12.0 active" in tx, tx  # .environment(\.dynamicTypeSize, .large) override
+assert button(t, "Inner")["disabled"], button(t, "Inner")
+t = act(p, t, [m for m in walk(t["root"]) if m.get("kind") == "button" and "Draft: none" in alltexts(m)][0]["action"])
+assert alltexts(t["root"]).count("Draft: saved") == 2, alltexts(t["root"])  # both views share the key
+send(p, type="action", id=button(t, "Open")["action"], version=t["version"])
+ev = recv(p)  # system open: reported to the host, no state change, so no tree follows
+assert ev == {"type": "event", "name": "module.called",
+              "detail": {"module": "OpenURLAction", "method": "openURL", "args": ["https://example.com/a"]}}, ev
+t = act(p, t, button(t, "Local")["action"])  # handled in-app: no event, completion(true)
+assert "Result: true" in alltexts(t["root"]), alltexts(t["root"])
+t = act(p, t, button(t, "Like")["action"])
+assert "Badge: ada 1 some" in alltexts(t["root"]), alltexts(t["root"])  # @Observable mutation re-renders
+fld = next(m for m in walk(t["root"]) if m.get("kind") == "text_field")
+send(p, type="text_input", field=fld["field"], version=t["version"], text="grace"); t = recv(p)
+assert "Badge: grace 1 some" in alltexts(t["root"]), alltexts(t["root"])  # $bindable.name writes through
+send(p, type="environment", appearance="light", viewport={"width": 956, "height": 440}); t = recv(p)
+assert "Size: regular/compact" in alltexts(t["root"]), alltexts(t["root"])  # Pro Max landscape
+send(p, type="environment", appearance="light", viewport={"width": 874, "height": 402}); t = recv(p)
+assert "Size: compact/compact" in alltexts(t["root"]), alltexts(t["root"])  # Pro landscape
+send(p, type="environment", appearance="light", viewport={"width": 1032, "height": 1376}); t = recv(p)
+assert "Size: regular/regular" in alltexts(t["root"]), alltexts(t["root"])  # iPad
+t = act(p, t, button(t, "Push")["action"])
+assert "Pushed: day inner" in alltexts(t["root"]), alltexts(t["root"])
+t = act(p, t, button(t, "Pushed: day inner")["action"])  # changes the value set above the NavigationStack
+assert "Pushed: night inner" in alltexts(t["root"]), alltexts(t["root"])
+finish(p)
+
+# --- controls (protocol section Q)
+p = spawn(sys.argv[14]); assert recv(p)["type"] == "hello"; t = recv(p)
+def tree(t): return t["root"]["content"] if t["root"]["kind"] == "presentation" else t["root"]
+def layers(t): return t["root"].get("layers", []) if t["root"]["kind"] == "presentation" else []
+def btn(t, label): return next(m for m in walk(tree(t)) if m.get("kind") == "button" and label in alltexts(m))
+def has(t, s): return any(s in x for x in alltexts(tree(t)))
+def node(t, kind): return [m for m in walk(tree(t)) if m.get("kind") == kind]
+# Menu: a button that opens a centred menu layer; items carry icon, role and dividers (Divider and Section).
+t = act(p, t, btn(t, "Menu")["action"])
+menu = next(l for l in layers(t) if l["kind"] == "menu")
+assert menu["centered"] and [i["text"] for i in menu["items"]] == ["Alpha", "Delete", "Inside", "Off", "Flag", "P1", "P2"], menu
+off, flag, p1, p2 = menu["items"][3:]
+assert off.get("disabled") and not menu["items"][2].get("disabled"), "a disabled button is a dimmed item"
+assert not flag.get("checked") and p1.get("checked") and not p2.get("checked") and p1.get("divider"), "toggles and picker options are checked items"
+assert off["action"] == 0, "a disabled item has no action"
+t = act(p, t, next(l for l in layers(t) if l["kind"] == "menu")["items"][6]["action"]); assert not layers(t)
+assert has(t, "mpick 2"), "a picker option in a menu selects it and closes the menu"
+t = act(p, t, btn(t, "Menu")["action"]); menu = next(l for l in layers(t) if l["kind"] == "menu")
+assert menu["items"][0].get("systemImage") == "star" and not menu["items"][0].get("divider"), menu
+assert menu["items"][1].get("destructive") and menu["items"][1].get("divider") and menu["items"][2].get("divider"), menu
+t = act(p, t, menu["items"][0]["action"])
+assert has(t, "last Alpha") and not layers(t), "an item runs its action and closes the menu"
+t = act(p, t, btn(t, "Menu")["action"]); t = act(p, t, next(l for l in layers(t) if l["kind"] == "menu")["dismiss"])
+assert not layers(t) and has(t, "last Alpha"), "tap outside only closes"
+t = act(p, t, btn(t, "Primary")["action"]); assert has(t, "last Primary") and not layers(t), "primaryAction runs instead of opening"
+faded = btn(t, "Faded")
+assert {"opacity": 0.5} in faded.get("modifiers", []), "a custom MenuStyle wraps the menu"
+t = act(p, t, faded["action"]); t = act(p, t, next(l for l in layers(t) if l["kind"] == "menu")["items"][0]["action"])
+assert has(t, "last Beta"), "the styled menu still works"
+# Link: runs the environment's openURL; the system action reports the URL on stderr.
+t = act(p, t, btn(t, "Docs")["action"]); assert has(t, "opened https://docs.test"), alltexts(tree(t))
+def opened_event(url): return {"type": "event", "name": "module.called", "detail": {"module": "OpenURLAction", "method": "openURL", "args": [url]}}
+# .discarded opens nothing (no event, no tree); the system action is reported as an event, redirected by systemAction(url).
+send(p, type="action", id=btn(t, "Dropped")["action"], version=t["version"])
+send(p, type="action", id=btn(t, "Plain")["action"], version=t["version"])
+ev = recv(p); assert ev == opened_event("https://plain.test"), ev
+send(p, type="action", id=btn(t, "Redirect")["action"], version=t["version"])
+ev = recv(p); assert ev == opened_event("https://to.test"), ev
+# Toggle styles: .button is a selectable button; a custom ToggleStyle draws its own body.
+tbn = btn(t, "TB"); assert tbn["selected"] is False and tbn["style"] == "automatic", tbn
+t = act(p, t, tbn["action"]); assert btn(t, "TB")["selected"] is True
+chk = btn(t, "Check"); assert any(m.get("systemName") == "square" for m in walk(chk)), chk
+t = act(p, t, chk["action"]); assert any(m.get("systemName") == "checkmark.square.fill" for m in walk(btn(t, "Check")))
+# Button styles: ButtonStyle styles the label of a plain button; PrimitiveButtonStyle's trigger() runs the action.
+sb = btn(t, "Styled"); assert sb["style"] == "plain" and any("background" in x for x in sb["label"].get("modifiers", [])), sb
+t = act(p, t, sb["action"]); t = act(p, t, btn(t, "Prim")["action"]); assert has(t, "styled 1 prim 1"), alltexts(tree(t))
+# Slider value labels sit beside it; onEditingChanged brackets each change.
+row = next(m for m in walk(tree(t)) if m.get("kind") == "hstack" and any(c.get("kind") == "slider" for c in m["children"]))
+assert [alltexts(c) for c in row["children"] if c.get("kind") == "text"] == [["Lo"], ["Hi"]], row
+sl = next(c for c in row["children"] if c.get("kind") == "slider")
+send(p, type="text_input", field=sl["field"], version=t["version"], text="0.5"); t = recv(p)
+assert has(t, "edits tf 0.5"), alltexts(tree(t))
+# Progress and gauge styles.
+assert has(t, "pct 50"), "custom ProgressViewStyle"
+assert any(m.get("value") is None for m in node(t, "progress")), ".circular is the spinner"
+g = node(t, "gauge"); assert len(g) == 1 and g[0]["value"] == 0.25 and g[0]["style"] == "automatic" and alltexts(g[0]["label"]) == ["Fuel"], g
+assert has(t, "G 0.25"), "custom GaugeStyle gets the fraction"
+# Pickers: inline rows in a list, navigationLink pushes a list and pops on a choice, wheel options select.
+one, two = btn(t, "One"), btn(t, "Two"); assert one.get("value") == "checked" and two.get("value") is None, (one, two)
+t = act(p, t, two["action"]); assert has(t, "pick 2") and btn(t, "Two").get("value") == "checked"
+sz = btn(t, "Size"); assert sz["style"] == "navigationLink" and "S" in alltexts(sz), sz
+t = act(p, t, sz["action"]); nav = t["root"]
+assert nav["kind"] == "navigation" and nav["title"] == "Size" and nav["displayMode"] == "inline" and "back" in nav, nav
+t = act(p, t, btn(t, "L")["action"]); assert "back" not in t["root"] and has(t, "size L"), "choosing pops back"
+# A button-style toggle in a menu is a checked item; a pushed destination keeps the link's openURL.
+t = act(p, t, btn(t, "BMenu")["action"]); bf = next(l for l in layers(t) if l["kind"] == "menu")["items"][0]
+assert bf["text"] == "BFlag" and bf["checked"] is True, bf
+t = act(p, t, bf["action"]); assert not layers(t)
+t = act(p, t, btn(t, "BMenu")["action"]); assert next(l for l in layers(t) if l["kind"] == "menu")["items"][0]["checked"] is False
+t = act(p, t, next(l for l in layers(t) if l["kind"] == "menu")["dismiss"])
+t = act(p, t, btn(t, "Deeper")["action"]); t = act(p, t, btn(t, "Inner")["action"])
+t = act(p, t, t["root"]["back"]["action"]); assert has(t, "opened https://inner.test"), alltexts(tree(t))
+wh = next(m for m in node(t, "picker") if m["style"] == "wheel"); assert wh["selected"] == 1 and len(wh["options"]) == 4, wh
+t = act(p, t, wh["options"][2]["action"]); assert has(t, "hour 2")
+fl = next(m for m in node(t, "picker") if m["style"] == "menu"); assert fl["label"]["kind"] == "empty", "labelsHidden"
+assert any(m["label"]["kind"] == "empty" for m in node(t, "toggle")), "labelsHidden hides a toggle's label"
 finish(p)
 print("PASS")

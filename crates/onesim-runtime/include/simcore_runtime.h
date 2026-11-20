@@ -56,6 +56,12 @@ typedef void (*simcore_layout_cb)(void *ctx, const char *line);
 /* Optional. Registers the layout callback; `ctx` is the one passed to simcore_runtime_set_callbacks. */
 void simcore_runtime_set_layout_callback(simcore_layout_cb on_layout);
 
+/* Work that finished off this thread (an AsyncImage HTTP completion). `fd` is the read end of a pipe;
+ * the other side writes one byte. `simcore_runtime_run` polls it with stdin and invokes `on_wake`
+ * on this thread, with the ctx from set_callbacks. `fd < 0` clears it. The callback may submit a tree. */
+typedef void (*simcore_wake_cb)(void *ctx);
+void simcore_runtime_set_wake(int32_t fd, simcore_wake_cb on_wake);
+
 /* Send one guest JSON line (a `scroll_to_id` message). `line` is NUL-terminated UTF-8.
  * A trailing newline is stripped. Returns 0 on success. */
 int32_t simcore_send_line(const char *line);

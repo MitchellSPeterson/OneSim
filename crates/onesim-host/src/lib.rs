@@ -475,10 +475,11 @@ impl Host {
     }
 
     fn build(&mut self, id: &str) -> Result<(Scene, u64, f64), ApiError> {
-        let s = self.sessions.get(id).ok_or_else(|| err(ErrorCode::NotFound, format!("unknown session {id}")))?;
+        let s = self.sessions.get_mut(id).ok_or_else(|| err(ErrorCode::NotFound, format!("unknown session {id}")))?;
         let (version, root) = s
             .tree()
             .ok_or_else(|| err(ErrorCode::InvalidState, format!("session {id} is {} and has no tree", s.state().as_str())))?;
+        let gen = s.generation();
         let fonts = self.fonts.get_or_insert_with(Fonts::new);
         let params = SceneParams {
             viewport: (s.viewport.width, s.viewport.height),
@@ -497,6 +498,16 @@ impl Host {
         let styled_root = s.inter.styled_compose_tree(&root);
         let mut scene = build_scene(&styled_root, &params, fonts);
         s.inter.apply_text_selection(&mut scene);
+        if s.is_swiftui() {
+            s.sync_schedule();
+            if gen != s.last_anim_gen {
+                s.anim.update(&scene);
+                s.last_anim_gen = gen;
+            }
+            if s.anim.is_animating() {
+                scene = s.anim.render_scene(&scene);
+            }
+        }
         for name in &scene.unsupported_symbols {
             s.report_once("host", format!("unsupported_symbol: no system symbol {name:?} on this host; drew a placeholder"));
         }
@@ -506,11 +517,28 @@ impl Host {
         Ok((scene, version, s.scale))
     }
 
+    /// Keep the SwiftUI guest's monotonic clock aligned with host `clock_ms` before an input
+    /// starts new timers, animators, or completion callbacks.
+    fn sync_guest_clock(&mut self, id: &str) -> Result<(), ApiError> {
+        let needs_sync = {
+            let s = self.get(id)?;
+            s.is_swiftui() && s.state() == State::Running && (s.clock_ms - s.guest_clock_ms).abs() > 1e-6
+        };
+        if needs_sync {
+            let tree_arrived = self.get(id)?.send_tick_and_wait()?;
+            if tree_arrived {
+                let _ = self.scene(id)?;
+            }
+        }
+        Ok(())
+    }
+
     /// Returns `(hit node id, action dispatched)`. `click` = down + up. A hit on a text field
     /// focuses it (action = false); any other click unfocuses. `scroll` hits the scroller and
     /// never reaches the guest. The state machine is `onesim_render::Interaction`.
     pub fn pointer(&mut self, id: &str, ev: PointerEvent) -> Result<(Option<String>, bool), ApiError> {
         self.get(id)?.require_running()?;
+        self.sync_guest_clock(id)?;
         let (scene, version, _) = self.scene(id)?;
         if self.get(id)?.is_rn() {
             return self.rn_pointer(id, &scene, version, ev);
@@ -543,20 +571,71 @@ impl Host {
         Ok(f(&scene, fonts, version))
     }
 
-    /// Advance scroll momentum and bounces by `dt` seconds. Returns whether anything is still moving (call
-    /// again next frame); false means the scene is at rest.
+    /// Whether the session has active SwiftUI animations, a scheduled guest tick, or a held gesture.
+    pub fn is_animating(&mut self, id: &str) -> bool {
+        let Some(s) = self.sessions.get_mut(id) else { return false };
+        s.sync_schedule();
+        s.anim.is_animating() || s.guest_due_ms.is_some() || s.inter.holding()
+    }
+
+    /// Advance scroll momentum, bounces, SwiftUI animations, and scheduled guest ticks by `dt` seconds.
+    /// Returns whether anything is still moving (call again next frame); false means the scene is at rest.
     /// A finger resting on a SwiftUI gesture view is reported again each tick (long presses fire while held), and keeps
     /// the scene live.
     pub fn tick(&mut self, id: &str, dt: f64) -> Result<bool, ApiError> {
         let (scene, ..) = self.scene(id)?;
         let s = self.get(id)?;
-        let moving = s.inter.tick(&scene, dt);
-        if !s.inter.holding() {
-            return Ok(moving);
+        let dt = dt.max(0.0);
+        s.clock_ms += dt * 1000.0;
+        s.sync_schedule();
+        let mut guest_ticked = false;
+        if s.is_swiftui() && s.state() == State::Running && s.guest_due_ms.is_some_and(|due| s.clock_ms + 1e-6 >= due) {
+            s.guest_due_ms = None;
+            guest_ticked = s.send_tick_and_wait()?;
         }
-        let held = s.inter.hold(dt);
-        s.send_effect(held)?;
-        Ok(true)
+        let anim_moving = s.anim.tick(dt);
+        let scroll_moving = s.inter.tick(&scene, dt);
+        let holding = s.inter.holding();
+        if holding {
+            let held = s.inter.hold(dt);
+            s.send_effect(held)?;
+        }
+        if guest_ticked {
+            // Ingest any new tree the guest submitted on tick into `Animator`.
+            let _ = self.scene(id)?;
+        }
+        let s = self.get(id)?;
+        s.sync_schedule();
+        Ok(anim_moving || scroll_moving || holding || s.anim.is_animating() || s.guest_due_ms.is_some())
+    }
+
+    /// Advance the session's animation clock deterministically by `ms` milliseconds in frame steps
+    /// (headless CLI `--wait`). Ensures any preceding tree is ingested before stepping.
+    pub fn wait(&mut self, id: &str, ms: f64) -> Result<(), ApiError> {
+        let _ = self.scene(id)?;
+        let mut left = ms.max(0.0);
+        const STEP_MS: f64 = 16.0;
+        while left > 1e-6 {
+            let s = self.get(id)?;
+            s.sync_schedule();
+            // Step to the next guest due time or 16ms frame, whichever is smaller.
+            let mut step = left.min(STEP_MS);
+            if let Some(due) = s.guest_due_ms {
+                let until = (due - s.clock_ms).max(0.0);
+                if until > 1e-6 && until < step {
+                    step = until;
+                }
+            }
+            left -= step;
+            let active = self.tick(id, step / 1000.0)?;
+            if !active && left > 0.0 {
+                // Still advance the clock if nothing is scheduled, in case a later step checks time.
+                self.get(id)?.clock_ms += left;
+                break;
+            }
+        }
+        let _ = self.scene(id)?;
+        Ok(())
     }
 
     /// One phase of a live finger drag (`t_ms` is the event time): the content follows the finger and carries on
@@ -564,6 +643,7 @@ impl Host {
     /// React Native receives each phase on the same Fabric target and supplies its own gesture behavior.
     pub fn drag(&mut self, id: &str, phase: onesim_render::DragPhase, x: f64, y: f64, t_ms: f64) -> Result<bool, ApiError> {
         self.get(id)?.require_running()?;
+        self.sync_guest_clock(id)?;
         let (scene, version, _) = self.scene(id)?;
         let s = self.get(id)?;
         // React Native receives each phase on the touched Fabric view; later trees arrive through render.updated,
@@ -584,8 +664,9 @@ impl Host {
     /// Keyboard input for the focused text field. The host computes the new text and sends it
     /// to the guest as `text_input`.
     pub fn keyboard(&mut self, id: &str, ev: KeyboardEvent) -> Result<(), ApiError> {
+        self.get(id)?.require_running()?;
+        self.sync_guest_clock(id)?;
         let session = self.get(id)?;
-        session.require_running()?;
         if let KeyboardEvent::Key { key } = &ev {
             let standard = matches!(key.as_str(), "backspace" | "enter" | "copy" | "select_all");
             let compose = session.is_compose() && matches!(key.as_str(), "tab" | "shift_tab" | "escape" | "space");

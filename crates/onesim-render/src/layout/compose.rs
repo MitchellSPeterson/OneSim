@@ -532,8 +532,9 @@ impl Cx<'_> {
             ..Default::default()
         };
         let extra = (extra != crate::text::ComposeSpanStyle::default()).then(|| Box::new(extra));
-        let base = Span { text: String::new(), pt: glyph_size(size), weight, color: col, italic: p["italic"] == true,
-            underline: decoration & 1 != 0, strike: decoration & 2 != 0, mono: false, compose: extra,
+        let base = Span { italic: p["italic"] == true,
+            underline: decoration & 1 != 0, strike: decoration & 2 != 0, compose: extra,
+            ..Span::basic("", glyph_size(size), weight, col)
         };
         let line_height = f(p, "lineHeightEm").map(|em| em * f64::from(size)).or_else(|| f(p, "lineHeight"));
         let inline_styles = if inline.is_empty() {

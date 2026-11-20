@@ -142,7 +142,10 @@ const suites = {
     assert.equal(sim.drag("move", 200, 300, 50), true, "rubber band moves content");
     sim.drag("end", 200, 300, 400); // finger rested 350 ms: no fling
     let frames = 0, t0 = performance.now();
-    while (sim.tick(1000 / 60)) frames++;
+    while (sim.tick(1000 / 60)) {
+      sim.frameView();
+      frames++;
+    }
     const ms = (performance.now() - t0) / frames;
     assert.ok(frames > 15 && frames < 60, `bounce back took ${frames} frames`);
     assert.equal(fb(), top, "rests exactly at the top");

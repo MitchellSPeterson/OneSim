@@ -1,0 +1,21 @@
+{
+  "success": false,
+  "error": {
+    "code": "COMMAND_FAILED",
+    "message": "iOS runner was already restarted during this request and \"snapshot\" still failed, so agent-device stopped instead of paying for another runner boot.",
+    "hint": "Check the runner log for the underlying failure before retrying — a provisioning or code-signing error there means the runner cannot install on this device, and no retry will help. If the runner is healthy, the current screen is likely too heavy or animating for accessibility capture: the app session is preserved, so run `screenshot` for visual truth and interact by coordinates, or n...<truncated>",
+    "diagnosticId": "mwozi0yu-957c3eb8",
+    "logPath": "/Users/mitchellpeterson/.agent-device/remote-diagnostics/t3-c5689d06f09ae0ad4c3a2e02/requests/33525e8a2f06a818.ndjson",
+    "diagnosticsRecord": {
+      "session": "t3-c5689d06f09ae0ad4c3a2e02",
+      "requestId": "33525e8a2f06a818"
+    },
+    "details": {
+      "command": "snapshot",
+      "commandId": "runner-7d20734c-6781-4207-8f88-af89e066169a",
+      "recovery": "runner_recycle_budget_exhausted",
+      "dispatched": "no",
+      "requestId": "33525e8a2f06a818"
+    }
+  }
+}

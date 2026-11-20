@@ -18,17 +18,19 @@ Missing APIs are grouped into batches by platform and area, as sub-issues of fou
 2. Branch from `main` and start from a fresh context (a new agent session, or `/clear`).
 3. Build it test-first. With the agent skills, run `/implement #<issue>`: it runs `/tdd`, the test suite and `/code-review`. Behaviour without a visible result needs a test that fails if it breaks.
 4. For new UI, [add a visual reference](#add-a-visual-reference) and keep it under the [visual fidelity rule](#visual-fidelity-rule).
-5. Open a pull request with `Closes #<issue>` and before/after screenshots. CI runs the gates the change touches (every gate when it touches shared code such as `crates/`), and every gate on `main`. Merging closes the issue and unblocks the batches that wait on it.
+5. Open a pull request with `Closes #<issue>` and before/after screenshots. CI runs fast checks for what the change touches on every commit. Add the `ready-to-merge` label when the PR is ready: that runs the full pre-merge suites, and they run again on any later commit ([CI](docs/ci.md)). Merging closes the issue and unblocks the batches that wait on it.
 
 Found an API that isn't in any table? Add a ⬜ row and open a new issue instead of growing the batch. Leave blocking links as they are.
 
 ## Run the checks
 
-To run only the checks your branch needs, use `scripts/affected.sh`. It diffs against `origin/main` and maps the changed paths to the SwiftUI, Compose, Expo and web gates, the same way CI does. A SwiftUI-only change skips the Android and Expo comparisons. Changes to `crates/`, the protocol or the comparison tooling run everything.
+To run only the checks your branch needs, use `scripts/ci-local.sh`. It diffs against `origin/main` and maps the changed paths to checks with the same selector as CI (`scripts/ci_select.py`). A SwiftUI-only change skips the Android, Expo and other web checks. Rust crates follow the Cargo dependency graph, so a change to `onesim-web` skips the native comparisons. See [CI](docs/ci.md) for the levels and the required checks.
 
 ```sh
-scripts/affected.sh        # list the affected groups
-scripts/affected.sh --run  # run their gates
+scripts/ci-local.sh --explain               # what would run, and why
+scripts/ci-local.sh --affected --level fast # quick checks: compile, targeted tests, smoke states
+scripts/ci-local.sh --affected              # the pre-merge checks: every affected suite in full
+scripts/ci-local.sh --all                   # everything, as nightly
 ```
 
 `SIMCORE_ONLY=swiftui` or `SIMCORE_ONLY=expo` limits `scripts/compare-ios.sh` to one framework's states.
@@ -95,12 +97,12 @@ scripts/compare-android.sh
 scripts/compare-expo-android.sh
 ```
 
-The iOS commands run both releases by default. Set `SIMCORE_IOS=27.2` to check one release locally. Install the Expo example dependencies to include the React Native and Expo Router screenshots. The Android Expo command requires `npm ci` in `examples/expo-showcase`. See the [iOS comparison results](docs/ios-comparison.md) for examples and known gaps.
+The iOS commands check iOS 27.2, the only release gated for now. Set `SIMCORE_IOS="26.5 27.2"` to also check the iOS 26.5 references. Install the Expo example dependencies to include the React Native and Expo Router screenshots. The Android Expo command requires `npm ci` in `examples/expo-showcase`. See the [iOS comparison results](docs/ios-comparison.md) for examples and known gaps.
 
 Fix the rendering when a state fails. Use `SIMCORE_MAX_DIFF` only for local investigation. Keep the checked-in thresholds and states.
 
 ## Add a visual reference
 
-1. For a new iOS UI element, capture the state on [iOS 27.2 with iPhone 18 Pro](tests/fixtures/ios27/README.md) and [iOS 26.5 with iPhone 17 Pro](tests/fixtures/showcase-ios/README.md). Add a matching `shot` line to [`scripts/compare-ios.sh`](scripts/compare-ios.sh).
+1. For a new iOS UI element, capture the state on [iOS 27.2 with iPhone 18 Pro](tests/fixtures/ios27/README.md). An [iOS 26.5 with iPhone 17 Pro](tests/fixtures/showcase-ios/README.md) capture is optional while only iOS 27.2 is gated. Add a matching `shot` line to [`scripts/compare-ios.sh`](scripts/compare-ios.sh).
 2. For a new Compose component, capture the state on the [Android 17 Pixel 10a emulator](tests/fixtures/compose-android/README.md) using [`capture.sh`](tests/fixtures/compose-android/capture.sh). Add a matching `shot` line to [`scripts/compare-android.sh`](scripts/compare-android.sh).
 3. For a React Native Android component, use the [Expo Android capture guide](tests/fixtures/expo-android/README.md) and add a matching `shot` line to [`scripts/compare-expo-android.sh`](scripts/compare-expo-android.sh).

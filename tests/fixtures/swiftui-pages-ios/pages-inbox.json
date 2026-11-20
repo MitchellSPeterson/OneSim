@@ -1,0 +1,291 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "label": "PagesReference",
+        "rect": {
+          "height": 874,
+          "x": 0,
+          "width": 402,
+          "y": 0
+        },
+        "enabled": true,
+        "index": 0,
+        "depth": 0,
+        "type": "Application",
+        "hittable": false,
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "label": "Tab Bar",
+        "rect": {
+          "height": 874,
+          "x": 0,
+          "width": 402,
+          "y": 0
+        },
+        "enabled": true,
+        "index": 1,
+        "depth": 1,
+        "type": "Other",
+        "hittable": true,
+        "parentIndex": 0,
+        "ref": "e2",
+        "kind": "other"
+      },
+      {
+        "label": "Inbox",
+        "rect": {
+          "height": 874,
+          "x": 0,
+          "width": 402,
+          "y": 0
+        },
+        "enabled": true,
+        "index": 2,
+        "depth": 2,
+        "type": "Other",
+        "hittable": true,
+        "parentIndex": 1,
+        "ref": "e3",
+        "kind": "other"
+      },
+      {
+        "label": "Inbox",
+        "rect": {
+          "height": 40.666666666666686,
+          "x": 161.33333333333334,
+          "width": 79.33333333333334,
+          "y": 406.1666666666667
+        },
+        "enabled": true,
+        "index": 3,
+        "depth": 3,
+        "type": "Other",
+        "hittable": true,
+        "parentIndex": 2,
+        "ref": "e4",
+        "kind": "other"
+      },
+      {
+        "label": "Inbox",
+        "rect": {
+          "x": 161.33333333333334,
+          "height": 40.666666666666686,
+          "y": 406.1666666666667,
+          "width": 79.33333333333334
+        },
+        "value": "New",
+        "enabled": true,
+        "index": 4,
+        "depth": 4,
+        "type": "StaticText",
+        "hittable": true,
+        "parentIndex": 3,
+        "ref": "e5",
+        "kind": "text"
+      },
+      {
+        "label": "Tab Bar",
+        "rect": {
+          "x": 0,
+          "height": 83,
+          "y": 791,
+          "width": 402
+        },
+        "enabled": true,
+        "index": 5,
+        "depth": 2,
+        "type": "Other",
+        "hittable": true,
+        "parentIndex": 1,
+        "ref": "e6",
+        "kind": "other"
+      },
+      {
+        "label": "Tab Bar",
+        "rect": {
+          "x": 0,
+          "height": 83,
+          "y": 791,
+          "width": 402
+        },
+        "enabled": true,
+        "index": 6,
+        "depth": 3,
+        "type": "TabBar",
+        "hittable": true,
+        "parentIndex": 5,
+        "ref": "e7",
+        "kind": "tab-bar"
+      },
+      {
+        "label": "Pages",
+        "rect": {
+          "x": 64,
+          "height": 62,
+          "y": 791,
+          "width": 274
+        },
+        "enabled": true,
+        "index": 7,
+        "depth": 4,
+        "type": "Other",
+        "hittable": true,
+        "parentIndex": 6,
+        "ref": "e8",
+        "kind": "other"
+      },
+      {
+        "label": "Pages",
+        "rect": {
+          "y": 795,
+          "width": 94,
+          "height": 54,
+          "x": 68
+        },
+        "enabled": true,
+        "index": 8,
+        "depth": 5,
+        "type": "Button",
+        "hittable": true,
+        "parentIndex": 7,
+        "ref": "e9",
+        "kind": "button"
+      },
+      {
+        "label": "bookmark",
+        "rect": {
+          "height": 25,
+          "x": 99,
+          "width": 32.33333333333334,
+          "y": 802.3333333333334
+        },
+        "identifier": "book.fill",
+        "enabled": true,
+        "index": 9,
+        "depth": 6,
+        "type": "Image",
+        "hittable": true,
+        "parentIndex": 8,
+        "ref": "e10",
+        "kind": "image"
+      },
+      {
+        "label": "Inbox",
+        "rect": {
+          "height": 54,
+          "y": 795,
+          "x": 154,
+          "width": 94
+        },
+        "enabled": true,
+        "index": 10,
+        "depth": 5,
+        "type": "Button",
+        "selected": true,
+        "hittable": true,
+        "parentIndex": 7,
+        "ref": "e11",
+        "kind": "button"
+      },
+      {
+        "label": "inbox",
+        "rect": {
+          "height": 23.66666666666663,
+          "y": 803,
+          "x": 185,
+          "width": 33
+        },
+        "identifier": "tray.fill",
+        "enabled": true,
+        "index": 11,
+        "depth": 6,
+        "type": "Image",
+        "hittable": true,
+        "parentIndex": 10,
+        "ref": "e12",
+        "kind": "image"
+      },
+      {
+        "label": "Alerts",
+        "rect": {
+          "height": 54,
+          "y": 795,
+          "x": 240,
+          "width": 94
+        },
+        "enabled": true,
+        "index": 12,
+        "depth": 5,
+        "type": "Button",
+        "hittable": true,
+        "parentIndex": 7,
+        "ref": "e13",
+        "kind": "button"
+      },
+      {
+        "label": "notifications",
+        "rect": {
+          "height": 28,
+          "y": 801,
+          "x": 274,
+          "width": 26.333333333333314
+        },
+        "identifier": "bell.fill",
+        "enabled": true,
+        "index": 13,
+        "depth": 6,
+        "type": "Image",
+        "hittable": true,
+        "parentIndex": 12,
+        "ref": "e14",
+        "kind": "image"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.pages",
+    "appBundleId": "dev.simcore.pages",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 14,
+      "totalNodeCount": 14,
+      "reasons": []
+    },
+    "keyboard": {
+      "kind": "absent"
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "unknown",
+    "snapshotQuality": {
+      "state": "healthy",
+      "backend": "tree",
+      "timing": {
+        "acquisitionMs": 69.20802593231201,
+        "presentationMs": 0.11301040649414062
+      }
+    },
+    "warnings": [
+      "Simulator AX snapshot unavailable (circuit-disabled); used XCTest for this app generation."
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 12,
+        "p50Ms": 495,
+        "p95Ms": 46305,
+        "maxMs": 46305,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 12
+        }
+      }
+    },
+    "refsGeneration": 617316
+  }
+}

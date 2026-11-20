@@ -4,37 +4,37 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 
 | API | Since | iOS | Issue | Notes |
 |---|---|---|---|---|
-| `Image.allowedDynamicRange` | 17 | ⬜ |  |  |
-| `Image.antialiased` | 13 | ⬜ |  |  |
-| `Image.interpolation` | 13 | ⬜ |  |  |
-| `Image.renderingMode` | 13 | ⬜ |  |  |
+| `Image.allowedDynamicRange` | 17 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Parsed. Drawing stays standard range |
+| `Image.antialiased` | 13 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | `false` forces nearest |
+| `Image.interpolation` | 13 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | `none` nearest, `low` bilinear, `medium` and `high` both bicubic |
+| `Image.renderingMode` | 13 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | `template` forces monochrome. `original` is multicolor when no symbol mode is set |
 | `Image.resizable` | 13 | ✅ |  |  |
-| `Image.symbolColorRenderingMode` | 26 | ⬜ |  |  |
-| `Image.symbolRenderingMode` | 15 | ⬜ |  |  |
-| `Image.symbolVariableValueMode` | 26 | ⬜ |  |  |
+| `Image.symbolColorRenderingMode` | 26 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Gradient is an AppKit bitmap. The Phosphor fallback stays a mask |
+| `Image.symbolRenderingMode` | 15 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Palette is the foreground at full, 0.6, and 0.3 alpha. Hierarchical and multicolor need AppKit color; the fallback stays a mask |
+| `Image.symbolVariableValueMode` | 26 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | No variable value is sent. The mode only selects the AppKit configuration |
 | `Text.accessibilityHeading` | 15 | ⬜ |  |  |
 | `Text.accessibilityLabel` | 15 | ⬜ |  |  |
 | `Text.accessibilityTextContentType` | 15 | ⬜ |  |  |
-| `Text.baselineOffset` | 13 | ⬜ |  |  |
+| `Text.baselineOffset` | 13 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Positive lengthens the line downward. Glyphs stay at the top |
 | `Text.bold` | 13 | ✅ |  |  |
 | `Text.customAttribute` | 17 | ⬜ |  |  |
 | `Text.font` | 13 | ✅ |  |  |
-| `Text.fontDesign` | 16.1 | ⬜ |  |  |
+| `Text.fontDesign` | 16.1 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Serif, rounded, and monospaced use the installed family. A missing family falls back |
 | `Text.fontWeight` | 13 | ✅ |  |  |
-| `Text.fontWidth` | 16 | ⬜ |  |  |
+| `Text.fontWidth` | 16 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | The `wdth` axis is not driven. Condensed is 0.80 of the standard face. Compressed is 0.70. Expanded stays standard |
 | `Text.foregroundColor` | 13 | ✅ |  | Deprecated |
 | `Text.foregroundStyle` | 17 | ✅ |  |  |
 | `Text.italic` | 13 | ✅ |  |  |
-| `Text.kerning` | 13 | ⬜ |  |  |
-| `Text.monospaced` | 16.4 | ⬜ |  |  |
-| `Text.monospacedDigit` | 15 | ⬜ |  |  |
+| `Text.kerning` | 13 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Added to tracking in points |
+| `Text.monospaced` | 16.4 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) |  |
+| `Text.monospacedDigit` | 15 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | OpenType `tnum` |
 | `Text.speechAdjustedPitch` | 15 | ⬜ |  |  |
 | `Text.speechAlwaysIncludesPunctuation` | 15 | ⬜ |  |  |
 | `Text.speechAnnouncementsQueued` | 15 | ⬜ |  |  |
 | `Text.speechSpellsOutCharacters` | 15 | ⬜ |  |  |
 | `Text.strikethrough` | 13 | ✅ |  |  |
-| `Text.textScale` | 17 | ⬜ |  |  |
+| `Text.textScale` | 17 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Secondary glyphs are 0.86 of the size. The line box stays the body's |
 | `Text.textVariant` | 18 | ⬜ |  |  |
-| `Text.tracking` | 13 | ⬜ |  |  |
+| `Text.tracking` | 13 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Added to the font's fitted tracking |
 | `Text.typesettingLanguage` | 17 | ⬜ |  |  |
-| `Text.underline` | 13 | ✅ |  |  |
+| `Text.underline` | 13 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Pattern and color. The bool overload is unchanged |

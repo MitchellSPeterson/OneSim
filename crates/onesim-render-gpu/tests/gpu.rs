@@ -123,7 +123,7 @@ fn unit_scenes_match_cpu() {
     let mut n = node("img", 10.0, 10.0, 70.0, 60.0);
     n.radius = 10.0;
     n.opacity = 0.9;
-    n.image = Some(ImageRun { pixmap: Arc::new(px), dest: Rect { x: 5.0, y: 15.0, w: 80.0, h: 50.0 }, rotation: 0.0 });
+    n.image = Some(ImageRun { pixmap: Arc::new(px), dest: Rect { x: 5.0, y: 15.0, w: 80.0, h: 50.0 }, rotation: 0.0, filter: 2 });
     let mut rotated = n.clone();
     rotated.image.as_mut().unwrap().rotation = 35.0;
     cases.push(("image", scene(false, vec![n]), 1.0));
@@ -143,7 +143,7 @@ fn unit_scenes_match_cpu() {
     cases.push(("text", scene(false, vec![n, m]), 0.05));
 
     let mut n = node("sym", 10.0, 10.0, 30.0, 30.0);
-    n.symbol = Some(SymbolRun { spec: SymbolSpec { name: "star.fill".into(), point_size: 20.0, weight: 400, scale: ImageScale::Medium }, color: Color::rgba(1.0, 0.6, 0.0, 1.0), size: (20.0, 20.0) });
+    n.symbol = Some(SymbolRun { spec: SymbolSpec { name: "star.fill".into(), point_size: 20.0, weight: 400, scale: ImageScale::Medium, ..SymbolSpec::default() }, color: Color::rgba(1.0, 0.6, 0.0, 1.0), size: (20.0, 20.0) });
     let mut m = node("gl", 50.0, 10.0, 8.0, 14.0);
     m.glyph = Some((Glyph::Chevron, Color::rgba(0.3, 0.3, 0.3, 1.0)));
     let mut k = node("bat", 70.0, 10.0, 27.0, 13.0);

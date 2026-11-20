@@ -164,7 +164,7 @@ reconnects calls `events.subscribe` with the last `seq` it saw.
 | `render.updated` | `{"treeVersion"}` coalesced: at most one per 16 ms |
 | `navigation.changed` | `{"route","params"?,"stack"?:[routes]}` React Navigation / Expo Router focused route |
 | `module.unsupported` | `{"module","method","package"?}` once per module+method |
-| `module.called` | `{"module","method","args"}` simulated modules with observable side effects (haptics, clipboard writes); `module` is the native module name (`ExpoHaptics`) |
+| `module.called` | `{"module","method","args"}` simulated modules with observable side effects (haptics, clipboard writes, SwiftUI `openURL` with `module` `OpenURLAction`); `module` is the native module name (`ExpoHaptics`) |
 
 ## Guest wire additions (host ↔ React Native guest)
 

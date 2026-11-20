@@ -1,6 +1,7 @@
 #if !os(WASI)
 import Foundation
 #endif
+@_exported import Observation   // `@Observable` / `Observable`, as Apple's SwiftUI re-exports it
 
 final class _Slot<V> { var value: V; init(_ v: V) { value = v } }
 
@@ -33,7 +34,7 @@ public struct State<Value>: _StateProperty {
         get { storage.slot?.value ?? storage.initial }
         nonmutating set {
             if let s = storage.slot { s.value = newValue } else { storage.initial = newValue }
-            _Runtime.shared.dirty = true
+            _Runtime.shared.markDirty()
         }
     }
     public var projectedValue: Binding<Value> {
@@ -66,7 +67,7 @@ extension Binding where Value: MutableCollection {
 
 public final class ObservableObjectPublisher {
     public init() {}
-    public func send() { _Runtime.shared.dirty = true }
+    public func send() { _Runtime.shared.markDirty() }
 }
 public protocol ObservableObject: AnyObject {
     var objectWillChange: ObservableObjectPublisher { get }
@@ -78,7 +79,7 @@ extension ObservableObject {
 /// Any assignment (including in-place mutation) marks the runtime dirty so the host gets a new tree.
 @propertyWrapper
 public struct Published<Value> {
-    public var wrappedValue: Value { didSet { _Runtime.shared.dirty = true } }
+    public var wrappedValue: Value { didSet { _Runtime.shared.markDirty() } }
     public init(wrappedValue: Value) { self.wrappedValue = wrappedValue }
 }
 
@@ -95,6 +96,21 @@ public struct ObservedObject<ObjectType: ObservableObject> {
     public var wrappedValue: ObjectType
     public init(wrappedValue: ObjectType) { self.wrappedValue = wrappedValue }
     public var projectedValue: Wrapper { Wrapper(object: wrappedValue) }
+}
+
+/// Bindings to the properties of an `@Observable` object (`$model.name`). Writes go through the object, whose
+/// observation marks the tree dirty.
+@propertyWrapper @dynamicMemberLookup
+public struct Bindable<Value> {
+    public var wrappedValue: Value
+    public init(wrappedValue: Value) where Value: AnyObject & Observable { self.wrappedValue = wrappedValue }
+    public init(_ wrappedValue: Value) where Value: AnyObject & Observable { self.wrappedValue = wrappedValue }
+    public init(projectedValue: Bindable<Value>) { self = projectedValue }
+    public var projectedValue: Bindable<Value> { self }
+    public subscript<Subject>(dynamicMember keyPath: ReferenceWritableKeyPath<Value, Subject>) -> Binding<Subject> {
+        let o = wrappedValue
+        return Binding(get: { o[keyPath: keyPath] }, set: { o[keyPath: keyPath] = $0 })
+    }
 }
 
 /// Like @State, but the slot holds a reference object created once (autoclosure runs only when the slot is new).
@@ -134,12 +150,87 @@ public struct DismissAction {
     public func callAsFunction() { action() }
 }
 
+public enum UserInterfaceSizeClass: Hashable, Sendable { case compact, regular }
+
+public protocol EnvironmentKey {
+    associatedtype Value
+    static var defaultValue: Value { get }
+}
+
+// Built-in values default to live runtime state; `.environment(_:_:)` overrides them for a subtree.
+struct _ColorSchemeKey: EnvironmentKey { static var defaultValue: ColorScheme { _Runtime.shared.appearance == "dark" ? .dark : .light } }
+struct _DynamicTypeKey: EnvironmentKey { static var defaultValue: DynamicTypeSize { _Runtime.shared.dynamicType } }
+/// iPad (shorter side >= 700 pt): regular both ways. iPhone: vertical is compact in landscape; horizontal is regular
+/// only for landscape Plus/Max widths (>= 896 pt).
+struct _HSizeKey: EnvironmentKey {
+    static var defaultValue: UserInterfaceSizeClass? {
+        let (w, h) = _Runtime.shared.viewport
+        return min(w, h) >= 700 || (w > h && w >= 896) ? .regular : .compact
+    }
+}
+struct _VSizeKey: EnvironmentKey {
+    static var defaultValue: UserInterfaceSizeClass? {
+        let (w, h) = _Runtime.shared.viewport
+        return min(w, h) >= 700 || h >= w ? .regular : .compact
+    }
+}
+
+public enum ScenePhase: Comparable, Hashable, Sendable { case background, inactive, active }
+struct _ScenePhaseKey: EnvironmentKey { static let defaultValue = ScenePhase.active }
+
+#if !os(WASI)
+/// Without a handler (or when it returns `.systemAction`) the URL goes to the system: the guest reports it as a
+/// `module.called` event (nothing else opens; the app stays in front).
+public struct OpenURLAction {
+    public struct Result {
+        enum Kind { case handled, discarded, system(URL?) }
+        let kind: Kind
+        public static let handled = Result(kind: .handled)
+        public static let discarded = Result(kind: .discarded)
+        public static let systemAction = Result(kind: .system(nil))
+        public static func systemAction(_ url: URL) -> Result { Result(kind: .system(url)) }
+    }
+    let handler: ((URL) -> Result)?
+    public init(handler: @escaping (URL) -> Result) { self.handler = handler }
+    init() { handler = nil }
+    public func callAsFunction(_ url: URL) { callAsFunction(url) { _ in } }
+    public func callAsFunction(_ url: URL, completion: @escaping (_ accepted: Bool) -> Void) {
+        switch (handler?(url) ?? .systemAction).kind {
+        case .handled: completion(true)
+        case .discarded: completion(false)
+        case .system(let to):
+            _send(["type": "event", "name": "module.called",
+                   "detail": ["module": "OpenURLAction", "method": "openURL", "args": [(to ?? url).absoluteString]] as Node])
+            completion(true)
+        }
+    }
+}
+struct _OpenURLKey: EnvironmentKey { static var defaultValue: OpenURLAction { OpenURLAction() } }
+extension EnvironmentValues {
+    public var openURL: OpenURLAction { get { self[_OpenURLKey.self] } set { self[_OpenURLKey.self] = newValue } }
+}
+#endif
+
 public struct EnvironmentValues {
+    var values: [ObjectIdentifier: Any] = _Runtime.shared.envObjects   // `.environment` values and objects in scope
+    var setKeys = Set<ObjectIdentifier>()   // keys this copy's subscript wrote
     var nav: _NavState? = _Runtime.shared.nav   // captured at body time so `dismiss` still works from an action later
     var sheetDismiss: (() -> Void)? = _Runtime.shared.dismissHook
+    public var contentTransition: ContentTransition = _Runtime.shared.contentTransition
+    public var contentTransitionAddsDrawingGroup: Bool = _Runtime.shared.contentTransitionAddsDrawingGroup
+    /// Stored, not keyed: `.disabled` sets it, and `.environment(\.isEnabled, false)` disables controls below.
+    public var isEnabled = !_Runtime.shared.disabled
     public init() {}
-    public var colorScheme: ColorScheme { _Runtime.shared.appearance == "dark" ? .dark : .light }
-    public var dynamicTypeSize: DynamicTypeSize { _Runtime.shared.dynamicType }
+    public subscript<K: EnvironmentKey>(key: K.Type) -> K.Value {
+        get { if let v = values[ObjectIdentifier(key)] { return v as! K.Value }; return K.defaultValue }
+        set { values[ObjectIdentifier(key)] = newValue; setKeys.insert(ObjectIdentifier(key)) }
+    }
+    public var colorScheme: ColorScheme { get { self[_ColorSchemeKey.self] } set { self[_ColorSchemeKey.self] = newValue } }
+    public var dynamicTypeSize: DynamicTypeSize { get { self[_DynamicTypeKey.self] } set { self[_DynamicTypeKey.self] = newValue } }
+    public var horizontalSizeClass: UserInterfaceSizeClass? { get { self[_HSizeKey.self] } set { self[_HSizeKey.self] = newValue } }
+    public var verticalSizeClass: UserInterfaceSizeClass? { get { self[_VSizeKey.self] } set { self[_VSizeKey.self] = newValue } }
+    public var scenePhase: ScenePhase { get { self[_ScenePhaseKey.self] } set { self[_ScenePhaseKey.self] = newValue } }
+    public var isTabViewSidebarAvailable: Bool { false }
     /// Pops a pushed screen, else dismisses the enclosing sheet.
     public var dismiss: DismissAction {
         let n = nav, s = sheetDismiss
@@ -151,11 +242,23 @@ public struct EnvironmentValues {
 @propertyWrapper
 public struct Environment<Value>: _StateProperty {
     final class Box { var values: EnvironmentValues? }
-    let keyPath: KeyPath<EnvironmentValues, Value>
+    let read: (EnvironmentValues) -> Value
     let box = Box()
-    public init(_ keyPath: KeyPath<EnvironmentValues, Value>) { self.keyPath = keyPath }
+    public init(_ keyPath: KeyPath<EnvironmentValues, Value>) { read = { $0[keyPath: keyPath] } }
+    /// An `@Observable` object put in scope with `.environment(_:)`.
+    public init(_ objectType: Value.Type) where Value: AnyObject & Observable {
+        read = {
+            guard let o = $0.values[ObjectIdentifier(Value.self)] as? Value else {
+                fatalError("No Observable object of type \(Value.self) found. A View.environment(_:) for \(Value.self) may be missing as an ancestor of this view.")
+            }
+            return o
+        }
+    }
+    public init<T: AnyObject & Observable>(_ objectType: T.Type) where Value == T? {
+        read = { $0.values[ObjectIdentifier(T.self)] as? T }
+    }
     func _bind(_ key: String) { box.values = EnvironmentValues() }
-    public var wrappedValue: Value { (box.values ?? EnvironmentValues())[keyPath: keyPath] }
+    public var wrappedValue: Value { read(box.values ?? EnvironmentValues()) }
 }
 
 /// Resolved from the evaluation context (`.environmentObject(_:)` on an ancestor) when `body` is about to run.
@@ -174,20 +277,19 @@ public struct EnvironmentObject<ObjectType: ObservableObject>: _StateProperty {
     public var projectedValue: ObservedObject<ObjectType>.Wrapper { .init(object: wrappedValue) }
 }
 
-func _withEnv<T>(_ env: [ObjectIdentifier: AnyObject], _ f: () -> T) -> T {
-    let rt = _Runtime.shared, saved = rt.envObjects
-    rt.envObjects = env
-    defer { rt.envObjects = saved }
-    return f()
+/// The environment set between the current `NavigationStack` and here; a pushed screen re-applies it on top of
+/// the stack's live environment, so values set above the stack stay current.
+func _localEnv() -> [ObjectIdentifier: Any] {
+    let rt = _Runtime.shared
+    return rt.envObjects.filter { rt.envLocal.contains($0.key) }
 }
 
-struct _EnvObjectView<Content: View, O: ObservableObject>: View, _Flattenable {
-    typealias Body = Never
-    var body: Never { fatalError() }
-    let content: Content, object: O
-    func _children(_ path: String) -> [Node] {
-        _withEnv(_Runtime.shared.envObjects.merging([ObjectIdentifier(O.self): object]) { $1 }) { SwiftUI._children(content, path) }
-    }
+func _withEnv<T>(_ local: [ObjectIdentifier: Any], _ f: () -> T) -> T {
+    let rt = _Runtime.shared, saved = (rt.envObjects, rt.envLocal)
+    rt.envObjects.merge(local) { $1 }
+    rt.envLocal = Set(local.keys)
+    defer { (rt.envObjects, rt.envLocal) = saved }
+    return f()
 }
 
 struct _LifecycleView<Content: View>: View, _Flattenable {
@@ -201,7 +303,21 @@ struct _LifecycleView<Content: View>: View, _Flattenable {
 }
 
 extension View {
-    public func environmentObject<O: ObservableObject>(_ object: O) -> some View { _EnvObjectView(content: self, object: object) }
+    public func environmentObject<O: ObservableObject>(_ object: O) -> some View {
+        _CtxView(content: self) { $0.envObjects[ObjectIdentifier(O.self)] = object; $0.envLocal.insert(ObjectIdentifier(O.self)) }
+    }
+    public func environment<T: AnyObject & Observable>(_ object: T?) -> some View {
+        _CtxView(content: self) { $0.envObjects[ObjectIdentifier(T.self)] = object; $0.envLocal.insert(ObjectIdentifier(T.self)) }
+    }
+    public func environment<V>(_ keyPath: WritableKeyPath<EnvironmentValues, V>, _ value: V) -> some View {
+        _CtxView(content: self) { rt in
+            var env = EnvironmentValues()
+            env[keyPath: keyPath] = value
+            rt.envObjects = env.values
+            rt.envLocal.formUnion(env.setKeys)
+            rt.disabled = rt.disabled || !env.isEnabled   // a disabled ancestor wins, as with `.disabled`
+        }
+    }
     public func onAppear(perform action: (() -> Void)? = nil) -> some View { _LifecycleView(content: self, onAppear: action, onDisappear: nil) }
     public func onDisappear(perform action: (() -> Void)? = nil) -> some View { _LifecycleView(content: self, onAppear: nil, onDisappear: action) }
 }
@@ -275,7 +391,7 @@ public struct AppStorage<Value> {
     }
     public var wrappedValue: Value {
         get { _defaultsGet(key).flatMap(read) ?? fallback }
-        nonmutating set { _defaultsSet(key, write(newValue)); _Runtime.shared.dirty = true }
+        nonmutating set { _defaultsSet(key, write(newValue)); _Runtime.shared.markDirty() }
     }
     public var projectedValue: Binding<Value> { Binding(get: { self.wrappedValue }, set: { self.wrappedValue = $0 }) }
 }
@@ -290,5 +406,57 @@ extension AppStorage {
     }
     public init(wrappedValue: Value, _ key: String) where Value: RawRepresentable, Value.RawValue == Int {
         self.init(key, wrappedValue, read: { ($0 as? Int).flatMap(Value.init(rawValue:)) }, write: { $0.rawValue })
+    }
+}
+
+// MARK: - SceneStorage
+
+// One scene per session: a key maps to one value app-wide while the guest runs (not restored after relaunch).
+var _sceneStore: [String: Any] = [:]
+
+/// Same value types as `AppStorage`, kept in memory for the session.
+@propertyWrapper
+public struct SceneStorage<Value> {
+    let key: String, fallback: Value
+    let read: (Any) -> Value?, write: (Value) -> Any
+    init(_ key: String, _ fallback: Value, read: @escaping (Any) -> Value?, write: @escaping (Value) -> Any) {
+        self.key = key; self.fallback = fallback; self.read = read; self.write = write
+    }
+    public var wrappedValue: Value {
+        get { _sceneStore[key].flatMap(read) ?? fallback }
+        nonmutating set { _sceneStore[key] = write(newValue); _Runtime.shared.dirty = true }
+    }
+    public var projectedValue: Binding<Value> { Binding(get: { self.wrappedValue }, set: { self.wrappedValue = $0 }) }
+}
+
+extension SceneStorage {
+    public init(wrappedValue: Value, _ key: String) where Value == Bool { self.init(key, wrappedValue, read: { $0 as? Bool }, write: { $0 }) }
+    public init(wrappedValue: Value, _ key: String) where Value == Int { self.init(key, wrappedValue, read: { $0 as? Int }, write: { $0 }) }
+    public init(wrappedValue: Value, _ key: String) where Value == Double { self.init(key, wrappedValue, read: { $0 as? Double }, write: { $0 }) }
+    public init(wrappedValue: Value, _ key: String) where Value == String { self.init(key, wrappedValue, read: { $0 as? String }, write: { $0 }) }
+    public init(wrappedValue: Value, _ key: String) where Value: RawRepresentable, Value.RawValue == String {
+        self.init(key, wrappedValue, read: { ($0 as? String).flatMap(Value.init(rawValue:)) }, write: { $0.rawValue })
+    }
+    public init(wrappedValue: Value, _ key: String) where Value: RawRepresentable, Value.RawValue == Int {
+        self.init(key, wrappedValue, read: { ($0 as? Int).flatMap(Value.init(rawValue:)) }, write: { $0.rawValue })
+    }
+}
+
+// MARK: - ScaledMetric
+
+/// Scales with the Dynamic Type size like `UIFontMetrics.scaledValue(for:)`: by the text style's point size at the
+/// current size over its size at `.large`.
+@propertyWrapper
+public struct ScaledMetric<Value: BinaryFloatingPoint>: _StateProperty {
+    final class Box { var size: DynamicTypeSize? }
+    let base: Value, style: Font.TextStyle
+    let box = Box()
+    public init(wrappedValue: Value, relativeTo textStyle: Font.TextStyle) { base = wrappedValue; style = textStyle }
+    public init(wrappedValue: Value) { self.init(wrappedValue: wrappedValue, relativeTo: .body) }
+    func _bind(_ key: String) { box.size = EnvironmentValues().dynamicTypeSize }   // honours `.environment(\.dynamicTypeSize, _)`
+    public var wrappedValue: Value {
+        let i = DynamicTypeSize.allCases.firstIndex(of: box.size ?? EnvironmentValues().dynamicTypeSize)!
+        let row = style.sizes
+        return Value(Double(base) * row[i] / row[3])
     }
 }

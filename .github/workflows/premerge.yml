@@ -1,0 +1,79 @@
+# The only CI a pull request gets: the full suites of every affected check (iOS 27.2 and Android pixel diffs, web
+# parity), once the PR is ready to merge. Commits on a PR without the label run nothing but the cheap gate job.
+# Reports the `ci-premerge` commit status (and `ci`, its alias for the current ruleset) on the PR's head commit:
+#   - no `ready-to-merge` label: pending ("add the ready-to-merge label")
+#   - labelled: pending while it runs, then success or failure
+#   - each new commit on a labelled PR runs it again; the new head has no status until it passes
+# With "require branches to be up to date" in the ruleset, the head commit is the exact merge candidate, so a pass
+# on an older commit can never satisfy the check. Merge queue (`merge_group`) works too where GitHub offers it.
+# See docs/ci.md.
+name: Pre-merge
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+  merge_group:
+
+# One run per PR; a new commit or relabel cancels the old one. Other labels get their own group so they never cancel.
+concurrency:
+  group: premerge-${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || github.event.label.name == 'ready-to-merge') && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  statuses: write
+
+env:
+  SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  GH_TOKEN: ${{ github.token }}
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+  # `ci` is what the current ruleset requires; drop it once the ruleset requires `ci-premerge` (docs/ci.md).
+  CONTEXTS: ci-premerge ci
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+    steps:
+      - id: gate
+        env:
+          READY: ${{ github.event_name == 'merge_group' || contains(github.event.pull_request.labels.*.name, 'ready-to-merge') }}
+          RELEVANT: ${{ github.event.action != 'labeled' || github.event.label.name == 'ready-to-merge' }}
+        run: |
+          # Another label: leave the status alone.
+          if [ "$RELEVANT" != true ]; then echo run=false >>"$GITHUB_OUTPUT"; exit 0; fi
+          if [ "$READY" = true ]; then
+            echo run=true >>"$GITHUB_OUTPUT"; desc="running the pre-merge checks"
+          else
+            echo run=false >>"$GITHUB_OUTPUT"; desc="add the ready-to-merge label to run the pre-merge checks"
+          fi
+          for context in $CONTEXTS; do
+            gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" -f state=pending -f context="$context" \
+              -f description="$desc" -f target_url="$RUN_URL" >/dev/null
+          done
+
+  checks:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    uses: ./.github/workflows/checks.yml
+    with:
+      level: premerge
+
+  report:
+    needs: [gate, checks]
+    if: always() && needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULT: ${{ needs.checks.result }}
+        run: |
+          case $RESULT in
+            success) state=success desc="every affected check passed at the premerge level" ;;
+            cancelled) state=error desc="cancelled (superseded or stopped); rerun or push again" ;;
+            *) state=failure desc="pre-merge checks: $RESULT" ;;
+          esac
+          for context in $CONTEXTS; do
+            gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" -f state="$state" -f context="$context" \
+              -f description="$desc" -f target_url="$RUN_URL" >/dev/null
+          done
+          [ "$state" = success ]

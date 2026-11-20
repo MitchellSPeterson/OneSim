@@ -8,7 +8,7 @@ pub use onesim_render::{device, Device, DEFAULT_DEVICE, DEVICES};
 use crate::events::EventLog;
 use serde_json::{json, Value};
 use onesim_render::rn_input::{focus_change, Out, RnInput, Wait};
-use onesim_render::{Effect, Interaction};
+use onesim_render::{Animator, Effect, Interaction};
 use std::collections::{BTreeMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -74,6 +74,10 @@ struct Inner {
     /// The host is stopping the guest on purpose (its exit is not a crash).
     stopping: bool,
     stopped_emitted: bool,
+    /// SwiftUI animation wake-up (section P): `Some(Some(ms))` = request tick in `ms`; `Some(None)` = cancel.
+    schedule_update: Option<Option<f64>>,
+    /// Bumped on every `schedule` message so `send_tick_and_wait` unblocks even when no tree changes.
+    schedule_gen: u64,
 }
 
 struct Shared {
@@ -137,6 +141,16 @@ pub struct Session {
     pub ios: IosVersion,
     /// Scroll, focus, shift and press state (shared with the browser backend).
     pub inter: Interaction,
+    /// SwiftUI animation / transition state machine (section P).
+    pub anim: Animator,
+    /// Monotonic animation clock in milliseconds (starts at 0).
+    pub clock_ms: f64,
+    /// Last `clock_ms` delivered to the SwiftUI guest via `HostMessage::Tick`.
+    pub guest_clock_ms: f64,
+    /// Next `clock_ms` at which the SwiftUI guest needs a `tick` message.
+    pub guest_due_ms: Option<f64>,
+    /// Tree generation last ingested by `anim.update`.
+    pub last_anim_gen: u64,
     /// React Native: touch in progress and frames the guest already has (shared with the browser backend).
     pub rn: RnInput,
     /// SwiftUI: last `scroll_position` target sent per scroll-node id.
@@ -261,6 +275,11 @@ impl Session {
             dynamic_type: p.dynamic_type_size.unwrap_or_default(),
             ios: p.os_version.unwrap_or_default(),
             inter: Interaction::default(),
+            anim: Animator::new(),
+            clock_ms: 0.0,
+            guest_clock_ms: 0.0,
+            guest_due_ms: None,
+            last_anim_gen: 0,
             rn: RnInput::default(),
             sent_positions: BTreeMap::new(),
             sent_geometry: BTreeMap::new(),
@@ -497,6 +516,13 @@ impl Session {
                         g.last_event = Some(Instant::now());
                         sh.cv.notify_all();
                     }
+                    Ok(GuestMessage::Schedule { after_ms }) => {
+                        let mut g = sh.lock();
+                        g.schedule_update = Some(after_ms);
+                        g.schedule_gen += 1;
+                        g.last_event = Some(Instant::now());
+                        sh.cv.notify_all();
+                    }
                     Ok(GuestMessage::Error { message }) => sh.push_error("guest", message),
                     Ok(GuestMessage::MeasureText { id, request }) => {
                         if !compose {
@@ -570,6 +596,34 @@ impl Session {
     /// Guest `focus_request` / `scroll_to` messages since the last call.
     pub fn take_requests(&self) -> Vec<GuestMessage> {
         std::mem::take(&mut self.shared.lock().requests)
+    }
+
+    /// Consume any pending `schedule` message from the guest and update `guest_due_ms`.
+    pub fn sync_schedule(&mut self) {
+        if let Some(after_ms) = self.shared.lock().schedule_update.take() {
+            self.guest_due_ms = after_ms.map(|ms| self.clock_ms + ms.max(0.0));
+        }
+    }
+
+    /// Send a `tick` at `clock_ms` and wait until the guest finishes handling it (signalled by a `schedule` line) or exits.
+    pub fn send_tick_and_wait(&mut self) -> Result<bool, ApiError> {
+        let (gen_before, sched_before) = {
+            let g = self.shared.lock();
+            (g.generation, g.schedule_gen)
+        };
+        let msg = HostMessage::Tick { time: self.clock_ms };
+        self.send(&msg)?;
+        self.guest_clock_ms = self.clock_ms;
+        let g = self
+            .shared
+            .cv
+            .wait_timeout_while(self.shared.lock(), ACTION_TIMEOUT, |i| i.schedule_gen == sched_before && !i.exited)
+            .unwrap_or_else(|e| e.into_inner())
+            .0;
+        let tree_arrived = g.generation != gen_before;
+        drop(g);
+        self.sync_schedule();
+        Ok(tree_arrived)
     }
 
     /// Block until nothing has arrived from (or been sent to) the guest for `quiet`, at most `max`.

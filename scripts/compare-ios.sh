@@ -9,10 +9,15 @@ cd "$(dirname "$0")/.."
 cargo build -q -p onesim-cli
 printf '{"id":1,"method":"hello","params":{"protocol_version":1}}\n{"id":2,"method":"get_capabilities"}\n' | ./target/debug/onesim serve 2>/dev/null \
   | python3 -c 'import json,sys; c=json.loads(sys.stdin.readlines()[1])["result"]; print("fonts:", c["fonts"], "| symbols:", c["symbols"], "| SIMCORE_FALLBACK=" + "'"${SIMCORE_FALLBACK:-}"'")'
-# SIMCORE_ONLY=swiftui|expo limits the run to one framework's states (scripts/affected.sh uses it).
+# SIMCORE_ONLY=swiftui|expo limits the run to one framework's states (scripts/ci-local.sh uses it).
 only=${SIMCORE_ONLY:-all}
 case $only in all|swiftui|expo) ;; *) echo "unknown SIMCORE_ONLY=$only (swiftui|expo)"; exit 2 ;; esac
 want() { [ "$only" = all ] || [ "$only" = "$1" ]; }
+# SIMCORE_SMOKE=1: a few representative states per framework (scripts/ci-local.sh fast level).
+# Same fixtures and thresholds; the full run compares every state before merge.
+smoke=${SIMCORE_SMOKE:-}
+SMOKE_STATES=" home home-dark controls sheet todos-typed form controls-typed "
+keep() { [ -z "$smoke" ] || [[ "$SMOKE_STATES" == *" $1 "* ]]; }
 # Build each guest once. Every shot still starts a fresh process with its own device and appearance.
 guests=$(mktemp -d)
 metro=
@@ -27,21 +32,31 @@ cleanup() { stop_metro; rm -rf "$guests"; }
 trap cleanup EXIT
 app="$guests/showcase"
 tabs="$guests/tabs"
+pages="$guests/pages"
 gest="$guests/gestures"
 shp="$guests/shapes"
 layout="$guests/layout"
+typeapp="$guests/type"
+anim="$guests/animation"
+controls="$guests/controls"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
+fi
+if want swiftui && [ -z "$smoke" ]; then
   scripts/build-swift-app.sh examples/swiftui-tabs "$tabs"
+  scripts/build-swift-app.sh examples/swiftui-pages "$pages"
   scripts/build-swift-app.sh examples/swiftui-gestures "$gest"
   scripts/build-swift-app.sh examples/swiftui-shapes "$shp"
   scripts/build-swift-app.sh examples/swiftui-layout "$layout"
+  scripts/build-swift-app.sh examples/swiftui-type "$typeapp"
+  scripts/build-swift-app.sh examples/swiftui-animation "$anim"
+  scripts/build-swift-app.sh examples/swiftui-controls "$controls"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
-# (docs/compatibility/versions.json): 26.5 on the iPhone 17 Pro in tests/fixtures/, 27.2 on the iPhone 18 Pro
-# in tests/fixtures/ios27/. SIMCORE_IOS="27.2" limits the run to one release.
+# (docs/compatibility/versions.json): 27.2 on the iPhone 18 Pro in tests/fixtures/ios27/, 26.5 on the iPhone 17 Pro
+# in tests/fixtures/. Only 27.2 is gated for now (the default); SIMCORE_IOS="26.5 27.2" also checks 26.5.
 rc=0
-for ios in ${SIMCORE_IOS:-26.5 27.2}; do
+for ios in ${SIMCORE_IOS:-27.2}; do
   case $ios in
     # ll: scroll offset of the long-list-scrolled reference (a fling on 26.5, an exact drag on 27.2).
     26.5) fx=tests/fixtures dev=iphone-17-pro ll=775.66 ;;
@@ -49,11 +64,11 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     *) echo "unknown iOS $ios"; exit 2 ;;
   esac
   base=(--ios "$ios" --device "$dev")
-  out=target/compare/ios$ios; mkdir -p "$out/onesim"
+  out=target/compare/ios$ios${smoke:+-smoke}; [ -z "$smoke" ] || rm -rf "$out"; mkdir -p "$out/onesim"
   echo "==== iOS $ios ($dev, $fx)"
   export SIMCORE_COMPARE_IOS=$ios
   if want swiftui; then
-    shot() { local name=$1; shift; ./target/debug/onesim run "$app" "${base[@]}" "$@" --screenshot "$out/onesim/$name.png" >/dev/null; }
+    shot() { local name=$1; shift; keep "$name" || return 0; ./target/debug/onesim run "$app" "${base[@]}" "$@" --screenshot "$out/onesim/$name.png" >/dev/null; }
     shot home
     shot typography       --click Typography
     shot shapes           --click Shapes
@@ -92,6 +107,8 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     shot form-menu    --click Form --click Flavor
     shot form-changed --click Form --click Flavor --click Chocolate --click Large --drag 170,552,300,0
     python3 scripts/compare_ios.py $fx/showcase-ios "$out/onesim" "$out" || rc=1
+  fi
+  if want swiftui && [ -z "$smoke" ]; then
     # SwiftUI TabView: tests/fixtures/swiftui-tabs-ios (see its README). Tab items by point: Home 115,822, Counter 201,822, Settings 287,822.
     tout=$out/swiftui-tabs; mkdir -p "$tout/onesim"
     tshot() { local name=$1; shift; ./target/debug/onesim run "$tabs" "${base[@]}" "$@" --screenshot "$tout/onesim/$name.png" >/dev/null; }
@@ -102,6 +119,20 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     tshot tabs-settings-dark --dark --click 287,822
     echo "== SwiftUI TabView (swiftui-tabs, iOS $ios)"
     python3 scripts/compare_ios.py $fx/swiftui-tabs-ios "$tout/onesim" "$tout" || rc=1
+
+    pout=$out/swiftui-pages; mkdir -p "$pout/onesim"
+    pfx=$fx/swiftui-pages-ios
+    pshot() {
+      local name=$1; shift
+      ./target/debug/onesim run "$pages" "${base[@]}" "$@" --screenshot "$pout/onesim/$name.png" >/dev/null
+      if [ ! -f "$pfx/$name.png" ]; then echo "Missing iOS reference: $pfx/$name.png" >&2; rc=1; fi
+    }
+    pshot pages-first
+    pshot pages-programmatic --click Next
+    pshot pages-swiped       --click Next --drag 315,430,-250,0
+    pshot pages-inbox        --click Inbox
+    echo "== SwiftUI page TabView (swiftui-pages, iOS $ios)"
+    python3 scripts/compare_ios.py "$pfx" "$pout/onesim" "$pout" || rc=1
     # SwiftUI gestures: tests/fixtures/swiftui-gestures-ios (see its README). Targets by label.
     gout=$out/swiftui-gestures; mkdir -p "$gout/onesim"
     gshot() { local name=$1; shift; ./target/debug/onesim run "$gest" "${base[@]}" "$@" --screenshot "$gout/onesim/$name.png" >/dev/null; }
@@ -128,6 +159,36 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     lshot layout-paged --scroll 201,658,320,0
     echo "== SwiftUI layout (swiftui-layout, iOS $ios)"
     python3 scripts/compare_ios.py $fx/swiftui-layout-ios "$lout/onesim" "$lout" || rc=1
+    # SwiftUI type: tests/fixtures/swiftui-type-ios (see its README).
+    yout=$out/swiftui-type; mkdir -p "$yout/onesim"
+    yshot() { local name=$1; shift; ./target/debug/onesim run "$typeapp" "${base[@]}" "$@" --screenshot "$yout/onesim/$name.png" >/dev/null; }
+    yshot type
+    yshot type-dark --dark
+    echo "== SwiftUI type (swiftui-type, iOS $ios)"
+    python3 scripts/compare_ios.py $fx/swiftui-type-ios "$yout/onesim" "$yout" || rc=1
+    # SwiftUI animation: tests/fixtures/swiftui-animation-ios (see its README). --wait 600 settles all spring/ease animations.
+    aout=$out/swiftui-animation; mkdir -p "$aout/onesim"
+    ashot() { local name=$1; shift; ./target/debug/onesim run "$anim" "${base[@]}" "$@" --screenshot "$aout/onesim/$name.png" >/dev/null; }
+    ashot animation
+    ashot animation-dark   --dark
+    ashot animation-active --click Beta --click "Toggle Card" --click Increment --wait 600
+    echo "== SwiftUI animation (swiftui-animation, iOS $ios)"
+    python3 scripts/compare_ios.py $fx/swiftui-animation-ios "$aout/onesim" "$aout" || rc=1
+    # SwiftUI controls: tests/fixtures/swiftui-controls-ios (see its README). Targets by label, picker rows by point.
+    cout=$out/swiftui-controls; mkdir -p "$cout/onesim"
+    cshot() { local name=$1; shift; ./target/debug/onesim run "$controls" "${base[@]}" "$@" --screenshot "$cout/onesim/$name.png" >/dev/null; }
+    cshot controls
+    cshot controls-dark     --dark
+    cshot controls-menu     --click Actions
+    cshot controls-changed  --click Bold --click "I agree" --click "Pill 0"
+    cshot pickers           --click Pickers
+    cshot pickers-dark      --dark --click Pickers
+    cshot pickers-pushed    --click Pickers --click Size
+    cshot pickers-changed   --click Pickers --click Green --click Star --click 10:00
+    cshot indicators        --click Indicators
+    cshot indicators-dark   --dark --click Indicators
+    echo "== SwiftUI controls (swiftui-controls, iOS $ios)"
+    python3 scripts/compare_ios.py $fx/swiftui-controls-ios "$cout/onesim" "$cout" || rc=1
   fi
   # React Native / Expo showcase: tests/fixtures/rn-showcase-ios (see its README). Needs node + `npm install` in the example.
   if want expo; then
@@ -138,7 +199,7 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
       (cd "$rn" && CI=1 exec npx expo start --port "$port" >"../../$rnout/metro.log" 2>&1) &
       metro=$!
       for _ in $(seq 60); do curl -sf "http://localhost:$port/status" >/dev/null 2>&1 && break; sleep 1; done
-      rnshot() { local name=$1; shift; ./target/debug/onesim expo --url "http://localhost:$port" "${base[@]}" "$@" --screenshot "$rnout/onesim/$name.png" >/dev/null || echo "onesim expo failed: $name"; }
+      rnshot() { local name=$1; shift; keep "$name" || return 0; ./target/debug/onesim expo --url "http://localhost:$port" "${base[@]}" "$@" --screenshot "$rnout/onesim/$name.png" >/dev/null || echo "onesim expo failed: $name"; }
       rnshot home
       rnshot layout           --click Layout
       rnshot text             --click Text
@@ -191,6 +252,7 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
       rrshot stack-back        --click 200,192 --click 64,84
       rrshot stack-detail-dark --dark --click 200,192
     }
+    [ -z "$smoke" ] || continue
     rr_group examples/expo-default tabs rr_states_tabs
     rr_group examples/expo-router-stack stack rr_states_stack
     if [ -d examples/expo-ui/node_modules ]; then
@@ -199,7 +261,7 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
   fi
   # Per-device chrome: tests/fixtures/devices/<slug>/{home,keyboard-shift}.png (see its README).
   for d in $fx/devices/*/; do
-    { [ -d "$d" ] && want swiftui; } || continue
+    { [ -d "$d" ] && want swiftui && [ -z "$smoke" ]; } || continue
     slug=$(basename "$d"); dd="$out/devices/$slug"; mkdir -p "$dd/onesim"
     ./target/debug/onesim run "$app" --ios "$ios" --device "$slug" --screenshot "$dd/onesim/home.png" >/dev/null
     ./target/debug/onesim run "$app" --ios "$ios" --device "$slug" --click Todos --click "New todo" --screenshot "$dd/onesim/keyboard-shift.png" >/dev/null

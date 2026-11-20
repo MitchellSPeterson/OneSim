@@ -121,6 +121,9 @@ pub enum Glyph {
     SpinnerLarge,
     /// Android circular activity indicator in a settled frame.
     AndroidSpinner,
+    /// Stroked arc with round caps, centred in the box and touching its edges: degrees clockwise from the top,
+    /// stroke width in hundredths of a point (SwiftUI `Gauge`).
+    Arc { from: i16, to: i16, width: u16 },
 }
 
 /// An SF Symbol painted as an alpha mask in `color`, `size` points, centred in the node's bounds
@@ -139,6 +142,8 @@ pub struct ImageRun {
     pub dest: Rect,
     /// Clockwise rotation in degrees about the centre of `dest`.
     pub rotation: f32,
+    /// 0 nearest, 1 bilinear, 2 bicubic.
+    pub filter: u8,
 }
 
 /// Linear gradient fill over a node's bounds: CSS `angle` (0 = up, 90 = right), evenly spaced stops.
@@ -187,6 +192,22 @@ pub struct ScrollInfo {
     pub page: Option<f64>,
     /// `.scrollTargetBehavior(.viewAligned)`.
     pub aligned: bool,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Pager {
+    pub selected: usize,
+    pub actions: Vec<Option<u64>>,
+}
+
+/// SwiftUI animation / transition metadata attached to a scene node (protocol section P).
+/// Boxed on `Node` so non-animated nodes pay only a null pointer.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct NodeAnim {
+    pub animation: Option<onesim_protocol::AnimationSpec>,
+    pub transition: Option<onesim_protocol::TransitionSpec>,
+    pub matched: Option<onesim_protocol::MatchedGeometryMod>,
+    pub content_transition: onesim_protocol::ContentTransitionKind,
 }
 
 /// Fill configuration for a [`VectorShape`].
@@ -298,6 +319,7 @@ pub struct Node {
     /// Caret x offset inside bounds (focused text field).
     pub caret: Option<f64>,
     pub scroll: Option<ScrollInfo>,
+    pub(crate) pager: Option<Box<Pager>>,
     pub sheet: Option<SheetInfo>,
     /// SwiftUI gestures on this view (protocol section L). Boxed: nodes live on the stack in deep layout recursion.
     pub gesture: Option<Box<onesim_protocol::GestureMod>>,
@@ -309,6 +331,8 @@ pub struct Node {
     pub pinned: Option<String>,
     /// Direct child of `.scrollTargetLayout()`.
     pub scroll_target: bool,
+    /// Animation / transition / matchedGeometryEffect metadata (protocol section P).
+    pub anim: Option<Box<NodeAnim>>,
     /// False for layout-only helper nodes (clip/opacity layers); hidden from inspection.
     pub inspect: bool,
 }
@@ -351,12 +375,14 @@ impl Node {
             disabled: false,
             caret: None,
             scroll: None,
+            pager: None,
             sheet: None,
             gesture: None,
             anchor: None,
             proposal: None,
             pinned: None,
             scroll_target: false,
+            anim: None,
             inspect: true,
         }
     }
@@ -457,6 +483,10 @@ impl Scene {
 
     /// Innermost scroll container under the point.
     pub fn scroll_target(&self, x: f64, y: f64) -> Option<usize> {
+        self.scroll_target_where(x, y, |_| true)
+    }
+
+    pub(crate) fn scroll_target_where(&self, x: f64, y: f64, matches: impl Fn(&Node) -> bool) -> Option<usize> {
         // Scrollers span the screen (content scrolls under the bars), but the status bar is inert.
         if self.nodes.iter().any(|n| n.kind == "navbar" && y < n.bounds.y) {
             return None;
@@ -464,7 +494,7 @@ impl Scene {
         let modal = self.nodes.iter().rposition(|n| n.kind == "scrim");
         (0..self.nodes.len()).rev().find(|&i| {
             let n = &self.nodes[i];
-            modal.is_none_or(|m| i > m) && n.scroll.is_some() && n.bounds.contains(x, y) && self.clipped_in(i, x, y)
+            modal.is_none_or(|m| i > m) && n.scroll.is_some() && n.bounds.contains(x, y) && self.clipped_in(i, x, y) && matches(n)
         })
     }
 
