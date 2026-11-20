@@ -1,0 +1,273 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "type": "Other",
+        "role": "_TtC7SwiftUIP33_ACC2C5639A7D76F611E170E831FCA49118SwiftUIApplication",
+        "subrole": "UIApplication",
+        "label": "Animation",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 0,
+        "pid": 83929,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "other"
+      },
+      {
+        "index": 1,
+        "parentIndex": 0,
+        "type": "NavigationBar",
+        "role": "SwiftUI.UIKitNavigationBar",
+        "subrole": "UINavigationBar",
+        "identifier": "Animation",
+        "rect": {
+          "x": 0,
+          "y": 62,
+          "width": 402,
+          "height": 106
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 83929,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "navigation-bar"
+      },
+      {
+        "index": 2,
+        "parentIndex": 1,
+        "type": "StaticText",
+        "role": "UILabel",
+        "label": "Animation",
+        "rect": {
+          "x": 15.999999999999986,
+          "y": 119.66666666666667,
+          "width": 162.33333333333331,
+          "height": 40.66666666666667
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 83929,
+        "hittable": true,
+        "ref": "e3",
+        "kind": "text"
+      },
+      {
+        "index": 3,
+        "parentIndex": 0,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Alpha",
+        "rect": {
+          "x": 76.33333587646484,
+          "y": 363.6666564941406,
+          "width": 75.66666412353516,
+          "height": 36.333343505859375
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 83929,
+        "hittable": true,
+        "ref": "e4",
+        "kind": "button"
+      },
+      {
+        "index": 4,
+        "parentIndex": 0,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Beta",
+        "rect": {
+          "x": 175.83333333333334,
+          "y": 371.66666666666663,
+          "width": 35,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 83929,
+        "hittable": true,
+        "ref": "e5",
+        "kind": "button"
+      },
+      {
+        "index": 5,
+        "parentIndex": 0,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Gamma",
+        "rect": {
+          "x": 250.83333333333334,
+          "y": 371.66666666666663,
+          "width": 59.00000000000003,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 83929,
+        "hittable": true,
+        "ref": "e6",
+        "kind": "button"
+      },
+      {
+        "index": 6,
+        "parentIndex": 0,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Toggle Card",
+        "rect": {
+          "x": 86.66666666666666,
+          "y": 416,
+          "width": 116.33333333333334,
+          "height": 34.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 83929,
+        "hittable": true,
+        "ref": "e7",
+        "kind": "button"
+      },
+      {
+        "index": 7,
+        "parentIndex": 0,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Increment",
+        "rect": {
+          "x": 215,
+          "y": 416,
+          "width": 100.66666666666663,
+          "height": 34.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 83929,
+        "hittable": true,
+        "ref": "e8",
+        "kind": "button"
+      },
+      {
+        "index": 8,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Count: 0",
+        "rect": {
+          "x": 157,
+          "y": 466.33333333333326,
+          "width": 88,
+          "height": 26.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 83929,
+        "hittable": true,
+        "ref": "e9",
+        "kind": "text"
+      },
+      {
+        "index": 9,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Phase Ready",
+        "rect": {
+          "x": 151.66666666666669,
+          "y": 520.4999999999999,
+          "width": 98.66666666666666,
+          "height": 20.33333333333337
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 83929,
+        "hittable": true,
+        "ref": "e10",
+        "kind": "text"
+      },
+      {
+        "index": 10,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Keyframe Ready",
+        "rect": {
+          "x": 138.83333333333334,
+          "y": 580.4999999999999,
+          "width": 124.33333333333334,
+          "height": 20.33333333333337
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 83929,
+        "hittable": true,
+        "ref": "e11",
+        "kind": "text"
+      },
+      {
+        "index": 11,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Timeline 0",
+        "rect": {
+          "x": 169.66666666666669,
+          "y": 628.6666666666665,
+          "width": 62.66666666666666,
+          "height": 15.666666666666629
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 83929,
+        "hittable": true,
+        "ref": "e12",
+        "kind": "text"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.animation",
+    "appBundleId": "dev.simcore.animation",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 12,
+      "totalNodeCount": 12,
+      "reasons": []
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "absent",
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 1,
+        "p50Ms": 273,
+        "p95Ms": 273,
+        "maxMs": 273,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 1
+        }
+      }
+    },
+    "refsGeneration": 812446
+  }
+}

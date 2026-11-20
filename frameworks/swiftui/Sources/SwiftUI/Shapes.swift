@@ -1294,7 +1294,7 @@ public struct NavigationBarItem {
 
 // MARK: - Button styles
 
-/// Built-in styles are wire names (`_styleName`); a custom style's `makeBody` replaces the button (section P).
+/// Built-in styles are wire names (`_styleName`); a custom style's `makeBody` replaces the button (section Q).
 public protocol PrimitiveButtonStyle {
     associatedtype Body: View
     typealias Configuration = PrimitiveButtonStyleConfiguration

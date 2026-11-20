@@ -43,7 +43,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `GroupSectionsOfContent` | 18 | ⬜ |  |  |
 | `HStack` | 13 | ✅ |  |  |
 | `Image` | 13 | 🟠 |  | SF Symbols only (`systemName:`), monochrome; no asset or `uiImage:` images |
-| `KeyframeAnimator` | 17 | ⬜ |  |  |
+| `KeyframeAnimator` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `Label` | 14 | ✅ |  |  |
 | `LabeledContent` | 16 | 🟠 |  | Content always `.secondary`; no `labeledContentStyle` |
 | `LabeledControlGroupContent` | 16 | ⬜ |  |  |
@@ -67,9 +67,9 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `OutlineGroup` | 14 | ⬜ |  |  |
 | `OutlineSubgroupChildren` | 14 | ⬜ |  |  |
 | `PasteButton` | 16 | ⬜ |  |  |
-| `PhaseAnimator` | 17 | ⬜ |  |  |
+| `PhaseAnimator` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `Picker` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | `.menu`, `.segmented`, `.palette` (drawn segmented), `.inline` (checkmark rows in a list, a wheel elsewhere), `.navigationLink`, `.wheel` (a tap selects a row; no spinning). No `.tabs`. Options are text only; an inline picker shows no label row |
-| `PlaceholderContentView` | 17 | ⬜ |  |  |
+| `PlaceholderContentView` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `PresentedWindowContent` | 16 | ⬜ |  |  |
 | `PreviewModifierContent` | 18 | ⬜ |  |  |
 | `ProgressView` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Spinner is one static frame; without a value the linear style also draws the spinner |
@@ -92,7 +92,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Text` | 13 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | `String` only (no `LocalizedStringKey`, date or format interpolation). Runs carry kerning, tracking, baseline, design, width, and underline or strikethrough pattern and color |
 | `TextEditor` | 14 | ⬜ |  |  |
 | `TextField` | 13 | ✅ |  |  |
-| `TimelineView` | 15 | ⬜ |  |  |
+| `TimelineView` | 15 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `Toggle` | 13 | ✅ |  |  |
 | `TupleContent` | 26 | ⬜ |  |  |
 | `TupleView` | 13 | ✅ |  |  |

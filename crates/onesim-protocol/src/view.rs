@@ -310,6 +310,157 @@ pub enum Modifier {
     AllowedDynamicRange(Option<DynamicRange>),
     /// `.strikethrough(_:pattern:color:)`. The bool overload stays `strikethrough`.
     StrikethroughStyle(LineStyle),
+    /// `.animation` / `withAnimation` (section P). `None` disables animation for this subtree.
+    Animation(Option<Box<AnimationSpec>>),
+    /// `.transition` (section P): insertion and removal effects.
+    Transition(Box<TransitionSpec>),
+    /// `.matchedGeometryEffect` (section P).
+    MatchedGeometry(Box<MatchedGeometryMod>),
+    /// `.contentTransition` (section P), inherited by `text` and `image` descendants.
+    ContentTransition(ContentTransitionKind),
+}
+
+/// Animation timing curve (section P).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AnimationCurve {
+    Linear,
+    EaseIn,
+    EaseOut,
+    EaseInOut,
+    /// Cubic Bezier control points `[c1x, c1y, c2x, c2y]`.
+    Bezier([f64; 4]),
+    /// Damped harmonic spring parameters.
+    Spring {
+        #[serde(default = "one")]
+        mass: f64,
+        stiffness: f64,
+        damping: f64,
+        #[serde(default, rename = "initialVelocity")]
+        initial_velocity: f64,
+        #[serde(default = "default_spring_settling")]
+        settling: f64,
+    },
+    /// Sampled `CustomAnimation` progress values in `0...1` over `duration`.
+    Samples(Vec<f64>),
+}
+
+/// Finite repeat count or `"forever"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RepeatCount {
+    Count(u32),
+    Forever(ForeverTag),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ForeverTag {
+    Forever,
+}
+
+fn default_anim_duration() -> f64 {
+    0.35
+}
+fn default_spring_settling() -> f64 {
+    0.5
+}
+fn default_true() -> bool {
+    true
+}
+
+/// Wire description of a SwiftUI `Animation` (section P).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AnimationSpec {
+    pub curve: AnimationCurve,
+    #[serde(default = "default_anim_duration")]
+    pub duration: f64,
+    #[serde(default)]
+    pub delay: f64,
+    #[serde(default = "one")]
+    pub speed: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat: Option<RepeatCount>,
+    #[serde(default = "default_true")]
+    pub autoreverses: bool,
+    /// Monotonic token bumped by the guest when `withAnimation` / `.animation(value:)` triggers.
+    /// `0` = deprecated `.animation(_:)` (animate any property change).
+    #[serde(default)]
+    pub token: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TransitionEdge {
+    Top,
+    Bottom,
+    Leading,
+    Trailing,
+}
+
+/// Visual state at the active (inserted/removed) end of a `.transition` (section P).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct TransitionEffect {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opacity: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scale: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<[f64; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offset: Option<[f64; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edge: Option<TransitionEdge>,
+}
+
+/// `.transition(_:)` (section P).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct TransitionSpec {
+    #[serde(default)]
+    pub insertion: TransitionEffect,
+    #[serde(default)]
+    pub removal: TransitionEffect,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub animation: Option<AnimationSpec>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MatchedProps {
+    #[default]
+    Frame,
+    Position,
+    Size,
+}
+
+fn default_center_anchor() -> [f64; 2] {
+    [0.5, 0.5]
+}
+
+/// `.matchedGeometryEffect(id:in:properties:anchor:isSource:)` (section P).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MatchedGeometryMod {
+    pub id: String,
+    pub namespace: String,
+    #[serde(default)]
+    pub properties: MatchedProps,
+    #[serde(default = "default_center_anchor")]
+    pub anchor: [f64; 2],
+    #[serde(default = "default_true", rename = "isSource")]
+    pub is_source: bool,
+}
+
+/// `.contentTransition(_:)` (section P).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ContentTransitionKind {
+    #[default]
+    Identity,
+    Interpolate,
+    Opacity,
+    NumericTextUp,
+    NumericTextDown,
+    SymbolEffect,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
@@ -689,11 +840,11 @@ pub enum PickerStyle {
     #[default]
     Menu,
     Segmented,
-    /// Wheel: the options on a drum, the selected one in a highlight band (section P).
+    /// Wheel: the options on a drum, the selected one in a highlight band (section Q).
     Wheel,
 }
 
-/// `Gauge` styles (section P). `Automatic` is the iOS default (a linear capacity bar with its labels).
+/// `Gauge` styles (section Q). `Automatic` is the iOS default (a linear capacity bar with its labels).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum GaugeStyle {
@@ -1232,11 +1383,11 @@ pub enum ViewKind {
         value: Option<f64>,
         #[serde(default)]
         label: Option<Box<ViewNode>>,
-        /// Shown under a linear bar (section P).
+        /// Shown under a linear bar (section Q).
         #[serde(default, rename = "currentValueLabel", skip_serializing_if = "Option::is_none")]
         current_value_label: Option<Box<ViewNode>>,
     },
-    /// `Gauge` (section P): `value` is the fraction of the range (0...1).
+    /// `Gauge` (section Q): `value` is the fraction of the range (0...1).
     Gauge {
         #[serde(default)]
         style: GaugeStyle,
@@ -1450,7 +1601,7 @@ mod tests {
     }
 
     #[test]
-    fn section_p_round_trip() {
+    fn section_q_round_trip() {
         let t = |id: &str, s: &str| json!({"kind": "text", "id": id, "text": s});
         let gauge: ViewNode = serde_json::from_value(json!({
             "kind": "gauge", "id": "g", "style": "accessoryCircular", "value": 0.3,
@@ -1646,6 +1797,29 @@ mod tests {
         assert_eq!(ops[4], PathOp::Z);
         assert!(fs.eo_fill && !fs.antialiased);
         assert_eq!(*sz, [40.0, 40.0]);
+        let again: ViewNode = serde_json::from_value(serde_json::to_value(&n).unwrap()).unwrap();
+        assert_eq!(n, again);
+    }
+
+    #[test]
+    fn section_o_round_trip() {
+        let j = json!({
+            "kind": "text", "id": "t", "text": "42",
+            "modifiers": [
+                {"animation": {"curve": {"spring": {"mass": 1.0, "stiffness": 157.9, "damping": 25.1, "initialVelocity": 0.0, "settling": 0.5}}, "duration": 0.5, "delay": 0.1, "speed": 1.5, "repeat": "forever", "autoreverses": false, "token": 7}},
+                {"animation": null},
+                {"transition": {"insertion": {"opacity": 0.0, "edge": "leading"}, "removal": {"scale": 0.5, "anchor": [0.5, 0.5], "offset": [10.0, -5.0]}}},
+                {"matchedGeometry": {"id": "pill", "namespace": "ns1", "properties": "position", "anchor": [0.0, 0.5], "isSource": false}},
+                {"contentTransition": "numericTextUp"}
+            ]
+        });
+        let n: ViewNode = serde_json::from_value(j).unwrap();
+        assert_eq!(n.modifiers.len(), 5);
+        assert!(matches!(&n.modifiers[0], Modifier::Animation(Some(spec)) if spec.token == 7 && spec.repeat == Some(RepeatCount::Forever(ForeverTag::Forever)) && !spec.autoreverses));
+        assert_eq!(n.modifiers[1], Modifier::Animation(None));
+        assert!(matches!(&n.modifiers[2], Modifier::Transition(t) if t.insertion.edge == Some(TransitionEdge::Leading) && t.removal.scale == Some(0.5)));
+        assert!(matches!(&n.modifiers[3], Modifier::MatchedGeometry(m) if m.id == "pill" && m.namespace == "ns1" && m.properties == MatchedProps::Position && !m.is_source));
+        assert_eq!(n.modifiers[4], Modifier::ContentTransition(ContentTransitionKind::NumericTextUp));
         let again: ViewNode = serde_json::from_value(serde_json::to_value(&n).unwrap()).unwrap();
         assert_eq!(n, again);
     }
