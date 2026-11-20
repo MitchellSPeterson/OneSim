@@ -15,8 +15,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `FocusedObject` | 16 | ⬜ |  |  |
 | `FocusedValue` | 14 | ⬜ |  |  |
 | `FocusState` | 15 | ⬜ |  |  |
-| `GestureState` | 13 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | `resetTransaction` is ignored (no animations) |
-| `Namespace` | 14 | ⬜ |  |  |
+| `GestureState` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
+| `Namespace` | 14 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `ObservedObject` | 13 | ✅ |  |  |
 | `ScaledMetric` | 14 | ✅ | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) |  |
 | `SceneStorage` | 14 | 🟠 | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) | In memory: not restored after a relaunch; no optionals, `URL`/`Data` |

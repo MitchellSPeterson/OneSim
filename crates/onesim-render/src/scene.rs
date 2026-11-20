@@ -197,6 +197,16 @@ pub(crate) struct Pager {
     pub actions: Vec<Option<u64>>,
 }
 
+/// SwiftUI animation / transition metadata attached to a scene node (protocol section P).
+/// Boxed on `Node` so non-animated nodes pay only a null pointer.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct NodeAnim {
+    pub animation: Option<onesim_protocol::AnimationSpec>,
+    pub transition: Option<onesim_protocol::TransitionSpec>,
+    pub matched: Option<onesim_protocol::MatchedGeometryMod>,
+    pub content_transition: onesim_protocol::ContentTransitionKind,
+}
+
 /// Fill configuration for a [`VectorShape`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VectorFill {
@@ -313,6 +323,8 @@ pub struct Node {
     pub pinned: Option<String>,
     /// Direct child of `.scrollTargetLayout()`.
     pub scroll_target: bool,
+    /// Animation / transition / matchedGeometryEffect metadata (protocol section P).
+    pub anim: Option<Box<NodeAnim>>,
     /// False for layout-only helper nodes (clip/opacity layers); hidden from inspection.
     pub inspect: bool,
 }
@@ -358,6 +370,7 @@ impl Node {
             proposal: None,
             pinned: None,
             scroll_target: false,
+            anim: None,
             inspect: true,
         }
     }

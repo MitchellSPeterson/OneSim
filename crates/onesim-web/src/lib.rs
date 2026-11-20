@@ -10,7 +10,7 @@ use onesim_protocol::{Appearance, DynamicTypeSize, GuestMessage, HostMessage, Io
 use onesim_protocol::TouchPhase;
 use onesim_render::rn_input::{effect_messages, Out, RnCtx, RnInput};
 use onesim_render::display::DisplayList;
-use onesim_render::{build_scene, Builder, device, look, render, resolve_label, Device, DEFAULT_DEVICE, DEVICES, DragPhase, Effect, Fonts, Interaction, Scene, SceneParams};
+use onesim_render::{build_scene, Builder, device, look, render, resolve_label, Animator, Device, DEFAULT_DEVICE, DEVICES, DragPhase, Effect, Fonts, Interaction, Scene, SceneParams};
 use std::cell::RefCell;
 use std::ffi::{c_char, c_void, CStr, CString};
 
@@ -27,6 +27,7 @@ struct State {
     on_env: EnvCb,
     on_text: TextCb,
     on_gesture: GestureCb,
+    /// Section M/N/O layout & tick callback (`geometry` / `scroll_position` / `layout` / `tick`).
     on_layout: LayoutCb,
     /// Guards against infinite re-entry when a layout callback submits a new tree.
     in_layout: bool,
@@ -42,6 +43,11 @@ struct State {
     dynamic_type: DynamicTypeSize,
     ios: IosVersion,
     inter: Interaction,
+    anim: Animator,
+    clock_ms: f64,
+    guest_clock_ms: f64,
+    guest_due_ms: Option<f64>,
+    last_anim_ver: Option<u64>,
     /// Set before a guest callback; a tree submit clears it by drawing.
     stale: bool,
     initialized: bool,
@@ -75,6 +81,7 @@ thread_local! {
     static STATE: RefCell<State> = RefCell::new(State {
         ctx: 0, on_action: None, on_env: None, on_text: None, on_gesture: None, on_layout: None, in_layout: false, version: None, tree: None, scene: None,
         fonts: None, device: device(DEFAULT_DEVICE).unwrap(), viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios27, inter: Interaction::default(),
+        anim: Animator::new(), clock_ms: 0.0, guest_clock_ms: 0.0, guest_due_ms: None, last_anim_ver: None,
         stale: false, initialized: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), output: 0, builder: Builder::new(), dl: Vec::new(), unread: None, buf: Vec::new(), rn: None,
     });
     static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
@@ -102,7 +109,16 @@ fn draw(s: &mut State) {
         status_bar: true,
         chrome: s.inter.chrome(),
     };
-    let scene = build_scene(root, &params, fonts);
+    let mut scene = build_scene(root, &params, fonts);
+    if s.rn.is_none() {
+        if s.version != s.last_anim_ver {
+            s.anim.update(&scene);
+            s.last_anim_ver = s.version;
+        }
+        if s.anim.is_animating() {
+            scene = s.anim.render_scene(&scene);
+        }
+    }
     if s.output == 1 {
         let mut list = s.builder.build(&scene, fonts, s.scale);
         if let Some(old) = s.unread.take() {
@@ -199,12 +215,21 @@ pub extern "C" fn simcore_runtime_set_layout_callback(on_layout: LayoutCb) {
 #[no_mangle]
 pub extern "C" fn simcore_runtime_set_wake(_fd: i32, _on_wake: WakeCb) {}
 
-/// Web has no host pipe. Guest `scroll_to_id` lines are dropped.
+/// Guest JSON line (`scroll_to_id` dropped; `schedule` updates the animation tick deadline).
 ///
 /// # Safety
-/// `line` is unused.
+/// `line` must be NUL-terminated or null.
 #[no_mangle]
-pub unsafe extern "C" fn simcore_send_line(_line: *const c_char) -> i32 {
+pub unsafe extern "C" fn simcore_send_line(line: *const c_char) -> i32 {
+    if !line.is_null() {
+        if let Ok(text) = CStr::from_ptr(line).to_str() {
+            if let Ok(GuestMessage::Schedule { after_ms }) = serde_json::from_str::<GuestMessage>(text.trim()) {
+                with(|s| {
+                    s.guest_due_ms = after_ms.map(|ms| s.clock_ms + ms.max(0.0));
+                });
+            }
+        }
+    }
     0
 }
 
@@ -497,6 +522,23 @@ fn dispatch(e: Effect) -> i32 {
     1
 }
 
+/// Synchronize the SwiftUI guest's clock with `clock_ms` before an input starts new timers.
+fn sync_guest_clock() {
+    let sync = with(|s| {
+        if s.rn.is_none() && (s.clock_ms - s.guest_clock_ms).abs() > 1e-6 {
+            s.guest_clock_ms = s.clock_ms;
+            s.on_layout.map(|cb| (s.ctx, cb, s.clock_ms))
+        } else {
+            None
+        }
+    });
+    if let Some((ctx, cb, time)) = sync {
+        if let Ok(msg) = CString::new(format!(r#"{{"type":"tick","time":{time}}}"#)) {
+            unsafe { cb(ctx as *mut c_void, msg.as_ptr()) };
+        }
+    }
+}
+
 /// kind: 0 down, 1 up, 2 click. x, y in points. Returns 1 if the interaction changed anything.
 #[no_mangle]
 pub extern "C" fn simcore_web_pointer(kind: i32, x: f64, y: f64) -> i32 {
@@ -506,6 +548,7 @@ pub extern "C" fn simcore_web_pointer(kind: i32, x: f64, y: f64) -> i32 {
         _ => PointerKind::Click,
     };
     rn_pointer(PointerEvent::new(kind, x, y)).unwrap_or_else(|| {
+        sync_guest_clock();
         let e = with(|s| s.scene.as_ref().map(|sc| s.inter.pointer(sc, PointerEvent::new(kind, x, y))));
         e.map_or(0, dispatch)
     })
@@ -567,23 +610,50 @@ pub extern "C" fn simcore_web_drag(phase: i32, x: f64, y: f64, t: f64) -> i32 {
     if let Some(Some(out)) = with_rn(|rn, inter, cx| rn.drag(inter, cx.scene, phase, x, y, t)) {
         return deliver(out);
     }
+    sync_guest_clock();
     let e = with(|s| s.scene.as_ref().map(|sc| s.inter.drag(sc, phase, x, y, t)));
     e.map_or(0, dispatch)
 }
 
-/// Advance scroll animations by `dt_ms`. Returns 1 while anything moved (redrawn); 0 = at rest.
+/// Advance scroll animations, SwiftUI animations, and scheduled guest ticks by `dt_ms`.
+/// Returns 1 while anything is still active (redrawn); 0 = at rest.
 #[no_mangle]
 pub extern "C" fn simcore_web_tick(dt_ms: f64) -> i32 {
-    let moved = with(|s| s.scene.as_ref().is_some_and(|sc| s.inter.tick(sc, dt_ms / 1000.0)));
-    if moved {
+    let dt_ms = dt_ms.max(0.0);
+    let dt = dt_ms / 1000.0;
+    let tick_guest = with(|s| {
+        s.clock_ms += dt_ms;
+        if s.guest_due_ms.is_some_and(|due| s.clock_ms + 1e-6 >= due) {
+            s.guest_due_ms = None;
+            s.guest_clock_ms = s.clock_ms;
+            Some((s.ctx, s.on_layout, s.clock_ms))
+        } else {
+            None
+        }
+    });
+    if let Some((ctx, Some(cb), time)) = tick_guest {
+        if let Ok(msg) = CString::new(format!(r#"{{"type":"tick","time":{time}}}"#)) {
+            unsafe { cb(ctx as *mut c_void, msg.as_ptr()) };
+        }
+    }
+    let (scroll_moved, was_animating, anim_moved) = with(|s| {
+        let sm = s.scene.as_ref().is_some_and(|sc| s.inter.tick(sc, dt));
+        let was = s.anim.is_animating();
+        let am = s.anim.tick(dt);
+        (sm, was, am)
+    });
+    let redrew = scroll_moved || was_animating || anim_moved || tick_guest.is_some();
+    if redrew {
         with(draw);
     }
     // A finger resting on a gesture view keeps reporting (long presses fire while held).
     let held = with(|s| s.inter.holding());
     if held {
-        dispatch(with(|s| s.inter.hold(dt_ms / 1000.0)));
+        dispatch(with(|s| s.inter.hold(dt)));
     }
-    (moved || held) as i32
+    let more = with(|s| s.anim.is_animating() || s.guest_due_ms.is_some());
+    // Return 1 if we redrew (including the final settling frame) so the browser presents it; the next tick returns 0.
+    (redrew || held || more) as i32
 }
 
 /// Keyboard input for the focused field; the payload is `len` UTF-8 bytes in the scratch buffer.
@@ -605,6 +675,7 @@ pub extern "C" fn simcore_web_key(kind: i32, len: usize) -> i32 {
             _ => -1,
         };
     }
+    sync_guest_clock();
     let e = with(|s| {
         let sc = s.scene.as_ref().ok_or("no scene")?;
         let r = s.inter.keyboard(sc, ev);
@@ -1035,5 +1106,23 @@ mod tests {
         let before = with(|s| s.fb.clone());
         assert_eq!(simcore_web_scroll(200.0, 400.0, 0.0, 200.0), 1);
         assert!(with(|s| s.fb != before), "compose scroll should redraw scrolled pixels");
+    }
+
+    #[test]
+    fn web_tick_redraws_final_settling_frame() {
+        let _ = simcore_web_init(200.0, 200.0, 1.0, 0);
+        let t1 = r#"{"kind":"rectangle","id":"r","modifiers":[{"frame":{"width":40.0,"height":40.0}}]}"#;
+        let t2 = r#"{"kind":"rectangle","id":"r","modifiers":[{"frame":{"width":160.0,"height":40.0}},{"animation":{"curve":"linear","duration":0.2,"token":1}}]}"#;
+        assert_eq!(unsafe { simcore_submit_tree(t1.as_ptr(), t1.len(), 1) }, 0);
+        assert_eq!(unsafe { simcore_submit_tree(t2.as_ptr(), t2.len(), 2) }, 0);
+        // Mid-flight at 100ms: moving, returns 1.
+        assert_eq!(simcore_web_tick(100.0), 1);
+        let fb_mid = with(|s| s.fb.clone());
+        // Final settling tick at +100ms (total 200ms): animation finishes, MUST redraw settled frame and return 1.
+        assert_eq!(simcore_web_tick(100.0), 1);
+        let fb_end = with(|s| s.fb.clone());
+        assert!(fb_end != fb_mid, "final settling tick must redraw framebuffer to settled state");
+        // Next tick at rest: nothing moves, returns 0.
+        assert_eq!(simcore_web_tick(16.0), 0);
     }
 }

@@ -95,8 +95,8 @@ public struct _ConditionalContent<T: View, F: View>: View, _Flattenable {
     init(_ s: Storage) { storage = s }
     func _children(_ path: String) -> [Node] {
         switch storage {
-        case .first(let v): return SwiftUI._children(v, path)
-        case .second(let v): return SwiftUI._children(v, path)
+        case .first(let v): return SwiftUI._children(v, path + "/T")
+        case .second(let v): return SwiftUI._children(v, path + "/F")
         }
     }
 }
@@ -155,10 +155,68 @@ final class _Runtime {
     var anchorScroll: [String: String] = [:]
     var scrolledTo: [String: String?] = [:]
     var scrollPos: [String: (String?) -> Void] = [:]
+    // Animation & transitions (section P).
+    var animToken: UInt64 = 0
+    var currentTransaction: Transaction? = nil
+    var pendingTransaction: Transaction? = nil
+    var activeTransaction: Transaction? = nil
+    var animSeen: [String: Any] = [:], animNow: [String: Any] = [:]
+    var contentTransition: ContentTransition = .identity
+    var contentTransitionAddsDrawingGroup = false
+    var clockMs: Double = 0
+    var baseEpoch: Double = 1_700_000_000
+    var nextScheduleMs: Double? = nil
+    var lastScheduledMs: Double? = nil
+    var tickHandlers: [() -> Void] = []
+    var completions: [(dueMs: Double, fn: () -> Void)] = []
     #if !os(WASI)
     /// `AsyncImage` HTTP loads. Nil uses `URLSession.shared`. Set by `.asyncImageURLSession`.
     var imageSession: URLSession?
     #endif
+
+    var currentDate: Date { Date(timeIntervalSince1970: baseEpoch + clockMs / 1000.0) }
+
+    func nextAnimToken() -> UInt64 {
+        animToken += 1
+        return animToken
+    }
+
+    private func _mergeTransaction(_ prev: Transaction?, _ tx: Transaction) -> Transaction {
+        guard var merged = prev else { return tx }
+        if tx.disablesAnimations { merged.disablesAnimations = true }
+        if let a = tx.animation { merged.animation = a }
+        for (k, v) in tx.custom { merged.custom[k] = v }
+        merged.completions.append(contentsOf: tx.completions)
+        return merged
+    }
+
+    func markDirty() {
+        dirty = true
+        if var tx = currentTransaction {
+            pendingTransaction = _mergeTransaction(pendingTransaction, tx)
+            if !tx.completions.isEmpty {
+                tx.completions.removeAll()
+                currentTransaction = tx
+            }
+        }
+    }
+
+    func requestSchedule(_ afterMs: Double) {
+        let clamped = max(0.0, afterMs)
+        if let cur = nextScheduleMs {
+            if clamped < cur { nextScheduleMs = clamped }
+        } else {
+            nextScheduleMs = clamped
+        }
+    }
+
+    func noteAnimValue<V: Equatable>(_ path: String, _ value: V) -> Bool {
+        var k = path
+        while animNow[k] != nil { k += "'" }
+        animNow[k] = value
+        if let old = animSeen[k] as? V { return old != value }
+        return false
+    }
 
     /// Compare `value` with the previous pass's; queue `fire(old, new)` on a change (or on first sight when `initial`).
     func noteChange<V: Equatable>(_ path: String, _ value: V, initial: Bool, _ fire: @escaping (V, V) -> Void) {
@@ -198,7 +256,7 @@ final class _Runtime {
     }
 
     /// Re-evaluate the whole root, drop stale actions/state, and submit.
-    func submitTree() { _pool { _submitTree() } }
+    func submitTree(emitSchedule: Bool = true) { _pool { _submitTree(emitSchedule: emitSchedule) } }
 
     private func _evaluate() -> Node {
         actions.removeAll(keepingCapacity: true)
@@ -210,6 +268,8 @@ final class _Runtime {
         #endif
         layers = []; autoDismiss = nil; dismissHook = nil
         lifecycleNow = [:]; lifecycleOrder = []; changeNow = [:]; changePending = []
+        animNow = [:]; contentTransition = .identity; contentTransitionAddsDrawingGroup = false
+        nextScheduleMs = nil; tickHandlers = []
         gestures = [:]; gesturesOff = false
         scrollStack.removeAll(keepingCapacity: true)
         anchorScrollNow.removeAll(keepingCapacity: true)
@@ -220,21 +280,58 @@ final class _Runtime {
         if !layers.isEmpty { tree = ["kind": "presentation", "id": "presentation", "content": tree, "layers": layers] }
         slots = slots.filter { touched.contains($0.key) }
         changeSeen = changeNow
+        animSeen = animNow
         anchorScroll = anchorScrollNow   // a later button action (stack empty) can still scrollTo
         dirty = false
         return tree
     }
 
-    private func _submitTree() {
+    private func _submitTree(emitSchedule: Bool = true) {
+        var tx = pendingTransaction
+        pendingTransaction = nil
+        activeTransaction = tx
         var tree = _evaluate()
-        // Lifecycle callbacks run after the pass; if they dirtied state, re-evaluate (capped against onAppear loops).
+        // Lifecycle callbacks run after the pass; if they dirtied state (including via withAnimation /
+        // withTransaction), consume their transaction into this submission and re-evaluate (capped).
         for _ in 0..<8 {
             _lifecycle()
             let fire = changePending; changePending = []
             fire.forEach { $0() }
+            if let nextTx = pendingTransaction {
+                pendingTransaction = nil
+                tx = _mergeTransaction(tx, nextTx)
+                activeTransaction = tx
+            }
             guard dirty else { break }
             tree = _evaluate()
         }
+        activeTransaction = nil
+        // Attach any explicit `withAnimation` / `withTransaction` animation to the root node.
+        if let tx {
+            if tx.disablesAnimations {
+                var mods = (tree["modifiers"] as? [Node]) ?? []
+                mods.append(["animation": NSNull()])
+                tree["modifiers"] = mods
+                for fn in tx.completions { fn() }
+            } else if let anim = tx.animation {
+                let tok = nextAnimToken()
+                var mods = (tree["modifiers"] as? [Node]) ?? []
+                mods.append(["animation": anim._wire(token: tok)])
+                tree["modifiers"] = mods
+                if !tx.completions.isEmpty {
+                    let durMs = anim._totalDuration * 1000.0
+                    for fn in tx.completions { completions.append((dueMs: clockMs + durMs, fn: fn)) }
+                }
+            } else if !tx.completions.isEmpty {
+                for fn in tx.completions { fn() }
+            }
+        }
+        // Include pending animation completion timers in the requested schedule.
+        for c in completions {
+            requestSchedule(max(0.0, c.dueMs - clockMs))
+        }
+        // Emit schedule before tree on normal renders so host `send_and_wait_tree` sees both together.
+        if emitSchedule { _sendSchedule(force: false) }
         dirty = false
         version += 1
         #if os(WASI)
@@ -251,6 +348,15 @@ final class _Runtime {
         let rc = data.withUnsafeBytes { simcore_submit_tree($0.bindMemory(to: UInt8.self).baseAddress, data.count, version) }
         #endif
         if rc != 0, let e = simcore_last_error() { simcore_report_error(e) }
+    }
+
+    func _sendSchedule(force: Bool) {
+        if force || nextScheduleMs != lastScheduledMs || nextScheduleMs != nil {
+            lastScheduledMs = nextScheduleMs
+            var m: Node = ["type": "schedule"]
+            if let ms = nextScheduleMs { m["afterMs"] = ms }
+            _send(m)
+        }
     }
 }
 
@@ -288,6 +394,7 @@ public func _onesimRun<V: View>(_ root: V) -> Never {
         rt.safeTop = ins[0]; rt.safeBottom = ins[1]
     }
     if let d = env["SIMCORE_DYNAMIC_TYPE"], let s = DynamicTypeSize.allCases.first(where: { "\($0)" == d }) { rt.dynamicType = s }
+    if let t = env["SIMCORE_TIME"].flatMap(Double.init) { rt.baseEpoch = t } else { rt.baseEpoch = Date().timeIntervalSince1970 }
     rt.render = { _eval(root, "0") }
     _onesimRegisterCallbacks()
     #if !os(WASI)
@@ -391,5 +498,27 @@ func _applyLayout(_ line: String) {
         }
     } else if type == "scroll_position", let scroll = obj["scroll"] as? String {
         rt.scrollPos[scroll]?(obj["target"] as? String)   // NSNull target becomes nil
+    } else if type == "tick" {
+        rt.clockMs = _f64(obj["time"])
+        rt.nextScheduleMs = nil
+        // Fire due animation completion callbacks.
+        var remaining: [(dueMs: Double, fn: () -> Void)] = []
+        var dueFns: [() -> Void] = []
+        for c in rt.completions {
+            if c.dueMs <= rt.clockMs + 0.5 { dueFns.append(c.fn) } else { remaining.append(c) }
+        }
+        rt.completions = remaining
+        for fn in dueFns { fn() }
+        // Advance active TimelineView / PhaseAnimator / KeyframeAnimator handlers.
+        let handlers = rt.tickHandlers
+        for h in handlers { h() }
+        // Emit any updated tree first, then terminate the tick response with `schedule`
+        // so the host waiting on `schedule` observes both atomically.
+        if rt.dirty {
+            rt.submitTree(emitSchedule: false)
+        } else {
+            for c in rt.completions { rt.requestSchedule(max(0.0, c.dueMs - rt.clockMs)) }
+        }
+        rt._sendSchedule(force: true)
     }
 }

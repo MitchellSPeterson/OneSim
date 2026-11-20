@@ -204,6 +204,7 @@ async function main() {
     sim.init({ device: vp.device, width: vp.width, height: vp.height, scale: fit(), dark, dynamicType: q.get("dynamicType") ?? "large" });
   }
   present();
+  if (!rn) animate();
 
   document.getElementById("theme-btn").addEventListener("click", () => {
     const nextDark = !dark;
@@ -211,7 +212,6 @@ async function main() {
     try { localStorage.setItem("onesim.theme", nextDark ? "dark" : "light"); } catch {}
     act(() => sim.setAppearance(nextDark ? "dark" : "light"));
   });
-
   let resizing = 0;
   addEventListener("resize", () => {
     cancelAnimationFrame(resizing);
