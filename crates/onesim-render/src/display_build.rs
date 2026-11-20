@@ -9,16 +9,17 @@
 //! Resources are identified by stable ids: a sprite's id is its content hash (top bit clear), a bitmap's
 //! a per-builder counter (top bit set). A resource is sent in `added` the first time a frame uses it and
 //! kept by the executor until it appears in `dropped`; the builder drops resources unused for
-//! [`CACHE_TTL_FRAMES`] frames and bounds the table at [`CACHE_MAX_ENTRIES`].
+//! [`CACHE_TTL_FRAMES`] frames and limits idle resources by count and RGBA bytes.
 
-use std::collections::HashMap;
+use std::collections::{hash_map::{DefaultHasher, Entry}, HashMap};
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::sync::Arc;
 
 use tiny_skia::Pixmap;
 
 use crate::display::{DisplayList, Op, RRect, Resource, Sampling};
-use crate::raster::{clip_radius, needs_backdrop, node_sprite, sprite_key, SpriteLayer};
+use crate::raster::{clip_radius, needs_backdrop, node_sprite, sprite_key, text_sprite, PaintClip, SpriteLayer};
 use crate::scene::{Color, Gradient, ImageRun, Node};
 use crate::{Fonts, Scene};
 
@@ -26,17 +27,35 @@ use crate::{Fonts, Scene};
 pub const CACHE_TTL_FRAMES: u64 = 120;
 /// Hard bound on cached sprites + bitmaps (least recently used dropped first; never one used this frame).
 pub const CACHE_MAX_ENTRIES: usize = 4096;
+/// RGBA bytes retained by the consumer, plus any working set that the current frame requires.
+const CACHE_MAX_BYTES: usize = 32 * 1024 * 1024;
 const BITMAP_ID_BIT: u64 = 1 << 63;
 
 struct SpriteEntry {
-    /// Offset of the sprite's top-left from the node's anchor (device px); `None` = nothing to draw (no resource).
-    off: Option<(i32, i32)>,
+    tile: SpriteTile,
     last_used: u64,
+}
+
+enum SpriteTile {
+    Empty,
+    /// Ink bounds relative to the anchor. The executor has no resource for this sprite yet.
+    Offscreen(PaintClip),
+    /// Offset from the anchor and sprite size in device pixels.
+    Uploaded(i32, i32, u32, u32),
+}
+
+impl SpriteTile {
+    fn bytes(&self) -> usize {
+        match self {
+            Self::Uploaded(_, _, width, height) => *width as usize * *height as usize * 4,
+            _ => 0,
+        }
+    }
 }
 
 struct BitmapEntry {
     /// Keeps the allocation alive so the pointer key cannot be reused.
-    _src: Arc<Pixmap>,
+    src: Arc<Pixmap>,
     id: u64,
     last_used: u64,
 }
@@ -98,7 +117,7 @@ impl Builder {
 
     /// Sprites and bitmaps currently held (what the executor holds after applying the last list).
     pub fn cache_len(&self) -> usize {
-        self.sprites.values().filter(|e| e.off.is_some()).count() + self.bitmaps.len()
+        self.sprites.values().filter(|e| matches!(e.tile, SpriteTile::Uploaded(..))).count() + self.bitmaps.len()
     }
 
     /// Sprite cache hits and misses while building the last display list.
@@ -123,24 +142,31 @@ impl Builder {
         let (pw, ph) = ((scene.size.0 * scale).round().max(1.0) as u32, (scene.size.1 * scale).round().max(1.0) as u32);
         let mut dl = DisplayList { width: pw, height: ph, scale: s, dark: scene.appearance == onesim_protocol::Appearance::Dark, ios: scene.ios, ..Default::default() };
         let nodes = &scene.nodes;
-        // Clipping ancestors of each node (outermost first), and the clips currently open in `dl.ops`.
-        let mut chains: Vec<Rc<Vec<usize>>> = Vec::with_capacity(nodes.len());
+        // Ancestor clips of each node, with their conservative intersection and the chain open in `dl.ops`.
+        let viewport = PaintClip::viewport(pw, ph);
+        let root_chain = Rc::new(vec![]);
+        let mut chains: Vec<(Rc<Vec<usize>>, PaintClip)> = Vec::with_capacity(nodes.len());
         let mut open: Vec<usize> = vec![];
 
         for n in nodes {
-            let chain = match n.parent {
-                None => Rc::new(vec![]),
+            let (chain, clip) = match n.parent {
+                None => (root_chain.clone(), viewport),
                 Some(p) => {
-                    if clip_radius(&nodes[p], s, pw, ph).is_some() {
-                        let mut c = (*chains[p]).clone();
+                    let (ancestors, clip) = &chains[p];
+                    if !clip.is_empty() && clip_radius(&nodes[p], s, pw, ph).is_some() {
+                        let clip = clip.intersect_node(nodes[p].bounds, s);
+                        let mut c = (**ancestors).clone();
                         c.push(p);
-                        Rc::new(c)
+                        (Rc::new(c), clip)
                     } else {
-                        chains[p].clone()
+                        (ancestors.clone(), *clip)
                     }
                 }
             };
-            chains.push(chain.clone());
+            chains.push((chain.clone(), clip));
+            if clip.is_empty() {
+                continue;
+            }
 
             let common = open.iter().zip(chain.iter()).take_while(|(a, b)| a == b).count();
             for _ in common..open.len() {
@@ -153,7 +179,7 @@ impl Builder {
                 open.push(i);
             }
 
-            self.lower_node(n, fonts, sd, &mut dl);
+            self.lower_node(n, fonts, sd, clip, &mut dl);
         }
         dl.ops.extend(open.iter().map(|_| Op::PopClip));
         self.evict(&mut dl.dropped);
@@ -163,10 +189,11 @@ impl Builder {
 
     /// The ops of one node, in the order of `raster::render`: halo/glass/shadow/edge, fill, gradient,
     /// stroke, icons, image, text.
-    fn lower_node(&mut self, n: &Node, fonts: &mut Fonts, scale: f64, dl: &mut DisplayList) {
+    fn lower_node(&mut self, n: &Node, fonts: &mut Fonts, scale: f64, clip: PaintClip, dl: &mut DisplayList) {
         let s = scale as f32;
         let b = n.bounds;
         let op = n.opacity;
+        let bounds_visible = clip.intersects_node(b, s);
         let backdrop = needs_backdrop(n);
         let shadow_radius = n.radius.max(n.clip_radius.unwrap_or(0.0)) as f32 * s;
 
@@ -191,7 +218,7 @@ impl Builder {
             dl.ops.push(Op::Edge(*e));
         }
 
-        if let Some(c) = n.fill {
+        if let Some(c) = n.fill.filter(|_| bounds_visible) {
             if n.radius > 0.0 {
                 if b.w > 0.0 && b.h > 0.0 {
                     dl.ops.push(Op::Fill { shape: rr(b.x, b.y, b.w, b.h, n.radius, s), color: with_opacity(c, op) });
@@ -204,7 +231,7 @@ impl Builder {
                 dl.ops.push(Op::Fill { shape: RRect { x: x0, y: y0, w: x1 - x0, h: y1 - y0, r: 0.0 }, color: with_opacity(c, op) });
             }
         }
-        if let Some(g) = &n.gradient {
+        if let Some(g) = n.gradient.as_ref().filter(|_| bounds_visible) {
             if let Some(o) = gradient(n, g, scale) {
                 dl.ops.push(o);
             }
@@ -214,38 +241,105 @@ impl Builder {
                 dl.ops.push(Op::Stroke { shape: rr(b.x, b.y, b.w, b.h, n.radius, s), width: lw as f32 * s, color: with_opacity(c, op) });
             }
         }
-        if let Some(o) = self.sprite(n, fonts, scale, SpriteLayer::Shape, &mut dl.added) {
+        if let Some(o) = self.sprite(n, fonts, scale, SpriteLayer::Shape, clip, &mut dl.added) {
             dl.ops.push(o);
         }
-        if let Some(o) = self.sprite(n, fonts, scale, SpriteLayer::Icons, &mut dl.added) {
+        if let Some(o) = self.sprite(n, fonts, scale, SpriteLayer::Icons, clip, &mut dl.added) {
             dl.ops.push(o);
         }
-        if let Some(im) = &n.image {
+        if let Some(im) = n.image.as_ref().filter(|_| bounds_visible) {
             self.image(n, im, scale, dl);
         }
-        if let Some(o) = self.sprite(n, fonts, scale, SpriteLayer::Text, &mut dl.added) {
-            dl.ops.push(o);
+        if !(bounds_visible && self.glyph_sprites(n, fonts, s, clip, dl)) {
+            dl.ops.extend(self.sprite(n, fonts, scale, SpriteLayer::Text, clip, &mut dl.added));
         }
     }
 
+    /// Use shared glyph-mask resources for short, opaque, undecorated grayscale labels.
+    fn glyph_sprites(&mut self, n: &Node, fonts: &mut Fonts, scale: f32, clip: PaintClip, dl: &mut DisplayList) -> bool {
+        let Some(t) = n.text.as_ref() else { return false };
+        let c = t.color;
+        if n.opacity != 1.0 || c.a != 1.0 || c.r != c.g || c.g != c.b || t.strike || !t.spans.is_empty() || t.font.size > 40.0 || t.text.len() > 256 {
+            return false;
+        }
+        let (spec, width, origin) = crate::raster::text_geometry(n, t, fonts, scale);
+        let Some(glyphs) = fonts.mask_glyphs(&t.text, &spec, width, origin, clip) else { return false };
+        let tint = (c.r * 255.0).round() as u8;
+        for g in glyphs {
+            let mut hash = DefaultHasher::new();
+            ("glyph", g.key, tint).hash(&mut hash);
+            let id = hash.finish() & !BITMAP_ID_BIT;
+            self.sprite_lookups += 1;
+            let entry = self.sprites.entry(id).or_insert_with(|| {
+                self.sprite_misses += 1;
+                let rgba = fonts.glyph_mask(g.key).iter().flat_map(|&alpha| {
+                    let value = ((u16::from(tint) * u16::from(alpha) + 127) / 255) as u8;
+                    [value, value, value, alpha]
+                }).collect();
+                dl.added.push(Resource { id, width: g.width, height: g.height, rgba });
+                SpriteEntry { tile: SpriteTile::Uploaded(0, 0, g.width, g.height), last_used: self.frame }
+            });
+            entry.last_used = self.frame;
+            dl.ops.push(Op::Sprite { id, x: g.x, y: g.y });
+        }
+        true
+    }
+
     /// The sprite op for `layer` of `n`, rasterizing and queueing the resource on first use.
-    fn sprite(&mut self, n: &Node, fonts: &mut Fonts, scale: f64, layer: SpriteLayer, added: &mut Vec<Resource>) -> Option<Op> {
+    fn sprite(&mut self, n: &Node, fonts: &mut Fonts, scale: f64, layer: SpriteLayer, clip: PaintClip, added: &mut Vec<Resource>) -> Option<Op> {
         let key = sprite_key(n, fonts, scale, layer)?;
         let id = key.hash & !BITMAP_ID_BIT;
         let now = self.frame;
         self.sprite_lookups += 1;
-        let e = self.sprites.entry(id).or_insert_with(|| {
+        let (ax, ay) = key.anchor;
+        let mut build = || {
             self.sprite_misses += 1;
-            let off = node_sprite(n, fonts, scale, layer).map(|sp| {
-                let off = (sp.x - key.anchor.0, sp.y - key.anchor.1);
-                let (width, height) = (sp.pixmap.width(), sp.pixmap.height());
-                added.push(Resource { id, width, height, rgba: sp.pixmap.take() });
-                off
-            });
-            SpriteEntry { off, last_used: now }
-        });
-        e.last_used = now;
-        e.off.map(|(dx, dy)| Op::Sprite { id, x: key.anchor.0 + dx, y: key.anchor.1 + dy })
+            let sprite = if layer == SpriteLayer::Text {
+                let text_clip = (!clip.intersects_node(n.bounds, scale as f32)).then_some(clip);
+                text_sprite(n, fonts, scale as f32, text_clip)
+            } else {
+                Ok(node_sprite(n, fonts, scale, layer))
+            };
+            match sprite {
+                Ok(None) => SpriteTile::Empty,
+                Err(bounds) => SpriteTile::Offscreen(bounds.translated(-(ax as f32), -(ay as f32))),
+                Ok(Some(sp)) => {
+                    let (width, height) = (sp.pixmap.width(), sp.pixmap.height());
+                    let bounds = PaintClip::pixels(sp.x, sp.y, width, height);
+                    if !clip.overlaps(bounds) {
+                        return SpriteTile::Offscreen(bounds.translated(-(ax as f32), -(ay as f32)));
+                    }
+                    added.push(Resource { id, width, height, rgba: sp.pixmap.take() });
+                    SpriteTile::Uploaded(sp.x - ax, sp.y - ay, width, height)
+                }
+            }
+        };
+        let entry = match self.sprites.entry(id) {
+            Entry::Occupied(entry) => {
+                let entry = entry.into_mut();
+                if let SpriteTile::Offscreen(bounds) = entry.tile {
+                    // A translated run can snap differently at a half-pixel boundary.
+                    if clip.overlaps(bounds.translated(ax as f32, ay as f32).outset(1.0)) {
+                        entry.tile = build();
+                    }
+                }
+                entry
+            }
+            Entry::Vacant(entry) => entry.insert(SpriteEntry { tile: build(), last_used: now }),
+        };
+        match entry.tile {
+            SpriteTile::Empty => entry.last_used = now,
+            // Keep the bounds warm, but let the cache cap evict metadata that didn't paint.
+            SpriteTile::Offscreen(_) => entry.last_used = now - 1,
+            SpriteTile::Uploaded(dx, dy, width, height) => {
+                let (x, y) = (ax + dx, ay + dy);
+                if clip.overlaps(PaintClip::pixels(x, y, width, height)) {
+                    entry.last_used = now;
+                    return Some(Op::Sprite { id, x, y });
+                }
+            }
+        }
+        None
     }
 
     /// `im.dest` of the bitmap, clipped to the node's rounded bounds (mirrors `raster::draw_image`).
@@ -292,43 +386,56 @@ impl Builder {
             let id = BITMAP_ID_BIT | *next;
             *next += 1;
             added.push(Resource { id, width: px.width(), height: px.height(), rgba: px.data().to_vec() });
-            BitmapEntry { _src: px.clone(), id, last_used: now }
+            BitmapEntry { src: px.clone(), id, last_used: now }
         });
         e.last_used = now;
         e.id
     }
 
-    /// Drop what has gone unused for [`CACHE_TTL_FRAMES`], then the least recently used beyond
-    /// [`CACHE_MAX_ENTRIES`] (never anything this frame used), listing resource ids in `dropped`.
+    /// Drop idle entries past their TTL, then trim the oldest idle entries to fit both cache budgets.
     fn evict(&mut self, dropped: &mut Vec<u64>) {
         let now = self.frame;
+        let mut bytes = 0;
         self.sprites.retain(|&id, e| {
             let keep = now.saturating_sub(e.last_used) <= CACHE_TTL_FRAMES;
-            if !keep && e.off.is_some() {
+            let size = e.tile.bytes();
+            if keep {
+                bytes += size;
+            } else if size > 0 {
                 dropped.push(id);
             }
             keep
         });
         self.bitmaps.retain(|_, e| {
             let keep = now.saturating_sub(e.last_used) <= CACHE_TTL_FRAMES;
-            if !keep {
+            if keep {
+                bytes += e.src.data().len();
+            } else {
                 dropped.push(e.id);
             }
             keep
         });
-        let over = (self.sprites.len() + self.bitmaps.len()).saturating_sub(CACHE_MAX_ENTRIES);
-        if over > 0 {
+        let mut entries = self.sprites.len() + self.bitmaps.len();
+        if entries > CACHE_MAX_ENTRIES || bytes > CACHE_MAX_BYTES {
             // (last used, sprite id | bitmap pointer key, is bitmap)
             let mut old: Vec<(u64, u64, bool)> = self.sprites.iter().filter(|(_, e)| e.last_used < now).map(|(&k, e)| (e.last_used, k, false)).collect();
             old.extend(self.bitmaps.iter().filter(|(_, e)| e.last_used < now).map(|(&k, e)| (e.last_used, k as u64, true)));
             old.sort_unstable();
-            for &(_, k, bitmap) in old.iter().take(over) {
+            for (_, k, bitmap) in old {
+                if entries <= CACHE_MAX_ENTRIES && bytes <= CACHE_MAX_BYTES {
+                    break;
+                }
                 if bitmap {
                     if let Some(e) = self.bitmaps.remove(&(k as usize)) {
+                        entries -= 1;
+                        bytes -= e.src.data().len();
                         dropped.push(e.id);
                     }
                 } else if let Some(e) = self.sprites.remove(&k) {
-                    if e.off.is_some() {
+                    entries -= 1;
+                    let size = e.tile.bytes();
+                    bytes -= size;
+                    if size > 0 {
                         dropped.push(k);
                     }
                 }
@@ -370,4 +477,94 @@ fn gradient(n: &Node, g: &Gradient, scale: f64) -> Option<Op> {
     }
     let dev = |p: (f64, f64)| (p.0 as f32 * s, p.1 as f32 * s);
     Some(Op::Gradient { shape: rr(b.x, b.y, b.w, b.h, n.radius, s), p0: dev(from), p1: dev(to), stops })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{FontSpec, Rect, TextAlign, TextRun};
+
+    #[test]
+    fn short_labels_share_glyph_resources() {
+        let row = |text: &str, y| {
+            let mut n = Node::new(text, "text");
+            n.bounds = Rect { x: 0.0, y, w: 100.0, h: 20.0 };
+            n.text = Some(TextRun {
+                text: text.into(),
+                font: FontSpec::new(16.0, 20.0, 400, TextAlign::Leading),
+                color: Color::rgba(0.0, 0.0, 0.0, 1.0),
+                strike: false,
+                offset_x: 0.0,
+                spans: vec![],
+            });
+            n
+        };
+        let scene = Scene { size: (100.0, 100.0), appearance: onesim_protocol::Appearance::Light,
+            ios: Default::default(), nodes: vec![row("1 2", 10.0), row("1 3", 40.0)], unsupported_symbols: vec![], notes: vec![] };
+        let mut fonts = Fonts::with_fallback(true);
+        let mut builder = Builder::new();
+        let first = builder.build(&scene, &mut fonts, 3.0);
+        let ids: Vec<_> = first.ops.iter().filter_map(|op| match op { Op::Sprite { id, .. } => Some(*id), _ => None }).collect();
+        assert_eq!(first.added.len(), 3);
+        assert_eq!(ids.len(), 4);
+        assert_eq!(ids[0], ids[2]);
+        let next = builder.build(&scene, &mut fonts, 3.0);
+        assert!(next.added.is_empty());
+        assert_eq!(first.ops, next.ops);
+    }
+
+    #[test]
+    fn sprite_budget_keeps_the_current_frames_resources() {
+        let mut builder = Builder::new();
+        builder.frame = 2;
+        for id in 1..=3 {
+            builder.sprites.insert(id, SpriteEntry { tile: SpriteTile::Uploaded(0, 0, 2048, 2048), last_used: id.min(2) });
+        }
+        let mut dropped = vec![];
+        builder.evict(&mut dropped);
+        assert_eq!(dropped, vec![1]);
+        assert_eq!(builder.sprites.len(), 2);
+    }
+
+    #[test]
+    fn offscreen_text_uploads_only_when_it_enters_the_clip() {
+        let mut parent = Node::new("clip", "clip");
+        parent.bounds = Rect { x: 0.0, y: 10.0, w: 100.0, h: 40.0 };
+        parent.clip_radius = Some(4.0);
+        let mut row = Node::new("row", "text");
+        row.parent = Some(0);
+        row.bounds = Rect { x: 0.0, y: 60.0, w: 100.0, h: 20.0 };
+        row.text = Some(TextRun {
+            text: "Row".into(),
+            font: FontSpec::new(16.0, 20.0, 400, TextAlign::Leading),
+            color: Color::rgba(0.0, 0.0, 0.25, 1.0),
+            strike: false,
+            offset_x: 0.0,
+            spans: vec![],
+        });
+        let mut scene = Scene { size: (100.0, 100.0), appearance: onesim_protocol::Appearance::Light,
+            ios: Default::default(), nodes: vec![parent, row], unsupported_symbols: vec![], notes: vec![] };
+        let mut builder = Builder::new();
+        let mut fonts = Fonts::with_fallback(true);
+
+        assert!(builder.build(&scene, &mut fonts, 3.0).added.is_empty());
+        scene.nodes[1].bounds.y = 65.0;
+        assert!(builder.build(&scene, &mut fonts, 3.0).added.is_empty());
+        assert_eq!(builder.sprite_cache_counts(), (1, 0), "offscreen paint bounds are reused");
+
+        scene.nodes[1].bounds.y = 20.0;
+        let visible = builder.build(&scene, &mut fonts, 3.0);
+        assert_eq!(visible.added.len(), 1);
+        assert!(visible.ops.iter().any(|op| matches!(op, Op::Sprite { .. })));
+
+        scene.nodes[1].bounds.y = 65.0;
+        let hidden = builder.build(&scene, &mut fonts, 3.0);
+        assert!(hidden.added.is_empty());
+        assert!(hidden.ops.iter().all(|op| !matches!(op, Op::Sprite { .. })));
+
+        scene.nodes[1].bounds.y = 20.0;
+        let visible_again = builder.build(&scene, &mut fonts, 3.0);
+        assert!(visible_again.added.is_empty());
+        assert_eq!(visible_again.ops, visible.ops);
+    }
 }

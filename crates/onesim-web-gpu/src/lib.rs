@@ -142,7 +142,7 @@ impl Gpu {
             return Err(err(format!("device lost: {m}")));
         }
         let dl = DisplayList::decode(bytes).map_err(|e| err(format!("display list: {e}")))?;
-        let r = self.present(&dl);
+        let r = self.present(dl);
         match r {
             Ok(()) => {
                 self.frames += 1;
@@ -199,7 +199,7 @@ impl Gpu {
 }
 
 impl Gpu {
-    fn present(&mut self, dl: &DisplayList) -> Result<(), RenderError> {
+    fn present(&mut self, dl: DisplayList) -> Result<(), RenderError> {
         let (w, h) = (dl.width, dl.height);
         let max = self.exec.device().limits().max_texture_dimension_2d;
         if w == 0 || h == 0 || w > max || h > max {
@@ -230,7 +230,7 @@ impl Gpu {
             self.target = Some(Target { w, h, tex, bind });
         }
         let t = self.target.as_ref().ok_or_else(|| RenderError::Other("no target".into()))?;
-        self.exec.execute(dl, &t.tex)?;
+        self.exec.execute_owned(dl, &t.tex)?;
         let frame = self.acquire()?;
         let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut enc = self.exec.device().create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("onesim-blit") });

@@ -132,7 +132,8 @@ fn decoded_lists_render_identically() {
         let tex_a = target(&direct, dl.width, dl.height);
         let tex_b = target(&wire, dl.width, dl.height);
         let a = pixels(&mut direct, &dl, &tex_a);
-        let w = pixels(&mut wire, &decoded, &tex_b);
+        wire.execute_owned(decoded, &tex_b).expect("execute owned list");
+        let w = read_texture(wire.device(), wire.queue(), &tex_b).expect("owned list readback");
         assert_eq!(diff_pct(&a, &w, 0), 0.0, "{name} dark={dark}: decoded list renders differently");
         assert!(a.as_chunks::<4>().0.iter().any(|p| p[3] != 0), "{name}: blank frame");
         frames += 1;
