@@ -100,6 +100,13 @@ struct ControlLab: View {
                     Text("opened \(opened)")
                 }
                 Section {
+                    Menu("BMenu") { Toggle("BFlag", isOn: $tb).toggleStyle(.button) }
+                    NavigationLink("Deeper") {
+                        Link("Inner", destination: URL(string: "https://inner.test")!)
+                    }
+                    .environment(\.openURL, OpenURLAction { url in opened = url.absoluteString; return .handled })
+                }
+                Section {
                     Toggle("TB", isOn: $tb).toggleStyle(.button)
                     Toggle("Check", isOn: $check).toggleStyle(Checkbox())
                     Button("Styled") { styled += 1 }.buttonStyle(StyledButton())

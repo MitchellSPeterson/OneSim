@@ -372,6 +372,7 @@ func _menuItems(_ nodes: [Node], _ items: inout [Node], _ divider: inout Bool) {
             if let l = n["label"] as? Node, let s = _firstSymbol(l) { it["systemImage"] = s }
             if n["role"] as? String == "destructive" { it["destructive"] = true }
             if n["disabled"] as? Bool == true { it["disabled"] = true }
+            if let on = n["selected"] as? Bool { it["checked"] = on }   // a `.toggleStyle(.button)` toggle
             add(it)
         case "toggle":
             var it: Node = ["text": _plainText((n["label"] as? Node) ?? [:]) ?? "", "action": n["action"] ?? 0, "checked": n["isOn"] as? Bool ?? false]

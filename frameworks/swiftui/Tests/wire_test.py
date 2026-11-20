@@ -608,6 +608,14 @@ sz = btn(t, "Size"); assert sz["style"] == "navigationLink" and "S" in alltexts(
 t = act(p, t, sz["action"]); nav = t["root"]
 assert nav["kind"] == "navigation" and nav["title"] == "Size" and nav["displayMode"] == "inline" and "back" in nav, nav
 t = act(p, t, btn(t, "L")["action"]); assert "back" not in t["root"] and has(t, "size L"), "choosing pops back"
+# A button-style toggle in a menu is a checked item; a pushed destination keeps the link's openURL.
+t = act(p, t, btn(t, "BMenu")["action"]); bf = next(l for l in layers(t) if l["kind"] == "menu")["items"][0]
+assert bf["text"] == "BFlag" and bf["checked"] is True, bf
+t = act(p, t, bf["action"]); assert not layers(t)
+t = act(p, t, btn(t, "BMenu")["action"]); assert next(l for l in layers(t) if l["kind"] == "menu")["items"][0]["checked"] is False
+t = act(p, t, next(l for l in layers(t) if l["kind"] == "menu")["dismiss"])
+t = act(p, t, btn(t, "Deeper")["action"]); t = act(p, t, btn(t, "Inner")["action"])
+t = act(p, t, t["root"]["back"]["action"]); assert has(t, "opened https://inner.test"), alltexts(tree(t))
 wh = next(m for m in node(t, "picker") if m["style"] == "wheel"); assert wh["selected"] == 1 and len(wh["options"]) == 4, wh
 t = act(p, t, wh["options"][2]["action"]); assert has(t, "hour 2")
 fl = next(m for m in node(t, "picker") if m["style"] == "menu"); assert fl["label"]["kind"] == "empty", "labelsHidden"
@@ -615,5 +623,6 @@ assert any(m["label"]["kind"] == "empty" for m in node(t, "toggle")), "labelsHid
 finish(p)
 err = p.stderr.read()
 assert "onesim: open URL https://plain.test" in err and "https://to.test" in err, "system openURL reports the (redirected) URL"
+assert "inner.test" not in err, "the destination used the declared openURL handler"
 assert "dropped.test" not in err and "from.test" not in err, ".discarded opens nothing"
 print("PASS")
