@@ -20,11 +20,11 @@
 </p>
 
 <p align="center">
-  <a href="docs/ios-comparison.md#comparison-gallery"><picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/ios-comparison/cmp-glass-dark.png">
-    <img src="docs/ios-comparison/cmp-glass.png" width="680" alt="Liquid Glass rendered by the iOS Simulator and OneSim, with a pixel diff on the right">
-  </picture></a><br>
-  <sub>Liquid Glass in the iOS 26.5 Simulator and OneSim, followed by the pixel diff.</sub>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/hero/frameworks-dark.png">
+    <img src="docs/hero/frameworks.png" width="760" alt="Welcome screens for Expo, SwiftUI, and Jetpack Compose on two iPhones and a Pixel">
+  </picture><br>
+  <sub>One runtime for SwiftUI, Expo, and Compose. <a href="docs/ios-comparison.md#comparison-gallery">See real renders next to the iOS Simulator →</a></sub>
 </p>
 
 ## Quick start

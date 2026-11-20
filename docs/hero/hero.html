@@ -1,0 +1,74 @@
+<!doctype html><html><head><meta charset="utf-8">
+<!-- README hero. Render: Chrome --headless=new --force-device-scale-factor=2 --window-size=1360,960 --default-background-color=00000000 --screenshot=frameworks.png hero.html (add #dark for frameworks-dark.png) -->
+<style>
+:root{--bg:#f5f5f7;--bezel:#1d1d1f;--edge:#d2d2d7;--screen:#fff;--fg:#000;--card:#f0f0f3;--chip:#e0e1e6;--sub:#60646c}
+body.dark{--bg:#0d1117;--bezel:#24282e;--edge:#30363d;--screen:#000;--fg:#fff;--card:#212225;--chip:#2e3135;--sub:#b0b4ba}
+*{margin:0;box-sizing:border-box}
+body{width:1360px;height:960px;background:transparent;padding-bottom:70px;display:flex;align-items:center;justify-content:center;perspective:2400px;font-family:-apple-system,"SF Pro Text",sans-serif}
+.phone{background:var(--bezel);padding:12px;border-radius:60px;box-shadow:0 0 0 2px var(--edge),0 30px 60px rgba(0,0,0,.22)}
+.screen{position:relative;width:342px;height:744px;border-radius:48px;background:var(--screen);color:var(--fg);display:flex;flex-direction:column;align-items:center;padding:0 22px 34px;overflow:hidden}
+.android{border-radius:44px}.android .screen{border-radius:34px;font-family:Roboto,"Google Sans",sans-serif}
+.mid{position:relative;z-index:2;box-shadow:0 0 0 2px var(--edge),0 40px 90px rgba(0,0,0,.35)}
+.left{transform:rotateY(-18deg) scale(.9);margin-right:-30px;transform-origin:right center}
+.right{transform:rotateY(18deg) scale(.9);margin-left:-30px;transform-origin:left center}
+/* status bars */
+.sb{position:absolute;top:0;left:0;right:0;height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 32px 0 46px;font:600 16px -apple-system,sans-serif}
+.island{position:absolute;left:50%;top:11px;width:106px;height:31px;margin-left:-53px;background:#000;border-radius:16px}
+.punch{position:absolute;left:50%;top:14px;width:20px;height:20px;margin-left:-10px;background:#000;border-radius:50%}
+.android .sb{padding:0 26px;font:500 14px Roboto,sans-serif;height:44px}
+.icons{display:flex;gap:5px;align-items:center}
+.bat{width:24px;height:12px;border:1.5px solid currentColor;border-radius:4px;padding:1.5px;opacity:.9}.bat i{display:block;height:100%;background:currentColor;border-radius:1.5px}
+.android .bat{width:9px;height:15px;border:none;border-radius:2px;background:currentColor;padding:0}
+/* content, after examples/expo-default/src/app/index.tsx */
+.hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:26px}
+.tile{width:110px;height:110px;border-radius:34px;display:flex;align-items:center;justify-content:center}
+.tile img{display:block}
+.expo{background:linear-gradient(#3c9ffe,#0274df);box-shadow:0 0 50px 14px rgba(32,138,239,.35)}
+.swift{background:linear-gradient(#f88a36,#fd2020);box-shadow:0 0 50px 14px rgba(250,80,40,.3)}
+.compose{background:linear-gradient(#fff,#dfe9f5);box-shadow:0 0 0 1px rgba(0,0,0,.06),0 0 50px 14px rgba(52,168,83,.3)}
+h1{font-size:44px;line-height:1.05;font-weight:700;text-align:center;letter-spacing:-.5px}
+.android h1{font-weight:500;letter-spacing:0}
+.code{font:13px ui-monospace,"SF Mono",Menlo,monospace}
+.get{text-transform:uppercase;letter-spacing:1px;margin-bottom:14px}
+.card{align-self:stretch;background:var(--card);border-radius:24px;padding:20px 16px;display:flex;flex-direction:column;gap:14px;font-size:15px}
+.android .card{border-radius:16px}
+.row{display:flex;justify-content:space-between;align-items:center}
+.chip{background:var(--chip);color:var(--sub);border-radius:8px;padding:3px 8px}
+.android .chip{border-radius:6px}
+</style></head><body>
+
+<div class="phone left"><div class="screen">
+  <div class="sb"><span>9:41</span><span class="icons">●●● <span class="bat"><i></i></span></span></div><div class="island"></div>
+  <div class="hero"><div class="tile expo"><img src="logos/expo.png" width="62"></div><h1>Welcome to&nbsp;Expo</h1></div>
+  <div class="code get">get started</div>
+  <div class="card">
+    <div class="row">Try editing<span class="chip code">src/app/index.tsx</span></div>
+    <div class="row">Run it<span class="chip code">onesim expo</span></div>
+    <div class="row">Live window<span class="chip code">onesim expo --window</span></div>
+  </div>
+</div></div>
+
+<div class="phone mid"><div class="screen">
+  <div class="sb"><span>9:41</span><span class="icons">●●● <span class="bat"><i></i></span></span></div><div class="island"></div>
+  <div class="hero"><div class="tile swift"><img src="logos/swift.png" width="70"></div><h1>Welcome to&nbsp;SwiftUI</h1></div>
+  <div class="code get">get started</div>
+  <div class="card">
+    <div class="row">Try editing<span class="chip code">ContentView.swift</span></div>
+    <div class="row">Run it<span class="chip code">onesim run .</span></div>
+    <div class="row">Live window<span class="chip code">onesim window .</span></div>
+  </div>
+</div></div>
+
+<div class="phone android right"><div class="screen">
+  <div class="sb"><span>9:41</span><span class="icons">▾ <span class="bat"></span></span></div><div class="punch"></div>
+  <div class="hero"><div class="tile compose"><img src="logos/compose.svg" width="84"></div><h1>Welcome to Compose</h1></div>
+  <div class="code get">get started</div>
+  <div class="card">
+    <div class="row">Try editing<span class="chip code">MainActivity.kt</span></div>
+    <div class="row">Run it<span class="chip code">onesim run .</span></div>
+    <div class="row">Live window<span class="chip code">onesim window .</span></div>
+  </div>
+</div></div>
+
+<script>if(location.hash=='#dark')document.body.className='dark'</script>
+</body></html>
