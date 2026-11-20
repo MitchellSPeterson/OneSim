@@ -10,6 +10,70 @@ use tiny_skia::{
     FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke, StrokeDash, Transform,
 };
 
+/// Conservative device-pixel coverage. Actual clipping still uses the rounded paths.
+#[derive(Clone, Copy)]
+pub(crate) struct PaintClip {
+    left: f32,
+    top: f32,
+    right: f32,
+    bottom: f32,
+}
+
+impl PaintClip {
+    pub(crate) fn viewport(width: u32, height: u32) -> Self {
+        Self { left: 0.0, top: 0.0, right: width as f32, bottom: height as f32 }
+    }
+
+    fn bounds(b: crate::scene::Rect, scale: f32) -> Option<Self> {
+        let (x, y, w, h) = (b.x as f32, b.y as f32, b.w as f32, b.h as f32);
+        let (left, top) = (x * scale, y * scale);
+        // Include both CPU (add before scaling) and display-list (add after scaling) edges.
+        let right = ((x + w) * scale).max(left + w * scale).max((b.x + b.w) as f32 * scale);
+        let bottom = ((y + h) * scale).max(top + h * scale).max((b.y + b.h) as f32 * scale);
+        (w >= 0.0 && h >= 0.0 && [left, top, right, bottom].iter().all(|x| x.is_finite()))
+            .then_some(Self { left: left.floor(), top: top.floor(), right: right.ceil(), bottom: bottom.ceil() })
+    }
+
+    pub(crate) fn intersect_node(self, b: crate::scene::Rect, scale: f32) -> Self {
+        if b.w <= 0.0 || b.h <= 0.0 {
+            return self;
+        }
+        let Some(b) = Self::bounds(b, scale) else { return self };
+        // Round each clip outward before intersecting so fractional clips sharing an AA pixel survive.
+        Self { left: self.left.max(b.left), top: self.top.max(b.top), right: self.right.min(b.right), bottom: self.bottom.min(b.bottom) }
+    }
+
+    pub(crate) fn is_empty(self) -> bool {
+        self.left >= self.right || self.top >= self.bottom
+    }
+
+    pub(crate) fn pixels(x: i32, y: i32, width: u32, height: u32) -> Self {
+        let (x, y) = (x as f32, y as f32);
+        Self { left: x, top: y, right: x + width as f32, bottom: y + height as f32 }
+    }
+
+    pub(crate) fn union(self, other: Self) -> Self {
+        Self { left: self.left.min(other.left), top: self.top.min(other.top), right: self.right.max(other.right), bottom: self.bottom.max(other.bottom) }
+    }
+
+    pub(crate) fn translated(self, x: f32, y: f32) -> Self {
+        Self { left: self.left + x, top: self.top + y, right: self.right + x, bottom: self.bottom + y }
+    }
+
+    pub(crate) fn outset(self, pad: f32) -> Self {
+        Self { left: self.left - pad, top: self.top - pad, right: self.right + pad, bottom: self.bottom + pad }
+    }
+
+    pub(crate) fn overlaps(self, other: Self) -> bool {
+        other.left < self.right && other.top < self.bottom && other.right > self.left && other.bottom > self.top
+    }
+
+    pub(crate) fn intersects_node(self, b: crate::scene::Rect, scale: f32) -> bool {
+        // Allow for snapping, including square fills forced to at least one device pixel.
+        Self::bounds(b, scale).is_none_or(|b| self.overlaps(b.outset(1.0)))
+    }
+}
+
 fn rrect(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
     let r = r.min(w / 2.0).min(h / 2.0).max(0.0);
     let k = r * (1.0 - 0.552_284_8);
@@ -920,16 +984,9 @@ fn emit_rule(emit: &mut impl FnMut(TextOp), x: f32, y: f32, w: f32, th: f32, col
     }
 }
 
-/// Lay out and paint a text node as device-pixel operations (`emit` receives them in paint order).
-fn paint_text(n: &crate::scene::Node, t: &crate::scene::TextRun, fonts: &mut Fonts, s: f32, mut emit: impl FnMut(TextOp)) {
+pub(crate) fn text_geometry(n: &crate::scene::Node, t: &crate::scene::TextRun, fonts: &Fonts, s: f32) -> (FontSpec, f32, (f32, f32)) {
     let b = n.bounds;
     let (bx, by, bw) = (b.x as f32, b.y as f32, b.w as f32);
-    let rgba = [
-        (t.color.r * 255.0).round() as u8,
-        (t.color.g * 255.0).round() as u8,
-        (t.color.b * 255.0).round() as u8,
-        (t.color.a * n.opacity * 255.0).round() as u8,
-    ];
     // Wrapped text uses a larger pitch than the single-line box; keep line 1 where it is.
     // Accessibility sizes: iOS sets the glyphs ~0.01 em higher in the line box (measured).
     let (lift, ldx) = match (t.font.size > 40.0, fonts.is_sf()) {
@@ -938,15 +995,29 @@ fn paint_text(n: &crate::scene::Node, t: &crate::scene::TextRun, fonts: &mut Fon
         // Inter fallback at accessibility sizes: baseline and side bearing differ from SF.
         (true, false) => (-0.03 * t.font.size, -0.775),
     };
-    let (ox, oy) = ((bx + t.offset_x + ldx) * s, (by - (t.font.pitch - t.font.line_height).max(0.0) / 2.0 - lift) * s);
+    let origin = ((bx + t.offset_x + ldx) * s, (by - (t.font.pitch - t.font.line_height).max(0.0) / 2.0 - lift) * s);
     let spec = FontSpec { size: t.font.size * s, line_height: t.font.line_height * s, pitch: t.font.pitch * s, ..t.font };
     // +2px slack so rounding differences vs layout never re-wrap.
+    (spec, bw * s + 2.0, origin)
+}
+
+/// Lay out and paint a text node as device-pixel operations (`emit` receives them in paint order).
+fn paint_text(n: &crate::scene::Node, t: &crate::scene::TextRun, fonts: &mut Fonts, s: f32, clip: Option<PaintClip>, mut emit: impl FnMut(TextOp)) -> Result<(), PaintClip> {
+    let (spec, width, (ox, oy)) = text_geometry(n, t, fonts, s);
+    let rgba = [
+        (t.color.r * 255.0).round() as u8,
+        (t.color.g * 255.0).round() as u8,
+        (t.color.b * 255.0).round() as u8,
+        (t.color.a * n.opacity * 255.0).round() as u8,
+    ];
     // Styled runs carry their own color (alpha included); only the node opacity is applied on top.
     let base_a = if t.spans.is_empty() { rgba[3] as u32 } else { (n.opacity * 255.0).round() as u32 };
-    let spans = fonts.draw(&t.text, &spec, bw * s + 2.0, rgba, (ox, oy), &t.spans, |x, y, w, h, c| {
+    // Decorations have their own bounds. Keep the full run when they are present.
+    let clip = clip.filter(|_| !t.strike && !t.font.underline && !t.spans.iter().any(|span| span.strike || span.underline));
+    let spans = fonts.draw_if_visible(&t.text, &spec, width, rgba, (ox, oy), &t.spans, clip, |x, y, w, h, c| {
         // cosmic-text replaces the colour alpha with glyph coverage; reapply ours.
         emit(TextOp::Blend(x, y, w, h, [c[0], c[1], c[2], (c[3] as u32 * base_a / 255) as u8]));
-    });
+    })?;
     // Strikethrough / underline: per line, or per styled run (in the run's own color and size).
     for sp in spans {
         let run = sp.run.and_then(|i| t.spans.get(i));
@@ -971,6 +1042,7 @@ fn paint_text(n: &crate::scene::Node, t: &crate::scene::TextRun, fonts: &mut Fon
             emit_rule(&mut emit, ox + sp.x0, y, (sp.x1 - sp.x0).max(0.0), th, paint_col(over), pat);
         }
     }
+    Ok(())
 }
 
 /// Liquid Glass halo + glass, own shadow and scroll-edge effect of `n`: everything in the paint order
@@ -1006,10 +1078,10 @@ fn paint_backdrop(pm: &mut Pixmap, n: &crate::scene::Node, dark: bool, ios: IosV
 /// The clip mask `n` imposes on its descendants, on top of `mask` (its own).
 /// A square clip covering the whole canvas clips nothing: skip the full-size mask (and the
 /// slower masked blending under it). Full scrollers are exactly that.
-fn child_mask(n: &crate::scene::Node, mask: Option<Rc<Mask>>, s: f32, pw: u32, ph: u32) -> Option<Rc<Mask>> {
+fn child_mask(n: &crate::scene::Node, radius: Option<f64>, mask: Option<Rc<Mask>>, s: f32, pw: u32, ph: u32) -> Option<Rc<Mask>> {
     let b = n.bounds;
     let (bx, by, bw, bh) = (b.x as f32, b.y as f32, b.w as f32, b.h as f32);
-    match clip_radius(n, s, pw, ph).and_then(|r| rrect(bx, by, bw, bh, r as f32)) {
+    match radius.and_then(|r| rrect(bx, by, bw, bh, r as f32)) {
         Some(path) => Some(Rc::new(clip_mask(mask.as_deref(), &path, Transform::from_scale(s, s), pw, ph))),
         None => mask,
     }
@@ -1063,7 +1135,10 @@ pub fn apply_backdrop(pm: &mut Pixmap, scene: &Scene, idx: usize, scale: f64) {
         chain.push(i);
         at = scene.nodes[i].parent;
     }
-    let mask = chain.iter().rev().fold(None, |m, &i| child_mask(&scene.nodes[i], m, s, pw, ph));
+    let mask = chain.iter().rev().fold(None, |m, &i| {
+        let n = &scene.nodes[i];
+        child_mask(n, clip_radius(n, s, pw, ph), m, s, pw, ph)
+    });
     let dark = scene.appearance == onesim_protocol::Appearance::Dark;
     paint_backdrop(pm, &scene.nodes[idx], dark, scene.ios, s, mask.as_deref());
 }
@@ -1229,31 +1304,35 @@ pub fn node_sprite(n: &crate::scene::Node, fonts: &mut Fonts, scale: f64, layer:
             }
             combine(parts)
         }
-        SpriteLayer::Text => {
-            let t = n.text.as_ref()?;
-            let mut ops = vec![];
-            paint_text(n, t, fonts, s, |op| match op {
-                TextOp::Blend(_, _, _, _, c) if c[3] == 0 => {}
-                op => ops.push(op),
-            });
-            let (mut x0, mut y0, mut x1, mut y1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
-            for op in &ops {
-                let (a, b, c, d) = match *op {
-                    TextOp::Blend(x, y, w, h, _) => (x, y, x + w as i32, y + h as i32),
-                    TextOp::Rule(x, y, w, h, _) => (x.floor() as i32, y.floor() as i32, (x + w).ceil() as i32 + 1, (y + h).ceil() as i32 + 1),
-                };
-                (x0, y0, x1, y1) = (x0.min(a), y0.min(b), x1.max(c), y1.max(d));
-            }
-            if x1 <= x0 || y1 <= y0 || x1 - x0 > MAX_SPRITE || y1 - y0 > MAX_SPRITE {
-                return None;
-            }
-            let mut pm = Pixmap::new((x1 - x0) as u32, (y1 - y0) as u32)?;
-            for op in &ops {
-                apply_text_op(&mut pm, op, (x0, y0), None);
-            }
-            Some(Sprite { x: x0, y: y0, pixmap: pm })
-        }
+        SpriteLayer::Text => text_sprite(n, fonts, s, None).unwrap_or_default(),
     }
+}
+
+/// Build an unclipped sprite, or return the ink bounds of a wholly offscreen run.
+pub(crate) fn text_sprite(n: &crate::scene::Node, fonts: &mut Fonts, s: f32, clip: Option<PaintClip>) -> Result<Option<Sprite>, PaintClip> {
+    let Some(t) = n.text.as_ref() else { return Ok(None) };
+    let mut ops = vec![];
+    paint_text(n, t, fonts, s, clip, |op| match op {
+        TextOp::Blend(_, _, _, _, c) if c[3] == 0 => {}
+        op => ops.push(op),
+    })?;
+    let (mut x0, mut y0, mut x1, mut y1) = (i32::MAX, i32::MAX, i32::MIN, i32::MIN);
+    for op in &ops {
+        let (a, b, c, d) = match *op {
+            TextOp::Blend(x, y, w, h, _) => (x, y, x + w as i32, y + h as i32),
+            TextOp::Rule(x, y, w, h, _) => (x.floor() as i32, y.floor() as i32, (x + w).ceil() as i32 + 1, (y + h).ceil() as i32 + 1),
+        };
+        (x0, y0, x1, y1) = (x0.min(a), y0.min(b), x1.max(c), y1.max(d));
+    }
+    if x1 <= x0 || y1 <= y0 || x1 - x0 > MAX_SPRITE || y1 - y0 > MAX_SPRITE {
+        return Ok(None);
+    }
+    Ok(Pixmap::new((x1 - x0) as u32, (y1 - y0) as u32).map(|mut pm| {
+        for op in &ops {
+            apply_text_op(&mut pm, op, (x0, y0), None);
+        }
+        Sprite { x: x0, y: y0, pixmap: pm }
+    }))
 }
 
 /// Composite device-positioned tiles into one pixmap cropped to their non-empty extent.
@@ -1295,21 +1374,47 @@ fn crop(x: i32, y: i32, p: Pixmap) -> Option<(i32, i32, Pixmap)> {
 
 /// Rasterize at `scale` device pixels per point.
 pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
+    render_reusing(scene, fonts, scale, Vec::new())
+}
+
+/// Rasterize into an existing RGBA allocation when it fits the new frame.
+pub fn render_reusing(scene: &Scene, fonts: &mut Fonts, scale: f64, mut pixels: Vec<u8>) -> Pixmap {
     let pw = (scene.size.0 * scale).round().max(1.0) as u32;
     let ph = (scene.size.1 * scale).round().max(1.0) as u32;
-    let mut pm = Pixmap::new(pw, ph).expect("pixmap size");
+    let bytes = u64::from(pw) * u64::from(ph);
+    let mut pm = if bytes.checked_mul(4) == Some(pixels.len() as u64) {
+        pixels.fill(0);
+        let size = tiny_skia::IntSize::from_wh(pw, ph).expect("pixmap size");
+        Pixmap::from_vec(pixels, size).expect("pixmap data")
+    } else {
+        drop(pixels);
+        Pixmap::new(pw, ph).expect("pixmap size")
+    };
     let s = scale as f32;
     let xf = Transform::from_scale(s, s);
     let dark = scene.appearance == onesim_protocol::Appearance::Dark;
-    // Clip mask in effect for the *children* of each node.
-    let mut masks: Vec<Option<Rc<Mask>>> = Vec::with_capacity(scene.nodes.len());
-    for n in &scene.nodes {
-        let mask = n.parent.and_then(|p| masks[p].clone());
+    // Retain each inherited clip only until its last direct child has taken it.
+    let mut children = vec![0usize; scene.nodes.len()];
+    for parent in scene.nodes.iter().filter_map(|n| n.parent) {
+        children[parent] += 1;
+    }
+    let viewport = PaintClip::viewport(pw, ph);
+    let mut clips: Vec<Option<(PaintClip, Option<Rc<Mask>>)>> = Vec::with_capacity(scene.nodes.len());
+    for (i, n) in scene.nodes.iter().enumerate() {
+        let (clip, mask) = n.parent.map_or((viewport, None), |p| {
+            children[p] -= 1;
+            if children[p] == 0 { clips[p].take().unwrap() } else { clips[p].clone().unwrap() }
+        });
+        if clip.is_empty() {
+            clips.push((children[i] > 0).then_some((clip, None)));
+            continue;
+        }
         let b = n.bounds;
+        let bounds_visible = clip.intersects_node(b, s);
         let (bx, by, bw, bh) = (b.x as f32, b.y as f32, b.w as f32, b.h as f32);
         let sh = (bx, by, bw, bh);
         paint_backdrop(&mut pm, n, dark, scene.ios, s, mask.as_deref());
-        if let Some(c) = n.fill {
+        if let Some(c) = n.fill.filter(|_| bounds_visible) {
             if n.radius > 0.0 {
                 if let Some(p) = rrect(bx, by, bw, bh, n.radius as f32) {
                     pm.fill_path(&p, &paint(c, n.opacity), FillRule::Winding, xf, mask.as_deref());
@@ -1323,7 +1428,7 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
                 }
             }
         }
-        if let Some(g) = &n.gradient {
+        if let Some(g) = n.gradient.as_ref().filter(|_| bounds_visible) {
             draw_gradient(&mut pm, n, g, s, mask.as_deref());
         }
         if let Some((c, lw)) = n.stroke {
@@ -1341,14 +1446,18 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
         if let Some(sy) = &n.symbol {
             draw_symbol(&mut pm, sy, sh, n.opacity, s, mask.as_deref());
         }
-        if let Some(im) = &n.image {
+        if let Some(im) = n.image.as_ref().filter(|_| bounds_visible) {
             draw_image(&mut pm, n, im, s, mask.as_deref());
         }
         if let Some(t) = &n.text {
-            paint_text(n, t, fonts, s, |op| apply_text_op(&mut pm, &op, (0, 0), mask.as_deref()));
+            let _ = paint_text(n, t, fonts, s, (!bounds_visible).then_some(clip), |op| apply_text_op(&mut pm, &op, (0, 0), mask.as_deref()));
         }
-        let cm = child_mask(n, mask, s, pw, ph);
-        masks.push(cm);
+        clips.push((children[i] > 0).then(|| {
+            let cr = clip_radius(n, s, pw, ph);
+            let child_clip = if cr.is_some() { clip.intersect_node(b, s) } else { clip };
+            let mask = if child_clip.is_empty() { None } else { child_mask(n, cr, mask, s, pw, ph) };
+            (child_clip, mask)
+        }));
     }
     pm
 }
@@ -1362,6 +1471,40 @@ mod tests {
     use super::*;
     use crate::scene::{Node, Rect as SRect, VectorFill};
     use onesim_protocol::Appearance;
+
+    #[test]
+    fn paint_culling_keeps_text_overflow_and_rejects_a_clipped_subtree() {
+        use crate::{FontSpec, TextAlign, TextRun};
+
+        let mut text = Node::new("text", "text");
+        text.bounds = SRect { x: 10.0, y: 5.0, w: 80.0, h: 20.0 };
+        text.text = Some(TextRun {
+            text: "Overflow".into(),
+            font: FontSpec::new(16.0, 20.0, 400, TextAlign::Leading),
+            color: Color::rgba(0.0, 0.0, 0.0, 1.0),
+            strike: false,
+            offset_x: 0.0,
+            spans: vec![],
+        });
+        let mut scene = Scene { size: (100.0, 50.0), appearance: Appearance::Light,
+            ios: Default::default(), nodes: vec![text], unsupported_symbols: vec![], notes: vec![] };
+        let mut fonts = Fonts::with_fallback(true);
+        let expected = render(&scene, &mut fonts, 2.625);
+        assert!(expected.data().iter().any(|&v| v != 0));
+
+        scene.nodes[0].bounds.x -= 100.0;
+        scene.nodes[0].text.as_mut().unwrap().offset_x = 100.0;
+        let mut clip = Node::new("clip", "clip");
+        clip.bounds = SRect { x: 0.0, y: 100.0, w: 100.0, h: 50.0 };
+        clip.clip_radius = Some(5.0);
+        scene.nodes.push(clip);
+        let mut child = Node::new("hidden", "fill");
+        child.bounds = SRect { x: 0.0, y: 0.0, w: 100.0, h: 50.0 };
+        child.parent = Some(1);
+        child.fill = Some(Color::rgba(1.0, 0.0, 0.0, 1.0));
+        scene.nodes.push(child);
+        assert_eq!(render(&scene, &mut fonts, 2.625).data(), expected.data());
+    }
 
     #[test]
     fn shadow_radius_6_is_gaussian_sigma_6() {

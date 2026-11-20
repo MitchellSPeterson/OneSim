@@ -1,5 +1,7 @@
-use cosmic_text::{fontdb, Align, Attrs, Buffer, Color, Family, FeatureTag, FontFeatures, FontSystem, Metrics, Shaping, Stretch, Style, SwashCache, Weight};
+use cosmic_text::{fontdb, Align, Attrs, Buffer, CacheKey, Color, Family, FeatureTag, FontFeatures, FontSystem, LayoutGlyph, Metrics, Shaping, Stretch, Style, SwashCache, SwashContent, Weight};
 use std::collections::HashMap;
+
+use crate::raster::PaintClip;
 
 /// macOS system UI font (variable SF Pro: wght axis). Family name as registered in fontdb.
 const SF_FILE: &str = "/System/Library/Fonts/SFNS.ttf";
@@ -290,6 +292,8 @@ pub fn fonts_capability() -> &'static str {
 
 /// Text, size bits, weight, wrap width bits, Android tracking bits.
 type MeasureKey = (String, u32, u16, u32, u32);
+const MEASURE_MAX_ENTRIES: usize = 4096;
+const MEASURE_MAX_TEXT_BYTES: usize = 1024 * 1024;
 
 /// System fonts + glyph cache, shared by layout (measuring) and raster (drawing).
 pub struct Fonts {
@@ -301,6 +305,7 @@ pub struct Fonts {
     rounded: Option<&'static str>,
     serif: Option<&'static str>,
     measured: HashMap<MeasureKey, (f64, f64)>,
+    measured_text_bytes: usize,
 }
 
 /// One drawn text line: x range and baseline, relative to the text origin (device px).
@@ -310,6 +315,39 @@ pub struct LineSpan {
     pub baseline: f32,
     /// Index of the styled run this extent belongs to (`None` for plain text).
     pub run: Option<usize>,
+}
+
+pub(crate) struct PositionedGlyph {
+    pub key: CacheKey,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl PositionedGlyph {
+    fn bounds(&self) -> PaintClip {
+        PaintClip::pixels(self.x, self.y, self.width, self.height)
+    }
+}
+
+fn glyph_positioning(origin: (f32, f32), fractional: bool) -> impl Fn(&LayoutGlyph, f32, f32, f32) -> (CacheKey, i32, i32) {
+    let (ix, iy) = if fractional { (origin.0.floor(), origin.1.floor()) } else { (origin.0.round(), origin.1.round()) };
+    let (fx, fy) = if fractional { (origin.0 - ix, origin.1 - iy) } else { (0.0, 0.0) };
+    move |g, baseline, rise, width_scale| {
+        let gy = g.y - g.font_size * g.y_offset + baseline - rise;
+        let pen = g.x + g.font_size * g.x_offset + fx;
+        let (key, gx, gy) = CacheKey::new(
+            g.font_id,
+            g.glyph_id,
+            g.font_size,
+            (pen, if fractional { gy + fy } else { gy.trunc() }),
+            g.font_weight,
+            g.cache_key_flags,
+        );
+        let x = if width_scale == 1.0 { gx + ix as i32 } else { (ix + pen * width_scale).round() as i32 };
+        (key, x, gy + iy as i32)
+    }
 }
 
 impl Default for Fonts {
@@ -344,7 +382,7 @@ impl Fonts {
         };
         let rounded = named(ROUNDED_NAMES);
         let serif = named(SERIF_NAMES);
-        Self { sys, cache: SwashCache::new(), sf, inter, has_mono, rounded, serif, measured: HashMap::new() }
+        Self { sys, cache: SwashCache::new(), sf, inter, has_mono, rounded, serif, measured: HashMap::new(), measured_text_bytes: 0 }
     }
 
     /// True when Apple's SF Pro is in use.
@@ -617,14 +655,15 @@ impl Fonts {
 
     /// Size of `text`, wrapping at `width` when given.
     pub fn measure(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span]) -> (f64, f64) {
-        // Android text carries its own tracking (Compose letterSpacing) and face; iOS tracking follows size and weight.
-        let tracking = if f.android { f.tracking.to_bits() ^ 0x8000_0000 } else { 0 };
-        let key = (text.to_string(), f.size.to_bits(), f.weight, width.map_or(u32::MAX, f32::to_bits), tracking);
-        // New styling changes the advance. Leave the default-key cache for the fitted optical size only.
+        // Styled advances vary independently of the default cache key.
         let styled = f.extra != 0.0 || f.design != 0 || f.width != 0 || f.digits || f.trunc != 0 || f.case_fold != 0 || f.italic || f.mono;
-        let plain = spans.is_empty() && f.lines.is_none() && !styled;
-        if plain {
-            if let Some(r) = self.measured.get(&key) {
+        let key = (spans.is_empty() && f.lines.is_none() && !styled && text.len() <= MEASURE_MAX_TEXT_BYTES).then(|| {
+            // Android text carries its own tracking (Compose letterSpacing) and face; iOS tracking follows size and weight.
+            let tracking = if f.android { f.tracking.to_bits() ^ 0x8000_0000 } else { 0 };
+            (text.to_string(), f.size.to_bits(), f.weight, width.map_or(u32::MAX, f32::to_bits), tracking)
+        });
+        if let Some(key) = &key {
+            if let Some(r) = self.measured.get(key) {
                 return *r;
             }
         }
@@ -635,7 +674,12 @@ impl Fonts {
             lines += 1;
         }
         let r = (w as f64 * f64::from(width_scale(f.width)), (f.line_height + (lines.max(1) - 1) as f32 * f.pitch) as f64);
-        if plain {
+        if let Some(key) = key {
+            if self.measured.len() >= MEASURE_MAX_ENTRIES || self.measured_text_bytes + text.len() > MEASURE_MAX_TEXT_BYTES {
+                self.measured.clear();
+                self.measured_text_bytes = 0;
+            }
+            self.measured_text_bytes += text.len();
             self.measured.insert(key, r);
         }
         r
@@ -655,10 +699,87 @@ impl Fonts {
         rgba: [u8; 4],
         origin: (f32, f32),
         spans: &[Span],
-        mut f: impl FnMut(i32, i32, u32, u32, [u8; 4]),
+        f: impl FnMut(i32, i32, u32, u32, [u8; 4]),
     ) -> Vec<LineSpan> {
+        self.draw_if_visible(text, spec, width, rgba, origin, spans, None, f).unwrap_or_default()
+    }
+
+    /// Visible mask glyphs that can be composited individually. Overlap needs a run sprite so the
+    /// masks combine before the executor applies the ancestor clip.
+    pub(crate) fn mask_glyphs(&mut self, text: &str, spec: &FontSpec, width: f32, origin: (f32, f32), clip: PaintClip) -> Option<Vec<PositionedGlyph>> {
+        if spec.underline || width_scale(spec.width) != 1.0 {
+            return None;
+        }
+        let b = self.buffer(text, spec, Some(width), &[]);
+        let positioned = glyph_positioning(origin, spec.pt > 40.0);
+        let rise = placed_rise(spec, &[], 0);
+        let mut glyphs: Vec<PositionedGlyph> = Vec::new();
+        for run in b.layout_runs() {
+            for g in run.glyphs {
+                let (key, x, y) = positioned(g, run.line_y, rise, 1.0);
+                let Some(image) = self.cache.get_image(&mut self.sys, key) else { continue };
+                let p = image.placement;
+                let glyph = PositionedGlyph { key, x: x + p.left, y: y - p.top, width: p.width, height: p.height };
+                let bounds = glyph.bounds();
+                if p.width == 0 || p.height == 0 || !clip.overlaps(bounds) {
+                    continue;
+                }
+                if image.content != SwashContent::Mask || glyphs.iter().any(|prior| bounds.overlaps(prior.bounds())) {
+                    return None;
+                }
+                glyphs.push(glyph);
+            }
+        }
+        Some(glyphs)
+    }
+
+    /// Called with a key validated by `mask_glyphs`, against the same Swash cache.
+    pub(crate) fn glyph_mask(&mut self, key: CacheKey) -> &[u8] {
+        &self.cache.get_image(&mut self.sys, key).as_ref().expect("known glyph mask").data
+    }
+
+    /// For undecorated text, test the glyph images before emitting pixels. Sprite callers
+    /// need the full run whenever any glyph can paint inside the clip.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn draw_if_visible(
+        &mut self,
+        text: &str,
+        spec: &FontSpec,
+        width: f32,
+        rgba: [u8; 4],
+        origin: (f32, f32),
+        spans: &[Span],
+        clip: Option<crate::raster::PaintClip>,
+        mut f: impl FnMut(i32, i32, u32, u32, [u8; 4]),
+    ) -> Result<Vec<LineSpan>, crate::raster::PaintClip> {
         let mut b = self.buffer(text, spec, Some(width), spans);
         b.shape_until_scroll(&mut self.sys, false);
+        // Body-size text snaps like UIKit (whole-pixel baseline and origin); accessibility sizes keep
+        // the sub-pixel phase, which iOS does at large sizes (measured on the scrolled fixtures).
+        let positioned = glyph_positioning(origin, spec.pt > 40.0);
+        if let Some(clip) = clip {
+            let mut ink: Option<crate::raster::PaintClip> = None;
+            let visible = b.layout_runs().any(|run| {
+                run.glyphs.iter().any(|g| {
+                    let k = glyph_width_scale(spec, spans, g.metadata);
+                    let (key, x, y) = positioned(g, run.line_y, placed_rise(spec, spans, g.metadata), k);
+                    self.cache.get_image(&mut self.sys, key).as_ref().is_some_and(|image| {
+                        let p = image.placement;
+                        if p.width == 0 || p.height == 0 {
+                            return false;
+                        }
+                        let left = scale_pixel(p.left, k);
+                        let right = scale_pixel(p.left + p.width as i32 - 1, k);
+                        let glyph = PaintClip::pixels(x + left, y - p.top, (right - left + 1) as u32, p.height);
+                        ink = Some(ink.map_or(glyph, |bounds| bounds.union(glyph)));
+                        clip.overlaps(glyph)
+                    })
+                })
+            });
+            if !visible {
+                return ink.map_or_else(|| Ok(Vec::new()), Err);
+            }
+        }
         let lines = b
             .layout_runs()
             .flat_map(|r| {
@@ -677,43 +798,25 @@ impl Fonts {
             })
             .collect();
         let c = Color::rgba(rgba[0], rgba[1], rgba[2], rgba[3]);
-        // Body-size text snaps like UIKit (whole-pixel baseline and origin); accessibility sizes keep
-        // the sub-pixel phase, which iOS does at large sizes (measured on the scrolled fixtures).
-        let frac = spec.pt > 40.0;
-        let (ix, iy) = if frac { (origin.0.floor(), origin.1.floor()) } else { (origin.0.round(), origin.1.round()) };
-        let (fx, fy) = if frac { (origin.0 - ix, origin.1 - iy) } else { (0.0, 0.0) };
         for run in b.layout_runs() {
             for g in run.glyphs {
                 let k = glyph_width_scale(spec, spans, g.metadata);
-                // Positive baselineOffset grows the line box (layout) and leaves the glyphs at its top.
-                let gy = g.y - g.font_size * g.y_offset + run.line_y - placed_rise(spec, spans, g.metadata);
-                let pen = g.x + g.font_size * g.x_offset + fx;
-                let (key, gx, gy) = cosmic_text::CacheKey::new(
-                    g.font_id,
-                    g.glyph_id,
-                    g.font_size,
-                    (pen, if frac { gy + fy } else { gy.trunc() }),
-                    g.font_weight,
-                    g.cache_key_flags,
-                );
-                let by = gy + iy as i32;
+                let (key, bx, by) = positioned(g, run.line_y, placed_rise(spec, spans, g.metadata), k);
                 // cosmic-text replaces the color alpha with glyph coverage: reapply the run's own alpha.
                 let sa = spans.get(g.metadata).map_or(1.0, |s| s.color.a);
                 let paint = g.color_opt.unwrap_or(c);
-                if (k - 1.0).abs() < 0.001 {
-                    let bx = gx + ix as i32;
+                if k == 1.0 {
                     self.cache.with_pixels(&mut self.sys, key, paint, |px, py, col| {
                         f(bx + px, by + py, 1, 1, [col.r(), col.g(), col.b(), (col.a() as f32 * sa).round() as u8])
                     });
                 } else {
-                    let bx = (ix + pen * k).round() as i32;
                     let mut src = Vec::new();
                     self.cache.with_pixels(&mut self.sys, key, paint, |px, py, col| {
                         src.push((px, py, [col.r(), col.g(), col.b(), (col.a() as f32 * sa).round() as u8]));
                     });
                     let mut acc: HashMap<(i32, i32), [u8; 4]> = HashMap::new();
                     for (px, py, rgba) in src {
-                        let dx = (px as f32 * k).round() as i32;
+                        let dx = scale_pixel(px, k);
                         acc.entry((dx, py)).and_modify(|e| { if rgba[3] > e[3] { *e = rgba; } }).or_insert(rgba);
                     }
                     for ((dx, dy), rgba) in acc {
@@ -722,7 +825,7 @@ impl Fonts {
                 }
             }
         }
-        lines
+        Ok(lines)
     }
 }
 
@@ -740,6 +843,10 @@ pub(crate) fn baseline_extent(spec: &FontSpec, spans: &[Span]) -> (f32, f32) {
 fn glyph_width_scale(spec: &FontSpec, spans: &[Span], meta: usize) -> f32 {
     let w = if spans.is_empty() { spec.width } else { spans.get(meta).map(|s| s.width).unwrap_or(spec.width) };
     width_scale(w)
+}
+
+fn scale_pixel(x: i32, k: f32) -> i32 {
+    if k == 1.0 { x } else { (x as f32 * k).round() as i32 }
 }
 
 /// Pixels to move this glyph up. A positive offset is consumed by the taller line box, so the
@@ -872,6 +979,27 @@ mod span_tests {
         let (w, h) = fonts.measure(text, &spec, None, &[]);
         let (_, h2) = fonts.measure(text, &spec, Some(w as f32), &[]);
         assert!((h2 - h).abs() < 0.6, "measured width {w} rewrapped: {h} vs {h2}");
+    }
+
+    #[test]
+    fn ink_culling_keeps_transformed_glyphs() {
+        let mut fonts = Fonts::with_fallback(true);
+        let plain = FontSpec::new(17.0, 22.0, 400, TextAlign::Leading);
+        for (text, spec) in [
+            ("                    A", FontSpec { width: -2, ..plain }),
+            ("A", FontSpec { baseline: -32.0, ..plain }),
+        ] {
+            let rgba = [0, 0, 0, 255];
+            let mut pixel = None;
+            fonts.draw(text, &spec, 300.0, rgba, (0.0, 0.0), &[], |x, y, _, _, c| {
+                if c[3] > 0 {
+                    pixel = Some((x, y));
+                }
+            });
+            let (x, y) = pixel.expect("ink");
+            let clip = PaintClip::pixels(x, y, 1, 1);
+            assert!(fonts.draw_if_visible(text, &spec, 300.0, rgba, (0.0, 0.0), &[], Some(clip), |_, _, _, _, _| {}).is_ok());
+        }
     }
 
     /// Head truncation that drops a whole run must keep the surviving run's index.

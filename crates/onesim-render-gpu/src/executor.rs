@@ -11,10 +11,11 @@
 //! Nothing here blocks on the GPU except that fallback, so with the `native` feature off the executor builds
 //! for `wasm32-unknown-unknown` (create it with [`Executor::new_async`]).
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use onesim_render::display::{DisplayList, Op, RRect, Sampling};
+use onesim_render::display::{DisplayList, Op, RRect, Resource, Sampling};
 use onesim_render::{FrameTimings, RenderError};
 use vello::kurbo::{Affine, Join, Point, Rect, RoundedRect, Stroke};
 use vello::peniko::{color::AlphaColor, Blob, Color, Extend, Fill, Gradient, ImageAlphaType, ImageBrush, ImageData, ImageFormat, ImageQuality, InterpolationAlphaSpace};
@@ -89,6 +90,16 @@ fn rrect(r: &RRect) -> RoundedRect {
 fn c8(c: onesim_render::Color) -> Color {
     let q = |v: f32| (v * 255.0).round() as u8;
     Color::from_rgba8(q(c.r), q(c.g), q(c.b), q(c.a))
+}
+
+fn resource_image(resource: Cow<'_, Resource>) -> Result<ImageData, RenderError> {
+    let (id, width, height) = (resource.id, resource.width, resource.height);
+    let len = resource.rgba.len() as u64;
+    if width == 0 || height == 0 || (u64::from(width) * u64::from(height)).checked_mul(4) != Some(len) {
+        return Err(RenderError::Other(format!("resource {id}: {len} bytes for {width}x{height}")));
+    }
+    let data = Blob::from(resource.into_owned().rgba);
+    Ok(ImageData { data, format: ImageFormat::Rgba8, alpha_type: ImageAlphaType::AlphaPremultiplied, width, height })
 }
 
 impl Executor {
@@ -272,6 +283,21 @@ impl Executor {
     /// Run `dl` into `target`, a `Rgba8Unorm` texture of the list's size with [`target_usage`]. Vello writes
     /// straight alpha; every pixel of `target` is written. Work is submitted, not waited for.
     pub fn execute(&mut self, dl: &DisplayList, target: &wgpu::Texture) -> Result<ExecStats, RenderError> {
+        self.execute_with_resources(dl, target, dl.added.iter().map(Cow::Borrowed))
+    }
+
+    /// Like [`Self::execute`], taking ownership of the list so new bitmaps can move into the resource cache.
+    pub fn execute_owned(&mut self, mut dl: DisplayList, target: &wgpu::Texture) -> Result<ExecStats, RenderError> {
+        let added = std::mem::take(&mut dl.added).into_iter().map(Cow::Owned);
+        self.execute_with_resources(&dl, target, added)
+    }
+
+    fn execute_with_resources<'a>(
+        &mut self,
+        dl: &DisplayList,
+        target: &wgpu::Texture,
+        added: impl Iterator<Item = Cow<'a, Resource>>,
+    ) -> Result<ExecStats, RenderError> {
         self.check_errors()?;
         let (w, h) = (dl.width, dl.height);
         if target.format() != wgpu::TextureFormat::Rgba8Unorm || !target.usage().contains(target_usage()) || (target.width(), target.height()) != (w, h) {
@@ -291,12 +317,9 @@ impl Executor {
         for id in &dl.dropped {
             self.resources.remove(id);
         }
-        for r in &dl.added {
-            if r.rgba.len() as u64 != r.width as u64 * r.height as u64 * 4 || r.width == 0 || r.height == 0 {
-                return Err(RenderError::Other(format!("resource {}: {} bytes for {}x{}", r.id, r.rgba.len(), r.width, r.height)));
-            }
-            let image = ImageData { data: Blob::from(r.rgba.clone()), format: ImageFormat::Rgba8, alpha_type: ImageAlphaType::AlphaPremultiplied, width: r.width, height: r.height };
-            self.resources.insert(r.id, image);
+        for resource in added {
+            let id = resource.id;
+            self.resources.insert(id, resource_image(resource)?);
         }
         self.set_target(target);
         // The last op that paints (trailing pops do not), and whether the frame has backdrop ops at all (only then is the accumulation texture needed).
@@ -494,5 +517,28 @@ impl Executor {
     #[cfg(not(feature = "native"))]
     fn backdrop_on_cpu(&mut self, _op: &Op, _clips: &[RRect], _dl: &DisplayList, why: &str, _stats: &mut ExecStats) -> Result<(), RenderError> {
         Err(RenderError::Unsupported(format!("backdrop op needs the CPU fallback, which this build does not have ({why})")))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn owned_image_reuses_decoded_pixel_allocation() {
+        let list = DisplayList {
+            added: vec![Resource { id: 1, width: 512, height: 512, rgba: [2, 4, 8, 16].repeat(512 * 512) }],
+            ..Default::default()
+        };
+        let mut decoded = DisplayList::decode(&list.encode()).expect("decodes");
+        let resource = decoded.added.pop().expect("image");
+        let ptr = resource.rgba.as_ptr();
+
+        let borrowed = resource_image(Cow::Borrowed(&resource)).expect("valid borrowed image");
+        let owned = resource_image(Cow::Owned(resource)).expect("valid owned image");
+        assert_ne!(borrowed.data.data().as_ptr(), ptr);
+        assert_eq!(owned.data.data().as_ptr(), ptr);
+        assert_eq!(borrowed.data.data(), owned.data.data());
+        assert_eq!(owned.data.data(), list.added[0].rgba);
     }
 }
