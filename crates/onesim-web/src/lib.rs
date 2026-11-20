@@ -739,6 +739,13 @@ pub extern "C" fn simcore_web_rn_receive(len: usize) -> i32 {
             1
         }
         Ok(m @ (GuestMessage::FocusRequest { .. } | GuestMessage::ScrollTo { .. })) => rn_requests(vec![m]),
+        // A new guest instance (first start or reload): it knows no frames yet and has no touch in progress.
+        Ok(GuestMessage::Hello { .. }) => with(|s| {
+            if let Some(rn) = s.rn.as_mut() {
+                rn.input = RnInput::default();
+            }
+            0
+        }),
         Ok(_) => 0,
     }
 }
@@ -932,6 +939,13 @@ mod tests {
         buf("{}");
         assert_eq!(simcore_web_rn_receive(2), -1);
         assert!(with(|s| String::from_utf8_lossy(&s.buf).contains("bad guest message")));
+        // A restarted guest (hello) gets every frame again with its first tree.
+        buf(r#"{"type":"hello","protocol":1}"#);
+        assert_eq!(simcore_web_rn_receive(29), 0);
+        let again = tree.replace(r#""version":7"#, r#""version":8"#);
+        buf(&again);
+        assert_eq!(simcore_web_rn_receive(again.len()), 1);
+        assert_eq!(outbox()[0]["frames"]["3"][3].as_f64(), Some(60.0), "layout resent after a restart");
         // Environment changes go to the guest.
         assert_eq!(simcore_web_set_dark(1), 0);
         assert_eq!(outbox()[0]["type"], "environment");

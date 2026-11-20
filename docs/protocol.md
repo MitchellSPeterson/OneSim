@@ -68,7 +68,8 @@ then `dup2(2, 1)`, so app `print()` output goes to stderr and never corrupts the
 wire. Host reads guest stderr into the session's log/errors.
 
 Guest → host:
-- `{"type":"hello","protocol":1}`
+- `{"type":"hello","protocol":1}` — React Native: sent again each time the guest restarts (reload); the host then
+  resends every `layout` frame and forgets the touch in progress
 - `{"type":"tree","version":<u64>,"root":<ViewNode>}`
 - `{"type":"error","message":"..."}`
 

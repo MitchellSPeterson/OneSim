@@ -1143,6 +1143,7 @@ function mainThread() {
   const out = (m) => process.stdout.write(JSON.stringify(m) + '\n');
   const start = () => {
     if (worker) worker.terminate();
+    out({ type: 'hello', protocol: 1 }); // every (re)start: the host drops what it told the previous worker (layout)
     base = last; // tree versions stay monotonic across reloads
     const w = (worker = new Worker(__filename, { argv: process.argv.slice(2), stdout: false, stderr: false, workerData: { generation: ++generation, dataDir } }));
     for (const [module, state] of simulated) w.postMessage({ type: 'simulate', module, state, replay: true });
@@ -1170,7 +1171,6 @@ function mainThread() {
     });
     w.on('error', (e) => out({ type: 'error', message: String(e && e.stack || e) }));
   };
-  out({ type: 'hello', protocol: 1 });
   const rl = readline.createInterface({ input: process.stdin });
   rl.on('line', (line) => {
     let m; try { m = JSON.parse(line); } catch (_) { return; }

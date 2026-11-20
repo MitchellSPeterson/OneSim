@@ -39,6 +39,7 @@ export function startGuest({ workerUrl, env = {}, onMessage, onFile }) {
 
   function start() {
     stop();
+    onMessage({ type: 'hello', protocol: 1 }); // every (re)start: the renderer drops what it told the previous worker (layout)
     base = last; // tree versions stay monotonic across reloads
     const w = (worker = new Worker(workerUrl));
     const sockets = new Map(), fetching = new Map();
@@ -58,7 +59,6 @@ export function startGuest({ workerUrl, env = {}, onMessage, onFile }) {
     w.onerror = (e) => { e.preventDefault(); onMessage({ type: 'error', message: String(e.message || e) }); };
   }
 
-  onMessage({ type: 'hello', protocol: 1 });
   start();
   return {
     files,

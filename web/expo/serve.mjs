@@ -8,7 +8,7 @@
 import { createServer, request } from "node:http";
 import { connect } from "node:net";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { extname, join, resolve } from "node:path";
+import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".wasm": "application/wasm", ".json": "application/json", ".png": "image/png", ".css": "text/css" };
@@ -20,15 +20,17 @@ export function serve({ dir = "target/web-expo", port = 8000, host = "127.0.0.1"
   const m = new URL(metro);
   const target = (u) => (u.startsWith("/metro/") || u === "/metro" ? u.slice(6) || "/" : METRO_PATHS.test(u) ? u : null);
   const server = createServer((req, res) => {
-    const path = target(req.url);
+    // Files in the site win (an exported bundle's /assets/), then Metro's routes.
+    let file = join(dir, decodeURIComponent(new URL(req.url, "http://x").pathname));
+    const rel = relative(dir, file);
+    if (rel.startsWith("..") || isAbsolute(rel)) return void res.writeHead(403).end();
+    if (existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
+    const path = existsSync(file) ? null : target(req.url);
     if (path) {
       const up = request({ host: m.hostname, port: m.port || 80, path, method: req.method, headers: { ...req.headers, host: m.host } }, (r) => { res.writeHead(r.statusCode, r.headers); r.pipe(res); });
       up.on("error", (e) => { if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain" }); res.end(`Metro at ${metro}: ${e.message}`); });
       return void req.pipe(up);
     }
-    let file = join(dir, decodeURIComponent(new URL(req.url, "http://x").pathname));
-    if (!file.startsWith(dir)) return void res.writeHead(403).end();
-    if (existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
     if (!existsSync(file)) return void res.writeHead(404).end();
     res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream", "cache-control": "no-store" }).end(readFileSync(file));
   });

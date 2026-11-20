@@ -65,6 +65,8 @@ struct Inner {
     last_event: Option<Instant>,
     /// React Native `focus_request` / `scroll_to` messages not yet applied by the host.
     requests: Vec<GuestMessage>,
+    /// React Native: the guest (re)started (`hello`); the next layout pass resends every frame.
+    restarted: bool,
     /// React Native native-module inventory (`modules` message), once the guest has sent it.
     modules: Option<Value>,
     /// The next tree is the first after load/reload: it raises `runtime.ready`.
@@ -474,7 +476,7 @@ impl Session {
                     Ok(GuestMessage::Hello { protocol }) if protocol != onesim_protocol::PROTOCOL_VERSION => {
                         sh.push_error("guest", format!("unexpected guest protocol version {protocol}"))
                     }
-                    Ok(GuestMessage::Hello { .. }) => {}
+                    Ok(GuestMessage::Hello { .. }) => sh.lock().restarted = true,
                     Ok(GuestMessage::Modules { modules }) => sh.lock().modules = Some(modules),
                     Ok(GuestMessage::Event { name, detail }) => match name.as_str() {
                         "bundle.loaded" | "bundle.reloaded" | "bundle.error" | "refresh.applied" | "navigation.changed"
@@ -519,6 +521,9 @@ impl Session {
     pub fn sync_layout(&mut self, scene: &onesim_render::Scene) -> bool {
         if self.state() != State::Running {
             return false;
+        }
+        if std::mem::take(&mut self.shared.lock().restarted) {
+            self.rn = RnInput::default();
         }
         self.rn.layout(scene).is_some_and(|m| self.send(&m).is_ok())
     }

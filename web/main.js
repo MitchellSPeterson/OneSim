@@ -76,7 +76,7 @@ async function main() {
       workerUrl: new URL("guest/browser-worker.js", location.href),
       env,
       onMessage(m) {
-        if (m.type === "tree" || m.type === "focus_request" || m.type === "scroll_to") {
+        if (m.type === "hello" || m.type === "tree" || m.type === "focus_request" || m.type === "scroll_to") {
           if (m.type === "tree") trees++;
           try { if (sim.receive(m)) shown = true; } catch (e) { console.warn("onesim:", e.message); }
           present();
