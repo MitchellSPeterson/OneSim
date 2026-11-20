@@ -1,6 +1,8 @@
 name: CI
 on:
   push:
+    branches: [main] # other branches are covered by their PR run, which cancels on each new push
+    tags: ['v*']
   pull_request:
   workflow_dispatch: # manual run; also the way to run the Linux/Windows job outside a release
 
