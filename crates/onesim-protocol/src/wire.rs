@@ -14,6 +14,14 @@ pub enum GuestMessage {
     /// React Native `focus`/`blur` commands: focus the field with this tag (`null` = blur).
     #[serde(rename = "focus_request")]
     FocusRequest { tag: Option<u64> },
+    /// React Native's responder system: the view `tag` became the JS responder and blocks native ones (a
+    /// PanResponder's grant), or `null` when no such responder remains. Scroll views inside it stop scrolling.
+    #[serde(rename = "js_responder")]
+    JsResponder { tag: Option<u64> },
+    /// Answer to the host's `touch_ask`, sent after the touch messages before it were dispatched: whether a gesture
+    /// recognizer (react-native-gesture-handler) captured the touch.
+    #[serde(rename = "touch_answer")]
+    TouchAnswer { ask: u64, captured: bool },
     /// React Native `scrollTo` / `scrollToEnd` commands.
     #[serde(rename = "scroll_to")]
     ScrollTo { tag: u64, x: ScrollTarget, y: ScrollTarget },
@@ -62,6 +70,10 @@ pub enum ScrollPhase {
     Begin,
     Scroll,
     End,
+    /// The finger lifted and the content carries on (a fling or a bounce); `momentum_end` follows when it stops.
+    Release,
+    #[serde(rename = "momentum_end")]
+    MomentumEnd,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -226,6 +238,10 @@ pub enum HostMessage {
     },
     /// React Native touch: `x`/`y` page points, `lx`/`ly` relative to the target node (`tag`).
     Touch { phase: TouchPhase, tag: u64, x: f64, y: f64, lx: f64, ly: f64, timestamp: f64 },
+    /// React Native: a finger on a scroll view passed the pan slop; the guest answers `touch_answer` with this `ask`
+    /// once it has dispatched the touches so far (a responder grant or gesture activation may claim the touch).
+    #[serde(rename = "touch_ask")]
+    TouchAsk { ask: u64 },
     /// SwiftUI touch on views with gestures (section L). Not version-gated: gesture keys are structural paths.
     Gesture(GestureTouch),
     /// React Native layout frames `tag -> [x, y, w, h]` in page points.
@@ -359,6 +375,15 @@ mod tests {
         let g: GuestMessage = serde_json::from_str(r#"{"type":"focus_request","tag":null}"#).unwrap();
         assert_eq!(g, GuestMessage::FocusRequest { tag: None });
         assert_eq!(serde_json::from_str::<GuestMessage>(r#"{"type":"focus_request","tag":4}"#).unwrap(), GuestMessage::FocusRequest { tag: Some(4) });
+        // Scroll-view touch arbitration (React Native).
+        let g = |j: &str| serde_json::from_str::<GuestMessage>(j).unwrap();
+        assert_eq!(g(r#"{"type":"js_responder","tag":9}"#), GuestMessage::JsResponder { tag: Some(9) });
+        assert_eq!(g(r#"{"type":"js_responder","tag":null}"#), GuestMessage::JsResponder { tag: None });
+        assert_eq!(g(r#"{"type":"touch_answer","ask":3,"captured":true}"#), GuestMessage::TouchAnswer { ask: 3, captured: true });
+        assert_eq!(serde_json::to_string(&HostMessage::TouchAsk { ask: 3 }).unwrap(), r#"{"type":"touch_ask","ask":3}"#);
+        for (phase, name) in [(ScrollPhase::Release, "release"), (ScrollPhase::MomentumEnd, "momentum_end")] {
+            assert_eq!(serde_json::to_value(phase).unwrap(), name);
+        }
         let g: GuestMessage = serde_json::from_str(r#"{"type":"scroll_to","tag":3,"x":0,"y":"end"}"#).unwrap();
         let GuestMessage::ScrollTo { tag: 3, x, y } = g else { panic!() };
         assert_eq!((x.resolve(10.0), y.resolve(10.0)), (0.0, 10.0));

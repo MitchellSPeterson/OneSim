@@ -323,7 +323,9 @@ class Runtime {
       findNodeAtPoint: (n, x, y, cb) => { unsupported('FabricUIManager', 'findNodeAtPoint'); cb(null); },
       compareDocumentPosition: diag('compareDocumentPosition', 0),
       getBoundingClientRect: diag('getBoundingClientRect', [0, 0, 0, 0]),
-      setIsJSResponder: () => {}, // scroll-gesture arbitration is the host's concern
+      // A responder that blocks native ones (a PanResponder's grant) stops the scroll views inside it (RCTScrollView's
+      // _shouldDisableScrollInteraction); the host arbitrates.
+      setIsJSResponder: (n, isResponder, block) => send({ type: 'js_responder', tag: isResponder && block ? n.reactTag : null }),
       unstable_DefaultEventPriority: 32,
       unstable_DiscreteEventPriority: 2,
       unstable_ContinuousEventPriority: 8,
@@ -562,6 +564,9 @@ class Runtime {
         }
         this.emit(m.event, m.payload); break;
       case '__fetchHead': case '__fetchChunk': case '__fetchEnd': case '__fetchError': this.guard(fetchEvent)(m); break;
+      // The host's scroll view asks who owns the touch, after the touches it already sent (a PanResponder grant
+      // above has sent js_responder by now).
+      case 'touch_ask': send({ type: 'touch_answer', ask: m.ask, captured: this.gestures.captured() }); break;
       case 'touch': {
         const n = this.nodes.get(m.tag);
         if (!n) return log(`OneSim: touch for unknown tag ${m.tag}`);
@@ -666,11 +671,12 @@ class Runtime {
             this.dispatch(rc, 'topRefresh', {}, 2);
           }
         }
-        else if (m.phase === 'end') {
+        else if (m.phase === 'end' || m.phase === 'release') {
           if (!last || last[0] !== m.x || last[1] !== m.y) this.dispatch(n, 'topScroll', ev, 8); // programmatic scrollTo reply
           this.dispatch(n, 'topScrollEndDrag', ev, 8);
-          this.dispatch(n, 'topMomentumScrollEnd', ev, 8);
+          this.dispatch(n, m.phase === 'end' ? 'topMomentumScrollEnd' : 'topMomentumScrollBegin', ev, 8);
         }
+        else if (m.phase === 'momentum_end') this.dispatch(n, 'topMomentumScrollEnd', ev, 8);
         break;
       }
       case 'layout': Object.assign(this.frames, m.frames); this.nav.providers.forEach((_, t) => this.providerEvent(t)); this.fireLayouts(); break;

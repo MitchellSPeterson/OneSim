@@ -432,10 +432,25 @@ its existing focus + software-keyboard machinery.
   `setTextAndSelection` / `setNativeProps({text})` update the guest's text and re-emit.
 
 **ScrollView** (`RCTScrollView`). Host keeps the offset.
-- Host → guest `{"type":"scroll","tag","phase":"begin"|"scroll"|"end","x","y","contentWidth","contentHeight","width","height"}`
-  (x/y = content offset) → `topScrollBeginDrag` / `topScroll` / `topScrollEndDrag` +
-  `topMomentumScrollEnd`, nativeEvent `{contentOffset,contentSize,layoutMeasurement,contentInset:{0,0,0,0},zoomScale:1}`.
-  One `--scroll` gesture = begin, scroll, end.
+- Host → guest `{"type":"scroll","tag","phase":"begin"|"scroll"|"end"|"release"|"momentum_end","x","y","contentWidth","contentHeight","width","height"}`
+  (x/y = content offset) → `topScrollBeginDrag` / `topScroll` / `topScrollEndDrag` + `topMomentumScrollEnd` /
+  `topScrollEndDrag` + `topMomentumScrollBegin` / `topMomentumScrollEnd`, nativeEvent
+  `{contentOffset,contentSize,layoutMeasurement,contentInset:{0,0,0,0},zoomScale:1}`.
+  One `--scroll` gesture = begin, scroll, end. A finger drag on a scroll view first goes to JS as touches. Once it
+  has moved 10 pt along the axis of a scroll view under it (the innermost one scrolling that way, so a vertical drag on
+  a horizontal carousel scrolls the list around it; a drag across every scroll view's axis stays JS's), the host
+  sends `{"type":"touch_ask","ask":n}` after that touch `move`, keeps sending JS the moves, and waits for the guest's
+  `{"type":"touch_answer","ask":n,"captured":bool}`, sent once it has dispatched every touch before the ask.
+  `captured`: a react-native-gesture-handler recognizer activated (a pan, a long press already held). JS keeps the
+  touch when `captured`, or when a JS responder that blocks native ones contains the scroll view: guest → host
+  `{"type":"js_responder","tag"}` on `setIsJSResponder(node, true, blockNativeResponder: true)` (a PanResponder's
+  grant), `"tag": null` when released, like RCTScrollView's `_shouldDisableScrollInteraction` (a responder inside the
+  scroll view, such as a pressable row, does not stop it). Otherwise the scroll view takes the pan: JS gets `cancel`,
+  and the content follows from where the finger passed the slop, reporting begin, scroll…, then `end`, or `release`,
+  the momentum's `scroll`s and `momentum_end` when the content carries on after the finger lifts. An answer for an
+  older ask is ignored; with no answer after 250 ms of finger time the scroll view takes the pan anyway; a finger
+  lifted before the answer ends the JS touch. The CLI's whole `--drag` runs as these live phases (moves at 5 pt and
+  11 pt, then 8 steps), settling between them (so the answer is always in), and lifts at rest.
   A vertical scroll pulling down past the top (offset already 0) is reported like iOS rubber-banding:
   begin at 0, `scroll` with the negative overscroll `y`, end at 0. Pulled 100 pt or more, the guest fires
   `topRefresh` on the scroll view's `PullToRefreshView` child (RN `RefreshControl`) unless it is already refreshing.

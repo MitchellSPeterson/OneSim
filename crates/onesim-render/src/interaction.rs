@@ -78,7 +78,7 @@ impl Touch {
 }
 
 /// A finger must move this far (pt) before a scroller takes a touch from a tap-only gesture view (UIScrollView's slop).
-const PAN_SLOP: f64 = 10.0;
+pub(crate) const PAN_SLOP: f64 = 10.0;
 /// Synthesized whole gestures (`drag`, `pinch`, `rotate`) move in this many steps, one per frame.
 const GESTURE_STEPS: u32 = 8;
 const FRAME_MS: f64 = 16.0;
@@ -276,6 +276,11 @@ fn under(scene: &Scene, mut i: usize, ancestor: usize) -> bool {
 }
 
 impl Interaction {
+    /// Whether the scroller `id` is still moving on its own (momentum or a bounce).
+    pub fn moving(&self, id: &str) -> bool {
+        self.motion.contains_key(id)
+    }
+
     pub fn has_drag_target(&self) -> bool {
         self.slider_drag.is_some() || self.drag.is_some()
     }
@@ -687,7 +692,15 @@ impl Interaction {
     }
 
     fn scroll_begin(&mut self, scene: &Scene, x: f64, y: f64, t: f64) -> Effect {
-        let Some(n) = scene.scroll_target(x, y).map(|i| &scene.nodes[i]) else { return Effect::None };
+        let Some(i) = scene.scroll_target(x, y) else { return Effect::None };
+        self.begin_scroll(scene, i, x, y, t)
+    }
+
+    /// A finger at (x, y) starts dragging the scroller `scene.nodes[i]` (an outer one when the drag's direction is not
+    /// the innermost's). Follow with `drag` moves and an end.
+    pub fn begin_scroll(&mut self, scene: &Scene, i: usize, x: f64, y: f64, t: f64) -> Effect {
+        self.forget_gone(scene);
+        let n = &scene.nodes[i];
         self.pressed = None;
         self.motion.remove(&n.id);
         if self.drag.as_ref().is_none_or(|d| d.id != n.id) {
