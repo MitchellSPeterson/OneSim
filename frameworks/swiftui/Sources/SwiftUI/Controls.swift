@@ -117,28 +117,6 @@ extension List {
 
 // MARK: - Controls
 
-public struct TextField: View, _Primitive {
-    public typealias Body = Never
-    public var body: Never { fatalError() }
-    let placeholder: String, text: Binding<String>, secure: Bool
-    public init(_ placeholder: String, text: Binding<String>) { self.placeholder = placeholder; self.text = text; secure = false }
-    init(_ placeholder: String, text: Binding<String>, secure: Bool) { self.placeholder = placeholder; self.text = text; self.secure = secure }
-    func _emit(_ path: String) -> Node {
-        let b = text
-        var n: Node = ["kind": "text_field", "id": path, "placeholder": placeholder, "text": b.wrappedValue,
-                       "field": _Runtime.shared.registerField { b.wrappedValue = $0 }]
-        if secure { n["secure"] = true }
-        return n
-    }
-}
-
-/// A `TextField` whose text the host draws as bullets.
-public struct SecureField: View {
-    let placeholder: String, text: Binding<String>
-    public init(_ placeholder: String, text: Binding<String>) { self.placeholder = placeholder; self.text = text }
-    public var body: some View { TextField(placeholder, text: text, secure: true) }
-}
-
 /// `Form` is an inset-grouped `List` on iOS.
 public struct Form<Content: View>: View, _Primitive {
     public typealias Body = Never

@@ -101,21 +101,27 @@ fn set_err(msg: impl Into<String>) {
 fn update_scene(s: &mut State) {
     let Some(root) = &s.tree else { return };
     let fonts = s.fonts.get_or_insert_with(|| Fonts::with_fallback(true)); // browsers: bundled Inter only
-    let params = SceneParams {
-        viewport: s.viewport,
-        device: s.device,
-        scale: s.scale,
-        appearance: if s.dark { Appearance::Dark } else { Appearance::Light },
-        dynamic_type: s.dynamic_type,
-        ios: s.ios,
-        scroll: &s.inter.scroll,
-        sheets: &s.inter.sheets,
-        focus: s.inter.focus.as_deref(),
-        overscroll: s.inter.live(),
-        status_bar: true,
-        chrome: s.inter.chrome(),
+    let mut layout = |inter: &Interaction| {
+        let params = SceneParams {
+            viewport: s.viewport,
+            device: s.device,
+            scale: s.scale,
+            appearance: if s.dark { Appearance::Dark } else { Appearance::Light },
+            dynamic_type: s.dynamic_type,
+            ios: s.ios,
+            scroll: &inter.scroll,
+            sheets: &inter.sheets,
+            focus: inter.focus.as_deref(),
+            overscroll: inter.live(),
+            status_bar: true,
+            chrome: inter.chrome(),
+        };
+        build_scene_reusing_layout(root, &params, fonts, &mut s.layout_cache)
     };
-    let scene = build_scene_reusing_layout(root, &params, fonts, &mut s.layout_cache);
+    let mut scene = layout(&s.inter);
+    if s.rn.is_none() && s.version.is_some_and(|version| s.inter.sync_text_focus(&scene, version)) {
+        scene = layout(&s.inter);
+    }
     // React Native needs current layout even when multiple updates share a presentation.
     if let Some(rn) = s.rn.as_mut() {
         rn.outbox.extend(rn.input.layout(&scene));

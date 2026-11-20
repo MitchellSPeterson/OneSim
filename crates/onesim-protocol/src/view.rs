@@ -1247,6 +1247,55 @@ pub struct ShapeExtra {
     pub stroke: Option<Stroke>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextInputStyle {
+    Automatic,
+    Plain,
+    Bordered,
+    RoundedBorder,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TextInputBorderShape {
+    Automatic,
+    Capsule,
+    RoundedRectangle,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct TextInputOptions {
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub editor: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_style: Option<TextInputStyle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_border_shape: Option<TextInputBorderShape>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub axis: Option<Axis>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focused: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub focus_action: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blur_action: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submit_action: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keyboard_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub autocapitalization: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submit_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub autocorrection_disabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<Box<ViewNode>>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ViewKind {
@@ -1421,6 +1470,8 @@ pub enum ViewKind {
         secure: bool,
         #[serde(default, skip_serializing_if = "is_false")]
         disabled: bool,
+        #[serde(flatten)]
+        input: Box<TextInputOptions>,
     },
     /// `Picker`; `selected` indexes `options`. Menu style: `open` shows the options as a `menu` layer.
     Picker {

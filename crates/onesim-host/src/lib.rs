@@ -458,22 +458,28 @@ impl Host {
             .ok_or_else(|| err(ErrorCode::InvalidState, format!("session {id} is {} and has no tree", s.state().as_str())))?;
         let gen = s.generation();
         let fonts = self.fonts.get_or_insert_with(Fonts::new);
-        let params = SceneParams {
-            viewport: (s.viewport.width, s.viewport.height),
-            device: &s.device,
-            scale: s.scale,
-            appearance: s.appearance,
-            dynamic_type: s.dynamic_type,
-            ios: s.ios,
-            scroll: &s.inter.scroll,
-            sheets: &s.inter.sheets,
-            focus: s.inter.focus.as_deref(),
-            overscroll: s.inter.live(),
-            status_bar: true,
-            chrome: s.inter.chrome(),
+        let mut layout = |inter: &onesim_render::Interaction| {
+            let params = SceneParams {
+                viewport: (s.viewport.width, s.viewport.height),
+                device: &s.device,
+                scale: s.scale,
+                appearance: s.appearance,
+                dynamic_type: s.dynamic_type,
+                ios: s.ios,
+                scroll: &inter.scroll,
+                sheets: &inter.sheets,
+                focus: inter.focus.as_deref(),
+                overscroll: inter.live(),
+                status_bar: true,
+                chrome: inter.chrome(),
+            };
+            build_scene(&root, &params, fonts)
         };
-        let mut scene = build_scene(&root, &params, fonts);
+        let mut scene = layout(&s.inter);
         if s.is_swiftui() {
+            if s.inter.sync_text_focus(&scene, version) {
+                scene = layout(&s.inter);
+            }
             s.sync_schedule();
             if gen != s.last_anim_gen {
                 s.anim.update(&scene);
@@ -743,6 +749,14 @@ impl Host {
     pub fn hide_keyboard(&mut self, id: &str) -> Result<(), ApiError> {
         let s = self.get(id)?;
         s.require_running()?;
+        if s.is_swiftui() {
+            self.sync_guest_clock(id)?;
+            let (scene, version, _) = self.scene(id)?;
+            let s = self.get(id)?;
+            s.inter.version = version;
+            let effect = s.inter.blur_text(&scene);
+            return s.send_effect(effect);
+        }
         let before = s.inter.focus.take();
         if s.is_rn() {
             s.sync_focus(before)?;

@@ -653,6 +653,16 @@ impl Fonts {
         b
     }
 
+    /// The caret after the last grapheme, relative to the first line's origin.
+    pub(crate) fn text_end(&mut self, text: &str, f: &FontSpec, width: Option<f32>) -> (f64, f64) {
+        let b = self.buffer(text, f, width, &[]);
+        let Some(run) = b.layout_runs().last() else { return (0.0, 0.0) };
+        let x = run.glyphs.iter().max_by_key(|g| g.end).map_or(0.0, |g| {
+            if g.level.is_rtl() { g.x } else { g.x + g.w }
+        });
+        (f64::from(x * width_scale(f.width)), f64::from(run.line_top))
+    }
+
     /// Size of `text`, wrapping at `width` when given.
     pub fn measure(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span]) -> (f64, f64) {
         // Styled advances vary independently of the default cache key.

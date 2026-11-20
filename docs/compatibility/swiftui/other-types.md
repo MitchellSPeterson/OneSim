@@ -313,8 +313,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `SpringLoadingBehavior` | 17 | ⬜ |  |  |
 | `StrokeBorderShapeView` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `StrokeShapeView` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
-| `SubmitLabel` | 15 | ⬜ |  |  |
-| `SubmitTriggers` | 15 | ⬜ |  |  |
+| `SubmitLabel` | 15 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) |  |
+| `SubmitTriggers` | 15 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) |  |
 | `SymbolColorRenderingMode` | 26 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Gradient is an AppKit bitmap. The Phosphor fallback stays a mask |
 | `SymbolEffectTransition` | 17 | ⬜ |  |  |
 | `SymbolRenderingMode` | 15 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Palette is one foreground at full, 0.6, and 0.3 alpha. The fallback stays a mask |
@@ -346,9 +346,9 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `TabViewCustomization` | 18 | ⬜ |  |  |
 | `TextAlignment` | 13 | ✅ |  |  |
 | `TextEditingCommands` | 14 | ⬜ |  |  |
-| `TextEditorStyleConfiguration` | 17 | ⬜ |  |  |
+| `TextEditorStyleConfiguration` | 17 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) |  |
 | `TextFormattingCommands` | 14 | ⬜ |  |  |
-| `TextInputAutocapitalization` | 15 | ⬜ |  |  |
+| `TextInputAutocapitalization` | 15 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) |  |
 | `TextInputDictationActivation` | 17 | ⬜ |  |  |
 | `TextInputDictationBehavior` | 17 | ⬜ |  |  |
 | `TextInputFormattingControlPlacement` | 26 | ⬜ |  |  |

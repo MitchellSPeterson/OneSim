@@ -856,4 +856,73 @@ assert canvas(t)["proposal"] == [0, 0]
 assert canvas(t)["children"][-3]["origin"] == [0, 0]
 assert effect(t)["effects"][0]["matrix"][4] == 114
 finish(p)
+# --- text input: modifier scopes, Unicode bindings, focus movement, and submission
+p = spawn(sys.argv[17])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+
+def input_field(t, placeholder):
+    return next(m for m in walk(t["root"]) if m["kind"] == "text_field" and m["placeholder"] == placeholder)
+
+def input_action(t, placeholder, action):
+    return act(p, t, input_field(t, placeholder)[action])
+
+name = input_field(t, "Full name")
+assert name["input_style"] == "rounded_border" and name["prompt"]["text"] == "Full name", name
+assert name["keyboard_type"] == "emailAddress" and name["autocapitalization"] == "never", name
+assert name["submit_label"] == "next" and name["autocorrection_disabled"], name
+assert not name["focused"] and not input_field(t, "Other")["focused"]
+assert "submit_action" not in input_field(t, "Other")
+assert input_field(t, "Other")["input_style"] == "plain"
+disabled = input_field(t, "Disabled")
+assert disabled["disabled"] and disabled["field"] == 0 and "submit_action" not in disabled
+assert disabled["input_style"] == "bordered" and disabled["input_border_shape"] == "rounded_rectangle"
+
+t = act(p, t, button(t, "Focus name")["action"])
+assert input_field(t, "Full name")["focused"]
+t = act(p, t, button(t, "Focus full name")["action"])
+assert input_field(t, "Full name")["focused"]
+name = input_field(t, "Full name")
+value = "李 García 👩🏽‍💻"
+send(p, type="text_input", field=name["field"], version=t["version"], text=value)
+t = recv(p)
+assert input_field(t, "Full name")["text"] == value
+t = input_action(t, "Full name", "submit_action")
+assert "outer inner " in alltexts(t["root"])
+assert not input_field(t, "Full name")["focused"]
+password = input_field(t, "Enter password")
+assert password["secure"] and password["focused"] and password["content_type"] == "password"
+assert "keyboard_type" not in password
+secret = "秘密 🔐"
+send(p, type="text_input", field=password["field"], version=t["version"], text=secret)
+t = recv(p)
+assert input_field(t, "Enter password")["text"] == secret
+t = input_action(t, "Enter password", "submit_action")
+assert "outer inner outer " in alltexts(t["root"])
+
+t = input_action(t, "Other", "focus_action")
+assert input_field(t, "Other")["focused"] and not input_field(t, "Enter password")["focused"]
+assert "No enum focus" in alltexts(t["root"])
+t = input_action(t, "", "focus_action")
+assert input_field(t, "")["focused"] and not input_field(t, "Other")["focused"]
+editor = input_field(t, "")
+assert editor["editor"] and editor["axis"] == "vertical" and editor["input_style"] == "plain"
+assert "submit_action" not in editor
+value = ("א👩🏽‍💻\n" * 2048) + "Last line"
+send(p, type="text_input", field=editor["field"], version=t["version"], text=value)
+t = recv(p)
+assert input_field(t, "")["text"] == value
+t = input_action(t, "", "blur_action")
+assert not input_field(t, "")["focused"] and "No enum focus" in alltexts(t["root"])
+editor = input_field(t, "")
+send(p, type="text_input", field=editor["field"], version=t["version"], text="")
+t = recv(p)
+assert input_field(t, "")["text"] == ""
+
+t = input_action(t, "Enter password", "focus_action")
+assert input_field(t, "Enter password")["focused"]
+t = act(p, t, button(t, "Hide password")["action"])
+assert "No enum focus" in alltexts(t["root"])
+finish(p)
+print("text input: secure and multiline bindings, inherited submission, focus transfer, disabled controls ok")
 print("PASS")
