@@ -28,10 +28,12 @@ trap cleanup EXIT
 app="$guests/showcase"
 tabs="$guests/tabs"
 gest="$guests/gestures"
+shp="$guests/shapes"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
   scripts/build-swift-app.sh examples/swiftui-tabs "$tabs"
   scripts/build-swift-app.sh examples/swiftui-gestures "$gest"
+  scripts/build-swift-app.sh examples/swiftui-shapes "$shp"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
 # (docs/compatibility/versions.json): 26.5 on the iPhone 17 Pro in tests/fixtures/, 27.2 on the iPhone 18 Pro
@@ -109,6 +111,13 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     gshot gestures-pinched       --pinch "Pinch or rotate,1.5"
     echo "== SwiftUI gestures (swiftui-gestures, iOS $ios)"
     python3 scripts/compare_ios.py $fx/swiftui-gestures-ios "$gout/onesim" "$gout" || rc=1
+    # SwiftUI shapes & paths: tests/fixtures/swiftui-shapes-ios (see its README).
+    sout=$out/swiftui-shapes; mkdir -p "$sout/onesim"
+    sshot() { local name=$1; shift; ./target/debug/onesim run "$shp" "${base[@]}" "$@" --screenshot "$sout/onesim/$name.png" >/dev/null; }
+    sshot shapes
+    sshot shapes-dark --dark
+    echo "== SwiftUI shapes (swiftui-shapes, iOS $ios)"
+    python3 scripts/compare_ios.py $fx/swiftui-shapes-ios "$sout/onesim" "$sout" || rc=1
   fi
   # React Native / Expo showcase: tests/fixtures/rn-showcase-ios (see its README). Needs node + `npm install` in the example.
   if want expo; then

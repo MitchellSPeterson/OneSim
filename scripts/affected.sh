@@ -36,10 +36,12 @@ swiftui  scripts/build-ios-sim.sh
 swiftui  tests/fixtures/showcase-ios/*
 swiftui  tests/fixtures/swiftui-tabs-ios/*
 swiftui  tests/fixtures/swiftui-gestures-ios/*
+swiftui  tests/fixtures/swiftui-shapes-ios/*
 swiftui  tests/fixtures/devices/*
 swiftui  tests/fixtures/ios27/showcase-ios/*
 swiftui  tests/fixtures/ios27/swiftui-tabs-ios/*
 swiftui  tests/fixtures/ios27/swiftui-gestures-ios/*
+swiftui  tests/fixtures/ios27/swiftui-shapes-ios/*
 swiftui  tests/fixtures/ios27/devices/*
 compose  frameworks/compose/*
 compose  examples/compose-*

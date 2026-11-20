@@ -4,37 +4,37 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 
 | API | Since | iOS | Issue | Notes |
 |---|---|---|---|---|
-| `AnyShape` | 16 | ⬜ |  |  |
+| `AnyShape` | 16 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `ButtonBorderShape` | 15 | ⬜ |  |  |
-| `Capsule` | 13 | ✅ |  |  |
-| `Circle` | 13 | ✅ |  |  |
-| `ConcentricRectangle` | 26 | ⬜ |  |  |
-| `ContainerRelativeShape` | 14 | ⬜ |  |  |
+| `Capsule` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `Circle` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `ConcentricRectangle` | 26 | 🟠 | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) | Resolves concentrically against enclosing `.containerShape`; no device display-bezel radius when uncontained; `.inset(by:)` and shape combinators fall back to fixed/minimum radii |
+| `ContainerRelativeShape` | 14 | 🟠 | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) | Resolves against enclosing `.containerShape`; `.inset(by:)` and shape combinators fall back to `Rectangle` |
 | `DefaultGlassEffectShape` | 26 | ⬜ |  |  |
-| `Ellipse` | 13 | 🟠 |  | Draws as a capsule as a plain shape view |
-| `InsettableShape.strokeBorder` | 13 | ⬜ |  |  |
-| `OffsetShape` | 13 | ⬜ |  |  |
-| `Path` | 13 | ⬜ |  |  |
-| `Rectangle` | 13 | ✅ |  |  |
-| `RotatedShape` | 13 | ⬜ |  |  |
-| `RoundedRectangle` | 13 | ✅ |  |  |
-| `ScaledShape` | 13 | ⬜ |  |  |
-| `Shape.fill` | 13 | ✅ |  |  |
-| `Shape.intersection` | 17 | ⬜ |  |  |
-| `Shape.layoutDirectionBehavior` | 17 | ⬜ |  |  |
-| `Shape.lineIntersection` | 17 | ⬜ |  |  |
-| `Shape.lineSubtraction` | 17 | ⬜ |  |  |
-| `Shape.offset` | 13 | ⬜ |  |  |
-| `Shape.rotation` | 13 | ⬜ |  |  |
-| `Shape.scale` | 13 | ⬜ |  |  |
-| `Shape.size` | 13 | ⬜ |  |  |
-| `Shape.sizeThatFits` | 16 | ⬜ |  |  |
-| `Shape.stroke` | 13 | ✅ |  |  |
-| `Shape.subtracting` | 17 | ⬜ |  |  |
-| `Shape.symmetricDifference` | 17 | ⬜ |  |  |
-| `Shape.transform` | 13 | ⬜ |  |  |
-| `Shape.trim` | 13 | ⬜ |  |  |
-| `Shape.union` | 17 | ⬜ |  |  |
+| `Ellipse` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `InsettableShape.strokeBorder` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `OffsetShape` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `Path` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) | Builders, arcs, `description`/`init?(_:)`, `boundingRect`, `contains`, `trimmedPath`, `strokedPath`, boolean ops, `cgPath` on Apple platforms |
+| `Rectangle` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `RotatedShape` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `RoundedRectangle` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `ScaledShape` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `Shape.fill` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `Shape.intersection` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `Shape.layoutDirectionBehavior` | 17 | 🟠 | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) | Declared and mirrored when RTL; host layout direction is currently fixed to LTR |
+| `Shape.lineIntersection` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `Shape.lineSubtraction` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `Shape.offset` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `Shape.rotation` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `Shape.scale` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `Shape.size` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `Shape.sizeThatFits` | 16 | 🟠 | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) | Probes fixed, square, aspect-ratio and ideal sizes; general proposal-dependent formulas fall back to greedy |
+| `Shape.stroke` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `Shape.subtracting` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `Shape.symmetricDifference` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `Shape.transform` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `Shape.trim` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `Shape.union` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `TextInputBorderShape` | 13 | ⬜ |  |  |
-| `TransformedShape` | 13 | ⬜ |  |  |
-| `UnevenRoundedRectangle` | 16 | ⬜ |  |  |
+| `TransformedShape` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `UnevenRoundedRectangle` | 16 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |

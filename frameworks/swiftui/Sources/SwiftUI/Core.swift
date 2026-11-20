@@ -139,6 +139,10 @@ final class _Runtime {
     var gestures: [String: _GestureEntry] = [:]
     var gesturesOff = false
     var touch: _TouchSession?   // the touch sequence in progress (spans evaluations)
+    // Custom shapes (section M): laid-out sizes sent by the host via `layout` messages, keyed by node id.
+    var shapeSizes: [String: CGSize] = [:]
+    // Layout direction for `Shape.layoutDirectionBehavior`.
+    var layoutDirection: LayoutDirection = .leftToRight
 
     /// Compare `value` with the previous pass's; queue `fire(old, new)` on a change (or on first sight when `initial`).
     func noteChange<V: Equatable>(_ path: String, _ value: V, initial: Bool, _ fire: @escaping (V, V) -> Void) {
@@ -285,5 +289,15 @@ func _onesimRegisterCallbacks() {
         let rt = _Runtime.shared
         if let text { let t = String(cString: text); _pool { rt.fields[field]?(t) } }
         if rt.dirty { rt.submitTree() }
+    }
+    simcore_runtime_set_layout_callback { _, keys, frames, n in
+        let rt = _Runtime.shared
+        var changed = false
+        for i in 0..<n {
+            let k = String(cString: keys![i]!)
+            let sz = CGSize(width: frames![4 * i + 2], height: frames![4 * i + 3])
+            if rt.shapeSizes[k] != sz { rt.shapeSizes[k] = sz; changed = true }
+        }
+        if changed { rt.submitTree() }
     }
 }

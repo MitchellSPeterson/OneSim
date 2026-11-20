@@ -35,6 +35,10 @@ typedef void (*simcore_text_cb)(void *ctx, uint64_t field_id, const char *text);
 typedef void (*simcore_gesture_cb)(void *ctx, int32_t phase, double time, const double *points, size_t npoints,
                                    const char *const *keys, const double *frames, size_t ntargets);
 
+/* layout (protocol section M): laid-out frames for custom SwiftUI shapes. `keys` holds `nframes` node ids
+ * and `frames` their (x, y, w, h) frames, 4 doubles each. Owned by Rust, valid only during the callback. */
+typedef void (*simcore_layout_cb)(void *ctx, const char *const *keys, const double *frames, size_t nframes);
+
 /* Call once, first. dup()s fd 1 as the protocol channel, dup2(2,1), sends hello.
  * Returns 0 on success, nonzero on failure (see simcore_last_error). */
 int32_t simcore_runtime_init(void);
@@ -48,6 +52,9 @@ void simcore_runtime_set_text_callback(simcore_text_cb on_text);
 
 /* Optional. Registers the gesture callback; `ctx` is the one passed to simcore_runtime_set_callbacks. */
 void simcore_runtime_set_gesture_callback(simcore_gesture_cb on_gesture);
+
+/* Optional. Registers the layout callback (protocol section M); `ctx` is the one passed to simcore_runtime_set_callbacks. */
+void simcore_runtime_set_layout_callback(simcore_layout_cb on_layout);
 
 /* Send a view tree (UTF-8 JSON ViewNode, not NUL-terminated). Validated as JSON
  * and copied. `version` must be strictly increasing. Returns 0 on success. */

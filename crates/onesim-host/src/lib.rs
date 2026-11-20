@@ -229,7 +229,16 @@ impl Host {
     fn scene_within(&mut self, id: &str, anim: Duration) -> Result<(Scene, u64, f64), ApiError> {
         // A paused guest cannot answer: serve the last frame as is.
         if !self.get(id)?.is_rn() || self.get(id)?.state() == State::Paused {
-            return self.build(id);
+            let out = self.build(id)?;
+            if !self.get(id)?.is_rn() && self.get(id)?.state() == State::Running {
+                let frames = out.0.pending_shape_frames();
+                if !frames.is_empty()
+                    && self.get(id)?.send_and_wait_tree(&HostMessage::Layout { frames })?
+                {
+                    return self.build(id);
+                }
+            }
+            return Ok(out);
         }
         let settle = self.get(id)?.settle;
         let (start, deadline) = (Instant::now(), Instant::now() + SETTLE_MAX.max(anim));
