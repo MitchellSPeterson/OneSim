@@ -258,7 +258,7 @@ fn scroll_rest_stops(scene: &Scene, index: usize) -> Vec<f64> {
             continue;
         }
         let main = if info.vertical { t.bounds.y } else { t.bounds.x };
-        stops.push(main - base + off);
+        stops.push((main - base + off).clamp(0.0, max));
     }
     stops
 }
@@ -1033,6 +1033,40 @@ mod tests {
         n.bounds = Rect { x: 0.0, y: 0.0, w: 100.0, h: 100.0 };
         n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max: (0.0, 300.0), snap, content: None, page: Some(100.0), aligned: false });
         Scene { size: (100.0, 100.0), appearance: onesim_protocol::Appearance::Light, ios: Default::default(), nodes: vec![n], unsupported_symbols: vec![], notes: vec![] }
+    }
+
+    #[test]
+    fn view_aligned_stops_clamp_to_the_max_offset() {
+        use crate::scene::{Node, Rect, ScrollInfo};
+        let mut scroll = Node::new("s", "scroll");
+        scroll.bounds = Rect { x: 0.0, y: 0.0, w: 370.0, h: 72.0 };
+        scroll.scroll = Some(ScrollInfo {
+            vertical: false,
+            offset: (500.0, 0.0),
+            max: (590.0, 0.0),
+            snap: None,
+            content: None,
+            page: None,
+            aligned: true,
+        });
+        let page = |id, content: f64| {
+            let mut n = Node::new(id, "page");
+            n.bounds = Rect { x: content - 500.0, y: 0.0, w: 320.0, h: 72.0 };
+            n.parent = Some(0);
+            n.scroll_target = true;
+            n
+        };
+        let scene = Scene {
+            size: (370.0, 72.0),
+            appearance: onesim_protocol::Appearance::Light,
+            ios: Default::default(),
+            nodes: vec![scroll, page("a", 0.0), page("b", 320.0), page("c", 640.0)],
+            unsupported_symbols: vec![],
+            notes: vec![],
+        };
+        let stops = scroll_rest_stops(&scene, 0);
+        assert!(stops.iter().all(|s| *s <= 590.0), "stops {stops:?} pass the max offset");
+        assert_eq!(nearest_stop(560.0, &stops), 590.0);
     }
 
     #[test]

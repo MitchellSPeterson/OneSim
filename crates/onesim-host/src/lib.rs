@@ -124,11 +124,18 @@ fn nodes_needing_geometry(scene: &Scene) -> Vec<&str> {
 fn geometry_changes(scene: &Scene, safe_top: f64, safe_bottom: f64, sent: &BTreeMap<String, GeoBox>) -> BTreeMap<String, GeoBox> {
     let mut frames = BTreeMap::new();
     for n in &scene.nodes {
-        if !needs_geometry(n) {
+        if n.proposal.is_none() {
             continue;
         }
         let geo = GeoBox { width: n.bounds.w, height: n.bounds.h, x: n.bounds.x, y: n.bounds.y, safe_top, safe_bottom, safe_leading: 0.0, safe_trailing: 0.0 };
-        if sent.get(&n.id) != Some(&geo) {
+        if let Some(prev) = sent.get(&n.id) {
+            // A reader that returns to the origin still differs from the frame already sent.
+            if prev != &geo {
+                frames.insert(n.id.clone(), geo);
+            }
+            continue;
+        }
+        if needs_geometry(n) {
             frames.insert(n.id.clone(), geo);
         }
     }
@@ -947,7 +954,7 @@ impl Host {
 #[cfg(test)]
 mod settle_tests {
     use super::{current_anchor, geometry_changes, nodes_needing_geometry, scroll_to_offset};
-    use onesim_protocol::{Appearance, IosVersion};
+    use onesim_protocol::{Appearance, GeoBox, IosVersion};
     use onesim_render::{Node, Rect, Scene, ScrollInfo};
     use std::collections::BTreeMap;
 
@@ -1030,5 +1037,15 @@ mod settle_tests {
         let first = geometry_changes(&placed_scene, 62.0, 34.0, &BTreeMap::new());
         assert_eq!((first["placed"].x, first["placed"].y), (4.0, 8.0));
         assert!(geometry_changes(&placed_scene, 62.0, 34.0, &first).is_empty());
+        let mut home = Node::new("home", "geometry");
+        home.proposal = Some([40.0, 20.0]);
+        home.bounds = Rect { x: 0.0, y: 0.0, w: 40.0, h: 20.0 };
+        let mut sent = BTreeMap::new();
+        sent.insert(
+            "home".to_string(),
+            GeoBox { width: 40.0, height: 20.0, x: 4.0, y: 8.0, safe_top: 62.0, safe_bottom: 34.0, safe_leading: 0.0, safe_trailing: 0.0 },
+        );
+        let back = geometry_changes(&scene(vec![home]), 62.0, 34.0, &sent);
+        assert_eq!((back["home"].x, back["home"].y), (0.0, 0.0));
     }
 }

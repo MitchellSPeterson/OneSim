@@ -1953,23 +1953,32 @@ impl Ctx<'_> {
         Lay::new(Size { w, h }, Some(n), vec![(0.0, 0.0, child)])
     }
 
-    /// `ViewThatFits`: the first child that fits the checked axes, else the last.
+    /// `ViewThatFits`: the first child whose ideal size fits the checked axes, else the last.
+    /// The probe is unconstrained on those axes, so wrapping text is not treated as fitting.
+    /// The chosen child is then laid out with the real proposal.
     fn view_that_fits(&mut self, v: &ViewNode, axes: FitAxes, children: &[ViewNode], p: Prop, env: Env) -> Lay {
         let fits = |size: Size| match axes {
             FitAxes::Both => fits_axis(size.w, p.w) && fits_axis(size.h, p.h),
             FitAxes::Horizontal => fits_axis(size.w, p.w),
             FitAxes::Vertical => fits_axis(size.h, p.h),
         };
-        let mut chosen = None;
+        let probe = match axes {
+            FitAxes::Both => Prop { w: None, h: None },
+            FitAxes::Horizontal => Prop { w: None, h: p.h },
+            FitAxes::Vertical => Prop { w: p.w, h: None },
+        };
+        let mut index = None;
         for (i, c) in children.iter().enumerate() {
-            let laid = self.view(c, p, env);
-            let ok = fits(laid.size);
-            if ok || i + 1 == children.len() {
-                chosen = Some(laid);
+            let laid = self.view(c, probe, env);
+            if fits(laid.size) || i + 1 == children.len() {
+                index = Some(i);
                 break;
             }
         }
-        let inner = chosen.unwrap_or_else(|| Lay::new(Size::default(), None, vec![]));
+        let inner = match index {
+            Some(i) => self.view(&children[i], p, env),
+            None => Lay::new(Size::default(), None, vec![]),
+        };
         let size = inner.size;
         Lay::new(size, Some(Node::new(&v.id, "viewThatFits")), vec![(0.0, 0.0, inner)])
     }
@@ -3651,6 +3660,17 @@ mod tests {
         assert!(s.nodes.iter().all(|n| n.id != "wide"));
         assert!(s.nodes.iter().any(|n| n.id == "narrow"));
         assert_eq!(by_id(&s, "f").bounds.w, 40.0);
+    }
+
+    #[test]
+    fn view_that_fits_rejects_text_that_only_fits_by_wrapping() {
+        let json = r#"{"kind":"viewThatFits","id":"f","axes":"horizontal","children":[
+            {"kind":"text","id":"long","text":"Wide layout does not fit this row"},
+            {"kind":"text","id":"short","text":"Compact"}
+        ]}"#;
+        let s = scene(json, (80.0, 40.0));
+        assert!(s.nodes.iter().all(|n| n.id != "long"), "wrapped text was treated as fitting");
+        assert!(s.nodes.iter().any(|n| n.id == "short"));
     }
 
     #[test]
