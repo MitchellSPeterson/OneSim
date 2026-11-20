@@ -258,6 +258,9 @@ impl Builder {
     /// Use shared glyph-mask resources for short, opaque, undecorated grayscale labels.
     fn glyph_sprites(&mut self, n: &Node, fonts: &mut Fonts, scale: f32, clip: PaintClip, dl: &mut DisplayList) -> bool {
         let Some(t) = n.text.as_ref() else { return false };
+        if t.font.compose_overflow.is_some() {
+            return false;
+        }
         let c = t.color;
         if n.opacity != 1.0 || c.a != 1.0 || c.r != c.g || c.g != c.b || t.strike || !t.spans.is_empty() || t.font.size > 40.0 || t.text.len() > 256 {
             return false;

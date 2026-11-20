@@ -20,7 +20,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `BadgedBox` | material3 | ⬜ |  |  |
 | `BasicAlertDialog` | material3 | ⬜ |  |  |
 | `BasicSecureTextField` | foundation | ⬜ |  |  |
-| `BasicText` | foundation | 🟠 | | String only (no AnnotatedString); overflow always clips; no minLines |
+| `BasicText` | foundation | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | String and AnnotatedString, wrapping, inline content, onTextLayout, step-based sizing and custom sizing strategies. |
 | `BasicTextField` | foundation | 🟠 |  | String value and change callback, host keyboard input. |
 | `BasicTooltipBox` | foundation | ⬜ |  | Experimental |
 | `BottomAppBar` | material3 | ⬜ |  |  |
@@ -37,7 +37,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Checkbox` | material3 | ⬜ |  |  |
 | `CircularProgressIndicator` | material3 | ⬜ |  |  |
 | `CircularWavyProgressIndicator` | material3 | ⬜ |  |  |
-| `ClickableText` | foundation | ⬜ |  | Deprecated |
+| `ClickableText` | foundation | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | UTF-16 tap offsets and onTextLayout. Deprecated in AndroidX. |
 | `Column` | foundation-layout | ✅ | |  |
 | `ContainedLoadingIndicator` | material3 | ⬜ |  | Experimental |
 | `ContextualFlowColumn` | foundation-layout | ⬜ |  | Deprecated; Experimental |
@@ -51,7 +51,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `DeferredAnimatedVisibility` | animation | ⬜ |  |  |
 | `Dialog` | ui | ⬜ |  |  |
 | `DialogHost` | navigation-compose | ⬜ |  |  |
-| `DisableSelection` | foundation | ⬜ |  |  |
+| `DisableSelection` | foundation | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Excludes descendant text from its selection container. |
 | `DismissibleDrawerSheet` | material3 | ⬜ |  |  |
 | `DismissibleNavigationDrawer` | material3 | ⬜ |  |  |
 | `Divider` | material3 | ⬜ |  | Deprecated |
@@ -175,7 +175,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `SegmentedButton` | material3 | ⬜ |  |  |
 | `SegmentedListItem` | material3 | ⬜ |  |  |
 | `SelectableDropdownMenuItem` | material3 | ⬜ |  |  |
-| `SelectionContainer` | foundation | ⬜ |  |  |
+| `SelectionContainer` | foundation | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Touch and drag selection across enabled text, adjustable handles, magnifier, Copy and Select all. Read aloud uses the platform speech service. |
 | `SharedTransitionLayout` | animation | ⬜ |  |  |
 | `ShortNavigationBar` | material3 | ⬜ |  |  |
 | `ShortNavigationBarItem` | material3 | ⬜ |  |  |
@@ -195,7 +195,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Switch` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state; thumbContent not drawn |
 | `Tab` | material3 | ⬜ |  |  |
 | `TabRow` | material3 | ⬜ |  | Deprecated |
-| `Text` | material3 | 🟠 | | String only (no AnnotatedString); overflow always clips; custom fonts render as Roboto |
+| `Text` | material3 | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Styled strings, AnnotatedString, links, inline content, onTextLayout and bundled font resources. |
 | `TextButton` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state |
 | `TextField` | material3 | 🟠 |  | Filled string field, enabled and read-only state, host keyboard input. |
 | `TimeInput` | material3 | ⬜ |  |  |

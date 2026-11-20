@@ -31,6 +31,8 @@ struct State {
     on_layout: LayoutCb,
     /// Guards against infinite re-entry when a layout callback submits a new tree.
     in_layout: bool,
+    #[cfg(all(target_family = "wasm", feature = "js-guest"))]
+    sent_text_layouts: Vec<onesim_protocol::ComposeTextLayout>,
     version: Option<u64>,
     tree: Option<ViewNode>,
     layout_cache: SwiftUiLayoutCache,
@@ -89,6 +91,8 @@ thread_local! {
         anim: Animator::new(), animation_target: None, clock_ms: 0.0, guest_clock_ms: 0.0, guest_due_ms: None, last_anim_ver: None,
         stale: false, initialized: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), frame_version: 0, frame_dirty: false,
         output: 0, builder: Builder::new(), dl: Vec::new(), unread: None, buf: Vec::new(), rn: None,
+        #[cfg(all(target_family = "wasm", feature = "js-guest"))]
+        sent_text_layouts: Vec::new(),
     });
     static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
 }
@@ -115,7 +119,9 @@ fn update_scene(s: &mut State) {
         status_bar: true,
         chrome: s.inter.chrome(),
     };
-    let scene = build_scene_reusing_layout(root, &params, fonts, &mut s.layout_cache);
+    let root = s.inter.styled_compose_tree(root);
+    let mut scene = build_scene_reusing_layout(&root, &params, fonts, &mut s.layout_cache);
+    s.inter.apply_text_selection(&mut scene);
     // React Native needs current layout even when multiple updates share a presentation.
     if let Some(rn) = s.rn.as_mut() {
         rn.outbox.extend(rn.input.layout(&scene));
@@ -212,7 +218,42 @@ fn submit(json: &[u8], version: u64) -> Result<(), String> {
         unsafe { cb(ctx as *mut c_void, line.as_ptr()) };
         STATE.with(|s| s.borrow_mut().in_layout = false);
     }
+    sync_text_layouts();
     Ok(())
+}
+
+fn sync_text_layouts() {
+    #[cfg(all(target_family = "wasm", feature = "js-guest"))]
+    {
+        if with(|s| s.in_layout) {
+            return;
+        }
+        let mut negotiating = false;
+        for round in 0..64 {
+            let message = with(|s| {
+                let version = s.version?;
+                let scene = s.scene.as_ref()?;
+                let pending = scene.pending_compose_auto_size();
+                if round >= 4 && !pending && !negotiating { return None; }
+                negotiating = pending;
+                let layouts = scene.compose_text_layouts();
+                if layouts == s.sent_text_layouts {
+                    return None;
+                }
+                let changed = layouts.iter().filter(|layout| !s.sent_text_layouts.contains(layout)).cloned().collect::<Vec<_>>();
+                s.sent_text_layouts = layouts;
+                if changed.is_empty() {
+                    return None;
+                }
+                let message = serde_json::to_vec(&HostMessage::TextLayout { version, layouts: changed }).ok()?;
+                s.in_layout = true;
+                Some(message)
+            });
+            let Some(message) = message else { break };
+            unsafe { on_text_layouts(message.as_ptr(), message.len()); }
+            with(|s| s.in_layout = false);
+        }
+    }
 }
 
 #[no_mangle]
@@ -317,10 +358,13 @@ extern "C" {
 #[cfg(all(target_family = "wasm", feature = "js-guest"))]
 #[link(wasm_import_module = "onesim_guest")]
 extern "C" {
-    fn on_init(dark: i32, width: f64, height: f64, safe_top: f64, safe_bottom: f64) -> i32;
+    fn on_init(dark: i32, width: f64, height: f64, safe_top: f64, safe_bottom: f64, scale: f64) -> i32;
     fn on_env(dark: i32, width: f64, height: f64, safe_top: f64, safe_bottom: f64) -> i32;
     fn on_action(id: f64);
     fn on_text(field: f64, ptr: *const u8, len: usize);
+    fn on_text_click(id: f64, offset: u32);
+    fn on_text_layouts(ptr: *const u8, len: usize);
+    fn on_selection_output(kind: u32, ptr: *const u8, len: usize);
 }
 
 fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
@@ -375,6 +419,18 @@ pub extern "C" fn simcore_web_submit_tree(len: usize, version: f64) -> i32 {
     }
 }
 
+/// The Kotlin guest can measure text during composition using the scratch buffer.
+/// On success the request is replaced by the measured geometry.
+#[no_mangle]
+pub extern "C" fn simcore_web_measure_text(len: usize) -> *const u8 {
+    with(|s| {
+        let result = s.buf.get(..len).and_then(|input| serde_json::from_slice(input).ok())
+            .and_then(|request| onesim_render::layout::compose::measure_text(request, s.fonts.get_or_insert_with(Fonts::new)));
+        s.buf = result.unwrap_or_default().into_bytes();
+        s.buf.as_ptr()
+    })
+}
+
 /// Evaluate the app and render the first frame. Call once, after `_initialize`.
 /// `width` x `height` = viewport in points; `scale` = device pixels per point.
 #[no_mangle]
@@ -390,7 +446,7 @@ pub extern "C" fn simcore_web_init(width: f64, height: f64, scale: f64, dark: i3
     });
     #[cfg(all(target_family = "wasm", feature = "js-guest"))]
     {
-        unsafe { on_init(if dark != 0 { 1 } else { 0 }, w, h, safe_top, safe_bottom) }
+        unsafe { on_init(if dark != 0 { 1 } else { 0 }, w, h, safe_top, safe_bottom, scale.clamp(1.0, 4.0)) }
     }
     #[cfg(not(all(target_family = "wasm", feature = "js-guest")))]
     {
@@ -486,11 +542,20 @@ pub extern "C" fn simcore_web_set_scale(scale: f64) {
         s.scale = scale.clamp(1.0, 4.0);
         update_scene(s);
     });
+    sync_text_layouts();
 }
 
 /// Apply an interaction effect: guest callbacks for actions/text, a redraw otherwise.
 /// Returns 1 if anything happened.
 fn dispatch(e: Effect) -> i32 {
+    #[cfg(all(target_family = "wasm", feature = "js-guest"))]
+    if let Some(output) = with(|s| s.inter.take_selection_output()) {
+        let (kind, text) = match output {
+            onesim_render::SelectionOutput::Copy(text) => (0, text),
+            onesim_render::SelectionOutput::ReadAloud(text) => (1, text),
+        };
+        unsafe { on_selection_output(kind, text.as_ptr(), text.len()); }
+    }
     #[cfg(not(all(target_family = "wasm", feature = "js-guest")))]
     let (ctx, on_action, on_text) = with(|s| (s.ctx, s.on_action, s.on_text));
     if !matches!(e, Effect::None | Effect::Redraw) && with(|s| s.rn.is_some()) {
@@ -527,6 +592,15 @@ fn dispatch(e: Effect) -> i32 {
                 unsafe { cb(ctx as *mut c_void, field, t.as_ptr()) };
             }
         }
+        Effect::TextClick { id, offset, .. } => {
+            with(|s| s.stale = true);
+            #[cfg(all(target_family = "wasm", feature = "js-guest"))]
+            unsafe {
+                on_text_click(id as f64, offset);
+            }
+            #[cfg(not(all(target_family = "wasm", feature = "js-guest")))]
+            let _ = (id, offset);
+        }
         Effect::Gesture(touches) => {
             with(|s| s.stale = true);
             #[cfg(not(all(target_family = "wasm", feature = "js-guest")))]
@@ -555,6 +629,7 @@ fn dispatch(e: Effect) -> i32 {
             update_scene(s)
         }
     });
+    sync_text_layouts();
     1
 }
 
@@ -581,6 +656,8 @@ pub extern "C" fn simcore_web_pointer(kind: i32, x: f64, y: f64) -> i32 {
     let kind = match kind {
         0 => PointerKind::Down,
         1 => PointerKind::Up,
+        3 => PointerKind::Hover,
+        4 => PointerKind::Cancel,
         _ => PointerKind::Click,
     };
     rn_pointer(PointerEvent::new(kind, x, y)).unwrap_or_else(|| {
@@ -705,7 +782,7 @@ pub extern "C" fn simcore_web_key(kind: i32, len: usize) -> i32 {
     let payload = with(|s| String::from_utf8_lossy(&s.buf[..len.min(s.buf.len())]).into_owned());
     let ev = match (kind, payload.as_str()) {
         (0 | 2, _) => KeyboardEvent::Text { text: payload },
-        (1, "backspace" | "enter") => KeyboardEvent::Key { key: payload },
+        (1, "backspace" | "enter" | "copy" | "select_all" | "tab" | "shift_tab" | "space" | "escape") => KeyboardEvent::Key { key: payload },
         _ => return 0,
     };
     if with(|s| s.rn.is_some()) {
@@ -730,6 +807,11 @@ pub extern "C" fn simcore_web_key(kind: i32, len: usize) -> i32 {
 }
 
 /// 1 while a text field is focused (the software keyboard is showing).
+#[no_mangle]
+pub extern "C" fn simcore_web_link_focused() -> i32 {
+    i32::from(with(|s| s.scene.as_ref().is_some_and(|scene| s.inter.compose_link_focused(scene))))
+}
+
 #[no_mangle]
 pub extern "C" fn simcore_web_focused() -> i32 {
     with(|s| s.inter.focus.is_some() as i32)

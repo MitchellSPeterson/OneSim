@@ -11,6 +11,9 @@ pub mod layout {
 pub mod animation;
 pub mod backend;
 mod chrome;
+mod compose_paint;
+mod compose_path_effect;
+mod compose_text;
 mod device;
 pub mod display;
 mod display_build;
@@ -18,13 +21,18 @@ pub mod glass;
 mod image;
 pub use image::put as put_image;
 mod interaction;
+mod line_break;
 pub mod look;
 mod raster;
 pub mod rn_input;
 mod scene;
+mod selection_chrome;
 mod symbols;
 mod symbols_map;
 mod text;
+mod text_selection;
+mod text_layout;
+mod text_links;
 
 pub use animation::Animator;
 pub use backend::{BackendKind, BackendPref, CpuRenderer, Diagnostics, Frame, FrameTimings, RenderError, Renderer};
@@ -34,6 +42,7 @@ pub use symbols::{capability as symbols_capability, SymbolMask, SymbolMetrics, S
 pub use chrome::{autocap, ChromeParams};
 pub use device::{device, Device, StatusBar, DEFAULT_ANDROID_DEVICE, DEFAULT_DEVICE, DEVICES};
 pub use interaction::{resolve_label, scroll_anchor_offset, DragPhase, Effect, Interaction};
+pub use text_selection::SelectionOutput;
 pub use layout::swiftui::{SceneParams, SwiftUiLayoutCache};
 pub use scene::{Color, Glyph, Gradient, ImageRun, Node, NodeAnim, Rect, Role, Scene, ScrollInfo, SheetInfo, SheetPos, Shadow, SymbolRun, TextRun};
 pub use text::{fonts_capability, inter_tracking_em, tracking_em, FontSpec, Fonts, Span, TextAlign};

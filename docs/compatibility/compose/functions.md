@@ -42,7 +42,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `animateValueAsState` | animation-core | ⬜ |  |  |
 | `animateZoomBy` | foundation | ⬜ |  |  |
 | `anyChangeConsumed` | ui | ⬜ |  | Deprecated |
-| `appendInlineContent` | foundation | ⬜ |  |  |
+| `appendInlineContent` | foundation | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Adds inline slots with alternate text when no content is provided. |
 | `apply` | foundation | ⬜ |  | Experimental |
 | `asAndroidBitmap` | ui-graphics | ⬜ |  |  |
 | `asAndroidColorFilter` | ui-graphics | ⬜ |  |  |
@@ -73,7 +73,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `boundsInRoot` | ui | ⬜ |  |  |
 | `boundsInWindow` | ui | ⬜ |  |  |
 | `bringIntoView` | ui | ⬜ |  |  |
-| `buildAnnotatedString` | ui-text | ⬜ |  |  |
+| `buildAnnotatedString` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Builds styles, links, TTS, legacy URLs, string annotations and nested bullet lists. |
 | `byValue` | foundation | ⬜ |  |  |
 | `calculateCentroid` | foundation | ⬜ |  |  |
 | `calculateCentroidSize` | foundation | ⬜ |  |  |
@@ -83,8 +83,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `calculateStartPadding` | foundation-layout | ⬜ |  |  |
 | `calculateTargetValue` | animation-core | ⬜ |  |  |
 | `calculateZoom` | foundation | ⬜ |  |  |
-| `Canvas` | ui-graphics, foundation | ⬜ |  |  |
-| `capitalize` | ui-text | ⬜ |  |  |
+| `Canvas` | ui-graphics, foundation | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Bitmap Canvas for MultiParagraph.paint with save, restore, translation and intersection clips. The foundation Canvas composable and general drawing are unavailable. |
+| `capitalize` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | AnnotatedString capitalization retains annotation ranges. |
 | `captureFocus` | ui | ⬜ |  |  |
 | `CarouselParallaxScrollEffectState` | material3 | ⬜ |  | Experimental |
 | `changedToDown` | ui | ⬜ |  |  |
@@ -143,7 +143,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `DatePickerState` | material3 | ⬜ |  |  |
 | `DateRangePickerState` | material3 | ⬜ |  |  |
 | `debugInspectorInfo` | ui | ⬜ |  |  |
-| `decapitalize` | ui-text | ⬜ |  |  |
+| `decapitalize` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | AnnotatedString decapitalization retains annotation ranges. |
 | `DecayAnimation` | animation-core | ⬜ |  |  |
 | `decodeToImageBitmap` | ui-graphics | ⬜ |  |  |
 | `DefaultAlpha` | ui-graphics | ⬜ |  |  |
@@ -269,8 +269,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `FlexConfig` | foundation-layout | ⬜ |  |  |
 | `FloatingToolbarState` | material3 | ⬜ |  |  |
 | `focused` | foundation | ⬜ |  | Experimental |
-| `Font` | ui-text | ⬜ |  |  |
-| `FontFamily` | ui-text | ⬜ |  |  |
+| `Font` | ui-text | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Loads bundled TTF, OTF, TTC and local XML families. Provider-backed XML uses its system fallback. Android provider requests are unavailable. |
+| `FontFamily` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Supports generic families and weighted and styled lists of bundled font faces. |
 | `fontResource` | ui | ⬜ |  | Deprecated |
 | `forEach` | foundation | ⬜ |  |  |
 | `forEachChange` | foundation | ⬜ |  |  |
@@ -305,8 +305,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `hovered` | foundation | ⬜ |  | Experimental |
 | `ifSet` | foundation | ⬜ |  | Experimental |
 | `ifSetAs` | foundation | ⬜ |  | Experimental |
-| `imageResource` | ui | ⬜ |  |  |
-| `ImageShader` | ui-graphics | ⬜ |  |  |
+| `imageResource` | ui | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Source-only PNG and JPEG drawable resources. Android density variants and other drawable formats are unavailable. |
+| `ImageShader` | ui-graphics | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Tiles the bitmap independently on each axis for text and bullet markers. |
 | `indexForKey` | ui | ⬜ |  |  |
 | `indexOfFirstPressed` | ui | ⬜ |  |  |
 | `indexOfLastPressed` | ui | ⬜ |  |  |
@@ -365,9 +365,9 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `LocalContentColor` | material3 | ⬜ |  |  |
 | `LocalContext` | ui | ⬜ |  |  |
 | `LocalCursorBlinkEnabled` | ui | ⬜ |  |  |
-| `LocalDensity` | ui | ⬜ |  |  |
+| `LocalDensity` | ui | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Provides the current device density to text measurement. |
 | `LocalFocusManager` | ui | ⬜ |  |  |
-| `LocalFontFamilyResolver` | ui | ⬜ |  |  |
+| `LocalFontFamilyResolver` | ui | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Resolves bundled and system fallback fonts. Android provider loading and native Typeface interop are unavailable. |
 | `LocalGraphicsContext` | ui | ⬜ |  |  |
 | `LocalHapticFeedback` | ui | ⬜ |  |  |
 | `LocalIndication` | foundation | ⬜ |  |  |
@@ -395,7 +395,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `LocalTextContextMenuToolbarProvider` | foundation | ⬜ |  |  |
 | `LocalTextFieldContentObserverRegistrationExecutor` | foundation | ⬜ |  |  |
 | `LocalTextInputService` | ui | ⬜ |  | Deprecated |
-| `LocalTextSelectionColors` | foundation | ⬜ |  |  |
+| `LocalTextSelectionColors` | foundation | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Controls the highlight and handle colors. |
 | `LocalTextStyle` | material3 | ⬜ |  |  |
 | `LocalTextToolbar` | ui | ⬜ |  |  |
 | `LocalTonalElevationEnabled` | material3 | ⬜ |  |  |
@@ -517,7 +517,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `rememberStandardBottomSheetState` | material3 | ⬜ |  | Deprecated; Experimental |
 | `rememberSwipeToDismissBoxState` | material3 | ⬜ |  |  |
 | `rememberTextFieldState` | foundation | ⬜ |  |  |
-| `rememberTextMeasurer` | ui | ⬜ |  |  |
+| `rememberTextMeasurer` | ui | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Creates a cached text measurer using the current density, font resolver and layout direction. |
 | `rememberTimePickerState` | material3 | ⬜ |  |  |
 | `rememberTooltipState` | material3 | ⬜ |  | Experimental |
 | `rememberTopAppBarState` | material3 | ⬜ |  |  |
@@ -572,7 +572,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `setTextAndPlaceCursorAtEnd` | foundation | ⬜ |  |  |
 | `setTextAndSelectAll` | foundation | ⬜ |  |  |
 | `setTextSubstitution` | ui | ⬜ |  |  |
-| `ShaderBrush` | ui-graphics | ⬜ |  |  |
+| `ShaderBrush` | ui-graphics | 🟠 | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Uses a fixed gradient or bitmap shader, or creates a shader from measured bounds. Native Android shader interop is unavailable. |
 | `ShadowContext` | ui-graphics | ⬜ |  |  |
 | `showTextSubstitution` | ui | ⬜ |  |  |
 | `shrinkHorizontally` | animation | ⬜ |  |  |
@@ -631,7 +631,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `togetherWith` | animation | ⬜ |  |  |
 | `toIntRect` | ui-unit | ⬜ |  |  |
 | `toIntSize` | ui-unit | ⬜ |  |  |
-| `toLowerCase` | ui-text | ⬜ |  |  |
+| `toLowerCase` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Locale-aware AnnotatedString conversion retains annotation ranges. |
 | `toOffset` | ui-unit | ⬜ |  |  |
 | `TooltipState` | material3 | ⬜ |  | Experimental |
 | `toPath` | ui-graphics, material3 | ⬜ |  |  |
@@ -643,7 +643,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `toSpan` | ui-text | ⬜ |  |  |
 | `toSvg` | ui-graphics | ⬜ |  |  |
 | `toTextFieldBuffer` | foundation | ⬜ |  |  |
-| `toUpperCase` | ui-text | ⬜ |  |  |
+| `toUpperCase` | ui-text | ✅ | [#79](https://github.com/MitchellSPeterson/OneSim/issues/79) | Locale-aware AnnotatedString conversion retains annotation ranges. |
 | `transformOrigin` | foundation | ⬜ |  | Experimental |
 | `translate` | ui-graphics, ui-geometry | ⬜ |  |  |
 | `translation` | foundation | ⬜ |  | Experimental |

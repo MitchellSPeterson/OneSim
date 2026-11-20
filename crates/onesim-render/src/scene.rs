@@ -235,6 +235,7 @@ pub struct VectorStroke {
     pub miter_limit: f64,
     pub dash: Vec<f64>,
     pub dash_phase: f64,
+    pub(crate) compose_effect: Option<(onesim_protocol::ComposePathEffect, f32)>,
     pub antialiased: bool,
     pub inset: f64,
 }
@@ -280,6 +281,7 @@ pub struct Node {
     pub stroke: Option<(Color, f64)>,
     /// Rich vector shape (boxed to keep `Node` small on the stack during layout recursion).
     pub vector: Option<Box<VectorShape>>,
+    pub(crate) vector_brush: Option<onesim_protocol::ComposeBrush>,
     /// `.containerShape(_:)` carried by a layout-only container node for descendant relative/concentric shapes.
     pub container_shape: Option<Box<onesim_protocol::ContainerShapeSpec>>,
     /// Custom SwiftUI `Shape` whose `path(in:)` is evaluated by the guest for its laid-out size.
@@ -291,6 +293,9 @@ pub struct Node {
     pub edge: Option<crate::glass::ScrollEdge>,
     pub glyph: Option<(Glyph, Color)>,
     pub text: Option<TextRun>,
+    pub(crate) compose_text: Option<Box<crate::compose_text::ComposeText>>,
+    pub(crate) selection_container: bool,
+    pub(crate) selection_control: Option<crate::text_selection::SelectionControl>,
     pub symbol: Option<SymbolRun>,
     pub image: Option<ImageRun>,
     /// Painted over `fill`, inside the corner radius.
@@ -343,6 +348,7 @@ impl Node {
             radius: 0.0,
             stroke: None,
             vector: None,
+            vector_brush: None,
             container_shape: None,
             custom_shape: None,
             shadow: None,
@@ -350,6 +356,9 @@ impl Node {
             edge: None,
             glyph: None,
             text: None,
+            compose_text: None,
+            selection_container: false,
+            selection_control: None,
             symbol: None,
             image: None,
             gradient: None,
@@ -394,8 +403,38 @@ pub struct Scene {
 }
 
 impl Scene {
+    pub fn compose_text_layouts(&self) -> Vec<onesim_protocol::ComposeTextLayout> {
+        self.nodes.iter().filter_map(|node| Some((node.compose_text.as_ref()?, node.text.as_ref()?, node.bounds)))
+            .flat_map(|(layout, run, bounds)| layout.layout_data(run, bounds).into_iter().chain(layout.probe_layouts.iter().cloned()))
+            .collect()
+    }
+    pub fn pending_compose_auto_size(&self) -> bool {
+        self.nodes.iter().any(|node| node.compose_text.as_ref().is_some_and(|layout| layout.pending_auto_size))
+    }
+
     /// Topmost node with an action (or RN tag) under the point (points, respecting clips).
     pub fn hit_test(&self, x: f64, y: f64) -> Option<usize> {
+        self.hit_where(x, y, |n| n.action.is_some() || n.tag.is_some() || n.field.is_some() || n.role == Role::Key
+            || n.compose_text.as_ref().zip(n.text.as_ref()).is_some_and(|(layout, text)| {
+                layout.click_offset(&text.text, x - n.bounds.x, y - n.bounds.y).is_some()
+            }))
+    }
+
+    pub(crate) fn selectable_text_at(&self, x: f64, y: f64) -> Option<usize> {
+        self.hit_where(x, y, |n| n.inspect && n.compose_text.as_ref().is_some_and(|t| t.selection_color.is_some()))
+    }
+
+    pub(crate) fn selection_group(&self, mut i: usize) -> Option<usize> {
+        while let Some(parent) = self.nodes[i].parent {
+            if self.nodes[parent].selection_container {
+                return Some(parent);
+            }
+            i = parent;
+        }
+        None
+    }
+
+    fn hit_where(&self, x: f64, y: f64, accepts: impl Fn(&Node) -> bool) -> Option<usize> {
         // Content scrolled under the navigation bar / status bar is not tappable there.
         // Under an alert or sheet only the presentation layer (and chrome drawn after it) is reachable.
         let modal = self.nodes.iter().rposition(|n| n.kind == "scrim");
@@ -418,7 +457,7 @@ impl Scene {
             if y < bar_bottom && modal.is_none() && under_bar(i) && n.kind != "keyboard" && n.role != Role::Key {
                 return false;
             }
-            (n.action.is_some() || n.tag.is_some() || n.field.is_some() || n.role == Role::Key) && n.bounds.contains(x, y) && self.clipped_in(i, x, y)
+            n.bounds.contains(x, y) && accepts(n) && self.clipped_in(i, x, y)
         })
     }
 
@@ -520,7 +559,7 @@ impl Scene {
             id: n.id.clone(),
             kind: n.kind.to_string(),
             frame: UiFrame { x: n.bounds.x, y: n.bounds.y, width: n.bounds.w, height: n.bounds.h },
-            text: n.text.as_ref().map(|t| t.text.clone()),
+            text: n.compose_text.as_ref().and_then(|t| t.original_text.clone()).or_else(|| n.text.as_ref().map(|t| t.text.clone())),
             role: Some(n.role.as_str().to_string()),
             label: n.label.clone(),
             action: n.action,

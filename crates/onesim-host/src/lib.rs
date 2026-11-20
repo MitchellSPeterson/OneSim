@@ -331,7 +331,7 @@ impl Host {
             return self.build(id);
         }
         if !self.get(id)?.is_rn() {
-            return if self.get(id)?.is_swiftui() { self.swiftui_settle(id) } else { self.build(id) };
+            return if self.get(id)?.is_swiftui() { self.swiftui_settle(id) } else { self.compose_settle(id) };
         }
         let settle = self.get(id)?.settle;
         let (start, deadline) = (Instant::now(), Instant::now() + SETTLE_MAX.max(anim));
@@ -353,6 +353,29 @@ impl Host {
                 return Ok(out);
             }
         }
+    }
+
+    fn compose_settle(&mut self, id: &str) -> Result<(Scene, u64, f64), ApiError> {
+        let mut negotiating = false;
+        for round in 0..64 {
+            let out = self.build(id)?;
+            let pending = out.0.pending_compose_auto_size();
+            if round >= 4 && !pending && !negotiating {
+                return Ok(out);
+            }
+            negotiating = pending;
+            let layouts = out.0.compose_text_layouts();
+            let session = self.get(id)?;
+            if layouts == session.sent_text_layouts {
+                return Ok(out);
+            }
+            let changed = layouts.iter().filter(|layout| !session.sent_text_layouts.contains(layout)).cloned().collect::<Vec<_>>();
+            if !changed.is_empty() {
+                session.send_and_wait_tree(&HostMessage::TextLayout { version: out.1, layouts: changed })?;
+            }
+            session.sent_text_layouts = layouts;
+        }
+        self.build(id)
     }
 
     /// Apply the guest's `focus_request` / `scroll_to` messages and drop focus on a vanished field.
@@ -472,7 +495,9 @@ impl Host {
             status_bar: true,
             chrome: s.inter.chrome(),
         };
-        let mut scene = build_scene(&root, &params, fonts);
+        let styled_root = s.inter.styled_compose_tree(&root);
+        let mut scene = build_scene(&styled_root, &params, fonts);
+        s.inter.apply_text_selection(&mut scene);
         if s.is_swiftui() {
             s.sync_schedule();
             if gen != s.last_anim_gen {
@@ -641,9 +666,12 @@ impl Host {
     pub fn keyboard(&mut self, id: &str, ev: KeyboardEvent) -> Result<(), ApiError> {
         self.get(id)?.require_running()?;
         self.sync_guest_clock(id)?;
+        let session = self.get(id)?;
         if let KeyboardEvent::Key { key } = &ev {
-            if !matches!(key.as_str(), "backspace" | "enter") {
-                return Err(err(ErrorCode::Unsupported, format!("unknown key {key:?} (backspace, enter)")));
+            let standard = matches!(key.as_str(), "backspace" | "enter" | "copy" | "select_all");
+            let compose = session.is_compose() && matches!(key.as_str(), "tab" | "shift_tab" | "escape" | "space");
+            if !standard && !compose {
+                return Err(err(ErrorCode::Unsupported, format!("unknown key {key:?}")));
             }
         }
         let (scene, version, _) = self.scene(id)?;
@@ -659,6 +687,11 @@ impl Host {
         }
         let effect = s.inter.keyboard(&scene, ev).map_err(|m| err(ErrorCode::InvalidState, m))?;
         s.send_effect(effect)
+    }
+
+    /// A copy or speech request from the simulated selection toolbar.
+    pub fn take_selection_output(&mut self, id: &str) -> Result<Option<onesim_render::SelectionOutput>, ApiError> {
+        Ok(self.get(id)?.inter.take_selection_output())
     }
 
     /// PNG bytes plus pixel size.

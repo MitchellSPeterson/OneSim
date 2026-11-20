@@ -1993,6 +1993,7 @@ impl Ctx<'_> {
             miter_limit: st.miter_limit,
             dash: st.dash.clone(),
             dash_phase: st.dash_phase,
+            compose_effect: None,
             antialiased: st.antialiased,
             inset: st.inset,
         });

@@ -130,6 +130,8 @@ pub enum PointerKind {
     Down,
     Up,
     Click,
+    Hover,
+    Cancel,
     Scroll,
     /// A finger drag from (x, y) by (dx, dy) points, as one gesture (touch scrolling, sheet swipes; React Native: touch start, moves, end).
     Drag,

@@ -11,6 +11,9 @@ pub enum GuestMessage {
     Hello { protocol: u32 },
     Tree { version: u64, root: ViewNode },
     Error { message: String },
+    /// Compose synchronous offscreen text measurement, including during the initial composition.
+    #[serde(rename = "measure_text")]
+    MeasureText { id: u64, request: ComposeMeasureText },
     /// React Native `focus`/`blur` commands: focus the field with this tag (`null` = blur).
     #[serde(rename = "focus_request")]
     FocusRequest { tag: Option<u64> },
@@ -211,12 +214,195 @@ pub struct GestureTouch {
     pub targets: Vec<GestureTarget>,
 }
 
+/// One Compose AnnotatedString span. Later spans override specified properties on overlap.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComposeTextSpan {
+    pub start: usize,
+    pub end: usize,
+    pub color: Option<[f32; 4]>,
+    pub font_size: Option<f32>,
+    pub font_size_em: Option<f32>,
+    pub font_weight: Option<u16>,
+    pub italic: Option<bool>,
+    pub decoration: Option<u8>,
+    pub background: Option<[f32; 4]>,
+    pub letter_spacing: Option<f32>,
+    pub letter_spacing_em: Option<f32>,
+    pub font_family: Option<String>,
+    pub baseline_shift: Option<f32>,
+    pub font_feature_settings: Option<String>,
+    pub brush: Option<ComposeBrush>,
+    pub paint_alpha: Option<f32>,
+    pub text_shadow: Option<ComposeTextShadow>,
+    pub text_stroke: Option<ComposeStroke>,
+    pub text_fill: Option<bool>,
+    pub text_transform: Option<[f32; 2]>,
+    pub line_break: Option<[u8; 3]>,
+    pub auto_hyphens: Option<bool>,
+    pub text_locale: Option<String>,
+    pub paragraph_align: Option<String>,
+    pub paragraph_direction: Option<u8>,
+    pub paragraph_height: Option<f32>,
+    pub paragraph_height_em: Option<f32>,
+    pub paragraph: Option<usize>,
+    pub paragraph_indent: Option<[ComposeTextUnit; 2]>,
+    pub bullet: Option<ComposeBullet>,
+}
+
+/// Value in sp, or a multiplier of the base font size when the second field is true.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ComposeTextUnit(pub f32, pub bool);
+
+impl ComposeTextUnit {
+    pub fn at(self, font_size: f32) -> f32 {
+        if self.1 { self.0 * font_size } else { self.0 }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ComposeBrushKind { Solid, Linear, Radial, Sweep, Image }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ComposeBrush {
+    pub kind: ComposeBrushKind,
+    #[serde(default)]
+    pub stops: Vec<(f32, [f32; 4])>,
+    #[serde(default)]
+    pub positions: Vec<Option<f32>>,
+    #[serde(default)]
+    pub tile: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<ComposeImageShader>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ComposeImageShader {
+    pub width: u32,
+    pub height: u32,
+    pub tile_x: u8,
+    pub tile_y: u8,
+    pub rgba: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ComposeTextShadow(pub [f32; 4], pub f32, pub f32, pub f32);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ComposeBullet {
+    pub width: ComposeTextUnit,
+    pub height: ComposeTextUnit,
+    pub padding: ComposeTextUnit,
+    pub shape: Option<serde_json::Value>,
+    pub color: Option<[f32; 4]>,
+    pub alpha: Option<f32>,
+    pub brush: Option<ComposeBrush>,
+    pub stroke: Option<f32>,
+    #[serde(rename = "strokeStyle")]
+    pub stroke_style: Option<ComposeStroke>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ComposeStroke {
+    pub width: f32,
+    pub miter: f32,
+    pub cap: crate::LineCap,
+    pub join: crate::LineJoin,
+    #[serde(default)]
+    pub dash: Vec<f32>,
+    #[serde(default)]
+    pub phase: f32,
+    #[serde(rename = "pathEffect", default, skip_serializing_if = "Option::is_none")]
+    pub path_effect: Option<ComposePathEffect>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum ComposePathEffect {
+    Dash { intervals: Vec<f32>, phase: f32 },
+    Corner { radius: f32 },
+    Chain { outer: Box<Self>, inner: Box<Self> },
+    Stamp { shape: ComposeStampShape, advance: f32, phase: f32, style: ComposeStampStyle },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ComposeStampShape {
+    pub path: Vec<crate::PathOp>,
+    #[serde(rename = "eoFill", default)]
+    pub even_odd: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ComposeStampStyle { Translate, Rotate, Morph }
+
+/// Pixel-space line and glyph geometry for a Compose onTextLayout listener (section K).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ComposeTextLayout {
+    pub id: u64,
+    pub geometry: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ComposeMeasureText {
+    pub density: f32,
+    pub constraints: [i32; 4],
+    pub props: serde_json::Value,
+    #[serde(default)]
+    pub fonts: serde_json::Value,
+    /// -1 for minimum intrinsic width, 1 for maximum, 0 for geometry.
+    #[serde(default)]
+    pub intrinsic: i8,
+    #[serde(default)]
+    pub paint: Option<ComposeTextPaint>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ComposeTextPaint {
+    pub width: u32,
+    pub height: u32,
+    pub origin: [f32; 2],
+    pub clip: [f32; 4],
+}
+
+/// One face of a named Compose font family registered on the root node.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ComposeFontResource {
+    pub data: String,
+    pub weight: u16,
+    pub italic: bool,
+    #[serde(default)]
+    pub index: u32,
+}
+
+/// A Compose inline composable measured in sp and replacing a glyph in the shaped string.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ComposeInlineObject(
+    pub usize, // UTF-16 offset in the shaped string
+    pub usize, // start in the original annotated string
+    pub usize, // end in the original annotated string
+    pub f64,   // width
+    pub f64,   // height
+    pub String, // vertical alignment
+    #[serde(default)] pub bool, // width scales with the base font size
+    #[serde(default)] pub bool, // height scales with the base font size
+);
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum HostMessage {
     Action { id: u64, version: u64 },
     #[serde(rename = "text_input")]
     TextInput { field: u64, version: u64, text: String },
+    /// Compose ClickableText: UTF-16 caret offset under a tap.
+    #[serde(rename = "text_click")]
+    TextClick { id: u64, version: u64, offset: u32 },
+    #[serde(rename = "text_layout")]
+    TextLayout { version: u64, layouts: Vec<ComposeTextLayout> },
+    #[serde(rename = "text_measurement")]
+    TextMeasurement { id: u64, result: Option<String> },
     Environment {
         appearance: Appearance,
         viewport: Viewport,
@@ -384,6 +570,10 @@ mod tests {
             serde_json::to_string(&HostMessage::TextInput { field: 4, version: 2, text: "hi".into() }).unwrap(),
             r#"{"type":"text_input","field":4,"version":2,"text":"hi"}"#
         );
+        let click = HostMessage::TextClick { id: 1, version: 5, offset: 3 };
+        let json = r#"{"type":"text_click","id":1,"version":5,"offset":3}"#;
+        assert_eq!(serde_json::to_string(&click).unwrap(), json);
+        assert_eq!(serde_json::from_str::<HostMessage>(json).unwrap(), click);
         let sch = GuestMessage::Schedule { after_ms: Some(16.0) };
         let schj = serde_json::to_string(&sch).unwrap();
         assert_eq!(schj, r#"{"type":"schedule","afterMs":16.0}"#);

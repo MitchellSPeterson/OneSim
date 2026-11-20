@@ -41,5 +41,26 @@ a real APK of the same sources (`reference-app/`, material3 1.4.0) on the Androi
 `BasicTextField` and Material 3 `TextField` accept string edits from the host keyboard. Material 3
 `Slider` supports a value range and discrete steps, with input from clicks and drags.
 
+`Text` and `BasicText` accept styled `AnnotatedString` content and report text layout geometry.
+`rememberTextMeasurer` and `MultiParagraph` use the same host shaper for synchronous measurement on
+the JVM and in the browser. `MultiParagraph.paint` can draw to a mutable sRGB bitmap.
+`ClickableText` reports UTF-16 offsets. `SelectionContainer` highlights text across enabled
+children on drag or long press and supplies touch handles, a magnifier, and a selection toolbar.
+`DisableSelection` excludes its subtree. Copy uses the desktop or browser clipboard. Read aloud
+uses macOS speech, Windows System.Speech, Speech Dispatcher on Linux, or browser speech synthesis.
+
 Not yet: `Icon`/`Image`, lazy lists and scrolling, navigation, dialogs, animations, ripples,
-`AnnotatedString`, custom fonts, resources (`R.string`, `painterResource`), `ViewModel`.
+`R.string`, `painterResource`, `ViewModel`.
+
+
+### Bundled fonts
+
+Place `.ttf`, `.otf`, `.ttc`, or XML font families in `res/font` or the Android module's
+`src/main/res/font`. XML families can declare local faces with weights, styles, and collection
+indexes. Provider-backed XML uses its declared system family when available.
+Use `FontFamily(Font(R.font.my_font))` in `Text` or `SpanStyle`. OneSim's source-only build
+generates `R.font` in the activity or root composable's package. Set the manifest's package
+when the Android resource package differs.
+
+Place PNG or JPEG bitmaps in `res/drawable` or `res/drawable-nodpi` to generate `R.drawable` values.
+`ImageBitmap.imageResource` loads them for `ImageShader`, which tiles the pixels into text or bullet markers.

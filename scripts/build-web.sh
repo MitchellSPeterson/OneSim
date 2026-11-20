@@ -171,11 +171,16 @@ KT
     ACTIVITY_DECL=""
   fi
 
+  source "$COMPOSE_FW/scripts/android-resources.sh"
+  emit_android_resources "$APP" "$PKG" "$GEN/OneSimResources.kt"
+  if [ -f "$GEN/OneSimResources.kt" ]; then SOURCES+=("$GEN/OneSimResources.kt"); fi
+
   cat > "$GEN/OneSimWebEntry.kt" <<KT
 package onesim.entry
 
 import onesim.compose.WasmGuest
 import kotlin.js.ExperimentalJsExport
+import kotlin.js.JsAny
 import kotlin.js.JsExport
 $IMPORT
 
@@ -187,8 +192,8 @@ fun onesimPlatform(): String = "android"
 
 @OptIn(ExperimentalJsExport::class)
 @JsExport
-fun onesimStart(dark: Boolean, insetTop: Float, insetBottom: Float): String =
-    WasmGuest.start(dark, insetTop, insetBottom) { $ACTIVITY_EXPR }
+fun onesimStart(dark: Boolean, insetTop: Float, insetBottom: Float, density: Float, host: JsAny): String =
+    WasmGuest.start(dark, insetTop, insetBottom, density, host) { $ACTIVITY_EXPR }
 
 @OptIn(ExperimentalJsExport::class)
 @JsExport
@@ -197,6 +202,14 @@ fun onesimAction(id: Double): String = WasmGuest.onAction(id.toLong())
 @OptIn(ExperimentalJsExport::class)
 @JsExport
 fun onesimTextInput(field: Double, text: String): String = WasmGuest.onTextInput(field.toLong(), text)
+
+@OptIn(ExperimentalJsExport::class)
+@JsExport
+fun onesimTextClick(id: Double, offset: Int): String = WasmGuest.onTextClick(id.toLong(), offset)
+
+@OptIn(ExperimentalJsExport::class)
+@JsExport
+fun onesimTextLayouts(message: String): String = WasmGuest.onTextLayouts(message)
 
 @OptIn(ExperimentalJsExport::class)
 @JsExport

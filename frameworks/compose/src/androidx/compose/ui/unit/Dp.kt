@@ -78,5 +78,31 @@ interface Density {
     val density: Float
     val fontScale: Float get() = 1f
     fun Dp.toPx(): Float = value * density
-    fun TextUnit.toDp(): Dp = Dp(value)
+    fun TextUnit.toDp(): Dp = Dp(value * fontScale)
+    fun TextUnit.toPx(): Float = toDp().toPx()
+}
+
+fun Density(density: Float, fontScale: Float = 1f): Density = DensityValue(density, fontScale)
+
+private data class DensityValue(
+    override val density: Float,
+    override val fontScale: Float,
+) : Density
+
+data class IntSize(val width: Int, val height: Int) {
+    companion object { val Zero = IntSize(0, 0) }
+}
+
+enum class LayoutDirection { Ltr, Rtl }
+
+data class Constraints(
+    val minWidth: Int = 0, val maxWidth: Int = Infinity,
+    val minHeight: Int = 0, val maxHeight: Int = Infinity,
+) {
+    val hasBoundedWidth: Boolean get() = maxWidth != Infinity
+    val hasBoundedHeight: Boolean get() = maxHeight != Infinity
+    val hasFixedWidth: Boolean get() = minWidth == maxWidth
+    val hasFixedHeight: Boolean get() = minHeight == maxHeight
+    val isZero: Boolean get() = maxWidth == 0 || maxHeight == 0
+    companion object { const val Infinity = Int.MAX_VALUE }
 }
