@@ -1,0 +1,113 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "type": "Other",
+        "role": "_TtC7SwiftUIP33_ACC2C5639A7D76F611E170E831FCA49118SwiftUIApplication",
+        "subrole": "UIApplication",
+        "label": "Shapes",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 0,
+        "pid": 30101,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "other"
+      },
+      {
+        "index": 1,
+        "parentIndex": 0,
+        "type": "NavigationBar",
+        "role": "SwiftUI.UIKitNavigationBar",
+        "subrole": "UINavigationBar",
+        "identifier": "Shapes",
+        "rect": {
+          "x": 0,
+          "y": 62,
+          "width": 402,
+          "height": 106
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 30101,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "navigation-bar"
+      },
+      {
+        "index": 2,
+        "parentIndex": 1,
+        "type": "StaticText",
+        "role": "UILabel",
+        "label": "Shapes",
+        "rect": {
+          "x": 16,
+          "y": 119.66666666666667,
+          "width": 119,
+          "height": 40.66666666666667
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 30101,
+        "hittable": true,
+        "ref": "e3",
+        "kind": "text"
+      },
+      {
+        "index": 3,
+        "parentIndex": 0,
+        "type": "Toolbar",
+        "role": "_UIFloatingBarContainerView",
+        "label": "Toolbar",
+        "identifier": "Toolbar",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 30101,
+        "hittable": true,
+        "ref": "e4",
+        "kind": "toolbar"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.shapes",
+    "appBundleId": "dev.simcore.shapes",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 4,
+      "totalNodeCount": 4,
+      "reasons": []
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "absent",
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 3,
+        "p50Ms": 245,
+        "p95Ms": 3646,
+        "maxMs": 3646,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 3
+        }
+      }
+    },
+    "refsGeneration": 332018
+  }
+}

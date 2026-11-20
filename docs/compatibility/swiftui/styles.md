@@ -51,8 +51,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `DisclosureGroupStyle` | 16 | ⬜ |  |  |
 | `DoubleColumnNavigationViewStyle` | 13 | ⬜ |  | Deprecated |
 | `FillShapeStyle` | 17 | ⬜ |  |  |
-| `FillStyle` | 13 | ⬜ |  |  |
-| `ForegroundStyle` | 13 | ⬜ |  |  |
+| `FillStyle` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `ForegroundStyle` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `FormStyle` | 16 | ⬜ |  |  |
 | `GaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `GlassButtonStyle` | 26 | ✅ |  |  |
@@ -96,7 +96,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ProgressViewStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `ProminentDetailNavigationSplitViewStyle` | 16 | ⬜ |  |  |
 | `RoundedBorderTextFieldStyle` | 13 | ⬜ |  | Deprecated |
-| `RoundedCornerStyle` | 13 | ⬜ |  |  |
+| `RoundedCornerStyle` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `ScrollEdgeEffectStyle` | 26 | ⬜ |  |  |
 | `SegmentedPickerStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `SelectionShapeStyle` | 15 | ⬜ |  |  |
@@ -107,7 +107,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `SidebarListStyle` | 14 | ⬜ |  |  |
 | `SplitArrangementViewStyle` | 13 | ⬜ |  |  |
 | `StackNavigationViewStyle` | 13 | ⬜ |  | Deprecated |
-| `StrokeStyle` | 13 | ⬜ |  |  |
+| `StrokeStyle` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `SwitchToggleStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `SystemFormatStyle` | 18 | ⬜ |  |  |
 | `TabBarOnlyTabViewStyle` | 18 | ⬜ |  |  |

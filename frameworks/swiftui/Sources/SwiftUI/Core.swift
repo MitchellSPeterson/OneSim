@@ -120,7 +120,7 @@ final class _Runtime {
     var disabled = false
     var buttonStyle = "automatic"
     var pickerStyle = "menu"
-    var styles = _Styles()   // control styles and environment values (section N)
+    var styles = _Styles()   // control styles and environment values (section O)
     var tags: [String: AnyHashable] = [:]   // `.tag(_:)` values by node id, read by `Picker`
     var nav: _NavState?
     var envObjects: [ObjectIdentifier: AnyObject] = [:]
@@ -140,6 +140,10 @@ final class _Runtime {
     var gestures: [String: _GestureEntry] = [:]
     var gesturesOff = false
     var touch: _TouchSession?   // the touch sequence in progress (spans evaluations)
+    // Custom shapes (section N): laid-out sizes sent by the host via `layout` messages, keyed by node id.
+    var shapeSizes: [String: CGSize] = [:]
+    // Layout direction for `Shape.layoutDirectionBehavior`.
+    var layoutDirection: LayoutDirection = .leftToRight
     // Layout (section M). Frames and the last scroll-to key survive a pass; the stacks are rebuilt each pass.
     var geometries: [String: _Geo] = [:]
     var safeTop = 0.0, safeBottom = 0.0   // SIMCORE_INSETS at launch ("top,bottom"); leading/trailing stay 0
@@ -349,11 +353,18 @@ func _f64(_ v: Any?) -> Double {
     }
 }
 
-/// Host layout line: `geometry` frames or a `scroll_position` writeback. The scroll setter runs in the caller's pool.
+/// Host layout line: shape or geometry frames, or a scroll position writeback. The scroll setter runs in the caller's pool.
 func _applyLayout(_ line: String) {
     guard let obj = _jsonObject(line), let type = obj["type"] as? String else { return }
     let rt = _Runtime.shared
-    if type == "geometry" {
+    if type == "layout" {
+        guard let frames = obj["frames"] as? [String: Any] else { return }
+        for (id, raw) in frames {
+            guard let box = raw as? [Any], box.count == 4 else { continue }
+            let size = CGSize(width: _f64(box[2]), height: _f64(box[3]))
+            if rt.shapeSizes[id] != size { rt.shapeSizes[id] = size; rt.dirty = true }
+        }
+    } else if type == "geometry" {
         guard let frames = obj["frames"] as? [String: Any] else { return }
         for (id, raw) in frames {
             guard let box = raw as? [String: Any] else { continue }

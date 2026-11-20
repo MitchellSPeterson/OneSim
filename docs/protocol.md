@@ -709,7 +709,23 @@ Host → guest:
 - `scrollTo` aligns the target's anchor with the same anchor of the scroll viewport: `offset = content - (viewport - targetSize) * anchor`, clamped to the max offset. `content` is the target's position in the scrolled content.
 - `.scrollPosition` writeback sends the anchored id whose content position is the greatest that is still at or above the top edge (within 1 pt). Setting the binding to a new id sends `scroll_to_id`. A writeback of the same id does not.
 
-## N. v1 additions: SwiftUI controls (additive, protocol version stays 1)
+## N. v1 additions: SwiftUI shapes and paths (additive, protocol version stays 1)
+
+- `shape` kind gains new `shape` values: `"ellipse"`, `"unevenRoundedRectangle"`, `"containerRelative"`, `"concentricRectangle"`, and `"path"`, alongside existing `"rectangle"`, `"circle"`, `"capsule"`, `"roundedRectangle"`.
+- Additional optional `shape` fields:
+  - `"cornerSize"?: [w, h]` (for `RoundedRectangle(cornerSize:)`)
+  - `"cornerRadii"?: [topLeading, topTrailing, bottomTrailing, bottomLeading]` (for `UnevenRoundedRectangle`)
+  - `"cornerStyle"?: "continuous"|"circular"` (default `"circular"` when omitted for fast-path compatibility; SwiftUI emits `"continuous"` for `.continuous` shapes)
+  - `"concentric"?: {"corners": [{"fixed": r}|{"concentric": min?}, ...4], "uniform"?: "all"|"top"|"bottom"|"leading"|"trailing"|"topAndBottom"|"leadingAndTrailing"}` (for `ConcentricRectangle`)
+  - `"path"?: [PathOp]` where `PathOp` is `{"m":[x,y]}`, `{"l":[x,y]}`, `{"q":[cx,cy,x,y]}`, `{"c":[c1x,c1y,c2x,c2y,x,y]}`, or `"z"`
+  - `"pathSize"?: [w, h]` and `"custom"?: bool`: when `custom` is true, the guest evaluates `Shape.path(in:)` in Swift for the shape's laid-out bounds. When a custom shape's laid-out `(w, h)` differs from `pathSize` (or `pathSize` is absent), the host sends a `layout` message (`{"type":"layout","frames":{"<id>":[x,y,w,h]}}`) and waits for the guest's updated tree. C ABI: `simcore_runtime_set_layout_callback` (header `simcore_runtime.h`); the callback receives the whole JSON line, including in the web build.
+  - `"sizeHint"?: "square"|{"fixed":[w,h]}|{"aspect":ratio}|{"ideal":[w,h]}` (from custom `Shape.sizeThatFits(_:)`)
+  - `"mirrorRtl"?: bool` (from `Shape.layoutDirectionBehavior`)
+  - `"fillStyle"?: {"eoFill"?: bool, "antialiased"?: bool}` (`FillStyle`)
+- `stroke` object allows optional `"color"` (omitted means inherit current foreground color, matching `ForegroundStyle`) and gains optional `StrokeStyle` fields: `"lineCap"?: "butt"|"round"|"square"`, `"lineJoin"?: "miter"|"round"|"bevel"`, `"miterLimit"?: f64` (default 10), `"dash"?: [f64]`, `"dashPhase"?: f64`, `"antialiased"?: bool` (default true), `"inset"?: f64` (`InsettableShape.strokeBorder`).
+- New modifier `{"containerShape": {"shape": "...", ...}}` (`.containerShape(_:)`): records the enclosing container shape and its laid-out frame so descendant `ContainerRelativeShape` and `ConcentricRectangle` nodes resolve their corner geometry concentrically against the container's corners and edge insets.
+
+## O. v1 additions: SwiftUI controls (additive, protocol version stays 1)
 
 Menu, Link, control styles and Gauge (`frameworks/swiftui/Sources/SwiftUI/Styles.swift`). Custom styles (`ButtonStyle`, `ToggleStyle`, `ProgressViewStyle`, `GaugeStyle`, `MenuStyle`) add nothing to the wire: the guest evaluates their `makeBody` in place of the control.
 

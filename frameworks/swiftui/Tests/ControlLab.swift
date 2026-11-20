@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Wire-test app for controls (protocol section N): Menu, Link and openURL, toggle / button / progress / gauge / menu
+// Wire-test app for controls (protocol section O): Menu, Link and openURL, toggle / button / progress / gauge / menu
 // styles (built-in and custom), Slider value labels and onEditingChanged, and the inline, navigationLink and wheel
 // picker styles.
 

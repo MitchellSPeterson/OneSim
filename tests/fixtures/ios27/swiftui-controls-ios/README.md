@@ -14,3 +14,6 @@ The 10 states of the 26.5 set, with the same taps and OneSim flags.
 
 ## Facts OneSim must match
 The frames listed in the 26.5 README were measured on this release.
+
+On 27.2 a press on the text "Indicators" can miss; indicators and indicators-dark were taken with a press at 240,724
+(the Indicators link) instead.

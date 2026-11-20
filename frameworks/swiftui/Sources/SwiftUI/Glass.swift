@@ -15,23 +15,19 @@ public struct Glass {
     public func interactive(_ isEnabled: Bool = true) -> Glass { var g = self; g.isInteractive = isEnabled; return g }
 }
 
-public struct Ellipse: Shape, _Primitive {
-    public var _shapeName: String { "ellipse" }
-    public init() {}
-    func _emit(_ path: String) -> Node { _shapeNode(self, path, fill: nil, stroke: nil) }
-}
-
-extension Shape where Self == Circle { public static var circle: Circle { Circle() } }
-extension Shape where Self == Capsule { public static var capsule: Capsule { Capsule() } }
-extension Shape where Self == Ellipse { public static var ellipse: Ellipse { Ellipse() } }
-extension Shape where Self == Rectangle { public static var rect: Rectangle { Rectangle() } }
-extension Shape where Self == RoundedRectangle {
-    public static func rect(cornerRadius: CGFloat) -> RoundedRectangle { RoundedRectangle(cornerRadius: cornerRadius) }
-}
-
 func _glassNode<S: Shape>(_ glass: Glass, _ shape: S) -> Node {
-    var sh: Node = ["shape": shape._shapeName == "roundedRectangle" ? "rect" : shape._shapeName]
-    if let r = (shape as? RoundedRectangle)?.cornerRadius { sh["cornerRadius"] = Double(r) }
+    let sh: Node
+    if let rr = shape as? RoundedRectangle {
+        sh = ["shape": "rect", "cornerRadius": Double(rr.cornerSize.width)]
+    } else if shape is Rectangle {
+        sh = ["shape": "rect"]
+    } else if shape is Circle {
+        sh = ["shape": "circle"]
+    } else if shape is Ellipse {
+        sh = ["shape": "ellipse"]
+    } else {
+        sh = ["shape": "capsule"]
+    }
     var g: Node = ["variant": glass.variant, "shape": sh]
     if let t = glass.tintColor { g["tint"] = t.json }
     if glass.isInteractive { g["interactive"] = true }

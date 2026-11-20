@@ -504,8 +504,53 @@ line = recv(p)
 assert line["type"] == "scroll_to_id" and isinstance(line.get("scroll"), str) and line["scroll"] and line["target"] == "there", line
 finish(p)
 
-# --- controls (protocol section N)
-p = spawn(sys.argv[10]); assert recv(p)["type"] == "hello"; t = recv(p)
+# --- shapes & paths (section N)
+p = spawn(sys.argv[10])
+assert recv(p) == {"type": "hello", "protocol": 1}
+t = recv(p)
+assert alltexts(t["root"]) == ["OK"], f"ShapeLab path checks failed: {alltexts(t['root'])}"
+ch = t["root"]["children"]
+# 1: Ellipse emits real "ellipse"
+assert ch[1]["kind"] == "shape" and ch[1]["shape"] == "ellipse", ch[1]
+# 2: UnevenRoundedRectangle chained .fill().strokeBorder() -> stroke on top, fill in background modifier
+assert ch[2]["shape"] == "unevenRoundedRectangle" and ch[2]["cornerRadii"] == [20, 8, 16, 4], ch[2]
+st = ch[2]["stroke"]
+assert st["lineWidth"] == 4 and st["lineCap"] == "round" and st["lineJoin"] == "bevel" and st["dash"] == [8, 4] and st["dashPhase"] == 2 and st["inset"] == 2, st
+bg = next(m["background"] for m in ch[2]["modifiers"] if "background" in m)
+assert bg["fillStyle"] == {"eoFill": True, "antialiased": False}, bg
+# 3: containerShape modifier + ContainerRelativeShape + ConcentricRectangle
+assert any("containerShape" in m for m in ch[3]["modifiers"]), ch[3]["modifiers"]
+assert ch[3]["children"][0]["shape"] == "containerRelative"
+assert ch[3]["children"][1]["shape"] == "concentricRectangle"
+# 4: Custom Shape (Diamond) starts with custom=True and no path yet; layout message populates exact path
+diamond = ch[4]
+assert diamond["custom"] is True and "path" not in diamond, diamond
+# 5: FixedBadge custom sizeThatFits emits sizeHint fixed [48, 32]
+assert ch[5]["sizeHint"] == {"fixed": [48, 32]}, ch[5]
+# 6: AnyShape(Circle()) stays declarative circle
+assert ch[6]["shape"] == "circle", ch[6]
+# 7, 8: Composed trimmed/rotated & boolean shapes emit custom=True
+assert ch[7]["custom"] is True and ch[8]["custom"] is True
+# 9: Foreground-styled strokeBorder omits explicit stroke color so host inherits foregroundStyle
+assert "color" not in ch[9]["stroke"] and ch[9]["stroke"]["inset"] == 2, ch[9]
+# 10: Pre-inset shape + strokeBorder accumulates both insets (4 + 6/2 = 7)
+assert ch[10]["custom"] is True, ch[10]
+# 11: ShapeView foreground stroke overload omits stroke color
+assert "color" not in ch[11]["stroke"] and ch[11]["stroke"]["lineWidth"] == 2, ch[11]
+assert ch[12]["sizeHint"] == {"fixed": [100, 100]}, ch[12]
+assert ch[13]["sizeHint"] == "square", ch[13]
+# Send layout frames for custom shapes and check guest evaluates path(in:) at the exact sizes
+send(p, type="layout", frames={diamond["id"]: [0, 0, 80, 60], ch[7]["id"]: [0, 0, 60, 60], ch[8]["id"]: [0, 0, 60, 60], ch[10]["id"]: [0, 0, 40, 40]})
+t2 = recv(p)
+d2 = t2["root"]["children"][4]
+assert d2["pathSize"] == [80, 60], d2
+assert d2["path"] == [{"m": [40, 0]}, {"l": [80, 30]}, {"l": [40, 60]}, {"l": [0, 30]}, "z"], d2["path"]
+assert len(t2["root"]["children"][7]["path"]) > 2 and len(t2["root"]["children"][8]["path"]) > 4
+# Pre-inset Rectangle(inset: 4).strokeBorder(lineWidth: 6) on 40x40 => rect [7..33, 7..33]
+assert t2["root"]["children"][10]["path"] == [{"m": [7, 7]}, {"l": [33, 7]}, {"l": [33, 33]}, {"l": [7, 33]}, "z"], t2["root"]["children"][10]["path"]
+finish(p)
+# --- controls (protocol section O)
+p = spawn(sys.argv[11]); assert recv(p)["type"] == "hello"; t = recv(p)
 def tree(t): return t["root"]["content"] if t["root"]["kind"] == "presentation" else t["root"]
 def layers(t): return t["root"].get("layers", []) if t["root"]["kind"] == "presentation" else []
 def btn(t, label): return next(m for m in walk(tree(t)) if m.get("kind") == "button" and label in alltexts(m))

@@ -214,6 +214,9 @@ impl Builder {
                 dl.ops.push(Op::Stroke { shape: rr(b.x, b.y, b.w, b.h, n.radius, s), width: lw as f32 * s, color: with_opacity(c, op) });
             }
         }
+        if let Some(o) = self.sprite(n, fonts, scale, SpriteLayer::Shape, &mut dl.added) {
+            dl.ops.push(o);
+        }
         if let Some(o) = self.sprite(n, fonts, scale, SpriteLayer::Icons, &mut dl.added) {
             dl.ops.push(o);
         }

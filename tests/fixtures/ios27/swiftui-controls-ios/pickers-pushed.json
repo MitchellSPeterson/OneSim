@@ -1,0 +1,389 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "enabled": true,
+        "depth": 0,
+        "type": "Application",
+        "hittable": false,
+        "rect": {
+          "width": 402,
+          "height": 874,
+          "x": 0,
+          "y": 0
+        },
+        "index": 0,
+        "label": "Controls",
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "enabled": true,
+        "depth": 1,
+        "type": "Other",
+        "hittable": true,
+        "rect": {
+          "width": 402,
+          "height": 874,
+          "x": 0,
+          "y": 0
+        },
+        "parentIndex": 0,
+        "index": 1,
+        "label": "Toolbar",
+        "ref": "e2",
+        "kind": "other"
+      },
+      {
+        "enabled": true,
+        "depth": 2,
+        "type": "Other",
+        "hittable": true,
+        "rect": {
+          "width": 402,
+          "height": 874,
+          "x": 0,
+          "y": 0
+        },
+        "parentIndex": 1,
+        "index": 2,
+        "label": "Pickers",
+        "ref": "e3",
+        "kind": "other"
+      },
+      {
+        "enabled": true,
+        "depth": 3,
+        "type": "NavigationBar",
+        "identifier": "Size",
+        "rect": {
+          "width": 402,
+          "height": 54,
+          "x": 0,
+          "y": 62
+        },
+        "hittable": true,
+        "parentIndex": 2,
+        "index": 3,
+        "label": "Pickers",
+        "ref": "e4",
+        "kind": "navigation-bar"
+      },
+      {
+        "enabled": true,
+        "depth": 4,
+        "type": "Button",
+        "identifier": "BackButton",
+        "rect": {
+          "width": 44,
+          "height": 44,
+          "x": 16,
+          "y": 62
+        },
+        "hittable": true,
+        "parentIndex": 3,
+        "index": 4,
+        "label": "Pickers",
+        "ref": "e5",
+        "kind": "button"
+      },
+      {
+        "enabled": true,
+        "depth": 4,
+        "type": "StaticText",
+        "hittable": true,
+        "rect": {
+          "width": 33.66666666666666,
+          "height": 20.66666666666667,
+          "x": 184,
+          "y": 73.66666666666666
+        },
+        "parentIndex": 3,
+        "index": 5,
+        "label": "Size",
+        "ref": "e6",
+        "kind": "text"
+      },
+      {
+        "enabled": true,
+        "depth": 3,
+        "type": "Other",
+        "hittable": true,
+        "rect": {
+          "width": 402,
+          "height": 874,
+          "x": 0,
+          "y": 0
+        },
+        "parentIndex": 2,
+        "index": 6,
+        "label": "Vertical scroll bar, 1 page",
+        "ref": "e7",
+        "kind": "other"
+      },
+      {
+        "enabled": true,
+        "depth": 4,
+        "type": "CollectionView",
+        "hittable": true,
+        "rect": {
+          "width": 402,
+          "height": 874,
+          "x": 0,
+          "y": 0
+        },
+        "parentIndex": 6,
+        "index": 7,
+        "ref": "e8",
+        "kind": "collection",
+        "inheritsLabel": true
+      },
+      {
+        "enabled": true,
+        "depth": 5,
+        "type": "Cell",
+        "hittable": true,
+        "rect": {
+          "width": 370,
+          "height": 52,
+          "x": 16,
+          "y": 151
+        },
+        "parentIndex": 7,
+        "index": 8,
+        "label": "Small",
+        "ref": "e9",
+        "kind": "cell"
+      },
+      {
+        "enabled": true,
+        "depth": 6,
+        "type": "Other",
+        "hittable": true,
+        "rect": {
+          "width": 370,
+          "height": 52,
+          "x": 16,
+          "y": 151
+        },
+        "parentIndex": 8,
+        "index": 9,
+        "label": "Small",
+        "ref": "e10",
+        "kind": "other"
+      },
+      {
+        "enabled": true,
+        "depth": 7,
+        "type": "Button",
+        "hittable": true,
+        "rect": {
+          "width": 370,
+          "height": 52,
+          "x": 16,
+          "y": 151
+        },
+        "parentIndex": 9,
+        "index": 10,
+        "label": "Small",
+        "ref": "e11",
+        "kind": "button"
+      },
+      {
+        "enabled": true,
+        "depth": 5,
+        "type": "Cell",
+        "hittable": true,
+        "rect": {
+          "width": 370,
+          "height": 52,
+          "x": 16,
+          "y": 203
+        },
+        "parentIndex": 7,
+        "index": 11,
+        "label": "Medium",
+        "ref": "e12",
+        "kind": "cell"
+      },
+      {
+        "enabled": true,
+        "depth": 6,
+        "type": "Other",
+        "hittable": true,
+        "rect": {
+          "width": 370,
+          "height": 52,
+          "x": 16,
+          "y": 203
+        },
+        "parentIndex": 11,
+        "index": 12,
+        "label": "Medium",
+        "ref": "e13",
+        "kind": "other"
+      },
+      {
+        "enabled": true,
+        "depth": 7,
+        "type": "Button",
+        "hittable": true,
+        "rect": {
+          "width": 370,
+          "height": 52,
+          "x": 16,
+          "y": 203
+        },
+        "selected": true,
+        "parentIndex": 12,
+        "index": 13,
+        "label": "Medium",
+        "ref": "e14",
+        "kind": "button"
+      },
+      {
+        "enabled": true,
+        "depth": 5,
+        "type": "Cell",
+        "hittable": true,
+        "rect": {
+          "width": 370,
+          "height": 52,
+          "x": 16,
+          "y": 255
+        },
+        "parentIndex": 7,
+        "index": 14,
+        "label": "Large",
+        "ref": "e15",
+        "kind": "cell"
+      },
+      {
+        "enabled": true,
+        "depth": 6,
+        "type": "Other",
+        "hittable": true,
+        "rect": {
+          "width": 370,
+          "height": 52,
+          "x": 16,
+          "y": 255
+        },
+        "parentIndex": 14,
+        "index": 15,
+        "label": "Large",
+        "ref": "e16",
+        "kind": "other"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 370,
+          "height": 52,
+          "x": 16,
+          "y": 255
+        },
+        "label": "Large",
+        "depth": 7,
+        "index": 16,
+        "type": "Button",
+        "parentIndex": 15,
+        "ref": "e17",
+        "kind": "button"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "parentIndex": 7,
+        "rect": {
+          "width": 30,
+          "height": 696,
+          "x": 369,
+          "y": 116
+        },
+        "depth": 5,
+        "index": 17,
+        "value": "0%",
+        "type": "Other",
+        "ref": "e18",
+        "kind": "other",
+        "inheritsLabel": true
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "identifier": "Toolbar",
+        "rect": {
+          "width": 402,
+          "height": 874,
+          "x": 0,
+          "y": 0
+        },
+        "label": "Toolbar",
+        "depth": 3,
+        "index": 18,
+        "type": "Toolbar",
+        "parentIndex": 2,
+        "ref": "e19",
+        "kind": "toolbar"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.controls",
+    "appBundleId": "dev.simcore.controls",
+    "visibility": {
+      "partial": true,
+      "visibleNodeCount": 19,
+      "totalNodeCount": 19,
+      "reasons": [
+        "scroll-hidden-below"
+      ]
+    },
+    "keyboard": {
+      "kind": "absent"
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "unknown",
+    "snapshotQuality": {
+      "state": "recovered",
+      "backend": "tree",
+      "reason": "XCTest-backed snapshot tiers are running with a short recovery probe after recent slow accessibility work on this screen",
+      "reasonCode": "budget",
+      "timing": {
+        "acquisitionMs": 936.4289045333862,
+        "presentationMs": 1.7709732055664062
+      }
+    },
+    "snapshotQualityNotes": [
+      {
+        "code": "regular-geometry-clipped",
+        "clippedNodeCount": 1,
+        "droppedNodeCount": 0
+      }
+    ],
+    "warnings": [
+      "Simulator AX snapshot unavailable (circuit-disabled); used XCTest for this app generation.",
+      "Detected an overly complex or slow accessibility tree. Fell back to the tree snapshot backend. It is OK to continue; use --json to inspect snapshotQuality.reason if you need recovery details."
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 45,
+        "p50Ms": 672,
+        "p95Ms": 23389,
+        "maxMs": 42699,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 45
+        }
+      },
+      "warning": "Warning: ios snapshots are slow in this run: p95 23389ms over 44 captures. Possible causes: device load, app or dev server stuck, helper fallback, or stale daemon."
+    },
+    "refsGeneration": 455791
+  }
+}

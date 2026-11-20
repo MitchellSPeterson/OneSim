@@ -12,8 +12,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$1"; ROOT_VIEW="${2:-}"
 TARGET="${CARGO_TARGET_DIR:-$ROOT/target}"
 CACHE="$TARGET/web-cache"
-OUT="$TARGET/web"
-[ "$1" != --expo ] || OUT="$TARGET/web-expo"
+OUT="${SIMCORE_WEB_OUT:-$TARGET/web}"  # serve-web.sh builds each example into its own directory
+[ -n "${SIMCORE_WEB_OUT:-}" ] || [ "$1" != --expo ] || OUT="$TARGET/web-expo"
 RUST_TARGET=wasm32-wasip1
 GPU_TARGET=wasm32-unknown-unknown
 die() { echo "error: $*" >&2; exit 1; }
