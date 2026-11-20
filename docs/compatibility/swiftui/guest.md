@@ -148,3 +148,40 @@ SwiftUI apps reach for more than `SwiftUI`. Each of these will be reimplemented 
 - `Text` takes `String` (no `LocalizedStringKey`); `foregroundColor(nil)` maps to primary.
 - `-swift-version 5` language mode is used for the module and apps. macOS/Darwin only for now (autorelease pool, Foundation).
 - `-parse-as-library` is passed only when sources contain `@main`; `@main` must start its line.
+
+### Gradients, Canvas and visual effects
+
+| API | Supported entry points |
+| --- | --- |
+| Gradient views and styles | `LinearGradient(gradient:/colors:/stops:, startPoint:endPoint:)`, `RadialGradient(gradient:/colors:/stops:, center:startRadius:endRadius:)`, `EllipticalGradient(gradient:/colors:/stops:, center:startRadiusFraction:endRadiusFraction:)`, `AngularGradient(gradient:/colors:/stops:, center:startAngle:endAngle:)` and `AngularGradient(gradient:/colors:/stops:, center:angle:)` |
+| Gradient data and erasure | `Gradient(colors:)`, `Gradient(stops:)`, `Gradient.Stop(color:location:)`, `Gradient.colorSpace(_:)`, `AnyGradient(_:)`, `AnyShapeStyle(_:)`, `MeshGradient(width:height:locations:colors:background:smoothsColors:colorSpace:)` and its point, Bézier and resolved-color overloads |
+| Canvas | `Canvas(opaque:colorMode:rendersAsynchronously:renderer:)` and `Canvas(opaque:colorMode:rendersAsynchronously:renderer:symbols:)` |
+| GraphicsContext | `fill(_:with:style:)`, `stroke(_:with:style:)`, `stroke(_:with:lineWidth:)`, `resolve(_:)`, `resolveSymbol(id:)`, `draw(_:at:anchor:)`, `draw(_:in:)`, `drawLayer(content:)`, `clip(to:style:options:)`, `clipToLayer(opacity:options:content:)`, `addFilter(_:options:)` |
+| View effects | `blur(radius:opaque:)`, `blendMode(_:)`, `mask(alignment:_:)`, `mask(_:)`, `rotationEffect(_:anchor:)`, `scaleEffect(_:anchor:)`, `scaleEffect(x:y:anchor:)`, `transformEffect(_:)`, `projectionEffect(_:)`, `visualEffect(_:)`, `compositingGroup()`, `drawingGroup(opaque:colorMode:)` |
+
+- Use linear, radial, angular and elliptical gradients as views, shape fills or
+  strokes, and foreground or background paints. The gradient, color and stop
+  initializers and the corresponding shape-style factories share the same paint.
+  Mesh gradients accept point grids or Bézier controls and resolved or environment
+  colors. Apple color-space interpolation and folded mesh patches are approximate.
+- `AnyShapeStyle` erases supported styles. `.foreground`, `.background` and `.tint`
+  inherit their paint. The two- and three-style foreground modifiers supply
+  explicit secondary and tertiary styles. System fill levels and selection colors are approximate.
+  Gradient symbol palettes, per-run gradient text, safe-area extension for style
+  backgrounds and full tint inheritance for controls are gaps.
+- `Canvas` draws paths, strokes, text, images and tagged symbols using the
+  host-reported size. Context copies share their drawing destination and keep their
+  clips, transforms, opacity, filters and blend mode independently. Supported
+  filters include blur, projection, hue, saturation, brightness, contrast,
+  inversion, grayscale, color multiply, luminance to alpha and alpha threshold.
+  The guest runs the renderer synchronously. Resolved metrics, tiled images,
+  shaders, shadow and matrix filters, linear filter options, blur dithering and
+  Core Graphics access are gaps. Clip-layer bounds use the recorded drawing
+  geometry. Text, filters and inverse clips can make those bounds conservative.
+- View effects include affine transforms, projection, blur, blend mode, alpha
+  masking, clipping, color filters, and compositing and drawing groups.
+  `visualEffect` reads local size and the global frame after layout. Effects use
+  raster layers in device color space. Hit testing stays in layout coordinates,
+  and transformed content can be clipped by the viewport before transformation.
+  Linear and extended-linear group backing, transform animation and native
+  scroll coordinate spaces are gaps.

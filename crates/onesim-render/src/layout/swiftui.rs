@@ -6,6 +6,9 @@
 //! Visual constants (row height, card radius, nav bar heights, control sizes) are measured from
 //! an iOS 26 / iPhone 17 Pro simulator, see `tests/fixtures/showcase-ios/README.md`.
 
+use onesim_protocol::{ShapePaint, StyleReference, VisualOp};
+use std::sync::Arc;
+
 use super::rn::{ModalLayers, Placement};
 use crate::device::Device;
 use crate::scene::{Color, CustomShapeEval, Glyph, Node, Pager, Rect, Role, Scene, ScrollInfo, Shadow, SymbolRun, TextRun, VectorFill, VectorGeom, VectorShape, VectorStroke};
@@ -261,6 +264,11 @@ impl Lay {
 #[derive(Clone, Copy, PartialEq)]
 struct Env {
     fg: Option<Color>,
+    foreground_paint: Option<usize>,
+    secondary_paint: Option<usize>,
+    tertiary_paint: Option<usize>,
+    background_paint: Option<usize>,
+    tint_paint: Option<usize>,
     /// Axis of the directly enclosing stack (true = vertical), for Spacer/Divider.
     axis: Option<bool>,
     size: f32,
@@ -377,6 +385,11 @@ impl Env {
     fn new() -> Self {
         Env {
             fg: None,
+            foreground_paint: None,
+            secondary_paint: None,
+            tertiary_paint: None,
+            background_paint: None,
+            tint_paint: None,
             axis: None,
             size: 17.0,
             base_weight: 400,
@@ -440,7 +453,37 @@ struct NavBar<'a> {
     back: Option<NavBack>,
 }
 
+#[derive(Clone)]
+enum ResolvedPaint {
+    Color(Color),
+    Gradient(Arc<crate::paint::Gradient>),
+}
+
+impl ResolvedPaint {
+    fn color(&self) -> Color {
+        match self {
+            Self::Color(color) => *color,
+            Self::Gradient(_) => Color::rgba(1.0, 1.0, 1.0, 1.0),
+        }
+    }
+
+    fn opacity(self, amount: f32) -> Self {
+        match self {
+            Self::Color(color) => Self::Color(Color { a: color.a * amount, ..color }),
+            Self::Gradient(gradient) => Self::Gradient(Arc::new(gradient.with_opacity(amount))),
+        }
+    }
+
+    fn gradient(&self) -> Option<Arc<crate::paint::Gradient>> {
+        match self {
+            Self::Color(_) => None,
+            Self::Gradient(paint) => Some(paint.clone()),
+        }
+    }
+}
+
 struct Ctx<'a> {
+    paints: Vec<ResolvedPaint>,
     fonts: &'a mut Fonts,
     params: &'a SceneParams<'a>,
     dark: bool,
@@ -524,6 +567,7 @@ pub struct SceneParams<'a> {
 
 fn ctx<'a>(params: &'a SceneParams, fonts: &'a mut Fonts) -> Ctx<'a> {
     Ctx {
+        paints: Vec::new(),
         fonts,
         params,
         dark: params.appearance == Appearance::Dark,
@@ -771,8 +815,21 @@ fn flatten_tree(lay: Lay, x: f64, y: f64, mut parent: Option<usize>, mut opacity
             im.dest.y += y;
         }
         n.parent = parent;
+        n.decoration |= parent.is_some_and(|i| out[i].decoration);
+        if n.decoration {
+            n.inspect = false;
+            n.action = None;
+            n.field = None;
+            n.tag = None;
+            n.gesture = None;
+            n.scroll = None;
+            n.role = Role::None;
+        }
         opacity *= n.opacity;
         n.opacity = opacity;
+        if n.composite.is_some() {
+            opacity = 1.0;
+        }
         out.push(*n);
         parent = Some(out.len() - 1);
     }
@@ -886,7 +943,7 @@ fn first_text(v: &ViewNode) -> Option<String> {
         ViewKind::Label { title, .. } => first_text(title),
         ViewKind::Grid { rows, .. } => rows.iter().find_map(|r| r.cells.iter().find_map(first_text)),
         ViewKind::LazyGrid { children, .. } | ViewKind::ViewThatFits { children, .. } => children.iter().find_map(first_text),
-        ViewKind::Geometry { child, .. } => first_text(child),
+        ViewKind::Geometry { child, .. } | ViewKind::VisualEffect { child, .. } => first_text(child),
         _ => None,
     }
 }
@@ -1263,7 +1320,7 @@ fn has_bordered(v: &ViewNode) -> bool {
         }
         ViewKind::Grid { rows, .. } => rows.iter().any(|r| r.cells.iter().any(has_bordered)),
         ViewKind::LazyGrid { children, .. } | ViewKind::ViewThatFits { children, .. } => children.iter().any(has_bordered),
-        ViewKind::Geometry { child, .. } => has_bordered(child),
+        ViewKind::Geometry { child, .. } | ViewKind::VisualEffect { child, .. } => has_bordered(child),
         _ => false,
     }
 }
@@ -1542,12 +1599,108 @@ impl Ctx<'_> {
 
     fn color(&self, c: &onesim_protocol::Color) -> Color {
         match c {
-            onesim_protocol::Color::Semantic { semantic } => self.semantic(*semantic),
+            onesim_protocol::Color::Semantic { semantic } | onesim_protocol::Color::Hierarchical { semantic, .. } => self.semantic(*semantic),
             onesim_protocol::Color::Rgba { r, g, b, a, dark } => {
                 let [r, g, b] = if self.dark { dark.unwrap_or([*r, *g, *b]) } else { [*r, *g, *b] };
                 Color::rgba(r as f32, g as f32, b as f32, *a as f32)
             }
         }
+    }
+
+    fn foreground_paint(&self, env: Env) -> ResolvedPaint {
+        env.foreground_paint.map_or_else(
+            || ResolvedPaint::Color(env.fg.unwrap_or_else(|| self.semantic(Semantic::Primary))),
+            |i| self.paints[i].clone(),
+        )
+    }
+
+    fn hierarchical_paint(&self, style: StyleReference, env: Env) -> ResolvedPaint {
+        let supplied = match style {
+            StyleReference::Secondary => env.secondary_paint,
+            StyleReference::Tertiary => env.tertiary_paint,
+            _ => None,
+        };
+        if let Some(index) = supplied {
+            return self.paints[index].clone();
+        }
+        let (factor, default) = match style {
+            StyleReference::Primary => (1.0, self.semantic(Semantic::Primary)),
+            StyleReference::Secondary => (0.60, self.semantic(Semantic::Secondary)),
+            StyleReference::Tertiary => (0.30, self.semantic(Semantic::Tertiary)),
+            StyleReference::Quaternary => (0.18, Color { a: 0.18, ..self.semantic(Semantic::Primary) }),
+            StyleReference::Quinary => (0.12, Color { a: 0.12, ..self.semantic(Semantic::Primary) }),
+            _ => unreachable!(),
+        };
+        if let Some(index) = env.foreground_paint {
+            return self.paints[index].clone().opacity(factor);
+        }
+        if let Some(tint) = env.tint {
+            let factor = match style {
+                StyleReference::Secondary => 0.5,
+                StyleReference::Tertiary => 0.25,
+                _ => factor,
+            };
+            return ResolvedPaint::Color(tint).opacity(factor);
+        }
+        env.fg.map_or(ResolvedPaint::Color(default), |fg| ResolvedPaint::Color(fg).opacity(factor))
+    }
+
+    fn inherited_paint(&self, color: &onesim_protocol::Color, env: Env) -> Option<ResolvedPaint> {
+        let onesim_protocol::Color::Hierarchical { semantic, hierarchical: true } = color else { return None };
+        let style = match semantic {
+            Semantic::Primary => StyleReference::Primary,
+            Semantic::Secondary => StyleReference::Secondary,
+            Semantic::Tertiary => StyleReference::Tertiary,
+            _ => return None,
+        };
+        Some(self.hierarchical_paint(style, env))
+    }
+
+    fn shape_paint(&self, paint: &ShapePaint, env: Env) -> ResolvedPaint {
+        use StyleReference::*;
+        let color = match paint {
+            ShapePaint::Color(c) => return self.inherited_paint(c, env).unwrap_or_else(|| ResolvedPaint::Color(self.color(c))),
+            ShapePaint::Gradient { gradient } => {
+                return ResolvedPaint::Gradient(Arc::new(crate::paint::Gradient::resolve(gradient, |c| self.color(c))));
+            }
+            ShapePaint::Style { style } => match style {
+                Foreground => return self.foreground_paint(env),
+                Background => {
+                    if let Some(i) = env.background_paint { return self.paints[i].clone(); }
+                    self.semantic(Semantic::Background)
+                }
+                Tint => {
+                    if let Some(i) = env.tint_paint { return self.paints[i].clone(); }
+                    env.tint.unwrap_or_else(|| self.semantic(Semantic::Accent))
+                }
+                Primary | Secondary | Tertiary | Quaternary | Quinary => return self.hierarchical_paint(*style, env),
+                Fill => self.control_fill(0.20),
+                SecondaryFill => self.control_fill(0.16),
+                TertiaryFill => self.control_fill(0.12),
+                QuaternaryFill => self.control_fill(0.08),
+                QuinaryFill => self.control_fill(0.05),
+                Link => self.semantic(Semantic::Accent),
+                Placeholder => self.semantic(Semantic::Tertiary),
+                Selection => Color { a: 0.25, ..self.semantic(Semantic::Accent) },
+                Separator => self.semantic(Semantic::Separator),
+                WindowBackground => self.semantic(Semantic::Background),
+            },
+        };
+        ResolvedPaint::Color(color)
+    }
+
+    fn store_paint(&mut self, paint: ResolvedPaint) -> usize {
+        let index = self.paints.len();
+        self.paints.push(paint);
+        index
+    }
+
+    fn visual_op(&self, id: String, op: VisualOp, inner: Lay) -> Lay {
+        let color = match op {
+            VisualOp::ColorMultiply { color } | VisualOp::AlphaThreshold { color, .. } => Some(self.color(&color)),
+            _ => None,
+        };
+        layer(id, "visual_op", inner, |n| n.composite = Some(Box::new(crate::effects::Composite::Effect(op, color))))
     }
 
     /// SF line height, rounded up to the device pixel like UIKit.
@@ -1679,7 +1832,14 @@ impl Ctx<'_> {
                 Lay::new(Size { w, h }, None, vec![(dx, dy, inner)])
             }
             Modifier::ForegroundColor(c) => {
-                let mut env = Env { fg: Some(self.color(c)), ..env };
+                if let Some(paint) = self.inherited_paint(c, env) {
+                    let fg = paint.color();
+                    let index = self.store_paint(paint);
+                    return self.mods(v, rest, p, Env {
+                        foreground_paint: Some(index), secondary_paint: None, tertiary_paint: None, fg: Some(fg), ..env
+                    });
+                }
+                let mut env = Env { fg: Some(self.color(c)), foreground_paint: None, secondary_paint: None, tertiary_paint: None, ..env };
                 // Inside a tinted control the hierarchical styles stay accent-coloured, dimmed.
                 if let (Some(t), onesim_protocol::Color::Semantic { semantic }) = (env.tint, c) {
                     let k = match semantic {
@@ -1694,10 +1854,67 @@ impl Ctx<'_> {
                 }
                 self.mods(v, rest, p, env)
             }
+            Modifier::ForegroundPaint(paint) => {
+                let paint = self.shape_paint(paint, env);
+                let fg = paint.color();
+                let index = self.store_paint(paint);
+                self.mods(v, rest, p, Env {
+                    foreground_paint: Some(index), secondary_paint: None, tertiary_paint: None, fg: Some(fg), ..env
+                })
+            }
+            Modifier::ForegroundPalette(palette) => {
+                let primary = self.shape_paint(&palette.primary, env);
+                let fg = primary.color();
+                let primary = self.store_paint(primary);
+                let secondary = self.store_paint(self.shape_paint(&palette.secondary, env));
+                let tertiary = palette.tertiary.as_ref().map(|p| self.store_paint(self.shape_paint(p, env)));
+                self.mods(v, rest, p, Env {
+                    foreground_paint: Some(primary), secondary_paint: Some(secondary), tertiary_paint: tertiary, fg: Some(fg), ..env
+                })
+            }
+            Modifier::BackgroundPaint(paint) => {
+                let paint = self.shape_paint(paint, env);
+                let index = self.store_paint(paint);
+                self.mods(v, rest, p, Env { background_paint: Some(index), ..env })
+            }
+            Modifier::Tint(paint) => {
+                let index = paint.as_ref().map(|paint| {
+                    let paint = self.shape_paint(paint, env);
+                    self.store_paint(paint)
+                });
+                self.mods(v, rest, p, Env { tint_paint: index, ..env })
+            }
+            Modifier::Effect(_) => {
+                let start = rest.iter().rposition(|m| !matches!(m, Modifier::Effect(_))).map_or(0, |i| i + 1);
+                let inner = self.mods(v, &mods[..start], p, env);
+                mods[start..].iter().enumerate().fold(inner, |inner, (i, modifier)| {
+                    let Modifier::Effect(op) = modifier else { unreachable!() };
+                    self.visual_op(format!("{}#effect{}", v.id, start + i), *op, inner)
+                })
+            }
+            Modifier::Mask(o) | Modifier::InvertedMask(o) => {
+                let inner = self.mods(v, rest, p, env);
+                let mask = self.view(&o.view, Prop { w: Some(inner.size.w), h: Some(inner.size.h) }, Env { axis: None, ..env });
+                let (dx, dy) = ((inner.size.w - mask.size.w) * h_frac(o.alignment), (inner.size.h - mask.size.h) * v_frac(o.alignment));
+                let mask = layer(format!("{}#mask-source{}", v.id, rest.len()), "mask_source", mask, |n| n.decoration = true);
+                let mut n = Node::new(format!("{}#mask{}", v.id, rest.len()), "mask");
+                n.inspect = false;
+                n.composite = Some(Box::new(crate::effects::Composite::Mask { inverted: matches!(last, Modifier::InvertedMask(_)) }));
+                Lay::new(inner.size, Some(n), vec![(0.0, 0.0, inner), (dx, dy, mask)])
+            }
+            Modifier::AlignedBackground(o) => {
+                let inner = self.mods(v, rest, p, env);
+                let bg = self.view(&o.view, Prop { w: Some(inner.size.w), h: Some(inner.size.h) }, Env { axis: None, ..env });
+                let dx = (inner.size.w - bg.size.w) * h_frac(o.alignment);
+                let dy = (inner.size.h - bg.size.h) * v_frac(o.alignment);
+                Lay::new(inner.size, None, vec![(dx, dy, bg), (0.0, 0.0, inner)])
+            }
             Modifier::Background(bg) => {
                 let inner = self.mods(v, rest, p, env);
                 let bgl = self.view(bg, Prop { w: Some(inner.size.w), h: Some(inner.size.h) }, Env { axis: None, ..env });
-                Lay::new(inner.size, None, vec![(0.0, 0.0, bgl), (0.0, 0.0, inner)])
+                let dx = (inner.size.w - bgl.size.w) * 0.5;
+                let dy = (inner.size.h - bgl.size.h) * 0.5;
+                Lay::new(inner.size, None, vec![(dx, dy, bgl), (0.0, 0.0, inner)])
             }
             Modifier::Overlay(o) => {
                 let inner = self.mods(v, rest, p, env);
@@ -1873,7 +2090,7 @@ impl Ctx<'_> {
     }
 
     #[inline(never)]
-    fn shape_view(&self, v: &ViewNode, p: Prop, fg: Color) -> Lay {
+    fn shape_view(&self, v: &ViewNode, p: Prop, env: Env) -> Lay {
         let ViewKind::Shape { shape, extra } = &v.kind else {
             unreachable!()
         };
@@ -1935,10 +2152,14 @@ impl Ctx<'_> {
                 && st.inset == 0.0
         });
         let continuous = *corner_style == Some(RoundedCornerStyle::Continuous);
-        let stroke_color = |st: &onesim_protocol::Stroke| st.color.as_ref().map_or(fg, |c| self.color(c));
+        let fallback = || self.foreground_paint(env);
+        let fill = fill.as_ref().map(|p| self.shape_paint(p, env)).or_else(|| stroke.is_none().then(fallback));
+        let stroke_paint = stroke.as_ref().map(|st| st.color.as_ref().map_or_else(fallback, |p| self.shape_paint(p, env)));
+        n.fill_paint = fill.as_ref().and_then(ResolvedPaint::gradient);
+        n.stroke_paint = stroke_paint.as_ref().and_then(ResolvedPaint::gradient);
 
         // Fast path for plain rectangular/circular/pill shapes with default fill & stroke.
-        if simple_fill && simple_stroke && !*custom {
+        if simple_fill && simple_stroke && !*custom && n.fill_paint.is_none() && n.stroke_paint.is_none() {
             let fast_radius = match shape {
                 ShapeKind::Rectangle => Some(0.0),
                 ShapeKind::Circle => Some(PILL),
@@ -1948,11 +2169,8 @@ impl Ctx<'_> {
             };
             if let Some(radius) = fast_radius {
                 n.radius = radius;
-                n.fill = fill.as_ref().map(|c| self.color(c));
-                n.stroke = stroke.as_ref().map(|st| (stroke_color(st), st.line_width));
-                if n.fill.is_none() && n.stroke.is_none() {
-                    n.fill = Some(fg);
-                }
+                n.fill = fill.as_ref().map(ResolvedPaint::color);
+                n.stroke = stroke.as_ref().zip(stroke_paint.as_ref()).map(|(st, p)| (p.color(), st.line_width));
                 return Lay::new(size, Some(n), vec![]);
             }
         }
@@ -1983,10 +2201,9 @@ impl Ctx<'_> {
                 mirror_x: *mirror_rtl,
             },
         };
-        let fill_col = fill.as_ref().map(|c| self.color(c)).or_else(|| stroke.is_none().then_some(fg));
-        let vec_fill = fill_col.map(|color| VectorFill { color, eo_fill: fs.eo_fill, antialiased: fs.antialiased });
-        let vec_stroke = stroke.as_ref().map(|st| VectorStroke {
-            color: stroke_color(st),
+        let vec_fill = fill.as_ref().map(|p| VectorFill { color: p.color(), eo_fill: fs.eo_fill, antialiased: fs.antialiased });
+        let vec_stroke = stroke.as_ref().zip(stroke_paint.as_ref()).map(|(st, p)| VectorStroke {
+            color: p.color(),
             line_width: st.line_width,
             line_cap: st.line_cap,
             line_join: st.line_join,
@@ -2038,8 +2255,9 @@ impl Ctx<'_> {
                     spec.width = big.width;
                 }
                 let mut l = self.text_lay_runs(&v.id, text, spec, fg, wrap, spans);
-                if let Some(t) = l.node.as_mut().and_then(|n| n.text.as_mut()) {
-                    t.strike = env.strike;
+                if let Some(n) = l.node.as_mut() {
+                    if let Some(t) = n.text.as_mut() { t.strike = env.strike; }
+                    n.content_paint = self.foreground_paint(env).gradient();
                 }
                 l
             }
@@ -2085,7 +2303,40 @@ impl Ctx<'_> {
                 n.fill = Some(fg);
                 Lay::new(greedy(p), Some(n), vec![])
             }
-            ViewKind::Shape { .. } => self.shape_view(v, p, fg),
+            ViewKind::Shape { .. } => self.shape_view(v, p, env),
+            ViewKind::Canvas { proposal, children, opaque } => {
+                let size = greedy(p);
+                let mut n = Node::new(&v.id, "canvas");
+                n.custom_shape = Some(proposal.map_or(CustomShapeEval::Pending, CustomShapeEval::Evaluated));
+                n.clip_radius = Some(0.0);
+                if *opaque {
+                    n.fill = Some(Color::rgba(0.0, 0.0, 0.0, 1.0));
+                }
+                let proposal = Prop { w: Some(size.w), h: Some(size.h) };
+                let kids = children.iter().map(|child| {
+                    let item = self.view(child, proposal, child_env);
+                    let item = layer(format!("{}#draw", child.id), "canvas_draw", item, |n| n.decoration = true);
+                    (0.0, 0.0, item)
+                }).collect();
+                let inner = Lay::new(size, Some(n), kids);
+                self.visual_op(format!("{}#canvas", v.id), VisualOp::Group { opaque: false }, inner)
+            }
+            ViewKind::CanvasItem { child, origin, anchor, size } => {
+                let proposal = size.map_or(Prop { w: None, h: None }, |[w, h]| Prop { w: Some(w), h: Some(h) });
+                let lay = self.view(child, proposal, child_env);
+                let [x, y] = *origin;
+                let [u, v] = *anchor;
+                let dx = x - u * lay.size.w + proposal.w.map_or(0.0, |w| (w - lay.size.w) * 0.5);
+                let dy = y - v * lay.size.h + proposal.h.map_or(0.0, |h| (h - lay.size.h) * 0.5);
+                Lay::new(greedy(p), None, vec![(dx, dy, lay)])
+            }
+            ViewKind::VisualEffect { child, effects, frame } => {
+                let inner = self.view(child, p, env);
+                let inner = effects.iter().enumerate().fold(inner, |inner, (i, op)| {
+                    self.visual_op(format!("{}#visual{i}", v.id), *op, inner)
+                });
+                layer(v.id.clone(), "visual_geometry", inner, |n| n.visual_frame = Some(*frame))
+            }
             ViewKind::Divider => {
                 let hl = self.hairline();
                 let len = |x: Option<f64>| x.filter(|x| x.is_finite()).unwrap_or(0.0);
@@ -4291,6 +4542,173 @@ mod tests {
 
     fn near(a: f64, b: f64) {
         assert!((a - b).abs() < 0.2, "{a} != {b}");
+    }
+
+    #[test]
+    fn gradient_stops_paint_through_an_even_odd_path() {
+        let scene = scene(r#"{
+            "kind":"shape","id":"paint","shape":"path",
+            "path":[{"m":[0,0]},{"l":[80,0]},{"l":[80,40]},{"l":[0,40]},"z",
+                    {"m":[30,10]},{"l":[50,10]},{"l":[50,30]},{"l":[30,30]},"z"],
+            "fillStyle":{"eoFill":true},
+            "fill":{"gradient":{"kind":"linear","start":[0,0],"end":[1,0],"stops":[
+                {"location":0.5,"color":{"r":1,"g":0,"b":0,"a":1}},
+                {"location":0.5,"color":{"r":0,"g":0,"b":1,"a":1}}
+            ]}}
+        }"#, (80.0, 40.0));
+        let pixels = crate::render(&scene, &mut Fonts::with_fallback(true), 1.0);
+        let rgb = |x, y| {
+            let p = pixels.pixel(x, y).unwrap();
+            (p.red(), p.green(), p.blue())
+        };
+        assert_eq!(rgb(5, 20), (255, 0, 0));
+        assert_eq!(rgb(40, 20), (255, 255, 255));
+        assert_eq!(rgb(75, 20), (0, 0, 255));
+    }
+
+    #[test]
+    fn masks_and_effects_preserve_layout_and_apply_in_modifier_order() {
+        let scene = scene(r#"{
+            "kind":"color","id":"content","color":{"r":1,"g":0,"b":0,"a":1},
+            "modifiers":[
+                {"mask":{"view":{"kind":"color","id":"mask","color":{"r":0,"g":0,"b":0,"a":0.5},
+                    "modifiers":[{"frame":{"width":20,"height":20}}]},"alignment":"topLeading"}},
+                {"effect":{"kind":"colorInvert"}},
+                {"effect":{"kind":"affine","matrix":[1,0,0,1,30,10],"anchor":[0,0]}}
+            ]}"#, (80.0, 40.0));
+        let n = by_id(&scene, "content");
+        assert_eq!((n.bounds.x, n.bounds.y, n.bounds.w, n.bounds.h), (0.0, 0.0, 80.0, 40.0));
+        let pixels = crate::render(&scene, &mut Fonts::with_fallback(true), 1.0);
+        let p = pixels.pixel(35, 15).unwrap();
+        assert!((126..=128).contains(&p.red()));
+        assert_eq!((p.green(), p.blue()), (255, 255));
+        assert_eq!(pixels.pixel(5, 15).unwrap().red(), 255);
+    }
+
+    #[test]
+    fn canvas_and_visual_effect_request_their_own_layout_frames() {
+        let scene = scene(r#"{"kind":"visualEffect","id":"effect","frame":[0,0,100,100],
+            "child":{"kind":"canvas","id":"canvas","children":[],
+                "modifiers":[{"frame":{"width":40,"height":0}}]}}"#, (80.0, 60.0));
+        let frames = scene.pending_shape_frames();
+        assert_eq!(frames["canvas"], frames["effect"]);
+        assert_eq!(frames["canvas"][2..], [40.0, 0.0]);
+    }
+
+    #[test]
+    fn invalid_mesh_uses_its_background_and_empty_gradient_is_clear() {
+        let scene = scene(r#"{"kind":"vstack","id":"stack","spacing":0,"children":[
+            {"kind":"shape","id":"mesh","shape":"rectangle","fill":{"gradient":{"kind":"mesh",
+                "width":4294967295,"height":2,"points":[],"colors":[],
+                "background":{"r":0,"g":1,"b":0,"a":1},"smoothsColors":true}},
+                "modifiers":[{"frame":{"height":30}}]},
+            {"kind":"shape","id":"empty","shape":"rectangle","fill":{"gradient":{"kind":"linear","start":[0,0],"end":[0,0],"stops":[]}},
+                "modifiers":[{"frame":{"height":30}}]}]}"#, (60.0, 60.0));
+        let pixels = crate::render(&scene, &mut Fonts::with_fallback(true), 1.0);
+        let p = pixels.pixel(20, 15).unwrap();
+        assert_eq!((p.red(), p.green(), p.blue()), (0, 255, 0));
+        let p = pixels.pixel(20, 45).unwrap();
+        assert_eq!((p.red(), p.green(), p.blue()), (255, 255, 255));
+    }
+
+    #[test]
+    fn long_effect_chain_renders_and_releases_the_previous_display_frame() {
+        use crate::display::{DisplayList, Op};
+
+        let json = serde_json::json!({
+            "kind": "color", "id": "red", "color": {"r": 1, "g": 0, "b": 0, "a": 1},
+            "modifiers": vec![serde_json::json!({"effect":{"kind":"colorInvert"}}); 301]
+        });
+        let scene = scene(&json.to_string(), (8.0, 8.0));
+        let mut fonts = Fonts::with_fallback(true);
+        let cpu = crate::render(&scene, &mut fonts, 1.0);
+        let px = cpu.pixel(4, 4).unwrap();
+        assert_eq!((px.red(), px.green(), px.blue(), px.alpha()), (0, 255, 255, 255));
+
+        let mut builder = crate::Builder::new();
+        let built = builder.build(&scene, &mut fonts, 1.0);
+        let frame = DisplayList::decode(&built.encode()).unwrap();
+        let [Op::Image { id, .. }] = frame.ops.as_slice() else { panic!("expected the composed image") };
+        assert_eq!(frame.added[0].id, *id);
+        assert_eq!(frame.added[0].rgba, cpu.data());
+        assert_eq!(builder.build(&scene, &mut fonts, 1.0).dropped, vec![*id]);
+    }
+
+    #[test]
+    fn canvas_copy_respects_a_clip_at_composite_time() {
+        let scene = scene(r#"{"kind":"canvas","id":"canvas","proposal":[40,20],"children":[
+            {"kind":"color","id":"under","color":{"r":1,"g":0,"b":0,"a":1}},
+            {"kind":"color","id":"over","color":{"r":0,"g":0,"b":1,"a":1},"modifiers":[
+                {"mask":{"view":{"kind":"color","id":"clip","color":{"r":1,"g":1,"b":1,"a":1},
+                    "modifiers":[{"frame":{"width":20,"height":20}}]},"alignment":"leading"}},
+                {"effect":{"kind":"blend","mode":"copy"}}]}
+        ]}"#, (40.0, 20.0));
+        let pixels = crate::render(&scene, &mut Fonts::with_fallback(true), 1.0);
+        let left = pixels.pixel(10, 10).unwrap();
+        let right = pixels.pixel(30, 10).unwrap();
+        assert_eq!((left.red(), left.blue()), (0, 255));
+        assert_eq!((right.red(), right.blue()), (255, 0));
+    }
+
+    #[test]
+    fn canvas_copy_preserves_coverage_of_transformed_and_transparent_paths() {
+        let scene = scene(r#"{"kind":"canvas","id":"canvas","proposal":[40,20],"children":[
+            {"kind":"color","id":"under","color":{"r":1,"g":0,"b":0,"a":1}},
+            {"kind":"shape","id":"blue","shape":"path","fill":{"r":0,"g":0,"b":1,"a":1},
+             "path":[{"m":[0,0]},{"l":[10,0]},{"l":[10,20]},{"l":[0,20]},"z"],
+             "modifiers":[{"effect":{"kind":"affine","matrix":[1,0,0,1,10,0],"anchor":[0,0]}},
+                          {"effect":{"kind":"blend","mode":"copy"}}]},
+            {"kind":"shape","id":"clear","shape":"path","fill":{"r":0,"g":0,"b":0,"a":0},
+             "path":[{"m":[25,0]},{"l":[35,0]},{"l":[35,20]},{"l":[25,20]},"z"],
+             "modifiers":[{"effect":{"kind":"blend","mode":"copy"}}]}
+        ]}"#, (40.0, 20.0));
+        let pixels = crate::render(&scene, &mut Fonts::with_fallback(true), 1.0);
+        let rgb = |x| {
+            let p = pixels.pixel(x, 10).unwrap();
+            (p.red(), p.green(), p.blue())
+        };
+        assert_eq!(rgb(5), (255, 0, 0));
+        assert_eq!(rgb(15), (0, 0, 255));
+        assert_eq!(rgb(30), (255, 255, 255));
+        assert_eq!(rgb(38), (255, 0, 0));
+    }
+
+    #[test]
+    fn hierarchical_fills_apply_to_the_inherited_paint() {
+        let scene = scene(r#"{"kind":"vstack","id":"stack","spacing":0,"children":[
+            {"kind":"shape","id":"level","shape":"rectangle","fill":{"semantic":"secondary","hierarchical":true},
+                "modifiers":[{"foregroundColor":{"r":1,"g":0,"b":0,"a":1}},{"frame":{"height":20}}]},
+            {"kind":"shape","id":"quinary","shape":"rectangle","fill":{"style":"quinaryFill"},
+                "modifiers":[{"frame":{"height":20}}]}
+        ]}"#, (40.0, 40.0));
+        let pixels = crate::render(&scene, &mut Fonts::with_fallback(true), 1.0);
+        let p = pixels.pixel(20, 10).unwrap();
+        assert_eq!(p.red(), 255);
+        assert!((100..=104).contains(&p.green()));
+        assert!(pixels.pixel(20, 30).unwrap().red() < 255);
+    }
+
+    #[test]
+    fn a_smaller_background_uses_center_alignment_by_default() {
+        let scene = scene(r#"{"kind":"rectangle","id":"view","modifiers":[
+            {"background":{"kind":"rectangle","id":"bg","modifiers":[{"frame":{"width":10,"height":8}}]}}
+        ]}"#, (40.0, 20.0));
+        let bg = by_id(&scene, "bg");
+        assert_eq!((bg.bounds.x, bg.bounds.y, bg.bounds.w, bg.bounds.h), (15.0, 6.0, 10.0, 8.0));
+    }
+
+    #[test]
+    fn foreground_palette_selects_explicit_secondary_and_tertiary_paints() {
+        let scene = scene(r#"{"kind":"vstack","id":"stack","spacing":0,"children":[
+            {"kind":"shape","id":"blue","shape":"rectangle","fill":{"semantic":"secondary","hierarchical":true}},
+            {"kind":"shape","id":"green","shape":"rectangle","fill":{"semantic":"tertiary","hierarchical":true}}],
+            "modifiers":[{"foregroundPalette":{"primary":{"r":1,"g":0,"b":0,"a":1},
+                "secondary":{"r":0,"g":0,"b":1,"a":1},"tertiary":{"r":0,"g":1,"b":0,"a":1}}}]}"#, (40.0, 40.0));
+        let pixels = crate::render(&scene, &mut Fonts::with_fallback(true), 1.0);
+        let upper = pixels.pixel(20, 10).unwrap();
+        let lower = pixels.pixel(20, 30).unwrap();
+        assert_eq!((upper.red(), upper.green(), upper.blue()), (0, 0, 255));
+        assert_eq!((lower.red(), lower.green(), lower.blue()), (0, 255, 0));
     }
 
     #[test]

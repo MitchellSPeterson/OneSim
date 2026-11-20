@@ -165,7 +165,7 @@ Hosts ignore unknown modifier keys. Guests never send kinds a host doesn't list 
 
 | kind | fields |
 |---|---|
-| `shape` | `"shape": "rectangle"\|"circle"\|"capsule"\|"roundedRectangle"`, `"cornerRadius"?`, `"fill"?: Color`, `"stroke"?: {"color": Color, "lineWidth"}`. Greedy like `rectangle`. Neither fill nor stroke means fill with the current foreground color. (`rectangle` kind stays accepted.) |
+| `shape` | `"shape": "rectangle"\|"circle"\|"capsule"\|"roundedRectangle"`, `"cornerRadius"?`, `"fill"?: Color`, `"stroke"?: {"color": Color, "lineWidth"}`. Greedy like `rectangle`. Neither fill nor stroke means fill with the current foreground style. Section R extends both paint fields. (`rectangle` kind stays accepted.) |
 | `divider` | – (hairline, 1px at device scale, separator color; spans the cross axis of the enclosing stack) |
 | `scroll` | `"axis": "vertical"\|"horizontal"`, `"child": ViewNode`. Child is proposed unbounded on the axis. Host keeps the scroll offset per node id across trees; it changes via `scroll` pointer events. Clips. |
 | `list` | `"style": "insetGrouped"\|"plain"`, `"sections": [{"header": String?, "footer": String?, "rows": [ViewNode]}]`. Rows outside any `Section` form their own headerless section. `ForEach`/`if` inside lists are already flattened into rows by the guest. Scrolls like `scroll` (vertical). |
@@ -844,3 +844,66 @@ Menu, Link, control styles and Gauge (`frameworks/swiftui/Sources/SwiftUI/Styles
 - `progress` gains `"currentValueLabel"?: ViewNode`, drawn under a linear bar (caption, secondary). `.circular` is sent with `value: null` (the spinner).
 - New kind `gauge`: `{"kind":"gauge","id","style": "automatic"|"linearCapacity"|"accessoryLinear"|"accessoryLinearCapacity"|"accessoryCircular"|"accessoryCircularCapacity","value": fraction 0...1,"label"?,"currentValueLabel"?,"minimumValueLabel"?,"maximumValueLabel"?}` (labels are ViewNodes; `EmptyView` ones are omitted). `automatic` and `linearCapacity`: label centred above a 16 pt accent capacity bar, min/max labels beside it, the current value centred below. `accessoryLinearCapacity`: label leading above a 4 pt bar. `accessoryLinear`: an 8 pt primary bar with a dot at the value, no label. `accessoryCircularCapacity`: a 58 pt ring filled clockwise from the top, the current value inside. `accessoryCircular`: a 58 pt arc open at the bottom with a dot at the value, the current value inside and the label in the opening. Inspection value: the fraction.
 - Slider value labels add no kind: the guest sends an `hstack` of the minimum label, the `slider` (id `<id>/s`) and the maximum label. `onEditingChanged` runs `true` then `false` around each `text_input`.
+
+## R. v1 additions: SwiftUI gradients, Canvas and effects
+
+The host lists `canvas`, `canvasItem` and `visualEffect` in `get_capabilities.views`.
+A shape's `fill` and `stroke.color` accept a paint. Existing `Color` objects still work.
+A paint may also be `{"style":"foreground" | "background" | "tint" | ...}` for an inherited or
+semantic style, or `{"gradient": GradientPaint}`. The `foregroundPaint`, `backgroundPaint`
+and optional `tint` modifiers set the inherited styles. `foregroundPalette` carries a
+`primary`, `secondary`, and optional `tertiary` paint for the respective hierarchical levels.
+`alignedBackground` uses the same
+`{view, alignment}` representation as `overlay`. A `background` without alignment centers
+its view. A semantic color with `hierarchical: true` first resolves against the inherited
+foreground style. With the field omitted, semantic colors keep their original meaning.
+
+A `GradientPaint` uses these fields:
+
+| `kind` | Geometry |
+| --- | --- |
+| `linear` | `start`, `end`, each a two-element point |
+| `radial` | `center`, optional `startCenter`, `startRadius`, `endRadius`, optional `elliptical` |
+| `angular` | `center`, `startAngle`, `endAngle` in radians |
+| `mesh` | `width`, `height`, row-major `points` and `colors`, `background`, and `smoothsColors` |
+
+The first three kinds carry `stops: [{location, color}]`. A point is relative to the painted
+bounds unless `absolute` is true, which uses Canvas coordinates in points. Circular radii are
+in points. Elliptical radii are fractions of each axis. `options` is a bitset with repeat (2)
+and mirror (4). `colorSpace` defaults to `device` and also accepts `perceptual` and `linear`.
+Each mesh point has `position` and optional `controls` ordered leading, top, trailing, bottom.
+An invalid mesh grid draws its background. Duplicate stop locations create a hard stop.
+
+`canvas` carries `children` in draw order and an optional `proposal: [width,height]` from the
+last draw. The host places commands at the Canvas origin and clips the isolated layer to the
+Canvas bounds. `opaque` uses an opaque backing. `canvasItem` places its `child` at a local
+`origin: [x,y]` relative to an `anchor: [u,v]`. An optional `size: [width,height]` proposes a
+rectangle in which the host centers the child. Canvas commands and mask content are
+decorative and do not contribute actions, gestures, or inspection nodes.
+
+`visualEffect` carries `child`, `frame: [x,y,width,height]` and an ordered `effects` array.
+The host sends Canvas size changes and visual-effect frame changes in the existing `layout`
+message. Canvas uses the returned size for its renderer. The visual-effect closure uses the
+returned origin and size with `GeometryProxy`. The child determines the view's layout size.
+
+The `effect` modifier takes one effect object. The same objects can appear in the
+`visualEffect` array.
+
+| `kind` | Fields |
+| --- | --- |
+| `affine` | `matrix: [a,b,c,d,tx,ty]`, `anchor: [x,y]` in unit coordinates |
+| `projection` | Row-major 3 × 3 `matrix` with translation in the last row |
+| `blur` | `radius` in points and `opaque` |
+| `blend` | `mode`, the lower camel case blend mode |
+| `colorMultiply` | `color` |
+| `alphaThreshold` | `min`, `max`, `color` |
+| `brightness`, `contrast`, `grayscale`, `saturation`, `opacity`, `colorInvert` | `amount` (optional for `colorInvert`, defaults to 1) |
+| `hueRotation` | `radians` |
+| `luminanceToAlpha` | None |
+| `group` | `opaque` |
+
+`mask` and `invertedMask` take `{view, alignment}` and multiply the rendered content by the
+mask's alpha or its complement. Canvas source-domain blend modes use the clip and path
+coverage when compositing, including when the drawing paint is transparent.
+Effects preserve layout size. The host resolves these
+layers with the CPU rasterizer and submits the resulting RGBA frame to GPU clients.

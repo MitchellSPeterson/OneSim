@@ -77,7 +77,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `VectorArithmetic` | 13 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `View` | 13 | ✅ |  |  |
 | `ViewModifier` | 13 | ⬜ |  |  |
-| `VisualEffect` | 17 | ⬜ |  |  |
+| `VisualEffect` | 17 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Standard geometry and color effect chains. Custom graph-based effects are a gap. |
 | `Widget` | 14 | ⬜ |  |  |
 | `WidgetBundle` | 14 | ⬜ |  |  |
 | `WidgetConfiguration` | 14 | ⬜ |  |  |

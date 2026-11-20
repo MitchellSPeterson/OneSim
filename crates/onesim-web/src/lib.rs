@@ -184,7 +184,7 @@ fn with_frame<T>(f: impl FnOnce(&mut State) -> T) -> T {
 fn submit(json: &[u8], version: u64) -> Result<(), String> {
     let text = std::str::from_utf8(json).map_err(|e| format!("tree is not UTF-8: {e}"))?;
     let root: ViewNode = serde_json::from_str(text).map_err(|e| format!("tree is not valid ViewNode JSON: {e}"))?;
-    let pending = STATE.with(|s| {
+    STATE.with(|s| {
         let mut s = s.borrow_mut();
         if s.version.is_some_and(|v| version <= v) {
             return Err("tree version must increase monotonically".to_string());
@@ -195,24 +195,28 @@ fn submit(json: &[u8], version: u64) -> Result<(), String> {
         s.tree = Some(root);
         s.tree_json = text.to_string();
         update_scene(&mut s);
-        if s.in_layout {
-            return Ok(None);
-        }
-        let frames = s.scene.as_ref().map(|sc| sc.pending_shape_frames()).unwrap_or_default();
-        if !frames.is_empty() {
-            if let Some(cb) = s.on_layout {
-                s.in_layout = true;
-                return Ok(Some((cb, s.ctx, frames)));
-            }
-        }
-        Ok(None)
+        Ok(())
     })?;
+    send_layout();
+    Ok(())
+}
+
+/// Supply size-dependent drawing and effect closures after guest and host layout changes.
+fn send_layout() {
+    let pending = STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        if s.in_layout { return None; }
+        let cb = s.on_layout?;
+        let frames = s.scene.as_ref()?.pending_shape_frames();
+        if frames.is_empty() { return None; }
+        s.in_layout = true;
+        Some((cb, s.ctx, frames))
+    });
     if let Some((cb, ctx, frames)) = pending {
         let line = CString::new(serde_json::json!({"type": "layout", "frames": frames}).to_string()).unwrap_or_default();
         unsafe { cb(ctx as *mut c_void, line.as_ptr()) };
         STATE.with(|s| s.borrow_mut().in_layout = false);
     }
-    Ok(())
 }
 
 #[no_mangle]
@@ -555,6 +559,7 @@ fn dispatch(e: Effect) -> i32 {
             update_scene(s)
         }
     });
+    send_layout();
     1
 }
 
@@ -697,6 +702,7 @@ pub extern "C" fn simcore_web_tick(dt_ms: f64) -> i32 {
         }
         scroll_moved || anim_moved
     });
+    if redrew { send_layout(); }
     // A finger resting on a gesture view keeps reporting (long presses fire while held).
     let held = with(|s| s.inter.holding());
     if held {
@@ -1172,6 +1178,29 @@ mod tests {
         let before = with_frame(|s| s.fb.clone());
         assert_eq!(simcore_web_scroll(200.0, 400.0, 0.0, 200.0), 1);
         assert!(with_frame(|s| s.fb != before), "compose scroll should redraw scrolled pixels");
+    }
+
+    #[test]
+    fn scrolling_reports_visual_effect_geometry_without_a_guest_submit() {
+        thread_local! { static FRAMES: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) }; }
+        unsafe extern "C" fn capture(_: *mut c_void, line: *const c_char) {
+            let bytes = unsafe { std::ffi::CStr::from_ptr(line) }.to_bytes();
+            let value: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+            if let Some(y) = value["frames"]["effect"][1].as_f64() {
+                FRAMES.with(|frames| frames.borrow_mut().push(y));
+            }
+        }
+
+        let _ = simcore_web_init(200.0, 300.0, 1.0, 0);
+        simcore_runtime_set_layout_callback(Some(capture));
+        let tree = r#"{"kind":"scroll","id":"scroll","child":{
+            "kind":"visualEffect","id":"effect","frame":[0,0,200,600],
+            "child":{"kind":"rectangle","id":"rect","modifiers":[{"frame":{"height":600}}]}}}"#;
+        assert_eq!(unsafe { simcore_submit_tree(tree.as_ptr(), tree.len(), 1) }, 0);
+        let initial = FRAMES.with(|frames| frames.borrow().last().copied().unwrap());
+        assert_eq!(simcore_web_scroll(100.0, 150.0, 0.0, 30.0), 1);
+        let scrolled = FRAMES.with(|frames| frames.borrow().last().copied().unwrap());
+        assert_eq!(initial - scrolled, 30.0);
     }
 
     #[test]

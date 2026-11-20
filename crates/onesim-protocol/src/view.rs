@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::{ForegroundPalette, ShapePaint, VisualOp};
+
 /// A Fabric view whose single child is a SwiftUI or Compose subtree.
 pub const EXPO_UI_HOST: &str = "ViewManagerAdapter_ExpoUI_HostView";
 /// A React Native subtree placed inside a SwiftUI or Compose layout.
@@ -53,6 +55,7 @@ pub enum Semantic {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Color {
+    Hierarchical { semantic: Semantic, hierarchical: bool },
     Semantic { semantic: Semantic },
     /// `dark`: optional rgb used instead of `r,g,b` in dark appearance (adaptive system colors).
     Rgba { r: f64, g: f64, b: f64, a: f64, #[serde(default, skip_serializing_if = "Option::is_none")] dark: Option<[f64; 3]> },
@@ -235,6 +238,14 @@ pub enum Modifier {
     Padding(Edges),
     Frame(Frame),
     ForegroundColor(Color),
+    ForegroundPaint(Box<ShapePaint>),
+    ForegroundPalette(Box<ForegroundPalette>),
+    BackgroundPaint(Box<ShapePaint>),
+    Tint(Option<Box<ShapePaint>>),
+    Effect(VisualOp),
+    Mask(Overlay),
+    InvertedMask(Overlay),
+    AlignedBackground(Overlay),
     Background(Box<ViewNode>),
     CornerRadius(f64),
     Opacity(f64),
@@ -948,9 +959,9 @@ impl Default for FillStyle {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Stroke {
-    /// Absent means inherit the current foreground color (`ForegroundStyle`).
+    /// Absent means inherit the current foreground style.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub color: Option<Color>,
+    pub color: Option<ShapePaint>,
     #[serde(rename = "lineWidth", default = "one")]
     pub line_width: f64,
     #[serde(rename = "lineCap", default, skip_serializing_if = "is_default_cap")]
@@ -1229,7 +1240,7 @@ pub struct ShapeExtra {
     #[serde(default, rename = "mirrorRtl", skip_serializing_if = "is_false")]
     pub mirror_rtl: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fill: Option<Color>,
+    pub fill: Option<ShapePaint>,
     #[serde(default, rename = "fillStyle", skip_serializing_if = "Option::is_none")]
     pub fill_style: Option<FillStyle>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1310,6 +1321,30 @@ pub enum ViewKind {
         content: Box<ViewNode>,
         #[serde(default)]
         layers: Vec<Layer>,
+    },
+    /// Drawing commands at the Canvas origin, evaluated by the guest for the laid-out size.
+    Canvas {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        proposal: Option<[f64; 2]>,
+        children: Vec<ViewNode>,
+        #[serde(default)]
+        opaque: bool,
+    },
+    #[serde(rename = "canvasItem")]
+    CanvasItem {
+        child: Box<ViewNode>,
+        origin: [f64; 2],
+        anchor: [f64; 2],
+        #[serde(default)]
+        size: Option<[f64; 2]>,
+    },
+    /// Host geometry for a guest visualEffect closure. The child keeps its own layout size.
+    #[serde(rename = "visualEffect")]
+    VisualEffect {
+        child: Box<ViewNode>,
+        frame: [f64; 4],
+        #[serde(default)]
+        effects: Vec<VisualOp>,
     },
     Shape {
         shape: ShapeKind,

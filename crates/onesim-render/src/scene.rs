@@ -295,6 +295,12 @@ pub struct Node {
     pub image: Option<ImageRun>,
     /// Painted over `fill`, inside the corner radius.
     pub gradient: Option<Gradient>,
+    pub(crate) fill_paint: Option<std::sync::Arc<crate::paint::Gradient>>,
+    pub(crate) stroke_paint: Option<std::sync::Arc<crate::paint::Gradient>>,
+    pub(crate) content_paint: Option<std::sync::Arc<crate::paint::Gradient>>,
+    pub(crate) composite: Option<Box<crate::effects::Composite>>,
+    pub(crate) decoration: bool,
+    pub(crate) visual_frame: Option<[f64; 4]>,
     /// Clips all descendants to `bounds` with this corner radius.
     pub clip_radius: Option<f64>,
     /// Effective opacity (already multiplied by ancestors).
@@ -356,6 +362,12 @@ impl Node {
             symbol: None,
             image: None,
             gradient: None,
+            fill_paint: None,
+            stroke_paint: None,
+            content_paint: None,
+            composite: None,
+            decoration: false,
+            visual_frame: None,
             clip_radius: None,
             opacity: 1.0,
             role: Role::None,
@@ -489,10 +501,16 @@ impl Scene {
     pub fn pending_shape_frames(&self) -> std::collections::BTreeMap<String, [f64; 4]> {
         let mut out = std::collections::BTreeMap::new();
         for n in &self.nodes {
+            if let Some(previous) = n.visual_frame {
+                let actual = [n.bounds.x, n.bounds.y, n.bounds.w, n.bounds.h];
+                if previous.into_iter().zip(actual).any(|(a, b)| (a - b).abs() >= 0.01) {
+                    out.insert(n.id.clone(), actual);
+                }
+            }
             if let Some(eval) = n.custom_shape {
                 let (w, h) = (n.bounds.w, n.bounds.h);
                 let matches = matches!(eval, CustomShapeEval::Evaluated([ew, eh]) if (ew - w).abs() < 0.01 && (eh - h).abs() < 0.01);
-                if !matches && w > 0.0 && h > 0.0 {
+                if !matches && ((w > 0.0 && h > 0.0) || n.kind == "canvas") {
                     out.insert(n.id.clone(), [n.bounds.x, n.bounds.y, w, h]);
                 }
             }

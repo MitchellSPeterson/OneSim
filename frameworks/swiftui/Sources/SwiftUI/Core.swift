@@ -145,6 +145,8 @@ final class _Runtime {
     var gesturesOff = false
     var touch: _TouchSession?   // the touch sequence in progress (spans evaluations)
     // Custom shapes (section N): laid-out sizes sent by the host via `layout` messages, keyed by node id.
+    var visualEffectFrames: [String: CGRect] = [:]
+    var visualEffectIDs: Set<String> = []
     var shapeSizes: [String: CGSize] = [:]
     // Layout direction for `Shape.layoutDirectionBehavior`.
     var layoutDirection: LayoutDirection = .leftToRight
@@ -271,6 +273,7 @@ final class _Runtime {
         lifecycleNow = [:]; lifecycleOrder = []; changeNow = [:]; changePending = []
         animNow = [:]; contentTransition = .identity; contentTransitionAddsDrawingGroup = false
         nextScheduleMs = nil; tickHandlers = []
+        visualEffectIDs.removeAll(keepingCapacity: true)
         gestures = [:]; gesturesOff = false
         scrollStack.removeAll(keepingCapacity: true)
         anchorScrollNow.removeAll(keepingCapacity: true)
@@ -280,6 +283,7 @@ final class _Runtime {
         var tree = withObservationTracking(render) { _Runtime.shared.dirty = true }
         if !layers.isEmpty { tree = ["kind": "presentation", "id": "presentation", "content": tree, "layers": layers] }
         slots = slots.filter { touched.contains($0.key) }
+        visualEffectFrames = visualEffectFrames.filter { visualEffectIDs.contains($0.key) }
         changeSeen = changeNow
         animSeen = animNow
         anchorScroll = anchorScrollNow   // a later button action (stack empty) can still scrollTo
@@ -486,7 +490,13 @@ func _applyLayout(_ line: String) {
         for (id, raw) in frames {
             guard let box = raw as? [Any], box.count == 4 else { continue }
             let size = CGSize(width: _f64(box[2]), height: _f64(box[3]))
-            if rt.shapeSizes[id] != size { rt.shapeSizes[id] = size; rt.dirty = true }
+            if rt.visualEffectIDs.contains(id) {
+                let frame = CGRect(x: _f64(box[0]), y: _f64(box[1]), width: size.width, height: size.height)
+                if rt.visualEffectFrames[id] != frame { rt.visualEffectFrames[id] = frame; rt.dirty = true }
+            } else if rt.shapeSizes[id] != size {
+                rt.shapeSizes[id] = size
+                rt.dirty = true
+            }
         }
     } else if type == "geometry" {
         guard let frames = obj["frames"] as? [String: Any] else { return }
