@@ -30,6 +30,7 @@ tabs="$guests/tabs"
 gest="$guests/gestures"
 shp="$guests/shapes"
 layout="$guests/layout"
+typeapp="$guests/type"
 controls="$guests/controls"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
@@ -37,6 +38,7 @@ if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-gestures "$gest"
   scripts/build-swift-app.sh examples/swiftui-shapes "$shp"
   scripts/build-swift-app.sh examples/swiftui-layout "$layout"
+  scripts/build-swift-app.sh examples/swiftui-type "$typeapp"
   scripts/build-swift-app.sh examples/swiftui-controls "$controls"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
@@ -130,6 +132,13 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     lshot layout-paged --scroll 201,658,320,0
     echo "== SwiftUI layout (swiftui-layout, iOS $ios)"
     python3 scripts/compare_ios.py $fx/swiftui-layout-ios "$lout/onesim" "$lout" || rc=1
+    # SwiftUI type: tests/fixtures/swiftui-type-ios (see its README).
+    yout=$out/swiftui-type; mkdir -p "$yout/onesim"
+    yshot() { local name=$1; shift; ./target/debug/onesim run "$typeapp" "${base[@]}" "$@" --screenshot "$yout/onesim/$name.png" >/dev/null; }
+    yshot type
+    yshot type-dark --dark
+    echo "== SwiftUI type (swiftui-type, iOS $ios)"
+    python3 scripts/compare_ios.py $fx/swiftui-type-ios "$yout/onesim" "$yout" || rc=1
     # SwiftUI controls: tests/fixtures/swiftui-controls-ios (see its README). Targets by label, picker rows by point.
     cout=$out/swiftui-controls; mkdir -p "$cout/onesim"
     cshot() { local name=$1; shift; ./target/debug/onesim run "$controls" "${base[@]}" "$@" --screenshot "$cout/onesim/$name.png" >/dev/null; }

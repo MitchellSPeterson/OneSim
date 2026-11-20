@@ -142,6 +142,8 @@ pub struct ImageRun {
     pub dest: Rect,
     /// Clockwise rotation in degrees about the centre of `dest`.
     pub rotation: f32,
+    /// 0 nearest, 1 bilinear, 2 bicubic.
+    pub filter: u8,
 }
 
 /// Linear gradient fill over a node's bounds: CSS `angle` (0 = up, 90 = right), evenly spaced stops.

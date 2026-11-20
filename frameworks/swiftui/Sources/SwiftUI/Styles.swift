@@ -4,7 +4,7 @@ import WASILibc
 import Foundation
 #endif
 
-// Control styles, Menu, Link and Gauge (protocol section O). Built-in styles are wire names; a custom style's
+// Control styles, Menu, Link and Gauge (protocol section P). Built-in styles are wire names; a custom style's
 // `makeBody` is evaluated in place of the control, with the style cleared so its own controls draw normally.
 
 /// A style configuration's view (`configuration.label`): the control's own view, evaluated where the style places it.

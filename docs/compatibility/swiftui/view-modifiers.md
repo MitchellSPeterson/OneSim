@@ -44,16 +44,16 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.actionSheet` | 13 | ⬜ |  | Deprecated |
 | `.alert` | 13 | 🟠 |  | No text fields, `Text` titles or `dialogSeverity` |
 | `.alignmentGuide` | 13 | ⬜ |  |  |
-| `.allowedDynamicRange` | 17 | ⬜ |  |  |
+| `.allowedDynamicRange` | 17 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Parsed. Drawing stays standard range |
 | `.allowsHitTesting` | 13 | ⬜ |  |  |
-| `.allowsTightening` | 13 | ⬜ |  |  |
+| `.allowsTightening` | 13 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Pulls tracking by up to 5% of the point size before scaling |
 | `.allowsWindowActivationEvents` | 18 | ⬜ |  |  |
 | `.anchorPreference` | 13 | ⬜ |  |  |
 | `.animation` | 13 | ⬜ |  |  |
 | `.arrangementViewStyle` | 13 | ⬜ |  |  |
 | `.aspectRatio` | 13 | 🟠 |  | Applies to images only |
 | `.assistiveAccessNavigationIcon` | 26 | ⬜ |  |  |
-| `.asyncImageURLSession` | 13 | ⬜ |  |  |
+| `.asyncImageURLSession` | 13 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | The session is used for HTTP. The transaction is ignored |
 | `.attributedTextFormattingDefinition` | 26 | ⬜ |  |  |
 | `.autocapitalization` | 13 | ⬜ |  | Deprecated |
 | `.autocorrectionDisabled` | 13 | ⬜ |  |  |
@@ -63,7 +63,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.backgroundStyle` | 16 | ⬜ |  |  |
 | `.badge` | 15 | 🟠 |  | Tab items only (ignored on list rows) |
 | `.badgeProminence` | 17 | ⬜ |  |  |
-| `.baselineOffset` | 16 | ⬜ |  |  |
+| `.baselineOffset` | 16 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Positive lengthens the line downward. Glyphs stay at the top |
 | `.blendMode` | 13 | ⬜ |  |  |
 | `.blur` | 13 | ⬜ |  |  |
 | `.bold` | 16 | ✅ |  |  |
@@ -152,9 +152,9 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.focusedValue` | 14 | ⬜ |  |  |
 | `.focusEffectDisabled` | 17 | ⬜ |  |  |
 | `.font` | 13 | ✅ |  | `Font` text styles and `.system(size:weight:)` |
-| `.fontDesign` | 16.1 | ⬜ |  |  |
+| `.fontDesign` | 16.1 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Serif, rounded, and monospaced use the installed family. A missing family falls back |
 | `.fontWeight` | 16 | ✅ |  |  |
-| `.fontWidth` | 16 | ⬜ |  |  |
+| `.fontWidth` | 16 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | The `wdth` axis is not driven. Condensed is 0.80 of the standard face. Compressed is 0.70. Expanded stays standard |
 | `.foregroundColor` | 13 | ✅ |  | Deprecated |
 | `.foregroundStyle` | 15 | ✅ |  |  |
 | `.formStyle` | 16 | ⬜ |  |  |
@@ -191,9 +191,9 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.interactionActivityTrackingTag` | 16 | ⬜ |  |  |
 | `.interactiveDismissDisabled` | 15 | ✅ |  |  |
 | `.invalidatableContent` | 17 | ⬜ |  |  |
-| `.italic` | 16 | ⬜ |  |  |
+| `.italic` | 16 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) |  |
 | `.itemProvider` | 13 | ⬜ |  |  |
-| `.kerning` | 16 | ⬜ |  |  |
+| `.kerning` | 16 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Added to tracking in points |
 | `.keyboardShortcut` | 14 | ⬜ |  |  |
 | `.keyboardType` | 13 | ⬜ |  |  |
 | `.keyframeAnimator` | 17 | ⬜ |  |  |
@@ -208,7 +208,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.layoutPriority` | 13 | ⬜ |  |  |
 | `.layoutValue` | 16 | ⬜ |  |  |
 | `.lineHeight` | 26 | ⬜ |  |  |
-| `.lineLimit` | 13 | ⬜ |  |  |
+| `.lineLimit` | 13 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | `max` truncates. `min` reserves line height. `nil` clears the limit |
 | `.lineSpacing` | 13 | ⬜ |  |  |
 | `.listItemTint` | 14 | ⬜ |  |  |
 | `.listRowBackground` | 13 | ⬜ |  |  |
@@ -231,10 +231,10 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.menuIndicator` | 15 | ⬜ |  |  |
 | `.menuOrder` | 16 | ⬜ |  |  |
 | `.menuStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
-| `.minimumScaleFactor` | 13 | ⬜ |  |  |
+| `.minimumScaleFactor` | 13 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Scales down to the factor before truncation |
 | `.modifier` | 13 | ⬜ |  |  |
-| `.monospaced` | 16 | ⬜ |  |  |
-| `.monospacedDigit` | 15 | ⬜ |  |  |
+| `.monospaced` | 16 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) |  |
+| `.monospacedDigit` | 15 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | OpenType `tnum` |
 | `.moveDisabled` | 13 | ⬜ |  |  |
 | `.multilineTextAlignment` | 13 | ✅ |  |  |
 | `.navigationBarBackButtonHidden` | 13 | ⬜ |  |  |
@@ -366,16 +366,16 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.springLoadingBehavior` | 17 | ⬜ |  |  |
 | `.statusBar` | 13 | ⬜ |  | Deprecated |
 | `.statusBarHidden` | 13 | ⬜ |  | Deprecated |
-| `.strikethrough` | 16 | ✅ |  |  |
+| `.strikethrough` | 16 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Pattern and color use `strikethroughStyle`. The bool overload is unchanged |
 | `.submitLabel` | 15 | ⬜ |  |  |
 | `.submitScope` | 15 | ⬜ |  |  |
 | `.swipeActions` | 15 | ⬜ |  |  |
 | `.swipeActionsContainer` | 27 | ⬜ |  |  |
-| `.symbolColorRenderingMode` | 26 | ⬜ |  |  |
+| `.symbolColorRenderingMode` | 26 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Gradient is an AppKit bitmap. The Phosphor fallback stays a mask |
 | `.symbolEffect` | 17 | ⬜ |  |  |
 | `.symbolEffectsRemoved` | 17 | ⬜ |  |  |
-| `.symbolRenderingMode` | 15 | ⬜ |  |  |
-| `.symbolVariableValueMode` | 26 | ⬜ |  |  |
+| `.symbolRenderingMode` | 15 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Palette is the foreground at full, 0.6, and 0.3 alpha. The fallback stays a mask |
+| `.symbolVariableValueMode` | 26 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | No variable value is sent |
 | `.symbolVariant` | 15 | ⬜ |  |  |
 | `.tabBarMinimizeBehavior` | 26 | ⬜ |  |  |
 | `.tabItem` | 13 | ✅ |  | Deprecated |
@@ -390,7 +390,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.tabViewStyle` | 14 | ⬜ |  |  |
 | `.tag` | 13 | ✅ |  |  |
 | `.task` | 15 | ⬜ |  |  |
-| `.textCase` | 14 | ⬜ |  |  |
+| `.textCase` | 14 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Uppercase and lowercase. The stored label is folded |
 | `.textContentType` | 13 | ⬜ |  |  |
 | `.textEditorStyle` | 17 | ⬜ |  |  |
 | `.textFieldStyle` | 13 | ⬜ |  |  |
@@ -398,7 +398,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.textInputBorderShape` | 13 | ⬜ |  |  |
 | `.textInputFormattingControlVisibility` | 26 | ⬜ |  |  |
 | `.textRenderer` | 18 | ⬜ |  |  |
-| `.textScale` | 17 | ⬜ |  |  |
+| `.textScale` | 17 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Secondary glyphs are 0.86 of the size. The line box stays the body's |
 | `.textSelection` | 15 | ⬜ |  |  |
 | `.textSelectionAffinity` | 18 | ⬜ |  |  |
 | `.tint` | 15 | ⬜ |  |  |
@@ -418,17 +418,17 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.toolbarVerticalBehavior` | 13 | ⬜ |  |  |
 | `.toolbarVerticalCompressionBehavior` | 13 | ⬜ |  |  |
 | `.toolbarVisibility` | 18 | ⬜ |  |  |
-| `.tracking` | 16 | ⬜ |  |  |
+| `.tracking` | 16 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Added to the font's fitted tracking |
 | `.transaction` | 13 | ⬜ |  |  |
 | `.transformAnchorPreference` | 13 | ⬜ |  |  |
 | `.transformEffect` | 13 | ⬜ |  |  |
 | `.transformEnvironment` | 13 | ⬜ |  |  |
 | `.transformPreference` | 13 | ⬜ |  |  |
 | `.transition` | 13 | ⬜ |  |  |
-| `.truncationMode` | 13 | ⬜ |  |  |
+| `.truncationMode` | 13 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Head, tail, and middle, with `…` |
 | `.typeSelectEquivalent` | 16 | ⬜ |  |  |
 | `.typesettingLanguage` | 17 | ⬜ |  |  |
-| `.underline` | 16 | ⬜ |  |  |
+| `.underline` | 16 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Pattern and color |
 | `.unredacted` | 14 | ⬜ |  |  |
 | `.userActivity` | 14 | ⬜ |  |  |
 | `.visualEffect` | 17 | ⬜ |  |  |
