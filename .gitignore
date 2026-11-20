@@ -7,3 +7,4 @@
 !tests/fixtures/**/*.png
 .claude/
 !examples/expo-*/assets/**/*.png
+__pycache__/

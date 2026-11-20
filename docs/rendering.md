@@ -130,7 +130,7 @@ to inspect the app during a gesture.
 | Linux native | wgpu adapter selection (typically Vulkan), CPU fallback | Native window, hardware and software adapters untested for v0.3. |
 | Chrome WebGPU | Vello + WebGPU or Canvas 2D | Real SwiftUI Wasm input, resize, 2× and 3× presentation, device destruction and retained session verified in headless Chrome on macOS. CPU fallback verified with no WebGPU API, no adapter, no canvas context, malformed data and an uncaptured device error. |
 | Safari and Firefox | WebGPU when an adapter is offered, Canvas 2D fallback | GPU and fallback paths untested on these browsers for v0.3. |
-| Headless CI | CPU screenshots | SwiftUI, Expo and Compose regression scripts use CPU. Native hardware tests can be enabled locally by leaving `SIMCORE_SKIP_GPU_TESTS` unset. The web job checks WebGPU when an adapter is available. |
+| Headless CI | CPU screenshots | SwiftUI, Expo and Compose regression scripts use CPU. Native hardware tests can be enabled locally by leaving `SIMCORE_SKIP_GPU_TESTS` unset. The `web-swiftui` and `web-compose` CI jobs check WebGPU when an adapter is available. |
 
 ## Limitations
 

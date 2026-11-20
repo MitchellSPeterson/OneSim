@@ -1,0 +1,399 @@
+# Every CI check, at one level. Called by ci.yml (fast on PR commits and main, full nightly/tags/manual) and
+# premerge.yml (premerge before merge). scripts/ci_select.py picks the jobs; scripts/ci-local.sh holds their steps,
+# so each job only installs its toolchains. See docs/ci.md.
+name: checks
+on:
+  workflow_call:
+    inputs:
+      level:
+        description: fast, premerge or full; empty picks it from the event
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  LEVEL: ${{ inputs.level }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      level: ${{ steps.plan.outputs.level }}
+      plan: ${{ steps.plan.outputs.plan }}
+      rust_packages: ${{ steps.plan.outputs.rust_packages }}
+      rust: ${{ steps.plan.outputs.rust }}
+      swiftui: ${{ steps.plan.outputs.swiftui }}
+      compose: ${{ steps.plan.outputs.compose }}
+      expo: ${{ steps.plan.outputs.expo }}
+      web-swiftui: ${{ steps.plan.outputs.web-swiftui }}
+      web-compose: ${{ steps.plan.outputs.web-compose }}
+      web-expo: ${{ steps.plan.outputs.web-expo }}
+      portable: ${{ steps.plan.outputs.portable }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select checks (changed paths, selected and skipped checks in the job summary)
+        id: plan
+        run: python3 scripts/ci_select.py github ${LEVEL:+--level "$LEVEL"}
+      - name: Selector tests
+        run: python3 -B scripts/test_ci_select.py
+      - name: Workflow syntax (actionlint)
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7 "$RUNNER_TEMP"
+          "$RUNNER_TEMP/actionlint" -color -shellcheck=
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Compatibility docs (coverage summaries, guest module registry, pinned versions)
+        run: node scripts/api-coverage.mjs --check
+
+  rust:
+    needs: plan
+    if: needs.plan.outputs.rust == 'true'
+    runs-on: macos-latest
+    env:
+      LEVEL: ${{ needs.plan.outputs.level }}
+      RUST_PACKAGES: ${{ needs.plan.outputs.rust_packages }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Rust build, tests, clippy (only the changed crates and their dependents on PR commits)
+        run: scripts/ci-local.sh --check rust --level "$LEVEL"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: showcase-render
+          path: target/showcase-render
+          if-no-files-found: ignore
+
+  swiftui:
+    needs: plan
+    if: needs.plan.outputs.swiftui == 'true'
+    runs-on: macos-latest
+    env:
+      LEVEL: ${{ needs.plan.outputs.level }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install Pillow for screenshot comparisons
+        run: python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
+      - name: SwiftUI wire test, headless counter, iOS 27.2 pixel diffs (smoke states on PR commits, every state before merge)
+        run: scripts/ci-local.sh --check swiftui --level "$LEVEL"
+      - name: Upload iOS comparison sheets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-comparison-swiftui
+          path: target/compare/
+          if-no-files-found: ignore
+
+  compose:
+    needs: plan
+    if: needs.plan.outputs.compose == 'true'
+    runs-on: macos-latest
+    env:
+      LEVEL: ${{ needs.plan.outputs.level }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Cache the Kotlin compiler and Compose artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/simcore/compose
+          key: compose-toolchain-${{ runner.os }}-${{ hashFiles('frameworks/compose/scripts/toolchain.sh') }}
+      - name: Install Pillow for screenshot comparisons
+        run: python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
+      - name: Compose counter end to end; Android 17 pixel diffs before merge
+        run: scripts/ci-local.sh --check compose --level "$LEVEL"
+      - name: Upload Android comparison sheets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-comparison-compose
+          path: target/compare/
+          if-no-files-found: ignore
+
+  expo:
+    needs: plan
+    if: needs.plan.outputs.expo == 'true'
+    runs-on: macos-latest
+    env:
+      LEVEL: ${{ needs.plan.outputs.level }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: examples/expo-*/package-lock.json
+      - name: Install Expo fixture dependencies
+        run: |
+          apps="expo-showcase"
+          [ "$LEVEL" = fast ] || apps="expo-showcase expo-router-stack expo-default expo-ui"
+          for a in $apps; do npm ci --prefix "examples/$a"; done
+      - name: Install Pillow for screenshot comparisons
+        run: python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
+      - name: iOS 27.2 pixel diffs (smoke states on PR commits; every state, fallback fonts and Android before merge)
+        run: scripts/ci-local.sh --check expo --level "$LEVEL"
+      - name: Upload iOS and Android comparison sheets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: comparison-expo
+          path: target/compare/
+          if-no-files-found: ignore
+
+  web-swiftui:
+    # SwiftUI in the browser: the guest compiled to Wasm with the swift.org toolchain, the Node harness, the Chrome
+    # presenter (CPU fallback and WebGPU when an adapter is available) and pixel parity with native.
+    needs: plan
+    if: needs.plan.outputs.web-swiftui == 'true'
+    runs-on: macos-latest
+    env:
+      LEVEL: ${{ needs.plan.outputs.level }}
+      SWIFT_VERSION: 6.4.2
+      SWIFT_WASM_SHA256: 83baca83553f8c443cda7b84800912e6e709c3acd2e7ebf277794ca5836c0da5
+      CHROME: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          targets: wasm32-wasip1,wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
+      - name: Cache Swift toolchain and Wasm SDK downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/swift-downloads
+          key: swift-${{ env.SWIFT_VERSION }}-wasm-downloads
+      - name: Install swift.org toolchain and Wasm SDK
+        run: |
+          set -euo pipefail
+          mkdir -p ~/swift-downloads && cd ~/swift-downloads
+          pkg="swift-$SWIFT_VERSION-RELEASE-osx.pkg"
+          sdk="swift-${SWIFT_VERSION}-RELEASE_wasm.artifactbundle.tar.gz"
+          [ -f "$pkg" ] || curl -fsSL --retry 3 -o "$pkg" "https://download.swift.org/swift-$SWIFT_VERSION-release/xcode/swift-$SWIFT_VERSION-RELEASE/$pkg"
+          [ -f "$sdk" ] || curl -fsSL --retry 3 -o "$sdk" "https://download.swift.org/swift-$SWIFT_VERSION-release/wasm-sdk/swift-$SWIFT_VERSION-RELEASE/$sdk"
+          installer -pkg "$pkg" -target CurrentUserHomeDirectory
+          export PATH="$HOME/Library/Developer/Toolchains/swift-$SWIFT_VERSION-RELEASE.xctoolchain/usr/bin:$PATH"
+          swift --version
+          swift sdk install "$PWD/$sdk" --checksum "$SWIFT_WASM_SHA256"
+          swift sdk list
+      - name: Optional wasm-opt (binaryen); the build skips optimisation if absent
+        run: brew install binaryen || echo "::warning::binaryen unavailable; app.wasm will not be optimised"
+      - name: Chrome and Pillow (before merge)
+        if: env.LEVEL != 'fast'
+        run: |
+          [ -x "$CHROME" ] || brew install --cask google-chrome
+          test -x "$CHROME"
+          python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
+      - name: Wasm clippy, counter build + Node harness; showcase, presenter and native parity before merge
+        run: scripts/ci-local.sh --check web-swiftui --level "$LEVEL"
+      - name: Upload web comparison sheets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-comparison-swiftui
+          path: target/compare-web/
+          if-no-files-found: ignore
+
+  web-compose:
+    # Jetpack Compose in the browser: the Kotlin/Wasm guest, the Node harness, the Chrome presenter and parity.
+    needs: plan
+    if: needs.plan.outputs.web-compose == 'true'
+    runs-on: macos-latest
+    env:
+      LEVEL: ${{ needs.plan.outputs.level }}
+      CHROME: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip1,wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Cache the Kotlin compiler and Compose artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/simcore/compose
+          key: compose-toolchain-${{ runner.os }}-${{ hashFiles('frameworks/compose/scripts/toolchain.sh') }}
+      - run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
+      - name: Optional wasm-opt (binaryen); the build skips optimisation if absent
+        run: brew install binaryen || echo "::warning::binaryen unavailable; app.wasm will not be optimised"
+      - name: Chrome and Pillow (before merge)
+        if: env.LEVEL != 'fast'
+        run: |
+          [ -x "$CHROME" ] || brew install --cask google-chrome
+          test -x "$CHROME"
+          python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
+      - name: Counter build + Node harness; showcase, input, presenter and native parity before merge
+        run: scripts/ci-local.sh --check web-compose --level "$LEVEL"
+      - name: Upload web comparison sheets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-comparison-compose
+          path: target/compare-web-compose/
+          if-no-files-found: ignore
+
+  web-expo:
+    # Expo in the browser: frameworks/react-native in a Web Worker + the Rust renderer in Wasm. No Swift or Java.
+    needs: plan
+    if: needs.plan.outputs.web-expo == 'true'
+    runs-on: macos-latest
+    env:
+      LEVEL: ${{ needs.plan.outputs.level }}
+      CHROME: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+      EXPO_WEB_GPU: '0' # the runner may lack a WebGPU adapter; web/test/presenter.mjs covers the GPU executor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          targets: wasm32-wasip1,wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: examples/expo-showcase/package-lock.json
+      - run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
+      - name: Optional wasm-opt (binaryen); the build skips optimisation if absent
+        run: brew install binaryen || echo "::warning::binaryen unavailable; app.wasm will not be optimised"
+      - name: Expo dependencies, Chrome and Pillow (before merge)
+        if: env.LEVEL != 'fast'
+        run: |
+          npm ci --prefix examples/expo-showcase
+          [ -x "$CHROME" ] || brew install --cask google-chrome
+          test -x "$CHROME"
+          python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
+      - name: Wasm clippy and build; browser vs native parity before merge
+        run: scripts/ci-local.sh --check web-expo --level "$LEVEL"
+      - name: Upload web comparison sheets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-comparison-expo
+          path: target/compare-web-expo/
+          if-no-files-found: ignore
+
+  portable:
+    # Linux and Windows: the host, CLI and renderer, plus headless SwiftUI and Compose guests.
+    # Apple's fonts and symbols exist only on macOS, so these runners always use the bundled Inter + Phosphor fallback.
+    # Full level only: nightly, `v*` tags and manual runs.
+    needs: plan
+    if: needs.plan.outputs.portable == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo build --workspace
+      - run: cargo test --workspace
+        env:
+          SIMCORE_SKIP_GPU_TESTS: '1'
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy -p onesim-cli --features window,gpu --all-targets -- -D warnings
+      - name: Install Swift (Windows)
+        if: runner.os == 'Windows'
+        uses: compnerd/gha-setup-swift@main
+        with:
+          branch: swift-6.4.2-release
+          tag: 6.4.2-RELEASE
+      - name: End-to-end headless SwiftUI counter
+        run: |
+          swift --version
+          cargo run -q -p onesim-cli -- run examples/swiftui-counter --root-view CounterView \
+            --click Increment --inspect > counter.json
+          grep -q '"Count: 1"' counter.json || { cat counter.json; exit 1; }
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: End-to-end Jetpack Compose counter
+        run: |
+          cargo run -q -p onesim-cli -- run examples/compose-counter \
+            --click Increment --click Increment --click Decrement --inspect > compose.json
+          grep -q '"Count: 1"' compose.json || { cat compose.json; exit 1; }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: iOS 27.2 pixel-diff gate, fallback fonts/symbols (every state < 3.5%)
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
+          npm ci --prefix examples/expo-showcase
+          npm ci --prefix examples/expo-router-stack
+          npm ci --prefix examples/expo-default
+          SIMCORE_FALLBACK=1 scripts/compare-ios.sh
+      - name: Upload comparison sheets
+        if: always() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-comparison-linux
+          path: target/compare/
+          if-no-files-found: ignore
+
+  # Fails unless every job the plan selected succeeded and every other job was skipped: a failed, cancelled or
+  # missing job (or a failed plan) fails the run, so a skipped job can never stand in for a selected one.
+  verify:
+    needs: [plan, rust, swiftui, compose, expo, web-swiftui, web-compose, web-expo, portable]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/ci_select.py
+          sparse-checkout-cone-mode: false
+      - run: python3 scripts/ci_select.py verify
+        env:
+          PLAN: ${{ needs.plan.outputs.plan }}
+          NEEDS: ${{ toJSON(needs) }}
