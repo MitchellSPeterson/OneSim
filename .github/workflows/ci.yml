@@ -2,13 +2,14 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch: # manual run; also the way to run the Linux/Windows job outside a release
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
-  # Pick the gates from the changed paths (scripts/affected.sh holds the mapping). Pushes to main run all of them.
+  # Pick the gates from the changed paths (scripts/affected.sh holds the mapping). Main, `v*` tags and manual runs run all of them.
   # Skipped jobs count as passed, so branch protection should require the `ci` job at the end, not the others.
   changes:
     runs-on: ubuntu-latest
@@ -26,7 +27,7 @@ jobs:
         env:
           BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'origin/main' }}
         run: |
-          if [ "${{ github.event_name }}" = push ] && [ "${{ github.ref }}" = refs/heads/main ]; then
+          if [ "${{ github.event_name }}" = workflow_dispatch ] || [ "${{ github.ref }}" = refs/heads/main ] || [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             scripts/affected.sh --all --github-output
           else
             scripts/affected.sh --base "$BASE" --github-output
@@ -231,8 +232,8 @@ jobs:
   portable:
     # Linux and Windows: the host, CLI and renderer, plus headless SwiftUI and Compose guests.
     # Apple's fonts and symbols exist only on macOS, so these runners always use the bundled Inter + Phosphor fallback.
-    needs: changes
-    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.swiftui == 'true' || needs.changes.outputs.compose == 'true' || needs.changes.outputs.expo == 'true'
+    # Release-only: pushing a `v*` tag, or a manual run (Actions > CI > Run workflow).
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
