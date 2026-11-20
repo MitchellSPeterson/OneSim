@@ -1170,6 +1170,33 @@ pub struct TabItem {
     pub action: u64,
 }
 
+/// A page and the guest action that selects it, if enabled.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TabPage {
+    pub content: ViewNode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PageIndexDisplay {
+    #[default]
+    Automatic,
+    Always,
+    Never,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PageIndexBackground {
+    #[default]
+    Automatic,
+    Always,
+    Interactive,
+    Never,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum DisplayMode {
@@ -1320,6 +1347,17 @@ pub enum ViewKind {
         #[serde(default)]
         tabs: Vec<TabItem>,
         content: Box<ViewNode>,
+    },
+    /// `.tabViewStyle(.page)`: all pages are sent, and `selected` is the resting page.
+    PageTabView {
+        #[serde(default)]
+        selected: usize,
+        #[serde(default)]
+        pages: Vec<TabPage>,
+        #[serde(default, rename = "indexDisplay")]
+        index_display: PageIndexDisplay,
+        #[serde(default, rename = "indexBackground")]
+        index_background: PageIndexBackground,
     },
     Toggle {
         #[serde(rename = "isOn")]

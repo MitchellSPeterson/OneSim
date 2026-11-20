@@ -32,6 +32,7 @@ cleanup() { stop_metro; rm -rf "$guests"; }
 trap cleanup EXIT
 app="$guests/showcase"
 tabs="$guests/tabs"
+pages="$guests/pages"
 gest="$guests/gestures"
 shp="$guests/shapes"
 layout="$guests/layout"
@@ -43,6 +44,7 @@ if want swiftui; then
 fi
 if want swiftui && [ -z "$smoke" ]; then
   scripts/build-swift-app.sh examples/swiftui-tabs "$tabs"
+  scripts/build-swift-app.sh examples/swiftui-pages "$pages"
   scripts/build-swift-app.sh examples/swiftui-gestures "$gest"
   scripts/build-swift-app.sh examples/swiftui-shapes "$shp"
   scripts/build-swift-app.sh examples/swiftui-layout "$layout"
@@ -117,6 +119,20 @@ for ios in ${SIMCORE_IOS:-27.2}; do
     tshot tabs-settings-dark --dark --click 287,822
     echo "== SwiftUI TabView (swiftui-tabs, iOS $ios)"
     python3 scripts/compare_ios.py $fx/swiftui-tabs-ios "$tout/onesim" "$tout" || rc=1
+
+    pout=$out/swiftui-pages; mkdir -p "$pout/onesim"
+    pfx=$fx/swiftui-pages-ios
+    pshot() {
+      local name=$1; shift
+      ./target/debug/onesim run "$pages" "${base[@]}" "$@" --screenshot "$pout/onesim/$name.png" >/dev/null
+      if [ ! -f "$pfx/$name.png" ]; then echo "Missing iOS reference: $pfx/$name.png" >&2; rc=1; fi
+    }
+    pshot pages-first
+    pshot pages-programmatic --click Next
+    pshot pages-swiped       --click Next --drag 315,430,-250,0
+    pshot pages-inbox        --click Inbox
+    echo "== SwiftUI page TabView (swiftui-pages, iOS $ios)"
+    python3 scripts/compare_ios.py "$pfx" "$pout/onesim" "$pout" || rc=1
     # SwiftUI gestures: tests/fixtures/swiftui-gestures-ios (see its README). Targets by label.
     gout=$out/swiftui-gestures; mkdir -p "$gout/onesim"
     gshot() { local name=$1; shift; ./target/debug/onesim run "$gest" "${base[@]}" "$@" --screenshot "$gout/onesim/$name.png" >/dev/null; }

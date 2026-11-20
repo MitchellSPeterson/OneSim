@@ -65,7 +65,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.isScrollEnabled` | 16 | ⬜ |  |  |
 | `\.isSearching` | 15 | ⬜ |  |  |
 | `\.isTabBarShowingSections` | 18 | ⬜ |  |  |
-| `\.isTabViewSidebarAvailable` | 13 | ⬜ |  |  |
+| `\.isTabViewSidebarAvailable` | 27 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Always `false` on the supported compact iPhone layouts. |
 | `\.isUserAuthenticationEnabled` | 18 | ⬜ |  |  |
 | `\.keyboardShortcut` | 15 | ⬜ |  |  |
 | `\.labelIconToTitleSpacing` | 26 | ⬜ |  |  |

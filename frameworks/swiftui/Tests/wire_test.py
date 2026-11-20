@@ -22,7 +22,7 @@ def texts(n):
     return out
 
 def kids(n):
-    out = list(n.get("children", []))
+    out = list(n.get("children", [])) + [page["content"] for page in n.get("pages", [])]
     for k in ("label", "child", "content"):
         if k in n: out.append(n[k])
     for sec in n.get("sections", []): out += sec["rows"]
@@ -397,12 +397,32 @@ t = tab(t, 1); assert "Count: 2" in alltexts(tv(t)), "tab @State survives a swit
 t = tab(t, 0); assert "You picked Apple" in alltexts(tv(t)) and tv(t)["content"]["back"], "pushed screen survives a switch"
 finish(p)
 
-# --- Tab(_:systemImage:value:) with an enum selection, string badge
+# --- Tab(_:systemImage:value:) and tabBarOnly with an enum selection and text badge
 p = spawn(sys.argv[7]); assert recv(p)["type"] == "hello"; t = recv(p)
-assert tv(t)["selected"] == 1 and [(x["title"], x.get("badge")) for x in tv(t)["tabs"]] == [("One", None), ("Two", "New")], tv(t)
+assert tv(t)["selected"] == 1 and [(x["title"], x.get("badge")) for x in tv(t)["tabs"]] == [("One", None), ("Two", "New"), ("Lifecycle", None)], tv(t)
 t = act(p, t, button(t, "two 0")["action"]); assert "two 1" in alltexts(tv(t))
 t = tab(t, 0); assert tv(t)["selected"] == 0 and "one 0" in alltexts(tv(t))
 t = tab(t, 1); assert "two 1" in alltexts(tv(t))
+t = tab(t, 2)
+assert tv(t)["kind"] == "tabview" and "visits 0, sidebar false" in alltexts(tv(t))
+pages = next(m for m in walk(tv(t)) if m["kind"] == "pagetabview")
+t = act(p, t, pages["pages"][1]["action"])
+assert tv(t)["kind"] == "presentation" and tv(t)["layers"][0]["title"] == "Second page alert"
+assert "visits 1, sidebar false" in alltexts(tv(t))
+finish(p)
+
+# --- page selection works in both directions and survives leaving its enclosing tab
+p = spawn(sys.argv[15]); assert recv(p)["type"] == "hello"; t = recv(p)
+def pager(t): return next(m for m in walk(t["root"]) if m["kind"] == "pagetabview")
+assert [item.get("badge") for item in tv(t)["tabs"]] == [None, "New", "12"]
+assert pager(t)["selected"] == 0 and pager(t)["indexBackground"] == "always"
+assert "Page 1 of 3" in alltexts(tv(t)) and len(pager(t)["pages"]) == 3
+t = act(p, t, button(t, "Next")["action"])
+assert pager(t)["selected"] == 1 and "Page 2 of 3" in alltexts(tv(t))
+t = act(p, t, pager(t)["pages"][2]["action"])
+assert pager(t)["selected"] == 2 and "Page 3 of 3" in alltexts(tv(t))
+t = tab(t, 1); assert "Inbox" in alltexts(tv(t)) and not any(m["kind"] == "pagetabview" for m in walk(tv(t)))
+t = tab(t, 0); assert pager(t)["selected"] == 2 and "Page 3 of 3" in alltexts(tv(t))
 finish(p)
 
 # --- gestures (protocol section L): touches at gesture keys drive recognizers, composition and arbitration

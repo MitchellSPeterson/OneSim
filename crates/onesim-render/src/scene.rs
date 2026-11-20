@@ -194,6 +194,12 @@ pub struct ScrollInfo {
     pub aligned: bool,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct Pager {
+    pub selected: usize,
+    pub actions: Vec<Option<u64>>,
+}
+
 /// SwiftUI animation / transition metadata attached to a scene node (protocol section P).
 /// Boxed on `Node` so non-animated nodes pay only a null pointer.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -308,6 +314,7 @@ pub struct Node {
     /// Caret x offset inside bounds (focused text field).
     pub caret: Option<f64>,
     pub scroll: Option<ScrollInfo>,
+    pub(crate) pager: Option<Box<Pager>>,
     pub sheet: Option<SheetInfo>,
     /// SwiftUI gestures on this view (protocol section L). Boxed: nodes live on the stack in deep layout recursion.
     pub gesture: Option<Box<onesim_protocol::GestureMod>>,
@@ -359,6 +366,7 @@ impl Node {
             disabled: false,
             caret: None,
             scroll: None,
+            pager: None,
             sheet: None,
             gesture: None,
             anchor: None,
@@ -436,6 +444,10 @@ impl Scene {
 
     /// Innermost scroll container under the point.
     pub fn scroll_target(&self, x: f64, y: f64) -> Option<usize> {
+        self.scroll_target_where(x, y, |_| true)
+    }
+
+    pub(crate) fn scroll_target_where(&self, x: f64, y: f64, matches: impl Fn(&Node) -> bool) -> Option<usize> {
         // Scrollers span the screen (content scrolls under the bars), but the status bar is inert.
         if self.nodes.iter().any(|n| n.kind == "navbar" && y < n.bounds.y) {
             return None;
@@ -443,7 +455,7 @@ impl Scene {
         let modal = self.nodes.iter().rposition(|n| n.kind == "scrim");
         (0..self.nodes.len()).rev().find(|&i| {
             let n = &self.nodes[i];
-            modal.is_none_or(|m| i > m) && n.scroll.is_some() && n.bounds.contains(x, y) && self.clipped_in(i, x, y)
+            modal.is_none_or(|m| i > m) && n.scroll.is_some() && n.bounds.contains(x, y) && self.clipped_in(i, x, y) && matches(n)
         })
     }
 

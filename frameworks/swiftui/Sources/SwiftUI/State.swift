@@ -230,6 +230,7 @@ public struct EnvironmentValues {
     public var horizontalSizeClass: UserInterfaceSizeClass? { get { self[_HSizeKey.self] } set { self[_HSizeKey.self] = newValue } }
     public var verticalSizeClass: UserInterfaceSizeClass? { get { self[_VSizeKey.self] } set { self[_VSizeKey.self] = newValue } }
     public var scenePhase: ScenePhase { get { self[_ScenePhaseKey.self] } set { self[_ScenePhaseKey.self] = newValue } }
+    public var isTabViewSidebarAvailable: Bool { false }
     /// Pops a pushed screen, else dismisses the enclosing sheet.
     public var dismiss: DismissAction {
         let n = nav, s = sheetDismiss
