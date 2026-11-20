@@ -33,10 +33,10 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ForEach` | 13 | ✅ |  |  |
 | `Form` | 13 | 🟠 |  | No `formStyle` |
 | `Gauge` | 16 | ⬜ |  |  |
-| `GeometryReader` | 13 | ⬜ |  |  |
+| `GeometryReader` | 13 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | One correction pass. `safeAreaInsets` are the device insets. `frame(in: .local)` origin is zero; `.global` and a named space are the host screen frame |
 | `GlassEffectContainer` | 26 | 🟠 |  | Pass-through: no merge/morph |
-| `Grid` | 16 | ⬜ |  |  |
-| `GridRow` | 16 | ⬜ |  |  |
+| `Grid` | 16 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
+| `GridRow` | 16 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `Group` | 13 | ✅ |  |  |
 | `GroupBox` | 14 | ⬜ |  |  |
 | `GroupElementsOfContent` | 18 | ⬜ |  |  |
@@ -48,10 +48,10 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `LabeledContent` | 16 | 🟠 |  | Content always `.secondary`; no `labeledContentStyle` |
 | `LabeledControlGroupContent` | 16 | ⬜ |  |  |
 | `LabeledToolbarItemGroupContent` | 16 | ⬜ |  |  |
-| `LazyHGrid` | 14 | ⬜ |  |  |
-| `LazyHStack` | 14 | 🟠 |  | Not lazy; `pinnedViews` ignored |
-| `LazyVGrid` | 14 | ⬜ |  |  |
-| `LazyVStack` | 14 | 🟠 |  | Not lazy; `pinnedViews` ignored |
+| `LazyHGrid` | 14 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Eager. `pinnedViews` is ignored |
+| `LazyHStack` | 14 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Eager. Section headers pin; footers do not |
+| `LazyVGrid` | 14 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Eager. `pinnedViews` is ignored |
+| `LazyVStack` | 14 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Eager. Section headers pin; footers do not |
 | `LinearGradient` | 13 | ⬜ |  |  |
 | `Link` | 14 | ⬜ |  |  |
 | `List` | 13 | ✅ |  |  |
@@ -76,7 +76,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `RadialGradient` | 13 | ⬜ |  |  |
 | `RenameButton` | 16 | ⬜ |  |  |
 | `ScrollView` | 13 | ✅ |  |  |
-| `ScrollViewReader` | 14 | ⬜ |  |  |
+| `ScrollViewReader` | 14 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | `scrollTo` only. Anchor is a unit point. No animation |
 | `Section` | 13 | ✅ |  |  |
 | `SecureField` | 13 | 🟠 |  | No reveal toggle or `prompt:` |
 | `ShareLink` | 16 | ⬜ |  |  |
@@ -96,6 +96,6 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Toggle` | 13 | ✅ |  |  |
 | `TupleContent` | 26 | ⬜ |  |  |
 | `TupleView` | 13 | ✅ |  |  |
-| `ViewThatFits` | 16 | ⬜ |  |  |
+| `ViewThatFits` | 16 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Every child is built; the first that fits is shown |
 | `VStack` | 13 | ✅ |  |  |
 | `ZStack` | 13 | ✅ |  |  |

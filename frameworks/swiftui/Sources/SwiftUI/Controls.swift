@@ -15,13 +15,18 @@ public enum Axis: Int8, CaseIterable {
 public struct ScrollView<Content: View>: View, _Primitive {
     public typealias Body = Never
     public var body: Never { fatalError() }
-    let axes: Axis.Set, content: Content
+    let axes: Axis.Set, showsIndicators: Bool, content: Content
     public init(_ axes: Axis.Set = .vertical, showsIndicators: Bool = true, @ViewBuilder content: () -> Content) {
-        self.axes = axes; self.content = content()
+        self.axes = axes; self.showsIndicators = showsIndicators; self.content = content()
     }
     func _emit(_ path: String) -> Node {
-        ["kind": "scroll", "id": path, "axis": axes.contains(.horizontal) && !axes.contains(.vertical) ? "horizontal" : "vertical",
-         "child": _eval(content, path + "/0")]
+        let rt = _Runtime.shared
+        rt.scrollStack.append(path)
+        defer { rt.scrollStack.removeLast() }
+        return ["kind": "scroll", "id": path,
+                "axis": axes.contains(.horizontal) && !axes.contains(.vertical) ? "horizontal" : "vertical",
+                "indicators": showsIndicators ? "automatic" : "hidden",
+                "child": _eval(content, path + "/0")]
     }
 }
 
