@@ -8,6 +8,10 @@ description = "In-process OneSim runtime for WebAssembly: the onesim-runtime C A
 [lib]
 crate-type = ["staticlib", "rlib"]
 
+[features]
+# Link against a Swift app: `simcore_web_init` runs its `main` (scripts/build-web.sh). Off for React Native (scripts/build-web.sh --expo).
+swift = []
+
 [dependencies]
 onesim-protocol = { path = "../onesim-protocol" }
 onesim-render = { path = "../onesim-render" }

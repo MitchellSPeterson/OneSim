@@ -54,6 +54,7 @@ expo     tests/fixtures/ios27/expo-*
 web      web/*
 web      scripts/build-web.sh
 web      scripts/compare-web.sh
+web      scripts/compare-web-expo.sh
 none     docs/*
 none     *.md
 none     LICENSE
@@ -144,4 +145,9 @@ if has web; then
   step scripts/build-web.sh examples/swiftui-showcase
   step node web/test/run.mjs --suite showcase
   step scripts/compare-web.sh
+fi
+if has web || has expo; then
+  # Expo in the browser: the guest (frameworks/react-native) in a Web Worker + the Rust renderer in Wasm. No Swift needed.
+  step scripts/build-web.sh --expo
+  step scripts/compare-web-expo.sh
 fi

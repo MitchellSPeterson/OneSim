@@ -167,7 +167,7 @@ jobs:
   web:
     # Build the two Wasm modules, verify CPU pixel parity, and exercise the browser presenter.
     needs: changes
-    if: needs.changes.outputs.web == 'true'
+    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.expo == 'true' # the browser guest is frameworks/react-native
     runs-on: macos-latest
     env:
       SWIFT_VERSION: 6.4.2
@@ -222,12 +222,24 @@ jobs:
         run: |
           python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
           scripts/compare-web.sh
+      - name: Expo in the browser vs native (every state < 2%)
+        run: |
+          npm ci --prefix examples/expo-showcase
+          scripts/build-web.sh --expo
+          # The runner may lack a WebGPU adapter; web/test/presenter.mjs covers the GPU executor.
+          EXPO_WEB_GPU=0 scripts/compare-web-expo.sh
       - name: Upload web comparison sheets
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: web-comparison
           path: target/compare-web/
+      - name: Upload Expo web comparison sheets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-expo-comparison
+          path: target/compare-web-expo/
 
   portable:
     # Linux and Windows: the host, CLI and renderer, plus headless SwiftUI and Compose guests.

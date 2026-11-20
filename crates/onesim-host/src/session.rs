@@ -1,14 +1,15 @@
 //! One guest OS process and everything we know about it.
 
 use onesim_protocol::{
-    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, GuestMessage, HostMessage, IosVersion, ScrollPhase, SessionError, Viewport,
+    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, GuestMessage, HostMessage, IosVersion, SessionError, Viewport,
     ViewNode,
 };
 pub use onesim_render::{device, Device, DEFAULT_DEVICE, DEVICES};
 use crate::events::EventLog;
 use serde_json::{json, Value};
+use onesim_render::rn_input::{focus_change, Out, RnInput, Wait};
 use onesim_render::{Effect, Interaction};
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -134,10 +135,8 @@ pub struct Session {
     pub ios: IosVersion,
     /// Scroll, focus, shift and press state (shared with the browser backend).
     pub inter: Interaction,
-    /// React Native: frames last sent to the guest (`layout` message), to send only changes.
-    pub sent_frames: BTreeMap<String, [f64; 4]>,
-    /// React Native: tag the current touch started on.
-    pub touch: Option<u64>,
+    /// React Native: touch in progress and frames the guest already has (shared with the browser backend).
+    pub rn: RnInput,
     /// React Native: `false` (live viewers, set per call by the v2 API) skips every wait for the guest:
     /// inputs return once sent and snapshots take one layout pass; later trees come as `render.updated`.
     pub settle: bool,
@@ -156,20 +155,6 @@ impl Drop for Session {
             let _ = c.kill();
             let _ = c.wait();
         }
-    }
-}
-
-fn submit_keeps_focus(n: &ViewNode, id: &str) -> bool {
-    match &n.kind {
-        onesim_protocol::ViewKind::Rn { component, props, .. } if n.id == id => match props.get("submitBehavior").and_then(Value::as_str) {
-            Some("submit" | "newline") => true,
-            Some("blurAndSubmit") => false,
-            _ => component == "RCTMultilineTextInputView"
-                || (component == "AndroidTextInput" && props.get("multiline").and_then(Value::as_bool) == Some(true)),
-        },
-        onesim_protocol::ViewKind::Rn { children, .. } => children.iter().any(|c| submit_keeps_focus(c, id)),
-        onesim_protocol::ViewKind::Presentation { content, .. } => submit_keeps_focus(content, id),
-        _ => false,
     }
 }
 
@@ -259,8 +244,7 @@ impl Session {
             dynamic_type: p.dynamic_type_size.unwrap_or_default(),
             ios: p.os_version.unwrap_or_default(),
             inter: Interaction::default(),
-            sent_frames: BTreeMap::new(),
-            touch: None,
+            rn: RnInput::default(),
             settle: true,
             last_sent: Instant::now(),
             params: p,
@@ -533,18 +517,10 @@ impl Session {
     /// React Native: send the frames that changed since the last `layout` message.
     /// Returns whether a `layout` message went out.
     pub fn sync_layout(&mut self, scene: &onesim_render::Scene) -> bool {
-        let frames: BTreeMap<String, [f64; 4]> = scene
-            .nodes
-            .iter()
-            .filter(|n| n.tag.is_some() || n.kind == "expo_ui_content")
-            .map(|n| (n.id.clone(), [n.bounds.x, n.bounds.y, n.bounds.w, n.bounds.h]))
-            .collect();
-        let changed: BTreeMap<_, _> = frames.iter().filter(|(k, v)| self.sent_frames.get(*k) != Some(*v)).map(|(k, v)| (k.clone(), *v)).collect();
-        if !changed.is_empty() && self.state() == State::Running && self.send(&HostMessage::Layout { frames: changed }).is_ok() {
-            self.sent_frames = frames;
-            return true;
+        if self.state() != State::Running {
+            return false;
         }
-        false
+        self.rn.layout(scene).is_some_and(|m| self.send(&m).is_ok())
     }
 
     pub fn generation(&self) -> u64 {
@@ -575,61 +551,25 @@ impl Session {
 
     /// React Native: tell the guest the focused text input changed from `before` to the current focus.
     pub fn sync_focus(&mut self, before: Option<String>) -> Result<(), ApiError> {
-        let tag = |f: &Option<String>| f.as_ref().and_then(|f| f.parse::<u64>().ok());
-        let after = self.inter.focus.clone();
-        if before == after {
-            return Ok(());
-        }
-        if let Some(tag) = tag(&before) {
-            self.send(&HostMessage::Blur { tag })?;
-        }
-        if let Some(tag) = tag(&after) {
-            self.send(&HostMessage::Focus { tag })?;
-        }
-        // The keyboard stays up while focus moves between fields.
-        if before.is_some() != after.is_some() {
-            self.send_keyboard(after.is_some())?;
+        let out = focus_change(&self.inter, before, self.keyboard_height());
+        self.send_out(out)
+    }
+
+    /// React Native: height of the software keyboard while shown.
+    pub fn keyboard_height(&self) -> f64 {
+        onesim_render::look::keyboard_height(&self.device, self.ios)
+    }
+
+    /// React Native: deliver messages from `onesim_render::rn_input` in order, waiting as each says.
+    pub fn send_out(&mut self, out: Vec<Out>) -> Result<(), ApiError> {
+        for o in out {
+            match o {
+                Out::Send(m, Wait::None) => self.send(&m)?,
+                Out::Send(m, Wait::Settle) => drop(self.send_and_settle(&m)?),
+                Out::Effect(e) => self.send_effect(e)?,
+            }
         }
         Ok(())
-    }
-
-    /// React Native: the keyboard (drawn while a field is focused) appeared or hid.
-    fn send_keyboard(&mut self, shown: bool) -> Result<(), ApiError> {
-        let height = if shown {
-            onesim_render::look::keyboard_height(& self.device, self.ios) } else { 0.0 };
-        self.send(&HostMessage::Keyboard { height })
-    }
-
-    /// React Native: return pressed while `before` was focused (the interaction state already
-    /// dropped the focus). Sends `submit` and follows the field's submit behavior.
-    pub fn submit(&mut self, before: &str) -> Result<(), ApiError> {
-        let Ok(tag) = before.parse::<u64>() else { return Ok(()) };
-        let keeps_focus = self.shared.lock().tree.as_ref().is_some_and(|(_, root)| submit_keeps_focus(root, before));
-        self.send(&HostMessage::Submit { tag })?;
-        if keeps_focus {
-            self.inter.focus = Some(before.to_string());
-            Ok(())
-        } else {
-            self.send(&HostMessage::Blur { tag })?;
-            self.send_keyboard(false)
-        }
-    }
-
-    /// React Native: send a `scroll` event for the scroller `n` at `offset`.
-    pub fn send_scroll(&mut self, n: &onesim_render::Node, phase: ScrollPhase, offset: (f64, f64)) -> Result<(), ApiError> {
-        let Some(info) = n.scroll else { return Ok(()) };
-        let Ok(tag) = n.id.parse::<u64>() else { return Ok(()) };
-        let (content_width, content_height) = info.content.unwrap_or(if info.vertical { (n.bounds.w, n.bounds.h + info.max.1) } else { (n.bounds.w + info.max.0, n.bounds.h) });
-        self.send(&HostMessage::Scroll {
-            tag,
-            phase,
-            x: offset.0,
-            y: offset.1,
-            content_width,
-            content_height,
-            width: n.bounds.w,
-            height: n.bounds.h,
-        })
     }
 
     /// Deliver an interaction effect to the guest (no-op for `None`/`Redraw`).

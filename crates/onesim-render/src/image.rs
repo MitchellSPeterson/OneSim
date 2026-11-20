@@ -35,6 +35,13 @@ pub fn load(path: &str) -> Option<Arc<Pixmap>> {
     Some(pm)
 }
 
+/// Provide the image at `path` from memory (the browser has no files: docs/web.md). False if it does not decode.
+pub fn put(path: &str, bytes: &[u8]) -> bool {
+    let Some(pm) = decode(bytes) else { return false };
+    cache().lock().unwrap_or_else(|e| e.into_inner()).insert(path.to_string(), Arc::new(pm));
+    true
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

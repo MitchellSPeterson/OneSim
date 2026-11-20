@@ -1,19 +1,25 @@
 #!/usr/bin/env bash
 # Usage: build-web.sh <app_path> [root_view]
+#        build-web.sh --expo
 # Builds a SwiftUI app + OneSim's SwiftUI module + the Rust renderer into ONE Wasm module and
 # assembles a static site in target/web/ (index.html, main.js, onesim.js, renderer.js, app.wasm, gpu/ = the WebGPU
 # presenter built from crates/onesim-web-gpu). See docs/web.md.
+# --expo: no Swift; app.wasm is the Rust renderer alone and the site (target/web-expo/) runs an Expo / React Native
+# app's JavaScript in a Web Worker (frameworks/react-native/guest). The app is chosen at load time: ?metro=URL or
+# ?bundle=URL (docs/web.md).
 set -euo pipefail
-[ $# -ge 1 ] || { echo "usage: $0 <app_path> [root_view]" >&2; exit 2; }
+[ $# -ge 1 ] || { echo "usage: $0 <app_path> [root_view] | $0 --expo" >&2; exit 2; }
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+EXPO=""; [ "$1" = "--expo" ] && EXPO=1
 APP="$1"; ROOT_VIEW="${2:-}"
 TARGET="${CARGO_TARGET_DIR:-$ROOT/target}"
 CACHE="$TARGET/web-cache"
-OUT="$TARGET/web"
+OUT="$TARGET/web${EXPO:+-expo}"
 FW="$ROOT/frameworks/swiftui/Sources"
 RUST_TARGET=wasm32-wasip1
 die() { echo "error: $*" >&2; exit 1; }
 
+if [ -z "$EXPO" ]; then
 # 1. A swift.org toolchain whose version exactly matches an installed Wasm Swift SDK.
 #    (Xcode's swiftc cannot target Wasm; a Wasm SDK only works with its own release.)
 SDKS="${SWIFT_SDKS_DIR:-$HOME/Library/org.swift.swiftpm/swift-sdks}"
@@ -39,6 +45,7 @@ SWIFTC="$TC/usr/bin/swiftc"
 SDK="$(ls -d "$SDKS/${TAG}_wasm.artifactbundle"/*/wasm32-unknown-wasip1 | head -1)"
 [ -d "$SDK/WASI.sdk" ] || die "Wasm SDK at $SDK has no WASI.sdk"
 echo "swift: $TAG, sdk: $SDK"
+fi
 
 # 2. Rust target.
 rustup target list --installed 2>/dev/null | grep -qx "$RUST_TARGET" || die "missing Rust target; run: rustup target add $RUST_TARGET"
@@ -46,7 +53,7 @@ rustup target list --installed 2>/dev/null | grep -qx "$RUST_TARGET" || die "mis
 mkdir -p "$CACHE" "$OUT"
 LOG="$(mktemp)"; GEN=""; trap 'rm -f "$LOG"; [ -z "$GEN" ] || rm -rf "$GEN"' EXIT
 run() { "$@" >>"$LOG" 2>&1 || { echo "build failed: $*" >&2; cat "$LOG" >&2; exit 1; }; }
-SW=(-swift-version 5 -target wasm32-unknown-wasip1 -sdk "$SDK/WASI.sdk"
+[ -n "$EXPO" ] || SW=(-swift-version 5 -target wasm32-unknown-wasip1 -sdk "$SDK/WASI.sdk"
     -resource-dir "$SDK/swift.xctoolchain/usr/lib/swift_static" -static-stdlib)
 
 # 2b. GPU presenter (optional at runtime): onesim-web-gpu for wasm32-unknown-unknown + wasm-bindgen glue.
@@ -61,10 +68,18 @@ WB_CLI="$(wasm-bindgen --version | awk '{print $2}')"
 # 3. Rust renderer + in-process runtime (staticlib); bundled Inter + Phosphor only. Speed-optimized
 #    with Wasm SIMD: a 3x frame drops from ~13 ms (opt-level s, scalar) to ~5 ms for +2.5% size.
 #    simd128 needs Chrome 91 / Firefox 89 / Safari 16.4.
-echo "rust: onesim-web ($RUST_TARGET)"
+echo "rust: onesim-web ($RUST_TARGET${EXPO:+, React Native})"
+if [ -n "$EXPO" ]; then
+  # No Swift app to link: the crate itself becomes the module (cdylib).
+  CARGO_PROFILE_RELEASE_OPT_LEVEL=3 CARGO_PROFILE_RELEASE_LTO=true CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
+    CARGO_PROFILE_RELEASE_PANIC=abort CARGO_TARGET_WASM32_WASIP1_RUSTFLAGS="-C target-feature=+simd128" \
+    run cargo rustc -p onesim-web --release --target "$RUST_TARGET" --crate-type cdylib --manifest-path "$ROOT/Cargo.toml"
+  cp "$TARGET/$RUST_TARGET/release/onesim_web.wasm" "$OUT/app.wasm"
+else
 CARGO_PROFILE_RELEASE_OPT_LEVEL=3 CARGO_PROFILE_RELEASE_LTO=true CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
   CARGO_PROFILE_RELEASE_PANIC=abort CARGO_TARGET_WASM32_WASIP1_RUSTFLAGS="-C target-feature=+simd128" \
-  run cargo build -p onesim-web --release --target "$RUST_TARGET" --manifest-path "$ROOT/Cargo.toml"
+  run cargo build -p onesim-web --features swift --release --target "$RUST_TARGET" --manifest-path "$ROOT/Cargo.toml"
+fi
 LIB="$TARGET/$RUST_TARGET/release/libonesim_web.a"
 
 echo "rust: onesim-web-gpu ($GPU_TARGET)"
@@ -79,6 +94,7 @@ if command -v wasm-opt >/dev/null; then
     && mv "$OUT/gpu/opt.wasm" "$OUT/gpu/onesim_web_gpu_bg.wasm" || rm -f "$OUT/gpu/opt.wasm"
 fi
 
+if [ -z "$EXPO" ]; then
 # 4. SwiftUI module for Wasm (no Foundation).
 if [ ! -f "$CACHE/SwiftUI.o" ] || [ -n "$(find "$FW" "$ROOT/crates/onesim-runtime/include" -type f -newer "$CACHE/SwiftUI.o" | head -1)" ]; then
   echo "swift: SwiftUI module"
@@ -111,6 +127,7 @@ run "$SWIFTC" "${SW[@]}" -Osize ${PAL[@]+"${PAL[@]}"} -module-name OneSimApp -I 
   -Xclang-linker "-resource-dir=$SDK/swift.xctoolchain/usr/lib/swift_static/clang" \
   -Xlinker -z -Xlinker stack-size=8388608 -Xlinker --gc-sections -Xlinker --strip-all \
   ${XL[@]+"${XL[@]}"} -o "$OUT/app.wasm"
+fi
 
 if command -v wasm-opt >/dev/null; then
   echo "wasm-opt -Oz"
@@ -125,4 +142,9 @@ else
   echo "note: wasm-opt not found (brew install binaryen) - skipping size optimization"
 fi
 cp "$ROOT/web/index.html" "$ROOT/web/main.js" "$ROOT/web/onesim.js" "$ROOT/web/renderer.js" "$OUT/"
+if [ -n "$EXPO" ]; then
+  mkdir -p "$OUT/expo" "$OUT/guest"
+  cp "$ROOT"/web/expo/*.js "$OUT/expo/"
+  cp "$ROOT"/frameworks/react-native/guest/*.js "$OUT/guest/"
+fi
 echo "built $OUT ($(wc -c < "$OUT/app.wasm" | tr -d ' ') bytes app.wasm, $(wc -c < "$OUT/gpu/onesim_web_gpu_bg.wasm" | tr -d ' ') bytes gpu)"
