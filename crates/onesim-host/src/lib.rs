@@ -14,7 +14,7 @@ use base64::Engine;
 use serde::Serialize;
 use serde_json::{json, Value};
 use onesim_protocol::*;
-use onesim_render::rn_input::RnCtx;
+use onesim_render::rn_input::{Out, RnCtx};
 use onesim_render::{build_scene, scroll_anchor_offset, Fonts, Node, Scene, SceneParams};
 use std::collections::{BTreeMap, HashMap};
 use std::io::{BufRead, Write};
@@ -516,6 +516,9 @@ impl Host {
         self.sync_guest_clock(id)?;
         let (scene, version, _) = self.scene(id)?;
         if self.get(id)?.is_rn() {
+            if ev.kind == PointerKind::Drag && scene.scroll_target(ev.x, ev.y).is_some_and(|i| scene.nodes[i].tag.is_some()) {
+                return self.rn_whole_drag(id, &scene, ev);
+            }
             return self.rn_pointer(id, &scene, version, ev);
         }
         let s = self.get(id)?;
@@ -524,6 +527,28 @@ impl Host {
         let out = (s.inter.hit.clone(), s.inter.acted);
         s.send_effect(effect)?;
         Ok(out)
+    }
+
+    /// A whole `drag` on a React Native scroll view, run as live phases (each settles first): JS gets the touch and
+    /// a move inside the slop, so a PanResponder around the list can claim it, before the scroll view takes it at the
+    /// slop. Lifted at rest (no fling); the content lags the finger by the slop, as on iOS.
+    fn rn_whole_drag(&mut self, id: &str, scene: &Scene, ev: PointerEvent) -> Result<(Option<String>, bool), ApiError> {
+        use onesim_render::DragPhase;
+        let hit = scene.hit_test(ev.x, ev.y).map(|i| scene.nodes[i].id.clone());
+        let (x, y, len) = (ev.x, ev.y, ev.dx.hypot(ev.dy));
+        let mut t = self.get(id)?.clock_ms;
+        self.drag(id, DragPhase::Begin, x, y, t)?;
+        // Inside the slop, just past it, then on to the end in 16 ms steps.
+        let mut stops = vec![5.0, 11.0];
+        stops.extend((1..=8).map(|i| len * f64::from(i) / 8.0));
+        for d in stops.into_iter().filter(|d| *d <= len) {
+            t += 16.0;
+            let f = d / len;
+            self.drag(id, DragPhase::Move, x + ev.dx * f, y + ev.dy * f, t)?;
+        }
+        self.drag(id, DragPhase::End, x + ev.dx, y + ev.dy, t + 1000.0)?;
+        let _ = self.scene(id)?;
+        Ok((hit, false))
     }
 
     /// React Native pointer input (`onesim_render::rn_input`), then settle and push the new layout.
@@ -570,6 +595,10 @@ impl Host {
         }
         let anim_moving = s.anim.tick(dt);
         let scroll_moving = s.inter.tick(&scene, dt);
+        if s.is_rn() {
+            let out = s.rn.scrolled(&s.inter, &scene);
+            s.send_out(out)?;
+        }
         let holding = s.inter.holding();
         if holding {
             let held = s.inter.hold(dt);
@@ -621,15 +650,17 @@ impl Host {
         self.sync_guest_clock(id)?;
         let (scene, version, _) = self.scene(id)?;
         let s = self.get(id)?;
-        // React Native receives each phase on the touched Fabric view; later trees arrive through render.updated,
-        // so the live caller never waits for a commit.
-        if s.is_rn() {
-            if let Some(out) = s.rn.drag(&s.inter, &scene, phase, x, y, t_ms) {
-                s.send_out(out)?;
-                return Ok(false);
-            }
-        }
         s.inter.version = version;
+        // React Native: touches go to the touched Fabric view, scrolls to the host; later trees arrive through
+        // render.updated, so the live caller never waits for a commit.
+        if s.is_rn() {
+            let root = Self::rn_root(s)?;
+            let cx = RnCtx { scene: &scene, root: &root, keyboard: s.keyboard_height() };
+            let out = s.rn.drag(&mut s.inter, &cx, phase, x, y, t_ms);
+            let changed = out.iter().any(|o| matches!(o, Out::Effect(e) if *e != onesim_render::Effect::None));
+            s.send_out(out)?;
+            return Ok(changed);
+        }
         let effect = s.inter.drag(&scene, phase, x, y, t_ms);
         let changed = effect != onesim_render::Effect::None;
         s.send_effect(effect)?;

@@ -495,7 +495,7 @@ impl Session {
                         }
                         sh.log.render_updated(version);
                     }
-                    Ok(m @ (GuestMessage::FocusRequest { .. } | GuestMessage::ScrollTo { .. } | GuestMessage::ScrollToId { .. })) => {
+                    Ok(m @ (GuestMessage::FocusRequest { .. } | GuestMessage::ScrollTo { .. } | GuestMessage::ScrollToId { .. } | GuestMessage::JsResponder { .. } | GuestMessage::TouchAnswer { .. })) => {
                         let mut g = sh.lock();
                         g.requests.push(m);
                         g.last_event = Some(Instant::now());

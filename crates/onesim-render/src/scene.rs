@@ -332,6 +332,9 @@ pub struct Node {
     pub pinned: Option<String>,
     /// Direct child of `.scrollTargetLayout()`.
     pub scroll_target: bool,
+    /// A scroller the user cannot scroll (React Native `scrollEnabled={false}`): `scroll_target` skips it, so drags
+    /// and the wheel go to the content or an outer scroller; programmatic offsets still apply.
+    pub scroll_disabled: bool,
     /// Animation / transition / matchedGeometryEffect metadata (protocol section P).
     pub anim: Option<Box<NodeAnim>>,
     /// False for layout-only helper nodes (clip/opacity layers); hidden from inspection.
@@ -385,6 +388,7 @@ impl Node {
             proposal: None,
             pinned: None,
             scroll_target: false,
+            scroll_disabled: false,
             anim: None,
             inspect: true,
         }
@@ -467,7 +471,7 @@ impl Scene {
         let modal = self.nodes.iter().rposition(|n| n.kind == "scrim");
         (0..self.nodes.len()).rev().find(|&i| {
             let n = &self.nodes[i];
-            modal.is_none_or(|m| i > m) && n.scroll.is_some() && n.bounds.contains(x, y) && self.clipped_in(i, x, y) && matches(n)
+            modal.is_none_or(|m| i > m) && n.scroll.is_some() && !n.scroll_disabled && n.bounds.contains(x, y) && self.clipped_in(i, x, y) && matches(n)
         })
     }
 
