@@ -8,7 +8,7 @@
 //   node web/test/run.mjs --suite counter|showcase     assertions against the built app
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import assert from "node:assert/strict";
 import { load } from "../onesim.js";
 import { encodePng } from "./png.mjs";
@@ -18,7 +18,8 @@ const nums = (s, n) => { const v = s.split(",").map((x) => (x.trim() === "" ? Na
 
 async function boot(wasmPath, opts) {
   const log = (level, t) => { if (level === "error") console.error(`[guest] ${t}`); };
-  return (await load(readFileSync(wasmPath), { log })).init(opts);
+  const guestUrl = pathToFileURL(resolve(dirname(wasmPath), "guest/guest.mjs")).href;
+  return (await load(readFileSync(wasmPath), { log, guestUrl })).init(opts);
 }
 
 function click(sim, c) {
@@ -63,12 +64,13 @@ function savePng(sim, path) {
 }
 
 async function cli(argv) {
-  const o = { wasm: resolve(here, "../../target/web/app.wasm"), width: 402, height: 874, scale: 3, dark: false, dynamicType: "large" };
+  const o = { wasm: resolve(here, "../../target/web/app.wasm"), dark: false, dynamicType: "large" };
   const steps = [], expects = [];
   let shot, inspect = false;
   for (let i = 0; i < argv.length; i++) {
     const f = argv[i], val = () => { if (i + 1 >= argv.length) throw new Error(`${f} needs a value`); return argv[++i]; };
     if (f === "--wasm") o.wasm = val();
+    else if (f === "--device") o.device = val();
     else if (f === "--width" || f === "--height" || f === "--scale") o[f.slice(2)] = Number(val());
     else if (f === "--dark") o.dark = true;
     else if (f === "--dynamic-type") o.dynamicType = val();
@@ -204,6 +206,55 @@ const suites = {
     assert.ok(hasText(sim, "Volume: 5"));
     sim.clickLabel("Volume: 5#decrement");
     assert.ok(hasText(sim, "Volume: 4"));
+  },
+
+  async "compose-counter"(wasm) {
+    const sim = await boot(wasm, {});
+    assert.equal(sim.platform, "android");
+    assert.ok(hasText(sim, "Count: 0"));
+    const fb = sim.framebuffer();
+    assert.deepEqual([fb.width, fb.height], [1080, 2424]);
+    sim.clickLabel("Increment");
+    sim.clickLabel("Increment");
+    sim.clickLabel("Decrement");
+    assert.ok(hasText(sim, "Count: 1"), "clicks update Compose state");
+    sim.setViewport(320, 600);
+    assert.ok(hasText(sim, "Count: 1"), "state survives viewport change");
+  },
+
+  async "compose-showcase"(wasm) {
+    const sim = await boot(wasm, {});
+    assert.equal(sim.platform, "android");
+    assert.ok(hasText(sim, "Showcase") && hasText(sim, "Tapped 0 times"));
+    const light = px(sim, 10, 400);
+    sim.setAppearance("dark");
+    assert.ok(px(sim, 10, 400)[0] < light[0], "dark theme updates Compose MaterialTheme");
+    sim.setAppearance("light");
+    sim.clickLabel("Filled");
+    sim.clickLabel("Compose");
+    assert.ok(hasText(sim, "Tapped 2 times"));
+    const beforeSwitch = Buffer.from(sim.framebuffer().data).toString("base64");
+    sim.click(353, 254); // Switch center (dp)
+    assert.notEqual(Buffer.from(sim.framebuffer().data).toString("base64"), beforeSwitch, "Switch toggles");
+  },
+
+  async "compose-input"(wasm) {
+    const sim = await boot(wasm, {});
+    assert.equal(sim.platform, "android");
+    assert.ok(hasText(sim, "Compose input") && hasText(sim, "Volume 25"));
+    sim.clickLabel("Name");
+    assert.equal(sim.focused, true, "tapping BasicTextField focuses it");
+    sim.type("Hello");
+    assert.equal(field(sim).value, "NameHello");
+    sim.key("backspace");
+    assert.equal(field(sim).value, "NameHell");
+    sim.type("o");
+    sim.key("enter");
+    assert.equal(sim.focused, false, "enter dismisses keyboard");
+    sim.drag("begin", 86, 313, 0);
+    sim.drag("move", 203, 313, 16);
+    sim.drag("end", 203, 313, 1000);
+    assert.ok(hasText(sim, "Volume 75"), `slider drag updates volume, got ${JSON.stringify(sim.texts())}`);
   },
 };
 

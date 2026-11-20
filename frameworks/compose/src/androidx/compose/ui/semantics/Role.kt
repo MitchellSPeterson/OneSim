@@ -1,6 +1,7 @@
 package androidx.compose.ui.semantics
 
 import androidx.compose.ui.Modifier
+import kotlin.jvm.JvmInline
 
 /** Accessibility role of a clickable. */
 @JvmInline

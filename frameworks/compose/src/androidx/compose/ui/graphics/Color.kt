@@ -1,6 +1,7 @@
 package androidx.compose.ui.graphics
 
 import androidx.compose.runtime.Immutable
+import kotlin.math.pow
 
 /** sRGB color with components 0...1. */
 @Immutable
@@ -58,6 +59,6 @@ fun lerp(start: Color, stop: Color, fraction: Float): Color = Color(
 )
 
 fun Color.luminance(): Float {
-    fun lin(c: Float) = if (c <= 0.04045f) c / 12.92f else Math.pow(((c + 0.055f) / 1.055f).toDouble(), 2.4).toFloat()
+    fun lin(c: Float) = if (c <= 0.04045f) c / 12.92f else ((c + 0.055f) / 1.055f).toDouble().pow(2.4).toFloat()
     return 0.2126f * lin(red) + 0.7152f * lin(green) + 0.0722f * lin(blue)
 }

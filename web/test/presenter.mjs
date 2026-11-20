@@ -14,6 +14,7 @@
 //   resize    several GPU canvas backing sizes and DPRs
 //   lost      destroy the WebGPU device -> CPU with the latest runtime state
 //   --app     repeat lifecycle and idle checks with the built SwiftUI showcase
+//   --compose repeat lifecycle, GPU/CPU fallback, and input checks with the built Compose app
 import { spawn, execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, existsSync, statSync } from "node:fs";
@@ -27,8 +28,13 @@ if (!chrome) { console.log("SKIP: no Chrome/Chromium (set CHROME=)"); process.ex
 const appDir = join(process.env.CARGO_TARGET_DIR ?? join(root, "target"), "web");
 const gpuDir = join(appDir, "gpu");
 const testApp = process.argv.includes("--app");
-if (testApp && !existsSync(join(appDir, "app.wasm"))) {
-  console.error(`missing ${appDir}/app.wasm: build examples/swiftui-showcase first`);
+const testCompose = process.argv.includes("--compose");
+if ((testApp || testCompose) && !existsSync(join(appDir, "app.wasm"))) {
+  console.error(`missing ${appDir}/app.wasm: build an app with scripts/build-web.sh first`);
+  process.exit(2);
+}
+if (testCompose && !existsSync(join(appDir, "guest/guest.mjs"))) {
+  console.error(`missing ${appDir}/guest/guest.mjs: build a Compose app with scripts/build-web.sh first`);
   process.exit(2);
 }
 if (!existsSync(join(gpuDir, "onesim_web_gpu_bg.wasm"))) { console.error(`missing ${gpuDir}: build the GPU module first (see header)`); process.exit(2); }
@@ -140,6 +146,72 @@ async function liveApp(device, scale, gpu) {
   const probe = `(${probeApp})().then(result => { window.__result = result; }, error => { window.__result = { error: String(error) }; });`;
   return run(`device=${device}&scale=${scale}&renderer=${gpu ? "gpu" : "cpu"}`, { preload: `${preload}\n${probe}`, page: "app/index.html" });
 }
+async function probeComposeApp() {
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  while (!window.onesim?.ready) {
+    const error = document.getElementById("err")?.textContent;
+    if (error) throw new Error(error);
+    await sleep(25);
+  }
+  const s = window.onesim, r = window.onesimRenderer;
+  const mode = r.mode, initialFrames = r.frames;
+  const size = () => [r.canvas.width, r.canvas.height].join("x");
+  const initialSize = size();
+  const platform = s.sim.platform;
+  const idleStart = performance.now();
+  await sleep(1200);
+  const idleMs = performance.now() - idleStart, idleFrames = r.frames - initialFrames;
+  const initialTree = s.lastTreeText();
+  const isInput = initialTree.includes("Compose input");
+  const isShowcase = initialTree.includes("Filled card");
+  if (isInput) {
+    s.click("Name");
+    s.type("Hello");
+  } else if (isShowcase) {
+    s.click("Filled");
+    s.click("Compose");
+  } else {
+    s.click("Increment");
+    s.click("Increment");
+  }
+  const beforeLoss = s.lastTreeText();
+  const wasFocused = s.sim.focused;
+  const canvas = r.canvas;
+  if (window.__testDevice) {
+    window.__testDevice.destroy();
+    const deadline = Date.now() + 4000;
+    while (r.mode === "gpu" && Date.now() < deadline) await sleep(25);
+  }
+  const stateRetained = beforeLoss === s.lastTreeText() && s.sim.focused === wasFocused;
+  let actionOk = false;
+  if (isInput) {
+    s.key("enter");
+    s.drag("begin", 86, 313, 0);
+    s.drag("move", 203, 313, 16);
+    s.drag("end", 203, 313, 1000);
+    actionOk = !s.sim.focused && s.lastTreeText().includes("NameHello") && s.lastTreeText().includes("Volume 75");
+  } else if (isShowcase) {
+    actionOk = s.lastTreeText().includes("Tapped 2 times");
+  } else {
+    s.click("Decrement");
+    actionOk = s.lastTreeText().includes("Count: 1");
+  }
+  const beforeResize = r.frames;
+  s.setViewport(320, 600);
+  const resizeFrames = r.frames - beforeResize;
+  const resized = size();
+  s.setAppearance("dark");
+  return {
+    platform, mode, finalMode: r.mode, reason: r.reason, initialSize, resized, resizeFrames, idleMs, idleFrames,
+    stateRetained, canvasSwapped: r.canvas !== canvas, actionOk,
+  };
+}
+async function liveComposeApp(scale, gpu) {
+  const preload = gpu ? trackDevice : "";
+  const probe = `(${probeComposeApp})().then(result => { window.__result = result; }, error => { window.__result = { error: String(error) }; });`;
+  // Omit ?device= to verify Compose selects Android (pixel-10a) automatically.
+  return run(`scale=${scale}&renderer=${gpu ? "gpu" : "cpu"}`, { preload: `${preload}\n${probe}`, page: "app/index.html" });
+}
 
 const cpuOk = (r) => { check(r.mode === "cpu" && r.output === 0, "mode is cpu"); check(r.diffPct === 0, `CPU pixels exact (diff ${r.diffPct})`); check(r.nonBlankPct > 5, "not blank"); check(r.canvasConnected, "canvas attached"); };
 
@@ -200,6 +272,18 @@ try {
         check(live.stateRetained && live.todoAdded, "live app retains edited text and focus and accepts input");
         if (useGpu) check(live.canvasSwapped && /device lost/i.test(live.reason), "live device loss swaps the canvas");
       }
+    }
+  }
+  if (testCompose) {
+    for (const useGpu of gpu.mode === "gpu" ? [false, true] : [false]) {
+      const live = await liveComposeApp(2.625, useGpu);
+      console.log(`compose pixel-10a @2.625x ${JSON.stringify(live)}`);
+      check(live.platform === "android", "Compose app selects android platform");
+      check(live.mode === (useGpu ? "gpu" : "cpu") && live.finalMode === "cpu", "Compose app selects and recovers its presenter");
+      check(live.initialSize === "1080x2424" && live.resized === "840x1575" && live.resizeFrames === 1, "Compose live resize presents one correctly sized frame");
+      check(live.idleFrames === 0, "static Compose app presents no idle frames");
+      check(live.stateRetained && live.actionOk, "Compose app retains state across device loss and accepts input");
+      if (useGpu) check(live.canvasSwapped && /device lost/i.test(live.reason), "Compose device loss swaps the canvas");
     }
   }
 } finally {
