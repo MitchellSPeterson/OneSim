@@ -1,0 +1,522 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "hittable": false,
+        "rect": {
+          "x": 0,
+          "height": 874,
+          "y": 0,
+          "width": 402
+        },
+        "label": "Controls",
+        "type": "Application",
+        "enabled": true,
+        "index": 0,
+        "depth": 0,
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "parentIndex": 0,
+        "hittable": true,
+        "rect": {
+          "x": 0,
+          "height": 106,
+          "y": 62,
+          "width": 402
+        },
+        "identifier": "Indicators",
+        "type": "NavigationBar",
+        "enabled": true,
+        "index": 1,
+        "depth": 1,
+        "ref": "e2",
+        "kind": "navigation-bar"
+      },
+      {
+        "parentIndex": 1,
+        "identifier": "BackButton",
+        "rect": {
+          "x": 16,
+          "height": 44,
+          "y": 62,
+          "width": 44
+        },
+        "label": "Controls",
+        "type": "Button",
+        "hittable": true,
+        "enabled": true,
+        "index": 2,
+        "depth": 2,
+        "ref": "e3",
+        "kind": "button"
+      },
+      {
+        "parentIndex": 1,
+        "hittable": true,
+        "rect": {
+          "x": 15.999999999999986,
+          "height": 40.66666666666667,
+          "y": 119.66666666666667,
+          "width": 159.33333333333331
+        },
+        "label": "Indicators",
+        "type": "StaticText",
+        "enabled": true,
+        "index": 3,
+        "depth": 2,
+        "ref": "e4",
+        "kind": "text"
+      },
+      {
+        "parentIndex": 0,
+        "hittable": true,
+        "rect": {
+          "x": 20,
+          "height": 46.66668701171875,
+          "y": 271.3072814941406,
+          "width": 362
+        },
+        "label": "Download, 30%",
+        "type": "ProgressIndicator",
+        "value": "30%",
+        "enabled": true,
+        "index": 4,
+        "depth": 1,
+        "ref": "e5",
+        "kind": "progress-indicator"
+      },
+      {
+        "parentIndex": 4,
+        "hittable": true,
+        "rect": {
+          "x": 20,
+          "height": 24,
+          "y": 285.66666666666663,
+          "width": 362
+        },
+        "type": "ProgressIndicator",
+        "value": "30%",
+        "enabled": true,
+        "index": 5,
+        "depth": 2,
+        "ref": "e6",
+        "kind": "progress-indicator"
+      },
+      {
+        "parentIndex": 4,
+        "hittable": false,
+        "rect": {
+          "x": 0,
+          "height": 0,
+          "y": 0,
+          "width": 0
+        },
+        "label": "Download",
+        "type": "StaticText",
+        "enabled": true,
+        "index": 6,
+        "depth": 2,
+        "ref": "e7",
+        "kind": "text"
+      },
+      {
+        "parentIndex": 4,
+        "hittable": false,
+        "rect": {
+          "x": 0,
+          "height": 0,
+          "y": 0,
+          "width": 0
+        },
+        "label": "30%",
+        "type": "StaticText",
+        "enabled": true,
+        "index": 7,
+        "depth": 2,
+        "ref": "e8",
+        "kind": "text"
+      },
+      {
+        "parentIndex": 0,
+        "hittable": true,
+        "rect": {
+          "x": 191,
+          "height": 20,
+          "y": 334,
+          "width": 20
+        },
+        "type": "ProgressIndicator",
+        "value": "1",
+        "enabled": true,
+        "index": 8,
+        "depth": 1,
+        "ref": "e9",
+        "kind": "progress-indicator"
+      },
+      {
+        "parentIndex": 8,
+        "hittable": true,
+        "rect": {
+          "x": 191,
+          "height": 20,
+          "y": 334,
+          "width": 20
+        },
+        "type": "ActivityIndicator",
+        "value": "1",
+        "enabled": true,
+        "index": 9,
+        "depth": 2,
+        "ref": "e10",
+        "kind": "activity-indicator"
+      },
+      {
+        "parentIndex": 0,
+        "hittable": true,
+        "rect": {
+          "x": 160.66666666666669,
+          "height": 20.333333333333314,
+          "y": 369.97395833333337,
+          "width": 80.66666666666666
+        },
+        "label": "75% done",
+        "type": "ProgressIndicator",
+        "value": "75%",
+        "enabled": true,
+        "index": 10,
+        "depth": 1,
+        "ref": "e11",
+        "kind": "progress-indicator"
+      },
+      {
+        "parentIndex": 0,
+        "hittable": true,
+        "rect": {
+          "x": 45,
+          "height": 31,
+          "y": 406.3333333333333,
+          "width": 301.3333333333333
+        },
+        "label": "Volume",
+        "type": "Slider",
+        "value": "40%",
+        "enabled": true,
+        "index": 11,
+        "depth": 1,
+        "ref": "e12",
+        "kind": "slider"
+      },
+      {
+        "parentIndex": 0,
+        "identifier": "speaker.fill",
+        "rect": {
+          "x": 22.666666666666668,
+          "height": 14.666666984558105,
+          "y": 414.3333333333333,
+          "width": 9.999999999999996
+        },
+        "label": "Volume Lower",
+        "type": "Image",
+        "hittable": true,
+        "enabled": true,
+        "index": 12,
+        "depth": 1,
+        "ref": "e13",
+        "kind": "image"
+      },
+      {
+        "parentIndex": 0,
+        "identifier": "speaker.wave.3.fill",
+        "rect": {
+          "x": 357,
+          "height": 16.33333396911621,
+          "y": 413.66666666666663,
+          "width": 22.33333396911621
+        },
+        "label": "Volume Higher",
+        "type": "Image",
+        "hittable": true,
+        "enabled": true,
+        "index": 13,
+        "depth": 1,
+        "ref": "e14",
+        "kind": "image"
+      },
+      {
+        "parentIndex": 0,
+        "hittable": true,
+        "rect": {
+          "x": 20,
+          "height": 78.07632446289062,
+          "y": 453.3072814941406,
+          "width": 362
+        },
+        "label": "Battery, 40%",
+        "type": "Other",
+        "value": "40%",
+        "enabled": true,
+        "index": 14,
+        "depth": 1,
+        "ref": "e15",
+        "kind": "other"
+      },
+      {
+        "parentIndex": 14,
+        "hittable": false,
+        "rect": {
+          "x": 0,
+          "height": 0,
+          "y": 0,
+          "width": 0
+        },
+        "label": "Battery",
+        "type": "StaticText",
+        "enabled": true,
+        "index": 15,
+        "depth": 2,
+        "ref": "e16",
+        "kind": "text"
+      },
+      {
+        "parentIndex": 14,
+        "hittable": false,
+        "rect": {
+          "x": 0,
+          "height": 0,
+          "y": 0,
+          "width": 0
+        },
+        "label": "40%",
+        "type": "StaticText",
+        "enabled": true,
+        "index": 16,
+        "depth": 2,
+        "ref": "e17",
+        "kind": "text"
+      },
+      {
+        "parentIndex": 0,
+        "label": "Disk",
+        "index": 17,
+        "hittable": true,
+        "value": "70%",
+        "depth": 1,
+        "type": "Other",
+        "enabled": true,
+        "rect": {
+          "x": 20,
+          "height": 46.94970703125,
+          "y": 547.3836059570312,
+          "width": 362
+        },
+        "ref": "e18",
+        "kind": "other"
+      },
+      {
+        "parentIndex": 0,
+        "label": "CPU",
+        "index": 18,
+        "hittable": true,
+        "value": "25%",
+        "depth": 1,
+        "type": "Other",
+        "enabled": true,
+        "rect": {
+          "x": 20,
+          "height": 28.30731201171875,
+          "y": 610.359375,
+          "width": 362
+        },
+        "ref": "e19",
+        "kind": "other"
+      },
+      {
+        "parentIndex": 18,
+        "index": 19,
+        "hittable": true,
+        "value": "25%",
+        "depth": 2,
+        "type": "ProgressIndicator",
+        "enabled": true,
+        "rect": {
+          "x": 20,
+          "height": 24,
+          "y": 624.6666666666666,
+          "width": 362
+        },
+        "ref": "e20",
+        "kind": "progress-indicator"
+      },
+      {
+        "parentIndex": 18,
+        "label": "CPU",
+        "index": 20,
+        "hittable": false,
+        "depth": 2,
+        "type": "StaticText",
+        "enabled": true,
+        "rect": {
+          "x": 0,
+          "height": 0,
+          "y": 0,
+          "width": 0
+        },
+        "ref": "e21",
+        "kind": "text"
+      },
+      {
+        "parentIndex": 0,
+        "label": "Load",
+        "index": 21,
+        "hittable": true,
+        "value": "50%",
+        "depth": 1,
+        "type": "Other",
+        "enabled": true,
+        "rect": {
+          "x": 20,
+          "height": 16,
+          "y": 650.6666870117188,
+          "width": 362
+        },
+        "ref": "e22",
+        "kind": "other"
+      },
+      {
+        "parentIndex": 0,
+        "label": "60",
+        "index": 22,
+        "hittable": true,
+        "value": "60%",
+        "depth": 1,
+        "type": "Other",
+        "enabled": true,
+        "rect": {
+          "x": 131,
+          "height": 58,
+          "y": 678.6666870117188,
+          "width": 58
+        },
+        "ref": "e23",
+        "kind": "other"
+      },
+      {
+        "parentIndex": 0,
+        "label": "Arc, 30",
+        "index": 23,
+        "hittable": true,
+        "value": "30%",
+        "depth": 1,
+        "type": "Other",
+        "enabled": true,
+        "rect": {
+          "x": 213,
+          "height": 57.15936279296875,
+          "y": 678.6666870117188,
+          "width": 58
+        },
+        "ref": "e24",
+        "kind": "other"
+      },
+      {
+        "parentIndex": 23,
+        "label": "Arc",
+        "index": 24,
+        "hittable": false,
+        "depth": 2,
+        "type": "StaticText",
+        "enabled": true,
+        "rect": {
+          "x": 0,
+          "height": 0,
+          "y": 0,
+          "width": 0
+        },
+        "ref": "e25",
+        "kind": "text"
+      },
+      {
+        "parentIndex": 23,
+        "label": "30",
+        "index": 25,
+        "hittable": false,
+        "depth": 2,
+        "type": "StaticText",
+        "enabled": true,
+        "rect": {
+          "x": 0,
+          "height": 0,
+          "y": 0,
+          "width": 0
+        },
+        "ref": "e26",
+        "kind": "text"
+      },
+      {
+        "parentIndex": 0,
+        "label": "Toolbar",
+        "index": 26,
+        "hittable": true,
+        "depth": 1,
+        "type": "Toolbar",
+        "enabled": true,
+        "identifier": "Toolbar",
+        "rect": {
+          "x": 0,
+          "height": 874,
+          "y": 0,
+          "width": 402
+        },
+        "ref": "e27",
+        "kind": "toolbar"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.controls",
+    "appBundleId": "dev.simcore.controls",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 27,
+      "totalNodeCount": 27,
+      "reasons": []
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "unknown",
+    "snapshotQuality": {
+      "state": "recovered",
+      "backend": "private-ax",
+      "reason": "XCTest-backed snapshot tiers were deferred after recent slow accessibility work on this screen",
+      "reasonCode": "deferred",
+      "timing": {
+        "acquisitionMs": 931.1439990997314,
+        "presentationMs": 0.2129077911376953
+      }
+    },
+    "warnings": [
+      "Detected an overly complex or slow accessibility tree. Fell back to the private-ax snapshot backend. It is OK to continue; use --json to inspect snapshotQuality.reason if you need recovery details.",
+      "Simulator AX snapshot unavailable (circuit-disabled); used XCTest for this app generation.",
+      "The surface was still changing after open when this tree was read, so it may not match where the surface comes to rest: an element missing from it is not proof of absence."
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 50,
+        "p50Ms": 1351,
+        "p95Ms": 37445,
+        "maxMs": 42699,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 50
+        }
+      },
+      "warning": "Warning: ios snapshots are slow in this run: p95 37445ms over 49 captures. Possible causes: device load, app or dev server stuck, helper fallback, or stale daemon."
+    },
+    "refsGeneration": 455794
+  }
+}

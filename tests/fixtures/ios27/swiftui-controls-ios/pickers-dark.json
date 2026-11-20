@@ -1,0 +1,630 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "type": "Application",
+        "rect": {
+          "x": 0,
+          "width": 402,
+          "height": 874,
+          "y": 0
+        },
+        "enabled": true,
+        "index": 0,
+        "depth": 0,
+        "label": "Controls",
+        "hittable": false,
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "type": "NavigationBar",
+        "parentIndex": 0,
+        "rect": {
+          "x": 0,
+          "width": 402,
+          "height": 106,
+          "y": 62
+        },
+        "enabled": true,
+        "index": 1,
+        "identifier": "Pickers",
+        "depth": 1,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "navigation-bar"
+      },
+      {
+        "type": "Button",
+        "parentIndex": 1,
+        "rect": {
+          "x": 16,
+          "width": 44,
+          "height": 44,
+          "y": 62
+        },
+        "enabled": true,
+        "index": 2,
+        "identifier": "BackButton",
+        "depth": 2,
+        "label": "Controls",
+        "hittable": true,
+        "ref": "e3",
+        "kind": "button"
+      },
+      {
+        "type": "StaticText",
+        "parentIndex": 1,
+        "rect": {
+          "x": 15.999999999999993,
+          "width": 116.66666666666666,
+          "height": 40.66666666666667,
+          "y": 119.66666666666667
+        },
+        "enabled": true,
+        "index": 3,
+        "depth": 2,
+        "label": "Pickers",
+        "hittable": true,
+        "ref": "e4",
+        "kind": "text"
+      },
+      {
+        "type": "CollectionView",
+        "parentIndex": 0,
+        "rect": {
+          "x": 0,
+          "width": 402,
+          "height": 874,
+          "y": 0
+        },
+        "enabled": true,
+        "index": 4,
+        "depth": 1,
+        "hittable": true,
+        "ref": "e5",
+        "kind": "collection"
+      },
+      {
+        "type": "Cell",
+        "parentIndex": 4,
+        "rect": {
+          "x": 16,
+          "width": 370,
+          "height": 40.33333333333334,
+          "y": 168
+        },
+        "enabled": true,
+        "index": 5,
+        "depth": 2,
+        "hittable": true,
+        "ref": "e6",
+        "kind": "cell"
+      },
+      {
+        "type": "StaticText",
+        "parentIndex": 5,
+        "rect": {
+          "x": 16,
+          "width": 370,
+          "height": 40.33333333333334,
+          "y": 168
+        },
+        "enabled": true,
+        "index": 6,
+        "depth": 3,
+        "label": "Inline",
+        "hittable": true,
+        "ref": "e7",
+        "kind": "text"
+      },
+      {
+        "type": "Cell",
+        "parentIndex": 4,
+        "rect": {
+          "x": 16,
+          "width": 370,
+          "height": 52.00000000000003,
+          "y": 208.33333333333334
+        },
+        "enabled": true,
+        "index": 7,
+        "depth": 2,
+        "hittable": true,
+        "ref": "e8",
+        "kind": "cell"
+      },
+      {
+        "type": "Button",
+        "parentIndex": 7,
+        "rect": {
+          "x": 16,
+          "width": 370,
+          "height": 52.00000000000003,
+          "y": 208.33333333333334
+        },
+        "enabled": true,
+        "index": 8,
+        "selected": true,
+        "depth": 3,
+        "label": "Red",
+        "hittable": true,
+        "ref": "e9",
+        "kind": "button"
+      },
+      {
+        "type": "Cell",
+        "parentIndex": 4,
+        "rect": {
+          "x": 16,
+          "width": 370,
+          "height": 52,
+          "y": 260.3333333333333
+        },
+        "enabled": true,
+        "index": 9,
+        "depth": 2,
+        "hittable": true,
+        "ref": "e10",
+        "kind": "cell"
+      },
+      {
+        "type": "Button",
+        "parentIndex": 9,
+        "rect": {
+          "x": 16,
+          "width": 370,
+          "height": 52,
+          "y": 260.3333333333333
+        },
+        "enabled": true,
+        "index": 10,
+        "depth": 3,
+        "label": "Green",
+        "hittable": true,
+        "ref": "e11",
+        "kind": "button"
+      },
+      {
+        "type": "Cell",
+        "parentIndex": 4,
+        "rect": {
+          "x": 16,
+          "width": 370,
+          "height": 52,
+          "y": 312.33333333333337
+        },
+        "enabled": true,
+        "index": 11,
+        "depth": 2,
+        "hittable": true,
+        "ref": "e12",
+        "kind": "cell"
+      },
+      {
+        "type": "Button",
+        "parentIndex": 11,
+        "rect": {
+          "x": 16,
+          "width": 370,
+          "height": 52,
+          "y": 312.33333333333337
+        },
+        "enabled": true,
+        "index": 12,
+        "depth": 3,
+        "label": "Blue",
+        "hittable": true,
+        "ref": "e13",
+        "kind": "button"
+      },
+      {
+        "type": "Cell",
+        "parentIndex": 4,
+        "index": 13,
+        "depth": 2,
+        "enabled": true,
+        "rect": {
+          "width": 370,
+          "height": 40.333333333333314,
+          "x": 16,
+          "y": 382
+        },
+        "hittable": true,
+        "ref": "e14",
+        "kind": "cell"
+      },
+      {
+        "type": "StaticText",
+        "parentIndex": 13,
+        "index": 14,
+        "enabled": true,
+        "rect": {
+          "width": 370,
+          "height": 40.333333333333314,
+          "x": 16,
+          "y": 382
+        },
+        "depth": 3,
+        "label": "Navigation link",
+        "hittable": true,
+        "ref": "e15",
+        "kind": "text"
+      },
+      {
+        "type": "Cell",
+        "parentIndex": 4,
+        "index": 15,
+        "depth": 2,
+        "enabled": true,
+        "rect": {
+          "width": 370,
+          "height": 52,
+          "x": 16,
+          "y": 422.33333333333337
+        },
+        "hittable": true,
+        "ref": "e16",
+        "kind": "cell"
+      },
+      {
+        "value": "Medium",
+        "type": "Button",
+        "parentIndex": 15,
+        "index": 16,
+        "enabled": true,
+        "rect": {
+          "width": 370,
+          "height": 52,
+          "x": 16,
+          "y": 422.33333333333337
+        },
+        "depth": 3,
+        "label": "Size",
+        "hittable": true,
+        "ref": "e17",
+        "kind": "button"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 308,
+          "height": 20.333343505859375,
+          "x": 36,
+          "y": 438.1666564941406
+        },
+        "label": "Size",
+        "depth": 4,
+        "index": 17,
+        "type": "StaticText",
+        "parentIndex": 16,
+        "ref": "e18",
+        "kind": "text"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "identifier": "chevron.forward",
+        "rect": {
+          "width": 7,
+          "height": 12,
+          "x": 356.6666666666667,
+          "y": 442.33333333333337
+        },
+        "depth": 4,
+        "index": 18,
+        "type": "Image",
+        "parentIndex": 16,
+        "ref": "e19",
+        "kind": "image"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 370,
+          "height": 40.333333333333314,
+          "x": 16,
+          "y": 491.6666666666667
+        },
+        "depth": 2,
+        "index": 19,
+        "type": "Cell",
+        "parentIndex": 4,
+        "ref": "e20",
+        "kind": "cell"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 370,
+          "height": 40.333333333333314,
+          "x": 16,
+          "y": 491.6666666666667
+        },
+        "label": "Palette",
+        "depth": 3,
+        "index": 20,
+        "type": "StaticText",
+        "parentIndex": 19,
+        "ref": "e21",
+        "kind": "text"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 370,
+          "height": 61,
+          "x": 16,
+          "y": 532
+        },
+        "depth": 2,
+        "index": 21,
+        "type": "Cell",
+        "parentIndex": 4,
+        "ref": "e22",
+        "kind": "cell"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 330,
+          "height": 31,
+          "x": 36,
+          "y": 547
+        },
+        "depth": 3,
+        "index": 22,
+        "type": "SegmentedControl",
+        "parentIndex": 21,
+        "ref": "e23",
+        "kind": "segmented-control"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 110,
+          "height": 32,
+          "x": 36,
+          "y": 547
+        },
+        "label": "Circle",
+        "depth": 4,
+        "selected": true,
+        "index": 23,
+        "type": "Button",
+        "parentIndex": 22,
+        "ref": "e24",
+        "kind": "button"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 110,
+          "height": 32,
+          "x": 146,
+          "y": 547
+        },
+        "label": "Square",
+        "depth": 4,
+        "index": 24,
+        "type": "Button",
+        "parentIndex": 22,
+        "ref": "e25",
+        "kind": "button"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 110,
+          "height": 32,
+          "x": 256,
+          "y": 547
+        },
+        "label": "Star",
+        "depth": 4,
+        "index": 25,
+        "type": "Button",
+        "parentIndex": 22,
+        "ref": "e26",
+        "kind": "button"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 370,
+          "height": 40.33333333333337,
+          "x": 16,
+          "y": 610.6666666666667
+        },
+        "depth": 2,
+        "index": 26,
+        "type": "Cell",
+        "parentIndex": 4,
+        "ref": "e27",
+        "kind": "cell"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 370,
+          "height": 40.33333333333337,
+          "x": 16,
+          "y": 610.6666666666667
+        },
+        "label": "Wheel",
+        "depth": 3,
+        "index": 27,
+        "type": "StaticText",
+        "parentIndex": 26,
+        "ref": "e28",
+        "kind": "text"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 370,
+          "height": 223,
+          "x": 16,
+          "y": 651
+        },
+        "depth": 2,
+        "index": 28,
+        "type": "Cell",
+        "parentIndex": 4,
+        "ref": "e29",
+        "kind": "cell"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "rect": {
+          "width": 330,
+          "height": 208,
+          "x": 36,
+          "y": 666
+        },
+        "label": "Hour",
+        "depth": 3,
+        "index": 29,
+        "type": "Picker",
+        "parentIndex": 28,
+        "ref": "e30",
+        "kind": "picker"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "parentIndex": 29,
+        "rect": {
+          "width": 330,
+          "height": 208,
+          "x": 36,
+          "y": 666
+        },
+        "depth": 4,
+        "index": 30,
+        "value": "9:00",
+        "type": "Element(39)",
+        "ref": "e31",
+        "kind": "element(39)"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "parentIndex": 4,
+        "rect": {
+          "width": 30,
+          "height": 696,
+          "x": 369,
+          "y": 116
+        },
+        "label": "Vertical scroll bar, 2 pages",
+        "depth": 2,
+        "index": 31,
+        "value": "0%",
+        "type": "Other",
+        "ref": "e32",
+        "kind": "other"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "parentIndex": 4,
+        "rect": {
+          "width": 30,
+          "height": 696,
+          "x": 369,
+          "y": 116
+        },
+        "label": "Vertical scroll bar, 2 pages",
+        "depth": 2,
+        "index": 32,
+        "value": "0%",
+        "type": "Other",
+        "ref": "e33",
+        "kind": "other"
+      },
+      {
+        "enabled": true,
+        "hittable": true,
+        "identifier": "Toolbar",
+        "rect": {
+          "width": 402,
+          "height": 874,
+          "x": 0,
+          "y": 0
+        },
+        "label": "Toolbar",
+        "depth": 1,
+        "index": 33,
+        "type": "Toolbar",
+        "parentIndex": 0,
+        "ref": "e34",
+        "kind": "toolbar"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.controls",
+    "appBundleId": "dev.simcore.controls",
+    "visibility": {
+      "partial": true,
+      "visibleNodeCount": 34,
+      "totalNodeCount": 34,
+      "reasons": [
+        "scroll-hidden-below"
+      ]
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "unknown",
+    "snapshotQuality": {
+      "state": "recovered",
+      "backend": "private-ax",
+      "reason": "XCTest-backed snapshot tiers were deferred after recent slow accessibility work on this screen",
+      "reasonCode": "deferred",
+      "timing": {
+        "acquisitionMs": 8259.567975997925,
+        "presentationMs": 7.905006408691406
+      }
+    },
+    "snapshotQualityNotes": [
+      {
+        "code": "regular-geometry-clipped",
+        "clippedNodeCount": 12,
+        "droppedNodeCount": 0
+      }
+    ],
+    "warnings": [
+      "Simulator AX snapshot unavailable (circuit-disabled); used XCTest for this app generation."
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 42,
+        "p50Ms": 251,
+        "p95Ms": 17153,
+        "maxMs": 42699,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 42
+        }
+      },
+      "warning": "Warning: ios snapshots are slow in this run: p95 17153ms over 41 captures. Possible causes: device load, app or dev server stuck, helper fallback, or stale daemon."
+    },
+    "refsGeneration": 455789
+  }
+}

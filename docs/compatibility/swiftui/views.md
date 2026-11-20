@@ -32,7 +32,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `EquatableView` | 13 | ⬜ |  |  |
 | `ForEach` | 13 | ✅ |  |  |
 | `Form` | 13 | 🟠 |  | No `formStyle` |
-| `Gauge` | 16 | ⬜ |  |  |
+| `Gauge` | 16 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | No `markedValueLabels`; accessory styles draw in the primary color (no `tint`) |
 | `GeometryReader` | 13 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | One correction pass. `safeAreaInsets` are the device insets. `frame(in: .local)` origin is zero; `.global` and a named space are the host screen frame |
 | `GlassEffectContainer` | 26 | 🟠 |  | Pass-through: no merge/morph |
 | `Grid` | 16 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
@@ -53,9 +53,9 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `LazyVGrid` | 14 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Eager. `pinnedViews` is ignored |
 | `LazyVStack` | 14 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Eager. Section headers pin; footers do not |
 | `LinearGradient` | 13 | ⬜ |  |  |
-| `Link` | 14 | ⬜ |  |  |
+| `Link` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | No browser: `\.openURL` handlers run and the system action is reported as a `module.called` event; does nothing on the web build |
 | `List` | 13 | ✅ |  |  |
-| `Menu` | 14 | ⬜ |  |  |
+| `Menu` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | A tap opens it; with `primaryAction` a tap runs that and the menu needs a long press, which OneSim does not offer. A nested `Menu` opens its own card. No section headers, `menuOrder` or `menuIndicator` |
 | `MeshGradient` | 18 | ⬜ |  |  |
 | `ModifiedContent` | 13 | ⬜ |  |  |
 | `MultiDatePicker` | 16 | ⬜ |  |  |
@@ -68,11 +68,11 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `OutlineSubgroupChildren` | 14 | ⬜ |  |  |
 | `PasteButton` | 16 | ⬜ |  |  |
 | `PhaseAnimator` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `Picker` | 13 | 🟠 |  | `.menu` and `.segmented` only; options are text only; menu has no animation or scroll |
+| `Picker` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | `.menu`, `.segmented`, `.palette` (drawn segmented), `.inline` (checkmark rows in a list, a wheel elsewhere), `.navigationLink`, `.wheel` (a tap selects a row; no spinning). No `.tabs`. Options are text only; an inline picker shows no label row |
 | `PlaceholderContentView` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `PresentedWindowContent` | 16 | ⬜ |  |  |
 | `PreviewModifierContent` | 18 | ⬜ |  |  |
-| `ProgressView` | 14 | 🟠 |  | Spinner is one static frame; no `progressViewStyle` |
+| `ProgressView` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Spinner is one static frame; without a value the linear style also draws the spinner |
 | `RadialGradient` | 13 | ⬜ |  |  |
 | `RenameButton` | 16 | ⬜ |  |  |
 | `ScrollView` | 13 | ✅ |  |  |
@@ -80,7 +80,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Section` | 13 | ✅ |  |  |
 | `SecureField` | 13 | 🟠 |  | No reveal toggle or `prompt:` |
 | `ShareLink` | 16 | ⬜ |  |  |
-| `Slider` | 13 | 🟠 |  | Moves on tap or whole drag, not live; no `onEditingChanged`, value labels or tint |
+| `Slider` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Moves on tap or whole drag, not live; no tint or ticks |
 | `Spacer` | 13 | ✅ |  |  |
 | `Stepper` | 13 | ✅ |  |  |
 | `SubscriptionView` | 13 | ⬜ |  |  |

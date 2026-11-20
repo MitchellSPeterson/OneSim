@@ -12,7 +12,7 @@ use crate::scene::{Color, CustomShapeEval, Glyph, Node, Rect, Role, Scene, Scrol
 use crate::symbols::{self, SymbolSpec};
 use crate::text::{FontSpec, Fonts, Span, TextAlign};
 use onesim_protocol::{
-    Alignment, AnimationSpec, Appearance, Axis, ButtonStyle, ConcentricCorners, ContainerShapeSpec, ContentMode, ContentTransitionKind, CornerStyleSpec, Detent, DisplayMode, DynamicTypeSize, Edges, FitAxes, Font, GlassShapeKind, GlassVariant, GridTrack, ImageScale, IosVersion, Layer, LineCap, LineJoin, ListStyle, MatchedGeometryMod, MatchedProps, Modifier, PickerOption, PickerStyle, RoundedCornerStyle, ScrollSnap, Section, Semantic, ShapeKind, ShapeSizeHint, TrackSize, TransitionSpec, UniformCorners, ViewKind, ViewNode,
+    Alignment, AnimationSpec, Appearance, Axis, ButtonStyle, ConcentricCorners, ContainerShapeSpec, ContentMode, ContentTransitionKind, CornerStyleSpec, Detent, DisplayMode, DynamicTypeSize, Edges, FitAxes, Font, GaugeStyle, GlassShapeKind, GlassVariant, GridTrack, ImageScale, IosVersion, Layer, LineCap, LineJoin, ListStyle, MatchedGeometryMod, MatchedProps, Modifier, PickerOption, PickerStyle, RoundedCornerStyle, ScrollSnap, Section, Semantic, ShapeKind, ShapeSizeHint, TrackSize, TransitionSpec, UniformCorners, ViewKind, ViewNode,
 };
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
@@ -126,6 +126,8 @@ const PROGRESS_H: f64 = 4.0;
 /// Linear progress track (light, dark).
 const PROGRESS_TRACK_FILL: ((u8, u8, u8), (u8, u8, u8)) = ((228, 228, 230), (61, 61, 65));
 const PROGRESS_LABEL_GAP: f64 = 8.0;
+/// Label-to-bar gap of a linear progress view (iOS 27.2, swiftui-controls indicators).
+const PROGRESS_BAR_LABEL_GAP: f64 = 4.67;
 const SPINNER: f64 = 20.0;
 /// Picker menu: row height, vertical padding, text x, right padding, min width, radius,
 /// checkmark (pt, weight) and centre x, offset from the anchor, glass mix (light, dark).
@@ -141,6 +143,44 @@ const MENU_DX: f64 = 0.0;
 /// Half the height of the picker's hit area: the card's bottom lines up with it.
 const MENU_DY: f64 = 17.17;
 const MENU_GLASS: ((f32, f32), (f32, f32)) = ((0.196, 0.76), (0.35, 0.118));
+/// `Menu` card (centred on its button): icon centre and text x when items carry icons, the gap a divider
+/// opens between items, separator side inset, and how far the card's top sits above the button's centre.
+const MENU_ICON_X: f64 = 39.5;
+const MENU_ICON_TEXT_X: f64 = 63.2;
+const MENU_DIVIDER_GAP: f64 = 21.0;
+const MENU_SEP_INSET: f64 = 24.0;
+const MENU_CENTER_DY: f64 = 10.5;
+
+// Section Q controls (iOS 27.2, measured on tests/fixtures/ios27/swiftui-controls-ios).
+/// `.toggleStyle(.button)` when on: accent alpha of its capsule.
+const TOGGLE_BUTTON_ON_A: f32 = 0.16;
+/// Gap between a linear progress bar and its currentValueLabel (caption, secondary).
+const PROGRESS_VALUE_GAP: f64 = 4.0;
+const PROGRESS_VALUE_PT: f32 = 12.0;
+/// Gauge: capacity bar and accessory bar heights; label-to-bar and bar-to-value gaps.
+const GAUGE_BAR: f64 = 16.0;
+const GAUGE_ACC_BAR: f64 = 8.0;
+const GAUGE_LABEL_GAP: f64 = 10.4;
+const GAUGE_VALUE_GAP: f64 = 6.3;
+const GAUGE_ACC_LABEL_GAP: f64 = 4.0;
+/// Accessory circular gauges: box, stroke, track alpha, open arc half-angle (degrees from the top),
+/// marker cut-out and dot diameters (linear / circular), value and label sizes.
+const GAUGE_RING: f64 = 58.0;
+const GAUGE_RING_W: f64 = 5.7;
+const GAUGE_RING_TRACK_A: f32 = 0.35;
+const GAUGE_ARC_ANGLE: f64 = 140.0;
+const GAUGE_MARKER: (f64, f64) = (16.0, 7.33);
+const GAUGE_ARC_MARKER: (f64, f64) = (11.0, 5.5);
+const GAUGE_RING_PT: f32 = 25.0;
+const GAUGE_ARC_LABEL_PT: f32 = 11.0;
+/// Wheel picker: height, (offset from the centre, vertical squash) per row away from the selection,
+/// font size, highlight band (height, side inset, fill), alpha of the unselected rows.
+const WHEEL_H: f64 = 216.0;
+const WHEEL_ROWS: [(f64, f64); 4] = [(0.0, 1.0), (30.0, 0.915), (56.0, 0.745), (75.2, 0.45)];
+const WHEEL_PT: f32 = 22.0;
+const WHEEL_BAND: (f64, f64) = (32.0, 16.67);
+const WHEEL_BAND_FILL: ((u8, u8, u8), (u8, u8, u8)) = ((244, 244, 245), (58, 58, 60));
+const WHEEL_DIM_A: f32 = 0.45;
 
 // iOS 26 measurements (points).
 const ROW_MIN_H: f64 = 52.0;
@@ -165,6 +205,15 @@ const LABEL_ICON_COL: f64 = 24.0;
 const LABEL_ROW_GAP: f64 = 16.0;
 /// Icon-to-title gap of a `Label` outside a list (not measured).
 const LABEL_GAP: f64 = 8.0;
+
+/// The optional views of a `Gauge`.
+#[derive(Clone, Copy)]
+struct GaugeLabels<'a> {
+    label: Option<&'a ViewNode>,
+    current: Option<&'a ViewNode>,
+    min: Option<&'a ViewNode>,
+    max: Option<&'a ViewNode>,
+}
 
 /// Screen geometry shared by the root and the presentation layers.
 #[derive(Clone, Copy)]
@@ -583,9 +632,9 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
             }
             Layer::Cover { content } => cx.cover(content, &geo),
             Layer::Alert { title, message, actions } => cx.alert(title, message.as_deref(), actions, &geo),
-            Layer::Menu { anchor, items, dismiss } => {
+            Layer::Menu { anchor, items, dismiss, centered } => {
                 let rect = anchor.as_ref().and_then(|a| nodes.iter().find(|n| &n.id == a)).map(|n| n.bounds);
-                cx.menu(items, rect, *dismiss, &geo)
+                cx.menu(items, rect, *dismiss, *centered, &geo)
             }
             Layer::Dialog { title, title_visible, message, actions, anchor, dismiss } => {
                 // The popover points at the anchor's label (its first text), not the whole row.
@@ -1405,6 +1454,11 @@ impl Ctx<'_> {
         crate::glass::GlassSpec { variant, tint: tint.map(|c| self.color(c)), interactive, blur: None, mix: None, shadow: None, flat: None }
     }
 
+    /// System red: destructive menu items and tab badges.
+    fn destructive(&self) -> Color {
+        if self.dark { rgba(255, 66, 69, 1.0) } else { rgba(255, 56, 60, 1.0) }
+    }
+
     /// Opaque (light, dark) color pair for the current appearance.
     fn pick(&self, (l, d): ((u8, u8, u8), (u8, u8, u8))) -> Color {
         let c = if self.dark { d } else { l };
@@ -1947,7 +2001,10 @@ impl Ctx<'_> {
                 };
                 Lay::new(size, Some(Node::new(&v.id, "spacer")), vec![])
             }
-            ViewKind::Button { action, label, style, disabled, .. } => self.button(v, *action, label, *style, *disabled, p, env),
+            ViewKind::Button { action, label, style, disabled, selected, .. } => match selected {
+                Some(on) => self.toggle_button(v, *action, label, *on, *disabled, p, env),
+                None => self.button(v, *action, label, *style, *disabled, p, env),
+            },
             ViewKind::Color { color } => {
                 let mut n = Node::new(&v.id, "color");
                 n.fill = Some(self.color(color));
@@ -2023,14 +2080,25 @@ impl Ctx<'_> {
                 l
             }
             ViewKind::Picker { label, style, options, selected, open, disabled } => {
-                if *style == PickerStyle::Segmented {
-                    self.segmented(v, options, *selected, *disabled, p)
-                } else {
-                    self.menu_picker(v, label, options, *selected, *open, *disabled, p, child_env)
+                match style {
+                    PickerStyle::Segmented => self.segmented(v, options, *selected, *disabled, p),
+                    PickerStyle::Wheel => self.wheel(v, label, options, *selected, *disabled, p),
+                    PickerStyle::Menu => self.menu_picker(v, label, options, *selected, *open, *disabled, p, child_env),
                 }
             }
             ViewKind::Slider { value, min, max, field, disabled, .. } => self.slider(v, *value, (*min, *max), *field, *disabled, p),
-            ViewKind::Progress { value, label } => self.progress(v, *value, label.as_deref(), p, child_env),
+            ViewKind::Progress { value, label, current_value_label } => {
+                self.progress(v, *value, label.as_deref(), current_value_label.as_deref(), p, child_env)
+            }
+            ViewKind::Gauge { style, value, label, current_value_label, minimum_value_label, maximum_value_label } => {
+                let labels = GaugeLabels {
+                    label: label.as_deref(),
+                    current: current_value_label.as_deref(),
+                    min: minimum_value_label.as_deref(),
+                    max: maximum_value_label.as_deref(),
+                };
+                self.gauge(v, *style, *value, labels, p, child_env)
+            }
             ViewKind::Image {
                 system_name, resizable, content_mode, scale, rendering_mode, symbol_rendering_mode, interpolation, antialiased,
                 symbol_color_rendering_mode, symbol_variable_value_mode, bitmap, ..
@@ -2579,10 +2647,11 @@ impl Ctx<'_> {
 
     /// `ProgressView`: a linear capsule bar with a value, else the spinner; a label sits above the
     /// bar or below the spinner.
-    fn progress(&mut self, v: &ViewNode, value: Option<f64>, label: Option<&ViewNode>, p: Prop, env: Env) -> Lay {
+    fn progress(&mut self, v: &ViewNode, value: Option<f64>, label: Option<&ViewNode>, current: Option<&ViewNode>, p: Prop, env: Env) -> Lay {
         let fin = p.w.filter(|w| w.is_finite());
         let ll = label.map(|l| self.view(l, Prop { w: fin, h: None }, env));
-        let lh = ll.as_ref().map_or(0.0, |l| l.size.h + PROGRESS_LABEL_GAP);
+        let gap = if value.is_some() { PROGRESS_BAR_LABEL_GAP } else { PROGRESS_LABEL_GAP };
+        let lh = ll.as_ref().map_or(0.0, |l| l.size.h + gap);
         let mut n = Node::new(&v.id, "progress");
         n.value = value.map(|f| format!("{f}"));
         n.label = label.and_then(first_text);
@@ -2603,7 +2672,17 @@ impl Ctx<'_> {
             if let Some(l) = ll {
                 kids.push((0.0, 0.0, l));
             }
-            Size { w, h: lh + PROGRESS_H }
+            let mut h = lh + PROGRESS_H;
+            if let Some(c) = current {
+                // currentValueLabel: caption, secondary, under the bar.
+                let cenv = Env { size: PROGRESS_VALUE_PT, weight: None, fg: Some(self.semantic(Semantic::Secondary)), ..env };
+                let cl = self.view(c, Prop { w: fin, h: None }, cenv);
+                h += PROGRESS_VALUE_GAP;
+                let ch = cl.size.h;
+                kids.push((0.0, h, cl));
+                h += ch;
+            }
+            Size { w, h }
         } else {
             let lw = ll.as_ref().map_or(0.0, |l| l.size.w);
             let w = SPINNER.max(lw);
@@ -2620,46 +2699,268 @@ impl Ctx<'_> {
     }
 
     /// Menu of a menu `Picker` (iOS 26): a glass card under (or over) the anchor row's trailing
-    /// edge, one row per option, a checkmark before the selected one. A tap outside closes it.
-    fn menu(&mut self, items: &[PickerOption], anchor: Option<Rect>, dismiss: Option<u64>, g: &Geo) -> Lay {
+    /// edge, one row per option, a checkmark before the selected one. A `Menu`'s card (`centered`) is
+    /// centred on its button, items may carry a leading icon, red when destructive, and a divider opens a gap
+    /// with a separator. A tap outside closes it.
+    fn menu(&mut self, items: &[PickerOption], anchor: Option<Rect>, dismiss: Option<u64>, centered: bool, g: &Geo) -> Lay {
         let (w, h) = (g.w, g.h);
         let primary = self.semantic(Semantic::Primary);
+        let red = self.destructive();
+        let dim = self.semantic(Semantic::Tertiary);
+        let icons = items.iter().any(|o| o.system_image.is_some());
+        let text_x = if icons { MENU_ICON_TEXT_X } else { MENU_TEXT_X };
         let spec = FontSpec::new(17.0, self.line_h(17.0), 400, TextAlign::Leading);
         let texts: Vec<Lay> = items.iter().enumerate().map(|(i, o)| {
-            let mut t = self.text_lay(&format!("menu#{i}#text"), &o.text, spec, primary, None);
+            let fg = if o.disabled { dim } else if o.destructive { red } else { primary };
+            let mut t = self.text_lay(&format!("menu#{i}#text"), &o.text, spec, fg, None);
             if let Some(n) = t.node.as_mut() {
                 n.inspect = false;
             }
             t
         }).collect();
-        let cw = (texts.iter().map(|t| t.size.w).fold(0.0, f64::max) + MENU_TEXT_X + MENU_PAD_R).clamp(MENU_MIN_W, w - 2.0 * POPOVER_MARGIN);
-        let ch = items.len() as f64 * MENU_ROW_H + 2.0 * MENU_PAD_V;
+        let cw = (texts.iter().map(|t| t.size.w).fold(0.0, f64::max) + text_x + MENU_PAD_R).clamp(MENU_MIN_W, w - 2.0 * POPOVER_MARGIN);
+        let gaps = items.iter().skip(1).filter(|o| o.divider).count() as f64;
+        let ch = items.len() as f64 * MENU_ROW_H + gaps * MENU_DIVIDER_GAP + 2.0 * MENU_PAD_V;
         let mut kids = vec![];
+        let mut y = MENU_PAD_V;
         for (i, (o, t)) in items.iter().zip(texts).enumerate() {
+            if o.divider && i > 0 {
+                let mut sep = Node::new(format!("menu#sep{i}"), "separator");
+                sep.fill = Some(self.semantic(Semantic::Separator));
+                sep.inspect = false;
+                kids.push((MENU_SEP_INSET, y + (MENU_DIVIDER_GAP - 1.0) / 2.0, Lay::new(Size { w: cw - 2.0 * MENU_SEP_INSET, h: 1.0 }, Some(sep), vec![])));
+                y += MENU_DIVIDER_GAP;
+            }
+            let fg = if o.disabled { dim } else if o.destructive { red } else { primary };
             let mut b = Node::new(format!("menu#{i}"), "button");
             b.role = Role::Button;
             b.label = Some(o.text.clone());
-            b.action = Some(o.action);
+            b.action = (!o.disabled).then_some(o.action);
+            b.disabled = o.disabled;
             b.value = o.checked.then(|| "checked".into());
             let th = t.size.h;
-            let mut bk = vec![(MENU_TEXT_X, (MENU_ROW_H - th) / 2.0, t)];
+            let mut bk = vec![(text_x, (MENU_ROW_H - th) / 2.0, t)];
+            if let Some(name) = &o.system_image {
+                let c = self.symbol_lay(format!("menu#{i}#icon"), name, 17.0, 400, fg);
+                let (iw, ih) = (c.size.w, c.size.h);
+                bk.push((MENU_ICON_X - iw / 2.0, (MENU_ROW_H - ih) / 2.0, c));
+            }
             if o.checked {
                 let c = self.symbol_lay(format!("menu#{i}#check"), "checkmark", MENU_CHECK.0, MENU_CHECK.1, primary);
                 let (cw2, chh) = (c.size.w, c.size.h);
                 bk.push((MENU_CHECK_X - cw2 / 2.0, (MENU_ROW_H - chh) / 2.0, c));
             }
-            kids.push((0.0, MENU_PAD_V + i as f64 * MENU_ROW_H, Lay::new(Size { w: cw, h: MENU_ROW_H }, Some(b), bk)));
+            kids.push((0.0, y, Lay::new(Size { w: cw, h: MENU_ROW_H }, Some(b), bk)));
+            y += MENU_ROW_H;
         }
         let mut card = Node::new("menu", "menu");
         card.radius = MENU_RADIUS;
         card.glass = Some(crate::glass::GlassSpec { blur: Some(PRESENT_BLUR), mix: Some(if self.dark { MENU_GLASS.1 } else { MENU_GLASS.0 }), shadow: Some(POPOVER_SHADOW), ..self.glass_spec(GlassVariant::Regular, None, false) });
         let a = anchor.unwrap_or(Rect { x: w / 2.0, y: h / 2.0, w: 0.0, h: 0.0 });
-        // Trailing and bottom edges line up with the picker's button; it hangs down from it when there is no room above.
-        let x = (a.x + a.w - cw + MENU_DX).clamp(POPOVER_MARGIN, w - cw - POPOVER_MARGIN);
-        let (top, bottom) = (a.center().1 - MENU_DY, a.center().1 + MENU_DY);
-        let y = if bottom - ch >= g.safe_top { bottom - ch } else { top.min(h - g.dev_bottom - ch) };
+        let (x, y) = if centered {
+            // Centred on the button, its top just above the button's centre; kept on screen.
+            let x = (a.center().0 - cw / 2.0).clamp(POPOVER_MARGIN, w - cw - POPOVER_MARGIN);
+            (x, (a.center().1 - MENU_CENTER_DY).min(h - g.dev_bottom - ch).max(g.safe_top))
+        } else {
+            // Trailing and bottom edges line up with the picker's button; it hangs down from it when there is no room above.
+            let x = (a.x + a.w - cw + MENU_DX).clamp(POPOVER_MARGIN, w - cw - POPOVER_MARGIN);
+            let (top, bottom) = (a.center().1 - MENU_DY, a.center().1 + MENU_DY);
+            (x, if bottom - ch >= g.safe_top { bottom - ch } else { top.min(h - g.dev_bottom - ch) })
+        };
         let scrim = Lay::new(Size { w, h }, Some(self.scrim("menu#scrim", (w, h), 0.0, dismiss)), vec![]);
         Lay::new(Size { w, h }, None, vec![(0.0, 0.0, scrim), (x, y, Lay::new(Size { w: cw, h: ch }, Some(card), kids))])
+    }
+
+    /// `.toggleStyle(.button)`: bordered-button metrics, accent label; when on, an accent-tinted capsule.
+    #[allow(clippy::too_many_arguments)]
+    fn toggle_button(&mut self, v: &ViewNode, action: u64, label: &ViewNode, on: bool, disabled: bool, p: Prop, env: Env) -> Lay {
+        let accent = self.semantic(Semantic::Accent);
+        let fg = if disabled { self.semantic(Semantic::Tertiary) } else { accent };
+        let mut n = Node::new(&v.id, "button");
+        n.role = Role::Toggle;
+        n.action = (!disabled).then_some(action);
+        n.disabled = disabled;
+        n.label = first_text(label);
+        n.value = Some(if on { "on" } else { "off" }.into());
+        let (hp, vp) = (12.0, 7.0);
+        let inner_p = Prop { w: p.w.map(|w| (w - 2.0 * hp).max(0.0)), h: None };
+        let l = self.view(label, inner_p, Env { fg: Some(fg), tint: None, axis: None, ..env });
+        let size = Size { w: l.size.w + 2.0 * hp, h: l.size.h + 2.0 * vp };
+        if on {
+            n.fill = Some(Color { a: fg.a * TOGGLE_BUTTON_ON_A, ..fg });
+        }
+        n.radius = PILL;
+        Lay::new(size, Some(n), vec![(hp, vp, l)])
+    }
+
+    /// `Gauge`: linear styles are a capsule bar (accent fill on a gray track, or a primary bar with a marker),
+    /// circular ones a ring or an open arc with the current value inside.
+    fn gauge(&mut self, v: &ViewNode, style: GaugeStyle, value: f64, l: GaugeLabels, p: Prop, env: Env) -> Lay {
+        let f = if value.is_finite() { value.clamp(0.0, 1.0) } else { 0.0 };
+        let mut n = Node::new(&v.id, "gauge");
+        n.value = Some(format!("{f}"));
+        n.label = l.label.and_then(first_text);
+        if matches!(style, GaugeStyle::AccessoryCircular | GaugeStyle::AccessoryCircularCapacity) {
+            return self.gauge_circular(v, n, style == GaugeStyle::AccessoryCircular, f, l, env);
+        }
+        let fin = p.w.filter(|w| w.is_finite());
+        let w = fin.unwrap_or(200.0);
+        let primary = self.semantic(Semantic::Primary);
+        let accent = self.semantic(Semantic::Accent);
+        let (bar_h, track_c, gap, leading) = match style {
+            GaugeStyle::AccessoryLinearCapacity => (PROGRESS_H, self.pick(PROGRESS_TRACK_FILL), GAUGE_ACC_LABEL_GAP, true),
+            GaugeStyle::AccessoryLinear => (GAUGE_ACC_BAR, primary, GAUGE_ACC_LABEL_GAP, true),
+            _ => (GAUGE_BAR, self.control_fill(0.12), GAUGE_LABEL_GAP, false),
+        };
+        let marker = style == GaugeStyle::AccessoryLinear;
+        let mut kids = vec![];
+        let mut y = 0.0;
+        // accessoryLinear shows no label (like iOS).
+        if let Some(lv) = l.label.filter(|_| !marker) {
+            let ll = self.view(lv, Prop { w: fin, h: None }, env);
+            let (lw, lh) = (ll.size.w, ll.size.h);
+            kids.push((if leading { 0.0 } else { (w - lw) / 2.0 }, 0.0, ll));
+            y += lh + gap;
+        }
+        let side = |cx: &mut Self, lv: Option<&ViewNode>| lv.map(|lv| cx.view(lv, Prop { w: None, h: None }, env));
+        let (minl, maxl) = (side(self, l.min), side(self, l.max));
+        let lead = minl.as_ref().map_or(0.0, |m| m.size.w + DEFAULT_SPACING);
+        let trail = maxl.as_ref().map_or(0.0, |m| m.size.w + DEFAULT_SPACING);
+        let bw = (w - lead - trail).max(0.0);
+        let row_h = [bar_h, minl.as_ref().map_or(0.0, |m| m.size.h), maxl.as_ref().map_or(0.0, |m| m.size.h)].into_iter().fold(0.0, f64::max);
+        if let Some(m) = minl {
+            let mh = m.size.h;
+            kids.push((0.0, y + (row_h - mh) / 2.0, m));
+        }
+        if let Some(m) = maxl {
+            let (mw, mh) = (m.size.w, m.size.h);
+            kids.push((w - mw, y + (row_h - mh) / 2.0, m));
+        }
+        let mut track = Node::new(format!("{}#track", v.id), "gauge-track");
+        track.fill = Some(track_c);
+        track.radius = PILL;
+        track.inspect = false;
+        let mut tk = vec![];
+        if marker {
+            // A primary dot in a cut-out of the background color.
+            let (cut, dot) = GAUGE_MARKER;
+            let cx = f * bw;
+            let mut m = Node::new(format!("{}#marker", v.id), "gauge-marker");
+            m.fill = Some(self.semantic(Semantic::Background));
+            m.radius = PILL;
+            m.inspect = false;
+            let mut d = Node::new(format!("{}#dot", v.id), "gauge-dot");
+            d.fill = Some(primary);
+            d.radius = PILL;
+            d.inspect = false;
+            let dl = Lay::new(Size { w: dot, h: dot }, Some(d), vec![]);
+            tk.push((cx - cut / 2.0, (bar_h - cut) / 2.0, Lay::new(Size { w: cut, h: cut }, Some(m), vec![((cut - dot) / 2.0, (cut - dot) / 2.0, dl)])));
+        } else {
+            let mut bar = Node::new(format!("{}#bar", v.id), "gauge-bar");
+            bar.fill = Some(accent);
+            bar.radius = PILL;
+            bar.inspect = false;
+            let fw = (bw * f).max(if f > 0.0 { bar_h } else { 0.0 });
+            tk.push((0.0, 0.0, Lay::new(Size { w: fw, h: bar_h }, Some(bar), vec![])));
+        }
+        kids.push((lead, y + (row_h - bar_h) / 2.0, Lay::new(Size { w: bw, h: bar_h }, Some(track), tk)));
+        y += row_h;
+        if let Some(cv) = l.current.filter(|_| !marker) {
+            let cl = self.view(cv, Prop { w: fin, h: None }, env);
+            let (cw, ch) = (cl.size.w, cl.size.h);
+            y += GAUGE_VALUE_GAP;
+            kids.push((if leading { 0.0 } else { (w - cw) / 2.0 }, y, cl));
+            y += ch;
+        }
+        Lay::new(Size { w, h: y }, Some(n), kids)
+    }
+
+    /// `accessoryCircularCapacity`: a ring filled clockwise from the top. `accessoryCircular`: an arc open at the
+    /// bottom with a dot at the value and the label in the opening. Both show the current value inside.
+    fn gauge_circular(&mut self, v: &ViewNode, n: Node, open: bool, f: f64, l: GaugeLabels, env: Env) -> Lay {
+        let s = GAUGE_RING;
+        let primary = self.semantic(Semantic::Primary);
+        let width = (GAUGE_RING_W * 100.0).round() as u16;
+        let arc = |id: String, from: f64, to: f64, c: Color| {
+            let mut a = Node::new(id, "gauge-arc");
+            a.glyph = Some((Glyph::Arc { from: from.round() as i16, to: to.round() as i16, width }, c));
+            a.inspect = false;
+            Lay::new(Size { w: s, h: s }, Some(a), vec![])
+        };
+        let mut kids = vec![];
+        if open {
+            kids.push((0.0, 0.0, arc(format!("{}#track", v.id), -GAUGE_ARC_ANGLE, GAUGE_ARC_ANGLE, primary)));
+            let (cut, dot) = GAUGE_ARC_MARKER;
+            let a = (-GAUGE_ARC_ANGLE + 2.0 * GAUGE_ARC_ANGLE * f).to_radians();
+            let r = (s - GAUGE_RING_W) / 2.0;
+            let (mx, my) = (s / 2.0 + r * a.sin(), s / 2.0 - r * a.cos());
+            let mut m = Node::new(format!("{}#marker", v.id), "gauge-marker");
+            m.fill = Some(self.semantic(Semantic::Background));
+            m.radius = PILL;
+            m.inspect = false;
+            let mut d = Node::new(format!("{}#dot", v.id), "gauge-dot");
+            d.fill = Some(primary);
+            d.radius = PILL;
+            d.inspect = false;
+            let dl = Lay::new(Size { w: dot, h: dot }, Some(d), vec![]);
+            kids.push((mx - cut / 2.0, my - cut / 2.0, Lay::new(Size { w: cut, h: cut }, Some(m), vec![((cut - dot) / 2.0, (cut - dot) / 2.0, dl)])));
+        } else {
+            kids.push((0.0, 0.0, arc(format!("{}#track", v.id), -180.0, 180.0, Color { a: primary.a * GAUGE_RING_TRACK_A, ..primary })));
+            if f > 0.0 {
+                kids.push((0.0, 0.0, arc(format!("{}#bar", v.id), 0.0, 360.0 * f, primary)));
+            }
+        }
+        if let Some(cv) = l.current {
+            let cl = self.view(cv, Prop { w: Some(s - 2.0 * GAUGE_RING_W), h: None }, Env { size: GAUGE_RING_PT, weight: None, align: TextAlign::Center, ..env });
+            let (cw, ch) = (cl.size.w, cl.size.h);
+            let cy = if open { s / 2.0 - 0.9 } else { s / 2.0 };
+            kids.push(((s - cw) / 2.0, cy - ch / 2.0, cl));
+        }
+        if let Some(lv) = l.label.filter(|_| open) {
+            let ll = self.view(lv, Prop { w: None, h: None }, Env { size: GAUGE_ARC_LABEL_PT, weight: Some(600), ..env });
+            let (lw, lh) = (ll.size.w, ll.size.h);
+            kids.push(((s - lw) / 2.0, s / 2.0 + 19.1 - lh / 2.0, ll));
+        }
+        Lay::new(Size { w: s, h: s }, Some(n), kids)
+    }
+
+    /// Wheel `Picker`: the options on a drum around a highlight band, the selection in it. Rows further from
+    /// the centre are squashed and dimmed; tapping one selects it.
+    fn wheel(&mut self, v: &ViewNode, label: &ViewNode, options: &[PickerOption], selected: Option<usize>, disabled: bool, p: Prop) -> Lay {
+        let w = p.w.filter(|w| w.is_finite()).unwrap_or(320.0);
+        let (h, cy) = (WHEEL_H, WHEEL_H / 2.0);
+        let mut root = Node::new(&v.id, "picker");
+        root.label = first_text(label);
+        root.disabled = disabled;
+        root.value = selected.and_then(|i| options.get(i)).map(|o| o.text.clone());
+        let mut band = Node::new(format!("{}#band", v.id), "wheel-band");
+        band.fill = Some(self.pick(WHEEL_BAND_FILL));
+        band.radius = PILL;
+        band.inspect = false;
+        let (bh, inset) = WHEEL_BAND;
+        let mut kids = vec![(inset, cy - bh / 2.0, Lay::new(Size { w: (w - 2.0 * inset).max(0.0), h: bh }, Some(band), vec![]))];
+        let primary = self.semantic(Semantic::Primary);
+        let sel = selected.unwrap_or(0) as isize;
+        for (i, o) in options.iter().enumerate() {
+            let d = i as isize - sel;
+            let Some(&(off, sq)) = WHEEL_ROWS.get(d.unsigned_abs()) else { continue };
+            let pt = WHEEL_PT * sq as f32;
+            let color = if d == 0 { primary } else { Color { a: primary.a * WHEEL_DIM_A, ..primary } };
+            let mut t = self.text_lay(&format!("{}#opt{i}#text", v.id), &o.text, FontSpec::new(pt, self.line_h(pt), 400, TextAlign::Leading), color, None);
+            if let Some(n) = t.node.as_mut() {
+                n.inspect = false;
+            }
+            let rh = WHEEL_ROWS[1].0 * sq;
+            let mut b = Node::new(format!("{}#opt{i}", v.id), "button");
+            b.role = Role::Button;
+            b.label = Some(o.text.clone());
+            b.action = (!disabled && d != 0).then_some(o.action);
+            b.disabled = disabled;
+            let (tw, th) = (t.size.w, t.size.h);
+            let y = cy + off * d.signum() as f64 - rh / 2.0;
+            kids.push((0.0, y, Lay::new(Size { w, h: rh }, Some(b), vec![((w - tw) / 2.0, (rh - th) / 2.0, t)])));
+        }
+        Lay::new(Size { w, h }, Some(root), kids)
     }
 
     /// `Grid`: column widths come from the cells. The grid stays content-sized.
@@ -3225,7 +3526,7 @@ impl Ctx<'_> {
                 let mut bn = Node::new(format!("{host}#tab-{}#badge", tab.key), "badge");
                 bn.inspect = false;
                 bn.radius = PILL;
-                bn.fill = Some(if self.dark { rgba(255, 66, 69, 1.0) } else { rgba(255, 56, 60, 1.0) });
+                bn.fill = Some(self.destructive());
                 let mut bt = Node::new(format!("{host}#tab-{}#badge#text", tab.key), "text");
                 bt.inspect = false;
                 bt.text = Some(TextRun { text: b.clone(), font: spec, color: rgba(255, 255, 255, 1.0), strike: false, offset_x: 0.0, spans: vec![] });
@@ -4411,6 +4712,79 @@ mod tests {
         let mid = x0 + SLIDER_THUMB.0 / 2.0 + (w - SLIDER_THUMB.0) / 2.0;
         let drag = PointerEvent { dx: mid - (x0 + 5.0), ..PointerEvent::new(PointerKind::Drag, x0 + 5.0, y) };
         assert!((text(it.pointer(&s, drag)) - 50.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn section_q_controls_layout() {
+        let t = |id: &str, s: &str| format!(r#"{{"kind":"text","id":"{id}","text":"{s}"}}"#);
+        let json = format!(
+            r#"{{"kind":"vstack","id":"v","spacing":0,"children":[
+                {{"kind":"button","id":"on","action":1,"selected":true,"label":{}}},
+                {{"kind":"button","id":"off","action":2,"selected":false,"label":{}}},
+                {{"kind":"gauge","id":"lc","style":"linearCapacity","value":0.5,"label":{}}},
+                {{"kind":"gauge","id":"al","style":"accessoryLinear","value":0.5}},
+                {{"kind":"gauge","id":"alc","style":"accessoryLinearCapacity","value":0.25,"label":{}}},
+                {{"kind":"gauge","id":"acc","style":"accessoryCircularCapacity","value":0.6,"currentValueLabel":{}}},
+                {{"kind":"gauge","id":"ac","style":"accessoryCircular","value":0.3,"currentValueLabel":{},"label":{}}},
+                {{"kind":"gauge","id":"dg","value":0.4,"label":{},"minimumValueLabel":{},"maximumValueLabel":{},"currentValueLabel":{}}},
+                {{"kind":"progress","id":"pv","value":0.3,"label":{},"currentValueLabel":{}}},
+                {{"kind":"picker","id":"wh","style":"wheel","label":{},"options":[
+                    {{"text":"6:00","action":10}},{{"text":"7:00","action":11}},{{"text":"8:00","action":12}},{{"text":"9:00","action":13}},
+                    {{"text":"10:00","action":14}},{{"text":"11:00","action":15}},{{"text":"12:00","action":16}}],"selected":3}}
+            ]}}"#,
+            t("on.l", "Bold"), t("off.l", "Bold"), t("lc.l", "Disk"), t("alc.l", "CPU"), t("acc.c", "60"), t("ac.c", "30"), t("ac.l", "Arc"),
+            t("dg.l", "Battery"), t("dg.min", "0"), t("dg.max", "100"), t("dg.c", "40%"), t("pv.l", "Download"), t("pv.c", "30%"), t("wh.l", "Hour"),
+        );
+        let s = scene(&json, (362.0, 1400.0));
+        // `.toggleStyle(.button)`: the same capsule metrics on and off; only the selected one is tinted.
+        let (on, off) = (by_id(&s, "on"), by_id(&s, "off"));
+        near(on.bounds.h, off.bounds.h);
+        assert!(on.fill.is_some() && off.fill.is_none());
+        assert_eq!((on.role, on.value.as_deref(), off.value.as_deref()), (Role::Toggle, Some("on"), Some("off")));
+        // Bars measured on iOS 27.2 (swiftui-controls indicators): capacity 16pt, accessory 8pt / 4pt, full width.
+        near(by_id(&s, "lc#track").bounds.h, 16.0);
+        near(by_id(&s, "lc#track").bounds.w, 362.0);
+        near(by_id(&s, "lc#bar").bounds.w, 181.0);
+        near(by_id(&s, "al#track").bounds.h, 8.0);
+        near(by_id(&s, "al#marker").bounds.center().0, 181.0);
+        near(by_id(&s, "alc#track").bounds.h, 4.0);
+        near(by_id(&s, "acc").bounds.w, 58.0);
+        near(by_id(&s, "acc").bounds.h, 58.0);
+        near(by_id(&s, "ac").bounds.w, 58.0);
+        assert_eq!(by_id(&s, "acc").value.as_deref(), Some("0.6"));
+        // Default gauge: min / max labels beside a capacity bar (8pt gaps), current value under it.
+        let dg = by_id(&s, "dg#track");
+        near(dg.bounds.h, 16.0);
+        assert!(by_id(&s, "dg.c").bounds.y > dg.bounds.y + dg.bounds.h);
+        assert!(by_id(&s, "dg.min").bounds.x + by_id(&s, "dg.min").bounds.w + 8.0 <= dg.bounds.x + 0.5);
+        // currentValueLabel sits under a linear progress bar.
+        assert!(by_id(&s, "pv.c").bounds.y > by_id(&s, "pv#track").bounds.y);
+        // Wheel: the selected row sits in the highlight band at the centre; other rows are tappable.
+        let wh = by_id(&s, "wh");
+        near(by_id(&s, "wh#band").bounds.center().1, wh.bounds.center().1);
+        near(by_id(&s, "wh#opt3").bounds.center().1, wh.bounds.center().1);
+        assert_eq!((by_id(&s, "wh#opt3").action, by_id(&s, "wh#opt4").action), (None, Some(14)));
+        assert_eq!(wh.value.as_deref(), Some("9:00"));
+    }
+
+    #[test]
+    fn menu_layer_centres_on_its_anchor() {
+        let s = phone(
+            r#"{"kind":"presentation","id":"p","content":{"kind":"vstack","id":"v","children":[
+                {"kind":"button","id":"m","action":1,"label":{"kind":"text","id":"m.l","text":"Actions"}}]},
+              "layers":[{"kind":"menu","anchor":"m","centered":true,"dismiss":7,"items":[
+                {"text":"Duplicate","action":2,"systemImage":"plus.square.on.square"},
+                {"text":"Rename","action":3,"systemImage":"pencil"},
+                {"text":"Delete","action":4,"systemImage":"trash","destructive":true,"divider":true}]}]}"#,
+        );
+        let (m, card) = (by_id(&s, "m"), by_id(&s, "menu"));
+        near(card.bounds.center().0, m.bounds.center().0);
+        // iOS 27.2: three rows of 42pt, a 21pt gap at the divider, 10pt padding (166.5pt), top 10pt above the anchor's centre.
+        near(card.bounds.h, 3.0 * 42.0 + 21.0 + 20.0);
+        near(card.bounds.y, m.bounds.center().1 - 10.5);
+        assert_eq!(by_id(&s, "menu#2").action, Some(4));
+        assert!(by_id(&s, "menu#2#icon").symbol.is_some());
+        assert!(s.nodes.iter().any(|n| n.id == "menu#sep2"));
     }
 
     #[test]

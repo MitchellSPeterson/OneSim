@@ -120,6 +120,7 @@ final class _Runtime {
     var disabled = false
     var buttonStyle = "automatic"
     var pickerStyle = "menu"
+    var styles = _Styles()   // control styles and environment values (section Q)
     var tags: [String: AnyHashable] = [:]   // `.tag(_:)` values by node id, read by `Picker`
     var nav: _NavState?
     var envObjects: [ObjectIdentifier: Any] = [:]   // `.environmentObject` / `.environment` objects and EnvironmentKey values
@@ -257,7 +258,7 @@ final class _Runtime {
     private func _evaluate() -> Node {
         actions.removeAll(keepingCapacity: true)
         fields.removeAll(keepingCapacity: true)
-        disabled = false; buttonStyle = "automatic"; pickerStyle = "menu"; tags = [:]; nav = nil; envObjects = [:]; envLocal = []
+        disabled = false; buttonStyle = "automatic"; pickerStyle = "menu"; styles = _Styles(); tags = [:]; nav = nil; envObjects = [:]; envLocal = []
         #if !os(WASI)
         imageSession = nil
         #endif
