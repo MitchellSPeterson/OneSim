@@ -7,7 +7,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `AngularGradient` | 13 | ⬜ |  |  |
 | `AnyView` | 13 | ⬜ |  |  |
 | `ArrangementView` | 13 | ⬜ |  |  |
-| `AsyncImage` | 15 | ⬜ |  |  |
+| `AsyncImage` | 15 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | A file URL loads on the first evaluation. HTTP arrives on a later frame. `nil` is empty. The transaction is ignored, and the iOS 27 `URLRequest` initializers are omitted |
 | `Button` | 13 | ✅ |  |  |
 | `Canvas` | 15 | ⬜ |  |  |
 | `Color` | 13 | 🟠 |  | `opacity` ignored on semantic colors |
@@ -89,7 +89,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `SubviewsCollectionSlice` | 18 | ⬜ |  |  |
 | `Table` | 16 | ⬜ |  |  |
 | `TabView` | 13 | 🟠 |  | No `.page` style, `TabSection`, `ForEach` of tabs; re-selecting a tab does not pop its stack |
-| `Text` | 13 | 🟠 |  | `String` only (no `LocalizedStringKey`, date or format interpolation); `Text + Text` runs: no `baselineOffset`, `kerning`, underline color/pattern |
+| `Text` | 13 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | `String` only (no `LocalizedStringKey`, date or format interpolation). Runs carry kerning, tracking, baseline, design, width, and underline or strikethrough pattern and color |
 | `TextEditor` | 14 | ⬜ |  |  |
 | `TextField` | 13 | ✅ |  |  |
 | `TimelineView` | 15 | ⬜ |  |  |
