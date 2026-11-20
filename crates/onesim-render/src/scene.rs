@@ -121,6 +121,9 @@ pub enum Glyph {
     SpinnerLarge,
     /// Android circular activity indicator in a settled frame.
     AndroidSpinner,
+    /// Stroked arc with round caps, centred in the box and touching its edges: degrees clockwise from the top,
+    /// stroke width in hundredths of a point (SwiftUI `Gauge`).
+    Arc { from: i16, to: i16, width: u16 },
 }
 
 /// An SF Symbol painted as an alpha mask in `color`, `size` points, centred in the node's bounds
@@ -189,6 +192,16 @@ pub struct ScrollInfo {
     pub page: Option<f64>,
     /// `.scrollTargetBehavior(.viewAligned)`.
     pub aligned: bool,
+}
+
+/// SwiftUI animation / transition metadata attached to a scene node (protocol section P).
+/// Boxed on `Node` so non-animated nodes pay only a null pointer.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct NodeAnim {
+    pub animation: Option<onesim_protocol::AnimationSpec>,
+    pub transition: Option<onesim_protocol::TransitionSpec>,
+    pub matched: Option<onesim_protocol::MatchedGeometryMod>,
+    pub content_transition: onesim_protocol::ContentTransitionKind,
 }
 
 /// Fill configuration for a [`VectorShape`].
@@ -306,6 +319,8 @@ pub struct Node {
     pub pinned: Option<String>,
     /// Direct child of `.scrollTargetLayout()`.
     pub scroll_target: bool,
+    /// Animation / transition / matchedGeometryEffect metadata (protocol section P).
+    pub anim: Option<Box<NodeAnim>>,
     /// False for layout-only helper nodes (clip/opacity layers); hidden from inspection.
     pub inspect: bool,
 }
@@ -350,6 +365,7 @@ impl Node {
             proposal: None,
             pinned: None,
             scroll_target: false,
+            anim: None,
             inspect: true,
         }
     }

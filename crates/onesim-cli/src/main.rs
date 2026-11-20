@@ -105,6 +105,9 @@ struct Opts {
     /// Turn two fingers centred on "X,Y" or a labelled view by DEGREES (clockwise). Repeatable.
     #[arg(long = "rotate", value_name = "LABEL_OR_X,Y,DEGREES")]
     rotations: Vec<String>,
+    /// Advance SwiftUI animations, transitions, and timelines by MS milliseconds. Repeatable.
+    #[arg(long = "wait", value_name = "MS")]
+    waits: Vec<String>,
     /// Print the UI tree as JSON on stdout.
     #[arg(long)]
     inspect: bool,
@@ -141,6 +144,7 @@ enum Step {
     LongPress(String),
     Pinch(String),
     Rotate(String),
+    Wait(String),
 }
 
 /// Collect the repeatable interaction flags in the order they were given.
@@ -159,6 +163,7 @@ fn steps(m: &ArgMatches) -> Vec<Step> {
     add("long_presses", Step::LongPress);
     add("pinches", Step::Pinch);
     add("rotations", Step::Rotate);
+    add("waits", Step::Wait);
     all.sort_by_key(|(i, _)| *i);
     all.into_iter().map(|(_, s)| s).collect()
 }
@@ -381,6 +386,10 @@ fn drive(host: &mut Host, id: &str, shot: Option<String>, steps: &[Step], inspec
                 if hit.is_none() {
                     bail!("nothing scrollable at {x},{y}");
                 }
+            }
+            Step::Wait(s) => {
+                let ms: f64 = s.trim().parse().with_context(|| format!("--wait wants milliseconds, got {s:?}"))?;
+                host.wait(id, ms).context("--wait")?;
             }
         }
     }

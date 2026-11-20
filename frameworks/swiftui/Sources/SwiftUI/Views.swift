@@ -136,6 +136,22 @@ public struct Button<Label: View>: View, _Primitive {
         let rt = _Runtime.shared
         // Buttons in an alert's actions also dismiss it (after running their own action).
         let act = rt.autoDismiss.map { d in { action(); d() } } ?? action
+        if let custom = rt.styles.button {
+            let lbl = _styleLabel(label), disabled = rt.disabled
+            return _without({ $0.button = nil }) {
+                switch custom {
+                case .styled(let f):
+                    // A `ButtonStyle` draws the label; the button stays a plain button around it.
+                    var n: Node = ["kind": "button", "id": path, "action": disabled ? 0 : rt.registerAction(act), "style": "plain",
+                                   "disabled": disabled, "label": f(ButtonStyleConfiguration(role: role, label: lbl, isPressed: false), path + "/0")]
+                    if let role { n["role"] = role.name }
+                    return n
+                case .primitive(let f):
+                    // A `PrimitiveButtonStyle` replaces the button; `trigger()` runs its action.
+                    return f(PrimitiveButtonStyleConfiguration(role: role, label: lbl, action: disabled ? {} : act), path)
+                }
+            }
+        }
         var n: Node = ["kind": "button", "id": path, "action": rt.disabled ? 0 : rt.registerAction(act), "label": _eval(label, path + "/0"),
                        "style": rt.buttonStyle, "disabled": rt.disabled]
         if let role { n["role"] = role.name }
@@ -144,6 +160,11 @@ public struct Button<Label: View>: View, _Primitive {
 }
 extension Button where Label == Text {
     public init(_ title: String, role: ButtonRole? = nil, action: @escaping () -> Void) { self.init(role: role, action: action) { Text(title) } }
+}
+extension Button where Label == SwiftUI.Label<Text, Image> {
+    public init(_ title: String, systemImage: String, role: ButtonRole? = nil, action: @escaping () -> Void) {
+        self.init(role: role, action: action) { SwiftUI.Label(title, systemImage: systemImage) }
+    }
 }
 
 public struct VStack<Content: View>: View, _Primitive {
@@ -219,7 +240,7 @@ public struct Alignment: Equatable {
     }
 }
 
-public enum Edge: Int8, CaseIterable {
+public enum Edge: Int8, CaseIterable, Sendable {
     case top = 1, leading = 2, bottom = 4, trailing = 8
     public struct Set: OptionSet {
         public let rawValue: Int8

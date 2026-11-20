@@ -33,8 +33,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.calendar` | 13 | ⬜ |  |  |
 | `\.colorScheme` | 13 | ✅ |  |  |
 | `\.colorSchemeContrast` | 13 | ⬜ |  |  |
-| `\.contentTransition` | 16 | ⬜ |  |  |
-| `\.contentTransitionAddsDrawingGroup` | 16 | ⬜ |  |  |
+| `\.contentTransition` | 16 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Read reflects `.contentTransition(_:)`; `.environment(\.contentTransition, _)` is ignored |
+| `\.contentTransitionAddsDrawingGroup` | 16 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Read-only default `false`; `.environment(\.contentTransitionAddsDrawingGroup, _)` is ignored |
 | `\.controlSize` | 15 | ⬜ |  |  |
 | `\.defaultMinListHeaderHeight` | 13 | ⬜ |  |  |
 | `\.defaultMinListRowHeight` | 13 | ⬜ |  |  |

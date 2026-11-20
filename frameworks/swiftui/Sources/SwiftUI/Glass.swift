@@ -50,7 +50,15 @@ public struct GlassEffectContainer<Content: View>: View, _Flattenable {
     func _children(_ path: String) -> [Node] { SwiftUI._children(content, path) }
 }
 
-public struct GlassButtonStyle: PrimitiveButtonStyle { public var _styleName: String { "glass" } }
-public struct GlassProminentButtonStyle: PrimitiveButtonStyle { public var _styleName: String { "glassProminent" } }
+public struct GlassButtonStyle: PrimitiveButtonStyle {
+    public init() {}
+    public var _styleName: String? { "glass" }
+    public func makeBody(configuration: Configuration) -> Never { fatalError() }
+}
+public struct GlassProminentButtonStyle: PrimitiveButtonStyle {
+    public init() {}
+    public var _styleName: String? { "glassProminent" }
+    public func makeBody(configuration: Configuration) -> Never { fatalError() }
+}
 extension PrimitiveButtonStyle where Self == GlassButtonStyle { public static var glass: GlassButtonStyle { .init() } }
 extension PrimitiveButtonStyle where Self == GlassProminentButtonStyle { public static var glassProminent: GlassProminentButtonStyle { .init() } }

@@ -165,6 +165,7 @@ pub static MAP: &[(&str, [&str; 3])] = &[
     row!("speaker", "speaker-none"),
     row!("speaker.wave.1", "speaker-low"),
     row!("speaker.wave.2", "speaker-high"),
+    row!("speaker.wave.3", "speaker-high"),
     row!("speaker.slash", "speaker-slash"),
     row!("play", "play"),
     row!("play.circle", "play-circle"),

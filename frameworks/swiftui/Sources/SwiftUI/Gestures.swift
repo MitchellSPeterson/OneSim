@@ -37,7 +37,7 @@ public struct Angle: Equatable, Hashable, Comparable {
     public static func -= (a: inout Angle, b: Angle) { a = a - b }
 }
 
-public struct UnitPoint: Equatable, Hashable {
+public struct UnitPoint: Equatable, Hashable, Sendable {
     public var x: CGFloat, y: CGFloat
     public init() { x = 0; y = 0 }
     public init(x: CGFloat, y: CGFloat) { self.x = x; self.y = y }
@@ -69,12 +69,7 @@ public struct GestureMask: OptionSet {
     public static let all = GestureMask(rawValue: 3)
 }
 
-/// Passed to `updating` bodies. Animations are not simulated, so it carries no animation.
-public struct Transaction {
-    public var disablesAnimations = false
-    public var isContinuous = false
-    public init() {}
-}
+// `Transaction` is defined in Animation.swift.
 
 // MARK: - Gesture
 
@@ -380,7 +375,7 @@ final class _UpdatingR<V, S>: _WrapR<V, V> {
         super._feed(t, q)
         let (st, b) = (state, body)
         if changed, let v = value, status == .tentative || status == .active {
-            q.actions.append { var s = st.wrappedValue; var tr = Transaction(); b(v, &s, &tr); st._set(s) }
+            q.actions.append { var s = st.wrappedValue; var tr = Transaction(); b(v, &s, &tr); withTransaction(tr) { st._set(s) } }
         }
         if status == .ended || status == .failed { q.resets.append { st._reset() } }
     }
@@ -703,17 +698,20 @@ extension Gesture {
 public struct GestureState<Value>: _StateProperty {
     final class Storage {
         let initial: Value
+        let resetTransaction: Transaction
         let reset: ((Value, inout Transaction) -> Void)?
         var slot: _Slot<Value>?
-        init(_ v: Value, _ reset: ((Value, inout Transaction) -> Void)?) { initial = v; self.reset = reset }
+        init(_ v: Value, _ tx: Transaction = Transaction(), _ reset: ((Value, inout Transaction) -> Void)?) {
+            initial = v; resetTransaction = tx; self.reset = reset
+        }
     }
     let storage: Storage
-    public init(wrappedValue: Value) { storage = Storage(wrappedValue, nil) }
-    public init(initialValue: Value) { storage = Storage(initialValue, nil) }
-    public init(wrappedValue: Value, resetTransaction: Transaction) { storage = Storage(wrappedValue, nil) }
-    public init(initialValue: Value, resetTransaction: Transaction) { storage = Storage(initialValue, nil) }
-    public init(wrappedValue: Value, reset: @escaping (Value, inout Transaction) -> Void) { storage = Storage(wrappedValue, reset) }
-    public init(initialValue: Value, reset: @escaping (Value, inout Transaction) -> Void) { storage = Storage(initialValue, reset) }
+    public init(wrappedValue: Value) { storage = Storage(wrappedValue, Transaction(), nil) }
+    public init(initialValue: Value) { storage = Storage(initialValue, Transaction(), nil) }
+    public init(wrappedValue: Value, resetTransaction: Transaction) { storage = Storage(wrappedValue, resetTransaction, nil) }
+    public init(initialValue: Value, resetTransaction: Transaction) { storage = Storage(initialValue, resetTransaction, nil) }
+    public init(wrappedValue: Value, reset: @escaping (Value, inout Transaction) -> Void) { storage = Storage(wrappedValue, Transaction(), reset) }
+    public init(initialValue: Value, reset: @escaping (Value, inout Transaction) -> Void) { storage = Storage(initialValue, Transaction(), reset) }
 
     func _bind(_ key: String) {
         let rt = _Runtime.shared
@@ -729,19 +727,19 @@ public struct GestureState<Value>: _StateProperty {
 
     func _set(_ v: Value) {
         storage.slot?.value = v
-        _Runtime.shared.dirty = true
+        _Runtime.shared.markDirty()
     }
 
     func _reset() {
         let old = wrappedValue
-        _set(storage.initial)
-        var t = Transaction()
+        var t = storage.resetTransaction
         storage.reset?(old, &t)
+        withTransaction(t) { _set(storage.initial) }
     }
 }
 
 extension GestureState where Value: ExpressibleByNilLiteral {
-    public init(resetTransaction: Transaction = Transaction()) { self.init(wrappedValue: nil) }
+    public init(resetTransaction: Transaction = Transaction()) { self.init(wrappedValue: nil, resetTransaction: resetTransaction) }
     public init(reset: @escaping (Value, inout Transaction) -> Void) { self.init(wrappedValue: nil, reset: reset) }
 }
 
