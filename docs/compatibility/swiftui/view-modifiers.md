@@ -84,7 +84,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.containerBackground` | 17 | ⬜ |  |  |
 | `.containerCornerOffset` | 26 | ⬜ |  |  |
 | `.containerRelativeFrame` | 17 | ⬜ |  |  |
-| `.containerShape` | 15 | ⬜ |  |  |
+| `.containerShape` | 15 | 🟠 | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) | Built-in `InsettableShape` / `RoundedRectangularShape` containers only; custom or transformed container shapes fall back to `Rectangle` |
 | `.containerValue` | 18 | ⬜ |  |  |
 | `.contentMargins` | 13 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Length and edges on `ScrollView` only. Placement does not change the insets. No-op elsewhere |
 | `.contentShape` | 13 | ⬜ |  |  |

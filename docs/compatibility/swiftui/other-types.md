@@ -141,7 +141,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `FileDocumentWriteConfiguration` | 14 | ⬜ |  | Deprecated |
 | `FileWrapperDocumentReader` | 27 | ⬜ |  |  |
 | `FileWrapperDocumentWriter` | 27 | ⬜ |  |  |
-| `FillShapeView` | 17 | ⬜ |  |  |
+| `FillShapeView` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `FindContext` | 26 | ⬜ |  |  |
 | `FittedPresentationSizing` | 18 | ⬜ |  |  |
 | `FixedTextVariant` | 18 | ⬜ |  |  |
@@ -189,8 +189,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `KeyPress` | 17 | ⬜ |  |  |
 | `LabeledContentStyleConfiguration` | 16 | ⬜ |  |  |
 | `LabelStyleConfiguration` | 14 | ⬜ |  |  |
-| `LayoutDirection` | 13 | ⬜ |  |  |
-| `LayoutDirectionBehavior` | 17 | ⬜ |  |  |
+| `LayoutDirection` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `LayoutDirectionBehavior` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `LayoutProperties` | 16 | ⬜ |  |  |
 | `LayoutSubview` | 16 | ⬜ |  |  |
 | `LayoutSubviews` | 16 | ⬜ |  |  |
@@ -248,10 +248,10 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ProgressViewStyleConfiguration` | 14 | ⬜ |  |  |
 | `ProjectionTransform` | 13 | ⬜ |  |  |
 | `Prominence` | 15 | ⬜ |  |  |
-| `ProposedViewSize` | 16 | ⬜ |  |  |
+| `ProposedViewSize` | 16 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `PushTransition` | 17 | ⬜ |  |  |
 | `RectangleCornerInsets` | 26 | ⬜ |  |  |
-| `RectangleCornerRadii` | 16 | ⬜ |  |  |
+| `RectangleCornerRadii` | 16 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `RedactionReasons` | 14 | ⬜ |  |  |
 | `ReferenceFileDocumentConfiguration` | 14 | ⬜ |  | Deprecated |
 | `RefreshAction` | 15 | ⬜ |  |  |
@@ -259,7 +259,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ReorderableSingleCollectionIdentifier` | 13 | ⬜ |  |  |
 | `ReorderDifference` | 13 | ⬜ |  |  |
 | `ReservedRegion` | 13 | ⬜ |  |  |
-| `RoundedRectangularShapeCorners` | 26 | ⬜ |  |  |
+| `RoundedRectangularShapeCorners` | 26 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `SafeAreaRegions` | 14 | ⬜ |  |  |
 | `ScaleTransition` | 17 | ⬜ |  |  |
 | `SceneBuilder` | 14 | 🟠 |  | Single scene only |
@@ -297,7 +297,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Shader` | 17 | ⬜ |  |  |
 | `ShaderFunction` | 17 | ⬜ |  |  |
 | `ShaderLibrary` | 17 | ⬜ |  |  |
-| `ShapeRole` | 15 | ⬜ |  |  |
+| `ShapeRole` | 15 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `SharePreview` | 16 | ⬜ |  |  |
 | `SidebarCommands` | 14 | ⬜ |  |  |
 | `SidebarRowSize` | 16 | ⬜ |  |  |
@@ -311,8 +311,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Spring` | 17 | ⬜ |  |  |
 | `SpringKeyframe` | 17 | ⬜ |  |  |
 | `SpringLoadingBehavior` | 17 | ⬜ |  |  |
-| `StrokeBorderShapeView` | 17 | ⬜ |  |  |
-| `StrokeShapeView` | 17 | ⬜ |  |  |
+| `StrokeBorderShapeView` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
+| `StrokeShapeView` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `SubmitLabel` | 15 | ⬜ |  |  |
 | `SubmitTriggers` | 15 | ⬜ |  |  |
 | `SymbolColorRenderingMode` | 26 | ⬜ |  |  |

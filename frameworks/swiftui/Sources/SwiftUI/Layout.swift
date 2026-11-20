@@ -1,23 +1,4 @@
-#if os(WASI)
-/// CoreGraphics is absent on WASI; same shape as the Darwin type for `GeometryProxy.frame`.
-public struct CGRect: Equatable {
-    public var origin: CGPoint
-    public var size: CGSize
-    public init(origin: CGPoint = .zero, size: CGSize = .zero) { self.origin = origin; self.size = size }
-    public init(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) {
-        self.init(origin: CGPoint(x: x, y: y), size: CGSize(width: width, height: height))
-    }
-    public static let zero = CGRect()
-    public var width: CGFloat {
-        get { size.width }
-        set { size.width = newValue }
-    }
-    public var height: CGFloat {
-        get { size.height }
-        set { size.height = newValue }
-    }
-}
-#else
+#if !os(WASI)
 import Foundation
 import CoreGraphics
 #endif

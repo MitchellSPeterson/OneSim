@@ -10,6 +10,7 @@ lists only what differs. `scripts/compare-ios.sh` renders every state with `--io
 | `showcase-ios` | `examples/swiftui-showcase` | the 37 states of `../showcase-ios` |
 | `swiftui-tabs-ios` | `examples/swiftui-tabs` | the 5 states of `../swiftui-tabs-ios` |
 | `swiftui-gestures-ios` | `examples/swiftui-gestures` | the 6 states of `../swiftui-gestures-ios` |
+| `swiftui-shapes-ios` | `examples/swiftui-shapes` | the 2 states of `../swiftui-shapes-ios` |
 | `rn-showcase-ios` | `examples/expo-showcase` in Expo Go 58.0.7 | the 18 states of `../rn-showcase-ios` |
 | `rn-router-ios` | `examples/expo-default`, `examples/expo-router-stack` in Expo Go 58.0.7 | the 9 states of `../rn-router-ios` |
 | `devices` | `examples/swiftui-showcase` `home` + `keyboard-shift` | iPhone 18 Pro Max, 17e, Duo |
