@@ -1,0 +1,75 @@
+# Sets the required `ci-premerge` status (and `ci`, its alias for the current ruleset) for premerge.yml.
+# premerge.yml runs PR code on `pull_request`, where a fork's GITHUB_TOKEN is read-only and can't write statuses.
+# This workflow runs from the default branch with a write token instead, so it must never check out or run PR code
+# and must pass event fields to the shell through `env`, never `${{ }}` inside `run`.
+#   - pull_request_target: pending ("add the label" or "running") as soon as a PR changes
+#   - workflow_run: success, failure or error from premerge.yml's `report` job once the run completes
+# See docs/ci.md.
+name: Pre-merge status
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+  workflow_run:
+    workflows: [Pre-merge]
+    types: [completed]
+
+permissions:
+  actions: read
+  statuses: write
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  # `ci` is what the current ruleset requires; drop it once the ruleset requires `ci-premerge` (docs/ci.md).
+  CONTEXTS: ci-premerge ci
+
+jobs:
+  pending:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          SHA: ${{ github.event.pull_request.head.sha }}
+          READY: ${{ contains(github.event.pull_request.labels.*.name, 'ready-to-merge') }}
+          RELEVANT: ${{ github.event.action != 'labeled' || github.event.label.name == 'ready-to-merge' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # Another label: leave the status alone.
+          if [ "$RELEVANT" != true ]; then exit 0; fi
+          if [ "$READY" = true ]; then desc="running the pre-merge checks"
+          else desc="add the ready-to-merge label to run the pre-merge checks"; fi
+          for context in $CONTEXTS; do
+            gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" -f state=pending -f context="$context" \
+              -f description="$desc" -f target_url="$RUN_URL" >/dev/null
+          done
+
+  result:
+    if: github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+        run: |
+          report=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?filter=latest" --paginate \
+            -q '.jobs[] | select(.name == "report") | .conclusion')
+          echo "workflow: $CONCLUSION, report: ${report:-none}"
+          if [ "$report" != success ] && [ "$report" != failure ]; then
+            # `report` never ran: the gate chose not to run (no label, another label), or the run broke first.
+            case $CONCLUSION in
+              cancelled) state=error desc="cancelled (superseded or stopped); rerun or push again" ;;
+              failure|timed_out|startup_failure) state=failure desc="pre-merge workflow: $CONCLUSION" ;;
+              *) exit 0 ;;
+            esac
+          elif [ "$CONCLUSION" = cancelled ]; then
+            state=error desc="cancelled (superseded or stopped); rerun or push again"
+          elif [ "$report" = success ]; then
+            state=success desc="every affected check passed at the premerge level"
+          else
+            state=failure desc="pre-merge checks failed"
+          fi
+          for context in $CONTEXTS; do
+            gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" -f state="$state" -f context="$context" \
+              -f description="$desc" -f target_url="$RUN_URL" >/dev/null
+          done

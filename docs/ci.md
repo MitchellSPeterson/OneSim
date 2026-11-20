@@ -65,19 +65,19 @@ Local runs include uncommitted and untracked files, stop at the first failure, a
 
 ## Merge safety
 
-- **No CI before the label:** a commit on a PR without `ready-to-merge` starts only `premerge.yml`'s gate job (a few seconds on Linux), which marks the required status pending. Nothing builds or tests until someone is trying to merge.
-- **`ci-premerge`** (commit status from `premerge.yml`; `ci` carries the same state for the current ruleset): pending on every PR head until the `ready-to-merge` label is added. With the label, it is pending while the checks run, then success only if `checks / verify` passed. `verify` fails if the plan failed, or if any selected job failed, was cancelled, or never ran; an unselected job must be skipped. A new commit gets a fresh pending status and runs again because the label is still there, so a pass on an older commit never counts. The ruleset's "branches must be up to date" setting makes the PR head the exact commit that merges.
+- **No CI before the label:** a commit on a PR without `ready-to-merge` starts only `premerge.yml`'s gate job and `premerge-status.yml`, which marks the required status pending (a few seconds each on Linux). Nothing builds or tests until someone is trying to merge.
+- **`ci-premerge`** (commit status set by `premerge-status.yml` from `premerge.yml`'s `report` job; `ci` carries the same state for the current ruleset): pending on every PR head until the `ready-to-merge` label is added. With the label, it is pending while the checks run, then success only if `checks / verify` passed. `verify` fails if the plan failed, or if any selected job failed, was cancelled, or never ran; an unselected job must be skipped. A new commit gets a fresh pending status and runs again because the label is still there, so a pass on an older commit never counts. The ruleset's "branches must be up to date" setting makes the PR head the exact commit that merges.
 - **Cost of the label:** each push to a PR that has the label runs the premerge checks again, so add it once review is done, and remove it to push follow-ups without running CI.
 - **Cancellation:** a new commit cancels that PR's previous premerge run only. Other labels never cancel a premerge run. Tags, nightly and manual runs each get their own concurrency group and never cancel each other. Pushes to `main` run nothing: with "branches must be up to date", the merged tree is the one the premerge run checked.
 - **Merge queue:** GitHub offers merge queues only on organization-owned repositories, so this one gates on the PR head instead. `premerge.yml` already handles `merge_group`: it runs at the premerge level and sets `ci-premerge` on the queue's commit, so moving the repository to an organization and turning the queue on needs no workflow change.
-- **Forks:** the `GITHUB_TOKEN` of a pull request from a fork can't write statuses. A maintainer runs the premerge checks for those PRs another way, such as pushing the branch to this repository.
+- **Forks:** `premerge.yml` runs PR code on `pull_request`, where a fork's `GITHUB_TOKEN` is read-only, so it writes no statuses. `premerge-status.yml` posts them instead: it runs from `main` (`pull_request_target` for pending, `workflow_run` for the result), never checks out PR code, and reads only the run's `report` job. Fork PRs therefore get the same flow as branches in this repository. A fork's later pushes rerun with the label still on and can change the checks themselves, so review every push before merging. Both triggers run the copy on `main`, so changes to `premerge-status.yml` take effect only after they merge.
 
 ### GitHub settings
 
 Ruleset "Main CI checks" (Settings > Rules > Rulesets):
 
 1. Required status checks: replace `ci` with **`ci-premerge`**. Keep "Require branches to be up to date before merging" on.
-2. Then drop `ci` from `CONTEXTS` in `premerge.yml`.
+2. Then drop `ci` from `CONTEXTS` in `premerge-status.yml`.
 3. The label exists: `gh label create ready-to-merge --color 0E8A16 --description "Run the pre-merge CI checks"`.
 4. Optional, organization-owned repositories only: turn on "Require merge queue" and keep the same required check.
 
