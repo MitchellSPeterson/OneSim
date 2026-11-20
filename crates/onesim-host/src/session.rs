@@ -610,6 +610,21 @@ impl Session {
                 let m = HostMessage::TextInput { field, version, text };
                 if self.is_rn() { self.send_and_settle(&m).map(drop) } else { self.send_and_wait_tree(&m).map(drop) }
             }
+            // The guest answers every touch event with a tree. A whole synthesized gesture waits for the trees to stop.
+            Effect::Gesture(touches) => {
+                let n = touches.len();
+                for (i, t) in touches.into_iter().enumerate() {
+                    let m = HostMessage::Gesture(t);
+                    if i + 1 < n {
+                        self.send(&m)?;
+                    } else if n > 1 {
+                        self.send_and_settle(&m)?;
+                    } else {
+                        self.send_and_wait_tree(&m)?;
+                    }
+                }
+                Ok(())
+            }
             Effect::None | Effect::Redraw => Ok(()),
         }
     }

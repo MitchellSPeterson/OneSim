@@ -294,7 +294,7 @@ impl App {
         }
         if let Some((dx, dy)) = self.pending_scroll.take() {
             let (x, y) = self.points();
-            self.pointer(PointerEvent { kind: PointerKind::Scroll, x, y, dx, dy });
+            self.pointer(PointerEvent::moved(PointerKind::Scroll, x, y, dx, dy));
         }
     }
 
@@ -304,11 +304,18 @@ impl App {
             ElementState::Pressed => {
                 self.left_down = true;
                 self.gesture.press(p);
+                if !self.cfg.rn {
+                    // SwiftUI: the finger is down now (gesture views see it, a long press can fire while held).
+                    self.pointer(PointerEvent::new(PointerKind::Down, p.0, p.1));
+                    self.sched.set_animating(true);
+                    self.last_tick = Instant::now();
+                }
             }
             ElementState::Released => {
                 self.left_down = false;
                 self.flush_input();
                 match self.gesture.release(p) {
+                    Out::Click(x, y) if !self.cfg.rn => self.pointer(PointerEvent::new(PointerKind::Up, x, y)),
                     Out::Click(x, y) => self.pointer(PointerEvent::new(PointerKind::Click, x, y)),
                     Out::DragEnd(x, y) => self.drag(DragPhase::End, (x, y)),
                     _ => {}
@@ -425,7 +432,7 @@ impl App {
             match step {
                 Step::Wait(d) => self.script_wait = Some(now + d),
                 Step::Click(x, y) => self.pointer(PointerEvent::new(PointerKind::Click, x, y)),
-                Step::Scroll(x, y, dx, dy) => self.pointer(PointerEvent { kind: PointerKind::Scroll, x, y, dx, dy }),
+                Step::Scroll(x, y, dx, dy) => self.pointer(PointerEvent::moved(PointerKind::Scroll, x, y, dx, dy)),
                 Step::Drag(x, y, dx, dy) => {
                     let t0 = self.now_ms();
                     self.drag_at(DragPhase::Begin, (x, y), t0);

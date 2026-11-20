@@ -10,7 +10,8 @@ OUT="$(mktemp -d)"; trap 'rm -rf "$OUT"' EXIT
 "$ROOT/scripts/build-swift-app.sh" "$ROOT/examples/swiftui-presentation" "$OUT/presentation"
 "$ROOT/scripts/build-swift-app.sh" "$ROOT/examples/swiftui-tabs" "$OUT/tabs"
 "$ROOT/scripts/build-swift-app.sh" "$(dirname "$0")/TabsModern.swift" "$OUT/tabsmodern" TabsModern
-for exe in counter entry showcase dataflow presentation tabs tabsmodern; do
+"$ROOT/scripts/build-swift-app.sh" "$(dirname "$0")/GestureLab.swift" "$OUT/gesturelab" GestureLab
+for exe in counter entry showcase dataflow presentation tabs tabsmodern gesturelab; do
   if otool -L "$OUT/$exe" | grep -q 'SwiftUI.framework'; then echo "FAIL: $exe links Apple SwiftUI" >&2; exit 1; fi
 done
-/usr/bin/python3 -I "$(dirname "$0")/wire_test.py" "$OUT/counter" "$OUT/entry" "$OUT/showcase" "$OUT/dataflow" "$OUT/presentation" "$OUT/tabs" "$OUT/tabsmodern"
+/usr/bin/python3 -I "$(dirname "$0")/wire_test.py" "$OUT/counter" "$OUT/entry" "$OUT/showcase" "$OUT/dataflow" "$OUT/presentation" "$OUT/tabs" "$OUT/tabsmodern" "$OUT/gesturelab"

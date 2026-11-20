@@ -36,7 +36,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `FileDocument` | 14 | ⬜ |  | Deprecated |
 | `FocusedValueKey` | 14 | ⬜ |  |  |
 | `GeometryEffect` | 13 | ⬜ |  |  |
-| `Gesture` | 13 | ⬜ |  |  |
+| `Gesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | Custom gestures recognize their `body` |
 | `InsettableShape` | 13 | ⬜ |  |  |
 | `Keyframes` | 17 | ⬜ |  |  |
 | `KeyframeTrackContent` | 17 | ⬜ |  |  |

@@ -28,6 +28,13 @@ typedef void (*simcore_env_cb)(void *ctx, const char *appearance, double width, 
  * valid only during the callback). Version-gated like actions. */
 typedef void (*simcore_text_cb)(void *ctx, uint64_t field_id, const char *text);
 
+/* gesture (protocol section L): one touch event on views with SwiftUI gestures. phase: 0 start, 1 move,
+ * 2 end, 3 cancel; `time` in ms. `points` holds `npoints` (x, y) pairs in screen points; `keys` the
+ * `ntargets` gesture keys, innermost first, and `frames` their (x, y, w, h) frames, 4 doubles each. All
+ * owned by Rust, valid only during the callback. Not version-gated: keys are structural paths. */
+typedef void (*simcore_gesture_cb)(void *ctx, int32_t phase, double time, const double *points, size_t npoints,
+                                   const char *const *keys, const double *frames, size_t ntargets);
+
 /* Call once, first. dup()s fd 1 as the protocol channel, dup2(2,1), sends hello.
  * Returns 0 on success, nonzero on failure (see simcore_last_error). */
 int32_t simcore_runtime_init(void);
@@ -38,6 +45,9 @@ void simcore_runtime_set_callbacks(void *ctx, simcore_action_cb on_action, simco
 /* Optional. Registers the text_input callback; `ctx` is the one passed to
  * simcore_runtime_set_callbacks. Independent of set_callbacks (existing ABI unchanged). */
 void simcore_runtime_set_text_callback(simcore_text_cb on_text);
+
+/* Optional. Registers the gesture callback; `ctx` is the one passed to simcore_runtime_set_callbacks. */
+void simcore_runtime_set_gesture_callback(simcore_gesture_cb on_gesture);
 
 /* Send a view tree (UTF-8 JSON ViewNode, not NUL-terminated). Validated as JSON
  * and copied. `version` must be strictly increasing. Returns 0 on success. */

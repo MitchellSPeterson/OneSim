@@ -5,7 +5,7 @@
 //! JS drives it through the `simcore_web_*` exports at the bottom; input goes through
 //! `onesim_render::Interaction` (the same state machine as the native host) and its effects
 //! call the Swift callbacks directly.
-use onesim_protocol::{Appearance, DynamicTypeSize, IosVersion, KeyboardEvent, PointerEvent, PointerKind, ViewNode};
+use onesim_protocol::{Appearance, DynamicTypeSize, IosVersion, KeyboardEvent, PointerEvent, PointerKind, TouchPhase, ViewNode};
 use onesim_render::{build_scene, Builder, device, render, resolve_label, Device, DEFAULT_DEVICE, DEVICES, DragPhase, Effect, Fonts, Interaction, Scene, SceneParams};
 use std::cell::RefCell;
 use std::ffi::{c_char, c_void, CStr, CString};
@@ -13,12 +13,14 @@ use std::ffi::{c_char, c_void, CStr, CString};
 pub type ActionCb = Option<unsafe extern "C" fn(*mut c_void, u64)>;
 pub type TextCb = Option<unsafe extern "C" fn(*mut c_void, u64, *const c_char)>;
 pub type EnvCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char, f64, f64)>;
+pub type GestureCb = Option<unsafe extern "C" fn(*mut c_void, i32, f64, *const f64, usize, *const *const c_char, *const f64, usize)>;
 
 struct State {
     ctx: usize,
     on_action: ActionCb,
     on_env: EnvCb,
     on_text: TextCb,
+    on_gesture: GestureCb,
     version: Option<u64>,
     tree: Option<ViewNode>,
     scene: Option<Scene>,
@@ -48,7 +50,7 @@ struct State {
 thread_local! {
     // ponytail: thread-local state; protocol says single-threaded.
     static STATE: RefCell<State> = RefCell::new(State {
-        ctx: 0, on_action: None, on_env: None, on_text: None, version: None, tree: None, scene: None,
+        ctx: 0, on_action: None, on_env: None, on_text: None, on_gesture: None, version: None, tree: None, scene: None,
         fonts: None, device: device(DEFAULT_DEVICE).unwrap(), viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios27, inter: Interaction::default(),
         stale: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), output: 0, builder: Builder::new(), dl: Vec::new(), buf: Vec::new(),
     });
@@ -126,6 +128,12 @@ pub extern "C" fn simcore_runtime_set_callbacks(ctx: *mut c_void, on_action: Act
 #[no_mangle]
 pub extern "C" fn simcore_runtime_set_text_callback(on_text: TextCb) {
     STATE.with(|s| s.borrow_mut().on_text = on_text);
+}
+
+/// Optional section L gesture callback (same ctx as the action callback); `dispatch` calls it for touch effects.
+#[no_mangle]
+pub extern "C" fn simcore_runtime_set_gesture_callback(on_gesture: GestureCb) {
+    STATE.with(|s| s.borrow_mut().on_gesture = on_gesture);
 }
 
 /// # Safety
@@ -290,6 +298,24 @@ fn dispatch(e: Effect) -> i32 {
                 unsafe { cb(ctx as *mut c_void, field, t.as_ptr()) };
             }
         }
+        Effect::Gesture(touches) => {
+            with(|s| s.stale = true);
+            if let Some(cb) = with(|s| s.on_gesture) {
+                for t in touches {
+                    let phase = match t.phase {
+                        TouchPhase::Start => 0,
+                        TouchPhase::Move => 1,
+                        TouchPhase::End => 2,
+                        TouchPhase::Cancel => 3,
+                    };
+                    let pts: Vec<f64> = t.points.iter().flatten().copied().collect();
+                    let keys: Vec<CString> = t.targets.iter().map(|g| CString::new(g.key.replace('\0', "")).unwrap_or_default()).collect();
+                    let ptrs: Vec<*const c_char> = keys.iter().map(|k| k.as_ptr()).collect();
+                    let frames: Vec<f64> = t.targets.iter().flat_map(|g| g.frame).collect();
+                    unsafe { cb(ctx as *mut c_void, phase, t.time, pts.as_ptr(), t.points.len(), ptrs.as_ptr(), frames.as_ptr(), keys.len()) };
+                }
+            }
+        }
     }
     // The callback re-submits (and draws) only if the guest state changed; focus/shift may have.
     with(|s| {
@@ -315,7 +341,7 @@ pub extern "C" fn simcore_web_pointer(kind: i32, x: f64, y: f64) -> i32 {
 /// Scroll the scroller under (x, y) by (dx, dy) points; positive dy reveals later content.
 #[no_mangle]
 pub extern "C" fn simcore_web_scroll(x: f64, y: f64, dx: f64, dy: f64) -> i32 {
-    let ev = PointerEvent { kind: PointerKind::Scroll, x, y, dx, dy };
+    let ev = PointerEvent::moved(PointerKind::Scroll, x, y, dx, dy);
     let e = with(|s| s.scene.as_ref().map(|sc| s.inter.pointer(sc, ev)));
     e.map_or(0, dispatch)
 }
@@ -341,7 +367,12 @@ pub extern "C" fn simcore_web_tick(dt_ms: f64) -> i32 {
     if moved {
         with(draw);
     }
-    moved as i32
+    // A finger resting on a gesture view keeps reporting (long presses fire while held).
+    let held = with(|s| s.inter.holding());
+    if held {
+        dispatch(with(|s| s.inter.hold(dt_ms / 1000.0)));
+    }
+    (moved || held) as i32
 }
 
 /// Keyboard input for the focused field; the payload is `len` UTF-8 bytes in the scratch buffer.
