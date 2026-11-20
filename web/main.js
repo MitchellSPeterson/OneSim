@@ -10,8 +10,8 @@ const diag = document.getElementById("diag");
 const q = new URLSearchParams(location.search);
 const num = (k) => (q.has(k) && Number.isFinite(Number(q.get(k))) && Number(q.get(k)) > 0 ? Number(q.get(k)) : null);
 
-function viewportFromUrl(devices) {
-  const name = q.get("device") ?? devices[0].name;
+function viewportFromUrl(devices, defaultName) {
+  const name = q.get("device") ?? defaultName;
   const dev = devices.find((d) => d.name === name);
   if (!dev) throw new Error(`unknown device ${JSON.stringify(name)} (known: ${devices.map((d) => d.name).join(", ")})`);
   return { device: name, width: num("width") ?? dev.width, height: num("height") ?? dev.height, scale: num("scale") };
@@ -19,7 +19,7 @@ function viewportFromUrl(devices) {
 
 async function main() {
   const sim = await load(await fetch("app.wasm"));
-  const vp = viewportFromUrl(sim.devices);
+  const vp = viewportFromUrl(sim.devices, sim.defaultDevice.name);
   const dark = q.has("dark") ? q.get("dark") !== "0" : matchMedia("(prefers-color-scheme: dark)").matches;
   const presenter = new Presenter({ sim, stage, canvas: document.getElementById("screen"), preference: preferredRenderer(q), diag });
   if (q.has("diag")) diag.hidden = false;

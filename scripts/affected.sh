@@ -54,6 +54,7 @@ expo     tests/fixtures/ios27/expo-*
 web      web/*
 web      scripts/build-web.sh
 web      scripts/compare-web.sh
+web      scripts/compare-web-compose.sh
 none     docs/*
 none     *.md
 none     LICENSE
@@ -95,8 +96,8 @@ for path in filter(None, sys.stdin.read().splitlines()):
     if group != "none":
         print(f"{path} -> {group}", file=sys.stderr)
     hit |= set(os.environ["ALL"].split()) if group == "all" else {group} - {"none"}
-# The web build compiles the SwiftUI framework to Wasm, so SwiftUI changes also run the web gates.
-if "swiftui" in hit:
+# The web build compiles both SwiftUI and Compose frameworks to Wasm, so either also runs the web gates.
+if "swiftui" in hit or "compose" in hit:
     hit.add("web")
 # Every framework runs on the Rust host, so any of them needs the Rust build and tests.
 if hit:
@@ -140,8 +141,10 @@ if has compose; then
   step scripts/compare-android.sh
 fi
 if has web; then
-  # Needs the swift.org toolchain with the Wasm SDK (see the web job in .github/workflows/ci.yml).
+  # Needs the swift.org toolchain with the Wasm SDK for SwiftUI and Java 17+ for Compose (see the web job in .github/workflows/ci.yml).
   step scripts/build-web.sh examples/swiftui-showcase
   step node web/test/run.mjs --suite showcase
   step scripts/compare-web.sh
+  step scripts/compare-web-compose.sh
+  step node web/test/run.mjs --suite compose-input
 fi

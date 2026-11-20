@@ -182,8 +182,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
       - run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
       - run: cargo clippy -p onesim-web-gpu --target wasm32-unknown-unknown -- -D warnings
+      - run: cargo clippy -p onesim-web --features js-guest --target wasm32-wasip1 -- -D warnings
       - name: Cache Swift toolchain and Wasm SDK downloads
         uses: actions/cache@v4
         with:
@@ -218,16 +223,30 @@ jobs:
           [ -x "$CHROME" ] || brew install --cask google-chrome
           test -x "$CHROME"
           node web/test/presenter.mjs --app
-      - name: Web vs native pixel parity (every state < 2%)
+      - name: Web vs native pixel parity, SwiftUI (every state < 2%)
         run: |
           python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
           scripts/compare-web.sh
+      - name: Build web, Jetpack Compose (Kotlin/Wasm) + Node harness + Chrome presenter
+        run: |
+          scripts/build-web.sh examples/compose-counter
+          node web/test/run.mjs --suite compose-counter
+          scripts/build-web.sh examples/compose-showcase
+          node web/test/run.mjs --suite compose-showcase
+          scripts/build-web.sh examples/compose-input
+          node web/test/run.mjs --suite compose-input
+          export CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+          node web/test/presenter.mjs --compose
+      - name: Web vs native pixel parity, Compose (every state < 2%)
+        run: scripts/compare-web-compose.sh
       - name: Upload web comparison sheets
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: web-comparison
-          path: target/compare-web/
+          path: |
+            target/compare-web/
+            target/compare-web-compose/
 
   portable:
     # Linux and Windows: the host, CLI and renderer, plus headless SwiftUI and Compose guests.

@@ -1,6 +1,9 @@
 package androidx.compose.ui
 
 import androidx.compose.runtime.Stable
+import kotlin.math.abs
+import kotlin.math.floor
+import kotlin.math.roundToLong
 
 /**
  * An ordered chain of modifier elements; the first element is the outermost (protocol section K).
@@ -53,7 +56,7 @@ fun jsonString(s: String): String = buildString {
         ch == '\n' -> append("\\n")
         ch == '\r' -> append("\\r")
         ch == '\t' -> append("\\t")
-        ch < ' ' -> append("\\u%04x".format(ch.code))
+        ch < ' ' -> append("\\u").append(ch.code.toString(16).padStart(4, '0'))
         else -> append(ch)
     }
     append('"')
@@ -61,6 +64,6 @@ fun jsonString(s: String): String = buildString {
 
 /** JSON number; NaN/infinity (unspecified) become null. */
 fun jsonNum(v: Float): String = if (v.isNaN() || v.isInfinite()) "null" else {
-    val r = Math.round(v * 1000.0) / 1000.0
-    if (r == Math.floor(r) && Math.abs(r) < 1e15) r.toLong().toString() else r.toString()
+    val r = (v * 1000.0).roundToLong() / 1000.0
+    if (r == floor(r) && abs(r) < 1e15) r.toLong().toString() else r.toString()
 }

@@ -8,6 +8,12 @@ description = "In-process OneSim runtime for WebAssembly: the onesim-runtime C A
 [lib]
 crate-type = ["staticlib", "rlib"]
 
+[features]
+default = []
+# Standalone browser module for JS-hosted guests (e.g. Kotlin/Wasm Compose): no linked Swift main;
+# guest callbacks are Wasm imports from `"onesim_guest"`.
+js-guest = []
+
 [dependencies]
 onesim-protocol = { path = "../onesim-protocol" }
 onesim-render = { path = "../onesim-render" }
