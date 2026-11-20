@@ -1,22 +1,28 @@
 #!/usr/bin/env bash
 # Usage: build-web.sh <app_path> [root_view]
+#        build-web.sh --expo
 # Builds a SwiftUI or Jetpack Compose app and the Rust renderer into a static site in target/web/
 # (index.html, main.js, onesim.js, renderer.js, app.wasm, gpu/ = WebGPU presenter from onesim-web-gpu,
 # plus guest/ = Kotlin/Wasm guest for Compose apps). See docs/web.md.
+# --expo: the site (target/web-expo/) runs an Expo / React Native app's JavaScript in a Web Worker
+# (guest/ = frameworks/react-native/guest); the app is chosen at load time with ?metro=URL or ?bundle=URL.
 set -euo pipefail
-[ $# -ge 1 ] || { echo "usage: $0 <app_path> [root_view]" >&2; exit 2; }
+[ $# -ge 1 ] || { echo "usage: $0 <app_path> [root_view] | $0 --expo" >&2; exit 2; }
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$1"; ROOT_VIEW="${2:-}"
 TARGET="${CARGO_TARGET_DIR:-$ROOT/target}"
 CACHE="$TARGET/web-cache"
 OUT="$TARGET/web"
+[ "$1" != --expo ] || OUT="$TARGET/web-expo"
 RUST_TARGET=wasm32-wasip1
 GPU_TARGET=wasm32-unknown-unknown
 die() { echo "error: $*" >&2; exit 1; }
 
 # Detect framework from the app path (.kt -> Compose, otherwise SwiftUI).
 FRAMEWORK=swiftui
-if [ -f "$APP" ]; then
+if [ "$APP" = --expo ]; then
+  FRAMEWORK=expo
+elif [ -f "$APP" ]; then
   case "$APP" in *.kt) FRAMEWORK=compose ;; esac
 elif [ -d "$APP" ]; then
   if [ -n "$(find "$APP" -name '*.kt' -type f -not -path '*/build/*' | head -1)" ]; then
@@ -74,8 +80,8 @@ optimize_wasm() {
   fi
 }
 
-if [ "$FRAMEWORK" = compose ]; then
-  # 2. Standalone Rust renderer module (cdylib, JS-hosted guest imports).
+if [ "$FRAMEWORK" != swiftui ]; then
+  # 2. Standalone Rust renderer module (cdylib, JS-hosted guest imports; React Native mode uses none of them).
   echo "rust: onesim-web ($RUST_TARGET, js-guest)"
   CARGO_PROFILE_RELEASE_OPT_LEVEL=3 CARGO_PROFILE_RELEASE_LTO=true CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1 \
     CARGO_PROFILE_RELEASE_PANIC=abort CARGO_TARGET_WASM32_WASIP1_RUSTFLAGS="-C target-feature=+simd128" \
@@ -88,6 +94,18 @@ if [ "$FRAMEWORK" = compose ]; then
   fi
   cp "$CACHED_APP" "$OUT/app.wasm"
   build_gpu
+fi
+
+if [ "$FRAMEWORK" = expo ]; then
+  rm -rf "$OUT/guest" "$OUT/expo" && mkdir -p "$OUT/guest" "$OUT/expo"
+  cp "$ROOT"/frameworks/react-native/guest/*.js "$OUT/guest/"
+  cp "$ROOT"/web/expo/*.js "$OUT/expo/"
+  cp "$ROOT/web/index.html" "$ROOT/web/main.js" "$ROOT/web/onesim.js" "$ROOT/web/renderer.js" "$OUT/"
+  echo "built $OUT ($(wc -c < "$OUT/app.wasm" | tr -d ' ') bytes app.wasm, $(wc -c < "$OUT/gpu/onesim_web_gpu_bg.wasm" | tr -d ' ') bytes gpu)"
+  exit 0
+fi
+
+if [ "$FRAMEWORK" = compose ]; then
 
   # 3. Kotlin/Wasm toolchain + cached Compose framework klib.
   COMPOSE_FW="$ROOT/frameworks/compose"

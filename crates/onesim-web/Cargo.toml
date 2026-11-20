@@ -10,8 +10,8 @@ crate-type = ["staticlib", "rlib"]
 
 [features]
 default = []
-# Standalone browser module for JS-hosted guests (e.g. Kotlin/Wasm Compose): no linked Swift main;
-# guest callbacks are Wasm imports from `"onesim_guest"`.
+# Standalone browser module for JS-hosted guests (Kotlin/Wasm Compose, React Native in a Worker): no linked Swift
+# main; guest callbacks are Wasm imports from `"onesim_guest"` (unused in React Native mode).
 js-guest = []
 
 [dependencies]
