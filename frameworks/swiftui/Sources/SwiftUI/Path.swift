@@ -839,16 +839,13 @@ extension Path {
 
         func flattenCubic(_ p0: CGPoint, _ c1: CGPoint, _ c2: CGPoint, _ p1: CGPoint, _ depth: Int) {
             let dx = p1.x - p0.x, dy = p1.y - p0.y
-            let d2 = hypot(Double(dx), Double(dy))
-            let err: Double
-            if d2 < 1e-9 {
-                err = max(Double(_dist(p0, c1)), Double(_dist(p0, c2)))
-            } else {
-                let e1 = abs(Double((c1.x - p0.x) * dy - (c1.y - p0.y) * dx)) / d2
-                let e2 = abs(Double((c2.x - p0.x) * dy - (c2.y - p0.y) * dx)) / d2
-                err = max(e1, e2)
+            let chordSquared = dx * dx + dy * dy
+            func distanceToChord(_ control: CGPoint) -> CGFloat {
+                guard chordSquared > 1e-18 else { return _dist(p0, control) }
+                let projection = ((control.x - p0.x) * dx + (control.y - p0.y) * dy) / chordSquared
+                return _dist(control, _lerp(p0, p1, min(1, max(0, projection))))
             }
-            if err <= Double(tolerance) || depth >= 10 {
+            if depth >= 10 || max(distanceToChord(c1), distanceToChord(c2)) <= tolerance {
                 pts.append(p1); return
             }
             let p01 = _lerp(p0, c1, 0.5), p12 = _lerp(c1, c2, 0.5), p23 = _lerp(c2, p1, 0.5)

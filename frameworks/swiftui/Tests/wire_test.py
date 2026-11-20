@@ -537,6 +537,8 @@ assert "color" not in ch[9]["stroke"] and ch[9]["stroke"]["inset"] == 2, ch[9]
 assert ch[10]["custom"] is True, ch[10]
 # 11: ShapeView foreground stroke overload omits stroke color
 assert "color" not in ch[11]["stroke"] and ch[11]["stroke"]["lineWidth"] == 2, ch[11]
+assert ch[12]["sizeHint"] == {"fixed": [100, 100]}, ch[12]
+assert ch[13]["sizeHint"] == "square", ch[13]
 # Send layout frames for custom shapes and check guest evaluates path(in:) at the exact sizes
 send(p, type="layout", frames={diamond["id"]: [0, 0, 80, 60], ch[7]["id"]: [0, 0, 60, 60], ch[8]["id"]: [0, 0, 60, 60], ch[10]["id"]: [0, 0, 40, 40]})
 t2 = recv(p)

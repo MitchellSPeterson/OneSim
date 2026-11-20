@@ -350,7 +350,11 @@ private func _probeSizeHint<S: Shape>(_ shape: S) -> Any? {
     }
     if abs(s1.width - 100) < 1e-4 && abs(s1.height - 100) < 1e-4
         && abs(s2.width - 100) < 1e-4 && abs(s2.height - 100) < 1e-4 {
-        return "square"
+        let s3 = shape.sizeThatFits(ProposedViewSize(width: 120, height: 80))
+        if abs(s3.width - 80) < 1e-4 && abs(s3.height - 80) < 1e-4 {
+            return "square"
+        }
+        guard abs(s3.width - 100) < 1e-4 && abs(s3.height - 100) < 1e-4 else { return nil }
     }
     if abs(s1.width - s2.width) < 1e-4 && abs(s1.height - s2.height) < 1e-4 {
         return ["fixed": [Double(s1.width), Double(s1.height)]]

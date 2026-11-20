@@ -13,8 +13,20 @@ struct Diamond: Shape {
 }
 
 struct FixedBadge: Shape {
-    func sizeThatFits(_ proposal: ProposedViewSize) -> CGSize { CGSize(width: 48, height: 32) }
+    var size = CGSize(width: 48, height: 32)
+
+    func sizeThatFits(_ proposal: ProposedViewSize) -> CGSize { size }
     func path(in rect: CGRect) -> Path { Path(roundedRect: rect, cornerRadius: 8) }
+}
+
+struct FittingSquare: Shape {
+    func sizeThatFits(_ proposal: ProposedViewSize) -> CGSize {
+        let size = proposal.replacingUnspecifiedDimensions()
+        let side = min(size.width, size.height)
+        return CGSize(width: side, height: side)
+    }
+
+    func path(in rect: CGRect) -> Path { Path(rect) }
 }
 
 private func runPathChecks() -> String {
@@ -62,6 +74,14 @@ private func runPathChecks() -> String {
     let stroked = line.strokedPath(StrokeStyle(lineWidth: 10, lineCap: .butt))
     check(stroked.contains(CGPoint(x: 50, y: 4)), "stroked interior")
     check(!stroked.contains(CGPoint(x: 50, y: 8)), "stroked outside")
+
+    let collinearCubic = Path { p in
+        p.move(to: .zero)
+        let control = CGPoint(x: 100, y: 0)
+        p.addCurve(to: CGPoint(x: 10, y: 0), control1: control, control2: control)
+    }
+    let cubicStroke = collinearCubic.strokedPath(StrokeStyle(lineWidth: 10))
+    check(cubicStroke.contains(CGPoint(x: 50, y: 0)), "collinear cubic stroke preserves overshoot")
 
     // 5. Boolean operations on overlapping rects [0..40, 0..40] and [20..60, 0..40]
     let a = Path(CGRect(x: 0, y: 0, width: 40, height: 40))
@@ -138,6 +158,8 @@ public struct ShapeLab: View {
                 Circle().strokeBorder(lineWidth: 4).foregroundStyle(.red)
                 Rectangle().inset(by: 4).strokeBorder(.blue, lineWidth: 6)
                 Circle().fill(.green).stroke(lineWidth: 2)
+                FixedBadge(size: CGSize(width: 100, height: 100)).fill(.blue)
+                FittingSquare().fill(.blue)
             }
         }
     }
