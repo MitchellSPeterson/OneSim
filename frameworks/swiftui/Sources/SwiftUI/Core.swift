@@ -120,6 +120,9 @@ final class _Runtime {
     var disabled = false
     var buttonStyle = "automatic"
     var pickerStyle = "menu"
+    var pageTabStyle: PageTabViewStyle?
+    var pageIndexStyle = PageIndexViewStyle()
+    var pageIsActive = true   // adjacent pages are laid out for swiping but do not appear or present yet
     var tags: [String: AnyHashable] = [:]   // `.tag(_:)` values by node id, read by `Picker`
     var nav: _NavState?
     var envObjects: [ObjectIdentifier: AnyObject] = [:]
@@ -158,6 +161,7 @@ final class _Runtime {
     }
 
     func noteLifecycle(_ path: String, _ appear: (() -> Void)?, _ disappear: (() -> Void)?) {
+        guard pageIsActive else { return }
         var k = path
         while lifecycleNow[k] != nil { k += "'" }   // several modifiers on one view
         lifecycleNow[k] = (appear ?? {}, disappear ?? {})
@@ -191,6 +195,7 @@ final class _Runtime {
         actions.removeAll(keepingCapacity: true)
         fields.removeAll(keepingCapacity: true)
         disabled = false; buttonStyle = "automatic"; pickerStyle = "menu"; tags = [:]; nav = nil; envObjects = [:]
+        pageTabStyle = nil; pageIndexStyle = .init(); pageIsActive = true
         layers = []; autoDismiss = nil; dismissHook = nil
         lifecycleNow = [:]; lifecycleOrder = []; changeNow = [:]; changePending = []
         gestures = [:]; gesturesOff = false

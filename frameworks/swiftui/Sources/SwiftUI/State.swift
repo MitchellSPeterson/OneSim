@@ -140,6 +140,7 @@ public struct EnvironmentValues {
     public init() {}
     public var colorScheme: ColorScheme { _Runtime.shared.appearance == "dark" ? .dark : .light }
     public var dynamicTypeSize: DynamicTypeSize { _Runtime.shared.dynamicType }
+    public var isTabViewSidebarAvailable: Bool { false }
     /// Pops a pushed screen, else dismisses the enclosing sheet.
     public var dismiss: DismissAction {
         let n = nav, s = sheetDismiss

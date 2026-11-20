@@ -8,12 +8,12 @@
 
 use super::rn::{ModalLayers, Placement};
 use crate::device::Device;
-use crate::scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, Shadow, SymbolRun, TextRun};
+use crate::scene::{Color, Glyph, Node, Pager, Rect, Role, Scene, ScrollInfo, Shadow, SymbolRun, TextRun};
 use crate::symbols::{self, SymbolSpec};
 use crate::text::{FontSpec, Fonts, Span, TextAlign};
 use onesim_protocol::{
     Alignment, Appearance, Axis, ButtonStyle, ContentMode, Detent, DisplayMode, DynamicTypeSize, Edges, FitAxes, Font, GlassShapeKind, GlassVariant, GridTrack, ImageScale, IosVersion, Layer, ListStyle, Modifier, PickerOption, PickerStyle, ScrollSnap, Section, Semantic, ShapeKind, Stroke, TrackSize,
-    ViewKind, ViewNode,
+    PageIndexBackground, PageIndexDisplay, TabPage, ViewKind, ViewNode,
 };
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
@@ -1310,6 +1310,9 @@ impl Ctx<'_> {
             ViewKind::ViewThatFits { axes, children } => self.view_that_fits(v, *axes, children, p, child_env),
             ViewKind::List { style, sections } => self.list(v, *style, sections, p, env),
             ViewKind::TabView { selected, tabs, content } => self.tab_view(v, *selected, tabs, content, p, env),
+            ViewKind::PageTabView { selected, pages, index_display, index_background } => {
+                self.page_tab_view(v, *selected, pages, (*index_display, *index_background), p, child_env)
+            }
             ViewKind::Navigation { title, display_mode, back, content } => {
                 self.navigation(v, title.as_deref(), *display_mode, back.as_ref(), content, p, env)
             }
@@ -2317,7 +2320,8 @@ impl Ctx<'_> {
             item.role = Role::Button;
             item.label = Some(tab.title.clone());
             // React Native items have no action: the host's numeric tag makes them hit-testable (the host sends `SelectTab`).
-            item.action = tab.action.or_else(|| host.parse().ok());
+            item.disabled = tab.action == Some(0);
+            item.action = tab.action.or_else(|| host.parse().ok()).filter(|_| !item.disabled);
             item.radius = PILL;
             if sel {
                 // iOS 27 sinks the selection into the bar (tabs-home(-dark).png, ios27); iOS 26 raises it.
@@ -2388,10 +2392,79 @@ impl Ctx<'_> {
                 TabBarItem { key: i.to_string(), title: t.title.clone(), icon: None, selected_icon: None, symbol, badge: t.badge.clone(), action: Some(t.action) }
             })
             .collect();
-        let bar = self.tab_bar(&TabBar { items, selected, tint: None }, &v.id, w, h);
         let mut n = Node::new(&v.id, "tabview");
         n.inspect = false;
-        Lay::new(Size { w, h }, Some(n), vec![(0.0, 0.0, inner), (0.0, 0.0, bar)])
+        let mut kids = vec![(0.0, 0.0, inner)];
+        if !tabs.is_empty() {
+            kids.push((0.0, 0.0, self.tab_bar(&TabBar { items, selected, tint: None }, &v.id, w, h)));
+        }
+        Lay::new(Size { w, h }, Some(n), kids)
+    }
+
+    fn page_tab_view(&mut self, v: &ViewNode, selected: usize, pages: &[TabPage], index: (PageIndexDisplay, PageIndexBackground), p: Prop, env: Env) -> Lay {
+        let w = p.w.filter(|w| w.is_finite()).unwrap_or(10.0);
+        let h = p.h.filter(|h| h.is_finite()).unwrap_or(10.0);
+        let size = Size { w, h };
+        let mut n = Node::new(&v.id, "pagetabview");
+        n.clip_radius = Some(0.0);
+        if pages.is_empty() || w <= 0.0 || h <= 0.0 {
+            return Lay::new(size, Some(n), vec![]);
+        }
+        let selected = selected.min(pages.len() - 1);
+        let idle = selected as f64 * w;
+        let max = (pages.len() - 1) as f64 * w;
+        let drag = self.scroll.get(&v.id).map_or(idle, |off| off.0);
+        let offset = self.clamp_offset(drag, max, w);
+        if pages.len() > 1 && pages.iter().any(|page| page.action.is_some()) {
+            n.scroll = Some(ScrollInfo { vertical: false, offset: (offset, 0.0), max: (max, 0.0), snap: None, content: None, page: Some(w), aligned: false });
+            n.pager = Some(Box::new(Pager { selected, actions: pages.iter().map(|page| page.action).collect() }));
+        }
+
+        let mut kids = Vec::new();
+        for (i, page) in pages.iter().enumerate() {
+            let x = i as f64 * w - offset;
+            if x <= -w || x >= w {
+                continue;
+            }
+            let content = self.view(&page.content, Prop { w: Some(w), h: Some(h) }, Env { axis: None, ..env });
+            let position = ((w - content.size.w) / 2.0, (h - content.size.h) / 2.0, content);
+            let mut page = Node::new(format!("{}#page-{i}", v.id), "page");
+            page.inspect = false;
+            page.clip_radius = Some(0.0);
+            kids.push((x, 0.0, Lay::new(size, Some(page), vec![position])));
+        }
+        if index.0 == PageIndexDisplay::Always || (index.0 == PageIndexDisplay::Automatic && pages.len() > 1) {
+            let dots = self.page_index(v, pages, selected, index.1, w);
+            kids.push(((w - dots.size.w) / 2.0, (h - dots.size.h).max(0.0), dots));
+        }
+        Lay::new(size, Some(n), kids)
+    }
+
+    fn page_index(&self, v: &ViewNode, pages: &[TabPage], selected: usize, background: PageIndexBackground, width: f64) -> Lay {
+        let pitch = ((width - 16.0) / pages.len() as f64).clamp(7.0, 16.0);
+        let w = pages.len() as f64 * pitch + 16.0;
+        let h = 26.0;
+        let mut index = Node::new(format!("{}#index", v.id), "page-index");
+        index.label = Some(format!("Page {} of {}", selected + 1, pages.len()));
+        let material = background == PageIndexBackground::Always;
+        index.radius = PILL;
+        index.fill = material.then(|| rgba(118, 118, 128, 0.35));
+        let kids = pages.iter().enumerate().map(|(i, page)| {
+            let mut dot = Node::new(format!("{}#index-{i}", v.id), "page-dot");
+            dot.role = Role::Button;
+            dot.label = Some(format!("Page {}", i + 1));
+            dot.action = page.action;
+            dot.disabled = page.action.is_none();
+            let mut mark = Node::new(format!("{}#index-{i}#mark", v.id), "circle");
+            mark.inspect = false;
+            mark.radius = PILL;
+            let alpha = if i == selected { 1.0 } else { 0.3 };
+            mark.fill = Some(rgba(255, 255, 255, alpha));
+            let mark = Lay::new(Size { w: 7.0, h: 7.0 }, Some(mark), vec![]);
+            let child = Lay::new(Size { w: pitch, h }, Some(dot), vec![((pitch - 7.0) / 2.0, (h - 7.0) / 2.0, mark)]);
+            (8.0 + i as f64 * pitch, 0.0, child)
+        }).collect();
+        Lay::new(Size { w, h }, Some(index), kids)
     }
 
     /// Scale a laid-out subtree by `k` about its origin: geometry, fonts, symbols, strokes, radii, shadows.
@@ -2957,6 +3030,64 @@ mod tests {
         // Non-scrolling content is centred between the status bar and the bar's 83 pt inset.
         let c = by_id(&s, "c").bounds;
         near(c.y + c.h / 2.0, 62.0 + (874.0 - 62.0 - TAB_BAR_INSET) / 2.0);
+    }
+
+    #[test]
+    fn page_tab_view_uses_the_selected_page_and_sends_a_selection_action_on_swipe() {
+        let s = phone(r#"{"kind":"pagetabview","id":"p","selected":1,"indexDisplay":"never","pages":[
+            {"action":10,"content":{"kind":"text","id":"first","text":"First"}},
+            {"action":11,"content":{"kind":"text","id":"second","text":"Second"}},
+            {"action":12,"content":{"kind":"text","id":"third","text":"Third"}}]}"#);
+        let pager = by_id(&s, "p");
+        let second = by_id(&s, "second").bounds;
+        near(second.x + second.w / 2.0, 201.0);
+        near(second.y + second.h / 2.0, 451.0);
+        assert!(s.nodes.iter().all(|n| n.kind != "page-index"));
+
+        let mut inter = crate::Interaction::default();
+        inter.version = 7;
+        let drag = |dx, dy| onesim_protocol::PointerEvent {
+            kind: onesim_protocol::PointerKind::Drag, x: pager.bounds.x + 250.0, y: 300.0, dx, dy,
+            duration: None, scale: None, degrees: None,
+        };
+        assert_eq!(inter.pointer(&s, drag(-260.0, 0.0)), crate::Effect::Action { id: 12, version: 7 });
+        assert!(inter.scroll.is_empty(), "the guest selection determines the next resting page");
+        assert!(!matches!(inter.pointer(&s, drag(-15.0, -260.0)), crate::Effect::Action { .. }));
+        assert_eq!(inter.pointer(&s, drag(260.0, 0.0)), crate::Effect::Action { id: 10, version: 7 });
+    }
+
+    #[test]
+    fn page_tab_view_index_taps_and_visibility() {
+        let tree = |count, display, background| {
+            let pages: Vec<_> = (0..count).map(|i| serde_json::json!({
+                "content": {"kind":"text","id": format!("page-{i}"),"text": format!("Page {i}")}, "action": i + 1,
+            })).collect();
+            serde_json::json!({"kind":"pagetabview","id":"p","pages":pages,"indexDisplay":display,"indexBackground":background}).to_string()
+        };
+        let automatic = phone(&tree(1, "automatic", "always"));
+        assert!(automatic.nodes.iter().all(|n| n.kind != "page-index"));
+        let always = phone(&tree(1, "always", "always"));
+        assert!(by_id(&always, "p#index").fill.is_some());
+        let several = phone(&tree(3, "automatic", "never"));
+        assert!(by_id(&several, "p#index").fill.is_none());
+        let dot = by_id(&several, "p#index-2").bounds;
+        let click = onesim_protocol::PointerEvent::new(onesim_protocol::PointerKind::Click, dot.x + dot.w / 2.0, dot.y + dot.h / 2.0);
+        let mut inter = crate::Interaction::default();
+        assert_eq!(inter.pointer(&several, click), crate::Effect::Action { id: 3, version: 0 });
+    }
+
+    #[test]
+    fn horizontal_page_swipe_inside_a_sheet_selects_the_next_page() {
+        let s = phone(r#"{"kind":"presentation","id":"modal","content":{"kind":"empty","id":"under"},"layers":[
+            {"kind":"sheet","detents":[{"kind":"medium"}],"content":{"kind":"pagetabview","id":"p","pages":[
+                {"action":10,"content":{"kind":"text","id":"a","text":"First"}},
+                {"action":11,"content":{"kind":"text","id":"b","text":"Second"}}]}}]}"#);
+        let bounds = by_id(&s, "p").bounds;
+        let (x, y) = (bounds.x + bounds.w * 0.8, bounds.y + bounds.h * 0.5);
+        let mut inter = crate::Interaction::default();
+        inter.drag(&s, crate::DragPhase::Begin, x, y, 0.0);
+        assert_eq!(inter.drag(&s, crate::DragPhase::Move, x - bounds.w * 0.6, y, 16.0), crate::Effect::Redraw);
+        assert_eq!(inter.drag(&s, crate::DragPhase::End, x - bounds.w * 0.6, y, 32.0), crate::Effect::Action { id: 11, version: 0 });
     }
 
     #[test]

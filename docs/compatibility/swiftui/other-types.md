@@ -320,7 +320,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `SymbolRenderingMode` | 15 | ⬜ |  |  |
 | `SymbolVariableValueMode` | 26 | ⬜ |  |  |
 | `SymbolVariants` | 15 | ⬜ |  |  |
-| `Tab` | 18 | 🟠 |  | No `role: .search` |
+| `Tab` | 18 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Title, symbol, value and badge. Search role and custom `TabContent` builders are unsupported. |
 | `TabBarMinimizeBehavior` | 26 | ⬜ |  |  |
 | `TabBarPlacement` | 18 | ⬜ |  |  |
 | `TabContentBuilder` | 18 | ⬜ |  |  |

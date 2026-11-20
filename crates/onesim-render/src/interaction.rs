@@ -100,6 +100,8 @@ fn now_ms() -> f64 {
 #[derive(Debug)]
 struct Drag {
     id: String,
+    /// Decide the scroll axis on the first move when a pager shares the touch with a vertical scroller.
+    pager_start: Option<(f64, f64)>,
     /// Unrubbered offset along the axis: where the content would be without edge resistance.
     raw: f64,
     /// Last finger position along the axis (points).
@@ -310,7 +312,7 @@ impl Interaction {
             return if matches!(e, Effect::Action { .. }) { self.acted = true; e } else if self.hit.is_some() { Effect::Redraw } else { Effect::None };
         }
         if ev.kind == PointerKind::Scroll {
-            let Some(i) = scene.scroll_target(ev.x, ev.y) else { return Effect::None };
+            let Some(i) = scene.scroll_target_where(ev.x, ev.y, |n| n.pager.is_none()) else { return Effect::None };
             let n = &scene.nodes[i];
             let info = n.scroll.expect("scroll_target has scroll");
             let (ox, oy) = info.offset;
@@ -329,8 +331,13 @@ impl Interaction {
                 }
             }
         }
-        if ev.kind == PointerKind::Up && self.drag.take().is_some() {
-            return Effect::Redraw;
+        if ev.kind == PointerKind::Up {
+            if let Some(d) = self.drag.take() {
+                if scene.nodes.iter().any(|n| n.id == d.id && n.pager.is_some()) {
+                    self.scroll.remove(&d.id);
+                }
+                return Effect::Redraw;
+            }
         }
         let hit = scene.hit_test(ev.x, ev.y).map(|i| &scene.nodes[i]);
         self.hit = hit.map(|n| n.id.clone());
@@ -408,7 +415,7 @@ impl Interaction {
     fn catch(&mut self, n: &crate::Node, x: f64, y: f64) {
         let info = n.scroll.expect("scroller");
         let (o, max, d, f) = axis(n, info.offset, x, y);
-        self.drag = Some(Drag { id: n.id.clone(), raw: unshown(o, max, d), last: f, samples: vec![] });
+        self.drag = Some(Drag { id: n.id.clone(), pager_start: None, raw: unshown(o, max, d), last: f, samples: vec![] });
     }
 
     /// A finger drag (touch scrolling). `Begin` at the touch-down point, `Move` as it moves, `End`
@@ -444,6 +451,20 @@ impl Interaction {
         match phase {
             DragPhase::Begin => self.scroll_begin(scene, x, y, t),
             DragPhase::Move => {
+                if let Some((sx, sy)) = self.drag.as_mut().and_then(|d| d.pager_start.take()) {
+                    if (x - sx).hypot(y - sy) < PAN_SLOP {
+                        self.drag.as_mut().expect("drag exists").pager_start = Some((sx, sy));
+                        return Effect::None;
+                    }
+                    let vertical = (y - sy).abs() > (x - sx).abs();
+                    let target = scene.scroll_target_where(sx, sy, |n| n.scroll.is_some_and(|s| s.vertical == vertical));
+                    let start = self.drag.take().and_then(|d| d.samples.first().copied()).map_or(t, |(time, _)| time);
+                    if let Some(i) = target {
+                        self.catch(&scene.nodes[i], sx, sy);
+                        let d = self.drag.as_mut().expect("caught");
+                        d.samples.push((start, d.last));
+                    }
+                }
                 let Some(d) = self.drag.as_mut() else { return Effect::None };
                 let Some(n) = scene.nodes.iter().find(|n| n.id == d.id) else { return Effect::None };
                 let info = n.scroll.expect("scroller");
@@ -468,6 +489,18 @@ impl Interaction {
                 let id = d.id;
                 if let Some((idx, n)) = scene.nodes.iter().enumerate().find(|(_, n)| n.id == id) {
                     let info = n.scroll.expect("scroller");
+                    if let Some(pager) = &n.pager {
+                        let moved = self.scroll.remove(&id).is_some();
+                        let idle = pager.selected as f64 * n.bounds.w;
+                        let projected = d.raw + d.last - x + v * 0.18 - idle;
+                        let next = if projected > n.bounds.w / 2.0 { pager.selected + 1 }
+                            else if projected < -n.bounds.w / 2.0 { pager.selected.saturating_sub(1) } else { pager.selected };
+                        if let Some(action) = pager.actions.get(next).copied().flatten().filter(|_| next != pager.selected) {
+                            self.acted = true;
+                            return Effect::Action { id: action, version: self.version };
+                        }
+                        return if moved { Effect::Redraw } else { Effect::None };
+                    }
                     let (o, max, ..) = axis(n, info.offset, x, y);
                     let in_title = info.snap.is_some_and(|s| info.vertical && o > 0.0 && o < s);
                     let outside = !(0.0..=max).contains(&o);
@@ -639,8 +672,11 @@ impl Interaction {
                 t += FRAME_MS;
                 // Handed to a scroller: release it like a resting finger (no fling). ponytail: a whole `drag` never flings.
                 let e = self.drag(scene, DragPhase::End, x + ev.dx, y + ev.dy, if self.touch.is_some() { t } else { t + 1000.0 });
-                if let Effect::Gesture(e) = e {
-                    out.extend(e);
+                match e {
+                    Effect::Gesture(e) => out.extend(e),
+                    // This synthesized touch was handed to a pager. The guest has not seen its start.
+                    Effect::Action { .. } => return Some(e),
+                    _ => {}
                 }
             }
             PointerKind::Scroll => return None,
@@ -658,6 +694,7 @@ impl Interaction {
             self.catch(n, x, y);
         }
         let d = self.drag.as_mut().expect("caught");
+        d.pager_start = scene.scroll_target_where(x, y, |n| n.pager.is_some()).map(|_| (x, y));
         d.samples = vec![(t, d.last)];
         Effect::None
     }
@@ -693,6 +730,11 @@ impl Interaction {
             DragPhase::Move => {
                 if let Some(p) = self.pending.take() {
                     let dy = y - p.start.1;
+                    let dx = (x - p.start.0).abs();
+                    if dx > dy.abs().max(PAN_SLOP) && scene.scroll_target_where(p.start.0, p.start.1, |n| n.pager.is_some()).is_some() {
+                        self.scroll_begin(scene, p.start.0, p.start.1, t);
+                        return None;
+                    }
                     if dy.abs() < 2.0 {
                         self.pending = Some(p);
                         return Some(Effect::None);

@@ -88,7 +88,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `SubviewsCollection` | 18 | ⬜ |  |  |
 | `SubviewsCollectionSlice` | 18 | ⬜ |  |  |
 | `Table` | 16 | ⬜ |  |  |
-| `TabView` | 13 | 🟠 |  | No `.page` style, `TabSection`, `ForEach` of tabs; re-selecting a tab does not pop its stack |
+| `TabView` | 13 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | iPhone tab bar and pager. Sidebar, `TabSection` and stack reset on reselect are unsupported. |
 | `Text` | 13 | 🟠 |  | `String` only (no `LocalizedStringKey`, date or format interpolation); `Text + Text` runs: no `baselineOffset`, `kerning`, underline color/pattern |
 | `TextEditor` | 14 | ⬜ |  |  |
 | `TextField` | 13 | ✅ |  |  |
