@@ -175,20 +175,20 @@ fn scroll_offsets_persist_across_trees() {
     let y_of = |host: &mut Host, id: &str| find(&host.inspect(id).unwrap().1, &|n| n.text.as_deref() == Some("Line 10")).unwrap().frame.y;
     let y0 = y_of(&mut host, &id);
     let (hit, acted) =
-        host.pointer(&id, PointerEvent { kind: PointerKind::Scroll, x: 200.0, y: 400.0, dx: 0.0, dy: 100.0 }).unwrap();
+        host.pointer(&id, PointerEvent::moved(PointerKind::Scroll, 200.0, 400.0, 0.0, 100.0)).unwrap();
     assert_eq!((hit.as_deref(), acted), (Some("sc"), false));
     assert_eq!(y_of(&mut host, &id), y0 - 100.0);
     // a new tree (environment change) keeps the offset
     host.set_appearance(&id, Appearance::Dark).unwrap();
     assert_eq!(y_of(&mut host, &id), y0 - 100.0);
     // clamped at both ends
-    host.pointer(&id, PointerEvent { kind: PointerKind::Scroll, x: 200.0, y: 400.0, dx: 0.0, dy: 1.0e6 }).unwrap();
+    host.pointer(&id, PointerEvent::moved(PointerKind::Scroll, 200.0, 400.0, 0.0, 1.0e6)).unwrap();
     let last = find(&host.inspect(&id).unwrap().1, &|n| n.text.as_deref() == Some("Line 39")).unwrap().frame;
     assert!(last.y + last.height <= 874.0 - 34.0 + 0.5 && last.y + last.height > 874.0 - 34.0 - 40.0, "last line {last:?}");
-    host.pointer(&id, PointerEvent { kind: PointerKind::Scroll, x: 200.0, y: 400.0, dx: 0.0, dy: -1.0e6 }).unwrap();
+    host.pointer(&id, PointerEvent::moved(PointerKind::Scroll, 200.0, 400.0, 0.0, -1.0e6)).unwrap();
     assert_eq!(y_of(&mut host, &id), y0);
     // scrolling over the status bar finds nothing
-    assert_eq!(host.pointer(&id, PointerEvent { kind: PointerKind::Scroll, x: 200.0, y: 20.0, dx: 0.0, dy: 50.0 }).unwrap().0, None);
+    assert_eq!(host.pointer(&id, PointerEvent::moved(PointerKind::Scroll, 200.0, 20.0, 0.0, 50.0)).unwrap().0, None);
     host.shutdown();
 }
 

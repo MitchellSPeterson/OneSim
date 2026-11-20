@@ -27,9 +27,11 @@ cleanup() { stop_metro; rm -rf "$guests"; }
 trap cleanup EXIT
 app="$guests/showcase"
 tabs="$guests/tabs"
+gest="$guests/gestures"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
   scripts/build-swift-app.sh examples/swiftui-tabs "$tabs"
+  scripts/build-swift-app.sh examples/swiftui-gestures "$gest"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
 # (docs/compatibility/versions.json): 26.5 on the iPhone 17 Pro in tests/fixtures/, 27.2 on the iPhone 18 Pro
@@ -96,6 +98,17 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     tshot tabs-settings-dark --dark --click 287,822
     echo "== SwiftUI TabView (swiftui-tabs, iOS $ios)"
     python3 scripts/compare_ios.py $fx/swiftui-tabs-ios "$tout/onesim" "$tout" || rc=1
+    # SwiftUI gestures: tests/fixtures/swiftui-gestures-ios (see its README). Targets by label.
+    gout=$out/swiftui-gestures; mkdir -p "$gout/onesim"
+    gshot() { local name=$1; shift; ./target/debug/onesim run "$gest" "${base[@]}" "$@" --screenshot "$gout/onesim/$name.png" >/dev/null; }
+    gshot gestures
+    gshot gestures-dark          --dark
+    gshot gestures-dragged       --drag "Drag me,100,0"
+    gshot gestures-long-pressed  --long-press Hold
+    gshot gestures-double-tapped --click Double-tap --click Double-tap
+    gshot gestures-pinched       --pinch "Pinch or rotate,1.5"
+    echo "== SwiftUI gestures (swiftui-gestures, iOS $ios)"
+    python3 scripts/compare_ios.py $fx/swiftui-gestures-ios "$gout/onesim" "$gout" || rc=1
   fi
   # React Native / Expo showcase: tests/fixtures/rn-showcase-ios (see its README). Needs node + `npm install` in the example.
   if want expo; then

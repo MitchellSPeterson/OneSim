@@ -163,6 +163,23 @@ pub enum TouchPhase {
     Cancel,
 }
 
+/// A view carrying SwiftUI gestures under a touch (protocol section L): its gesture `key` and frame `[x, y, w, h]` in points.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GestureTarget {
+    pub key: String,
+    pub frame: [f64; 4],
+}
+
+/// One SwiftUI touch event (protocol section L). `points` are the fingers in screen points, `time` in ms;
+/// `targets` run innermost first and stay the same for the whole touch sequence.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GestureTouch {
+    pub phase: TouchPhase,
+    pub time: f64,
+    pub points: Vec<[f64; 2]>,
+    pub targets: Vec<GestureTarget>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum HostMessage {
@@ -178,6 +195,8 @@ pub enum HostMessage {
     },
     /// React Native touch: `x`/`y` page points, `lx`/`ly` relative to the target node (`tag`).
     Touch { phase: TouchPhase, tag: u64, x: f64, y: f64, lx: f64, ly: f64, timestamp: f64 },
+    /// SwiftUI touch on views with gestures (section L). Not version-gated: gesture keys are structural paths.
+    Gesture(GestureTouch),
     /// React Native layout frames `tag -> [x, y, w, h]` in page points.
     Layout { frames: std::collections::BTreeMap<String, [f64; 4]> },
     /// React Native: host focus moved to / away from the text input `tag`.
@@ -275,6 +294,15 @@ mod tests {
         assert_eq!(serde_json::from_str::<ViewNode>(&serde_json::to_string(&root).unwrap()).unwrap(), root);
         assert_eq!(serde_json::to_string(&HostMessage::Shutdown).unwrap(), r#"{"type":"shutdown"}"#);
         for (m, j) in [
+            (
+                HostMessage::Gesture(GestureTouch {
+                    phase: TouchPhase::Move,
+                    time: 16.0,
+                    points: vec![[1.0, 2.0]],
+                    targets: vec![GestureTarget { key: "0/1".into(), frame: [0.0, 0.0, 10.0, 20.0] }],
+                }),
+                r#"{"type":"gesture","phase":"move","time":16.0,"points":[[1.0,2.0]],"targets":[{"key":"0/1","frame":[0.0,0.0,10.0,20.0]}]}"#,
+            ),
             (HostMessage::Focus { tag: 9 }, r#"{"type":"focus","tag":9}"#),
             (HostMessage::Blur { tag: 9 }, r#"{"type":"blur","tag":9}"#),
             (HostMessage::Keyboard { height: 335.0 }, r#"{"type":"keyboard","height":335.0}"#),

@@ -7,6 +7,8 @@ use std::io::{BufRead, Write};
 pub type ActionCb = Option<unsafe extern "C" fn(*mut c_void, u64)>;
 pub type TextCb = Option<unsafe extern "C" fn(*mut c_void, u64, *const c_char)>;
 pub type EnvCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char, f64, f64)>;
+/// (ctx, phase 0 start / 1 move / 2 end / 3 cancel, time ms, points, point count, keys, frames, target count).
+pub type GestureCb = Option<unsafe extern "C" fn(*mut c_void, i32, f64, *const f64, usize, *const *const c_char, *const f64, usize)>;
 
 #[derive(Default)]
 struct State {
@@ -16,6 +18,7 @@ struct State {
     on_action: ActionCb,
     on_env: EnvCb,
     on_text: TextCb,
+    on_gesture: GestureCb,
 }
 
 thread_local! {
@@ -100,6 +103,11 @@ fn handle_line(line: &str) -> bool {
                 }
             }
         }
+        Some("gesture") => {
+            if let Some(cb) = STATE.with(|s| s.borrow().on_gesture) {
+                deliver_gesture(cb, ctx, &v);
+            }
+        }
         Some("environment") => {
             let appearance = CString::new(v["appearance"].as_str().unwrap_or("light")).unwrap_or_default();
             let (w, h) = (v["viewport"]["width"].as_f64().unwrap_or(0.0), v["viewport"]["height"].as_f64().unwrap_or(0.0));
@@ -110,6 +118,24 @@ fn handle_line(line: &str) -> bool {
         _ => {}
     }
     true
+}
+
+/// Flatten a section L `gesture` message into the callback's arrays (owned here, valid during the call).
+fn deliver_gesture(cb: unsafe extern "C" fn(*mut c_void, i32, f64, *const f64, usize, *const *const c_char, *const f64, usize), ctx: usize, v: &Value) {
+    let phase = match v["phase"].as_str() {
+        Some("start") => 0,
+        Some("move") => 1,
+        Some("end") => 2,
+        Some("cancel") => 3,
+        _ => return,
+    };
+    let empty = vec![];
+    let pts: Vec<f64> = v["points"].as_array().unwrap_or(&empty).iter().flat_map(|p| [p[0].as_f64().unwrap_or(0.0), p[1].as_f64().unwrap_or(0.0)]).collect();
+    let targets = v["targets"].as_array().unwrap_or(&empty);
+    let keys: Vec<CString> = targets.iter().map(|t| CString::new(t["key"].as_str().unwrap_or("").replace('\0', "")).unwrap_or_default()).collect();
+    let key_ptrs: Vec<*const c_char> = keys.iter().map(|k| k.as_ptr()).collect();
+    let frames: Vec<f64> = targets.iter().flat_map(|t| (0..4).map(move |i| t["frame"][i].as_f64().unwrap_or(0.0))).collect();
+    unsafe { cb(ctx as *mut c_void, phase, v["time"].as_f64().unwrap_or(0.0), pts.as_ptr(), pts.len() / 2, key_ptrs.as_ptr(), frames.as_ptr(), keys.len()) };
 }
 
 fn error_msg(m: &str) -> String {
@@ -150,6 +176,12 @@ pub extern "C" fn simcore_runtime_set_callbacks(ctx: *mut c_void, on_action: Act
 #[no_mangle]
 pub extern "C" fn simcore_runtime_set_text_callback(on_text: TextCb) {
     STATE.with(|s| s.borrow_mut().on_text = on_text);
+}
+
+/// Optional section L gesture callback; uses the ctx given to `simcore_runtime_set_callbacks`.
+#[no_mangle]
+pub extern "C" fn simcore_runtime_set_gesture_callback(on_gesture: GestureCb) {
+    STATE.with(|s| s.borrow_mut().on_gesture = on_gesture);
 }
 
 /// # Safety
@@ -214,6 +246,27 @@ mod tests {
 
     unsafe extern "C" fn on_text(_: *mut c_void, f: u64, t: *const c_char) {
         SEEN.with(|s| s.borrow_mut().push(format!("t{f}={}", CStr::from_ptr(t).to_str().unwrap())))
+    }
+
+    unsafe extern "C" fn on_gesture(_: *mut c_void, phase: i32, time: f64, pts: *const f64, np: usize, keys: *const *const c_char, frames: *const f64, nt: usize) {
+        let pts = std::slice::from_raw_parts(pts, np * 2);
+        let keys: Vec<_> = std::slice::from_raw_parts(keys, nt).iter().map(|k| CStr::from_ptr(*k).to_str().unwrap().to_string()).collect();
+        let frames = std::slice::from_raw_parts(frames, nt * 4);
+        SEEN.with(|s| s.borrow_mut().push(format!("g{phase}@{time} {pts:?} {keys:?} {frames:?}")))
+    }
+
+    #[test]
+    fn gesture_touches_reach_the_callback() {
+        setup();
+        simcore_runtime_set_gesture_callback(Some(on_gesture));
+        submit(b"{}", 5).unwrap();
+        // Not version-gated: a drag keeps going while its moves produce new trees.
+        assert!(handle_line(r#"{"type":"gesture","phase":"start","time":10.5,"points":[[1,2],[3,4]],"targets":[{"key":"0/1","frame":[0,0,10,20]},{"key":"0","frame":[0,0,30,40]}]}"#));
+        assert!(handle_line(r#"{"type":"gesture","phase":"cancel","time":12,"points":[[5,6]],"targets":[]}"#));
+        SEEN.with(|s| assert_eq!(*s.borrow(), vec![
+            r#"g0@10.5 [1.0, 2.0, 3.0, 4.0] ["0/1", "0"] [0.0, 0.0, 10.0, 20.0, 0.0, 0.0, 30.0, 40.0]"#,
+            "g3@12 [5.0, 6.0] [] []",
+        ]));
     }
 
     fn setup() -> Buf {

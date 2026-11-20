@@ -4,10 +4,10 @@
 //! and keyboard events together with the scene they hit; it returns what the transport must do:
 //! the native host sends the effect over the guest wire, the browser calls the Swift callbacks.
 use crate::{autocap, ChromeParams, Role, Scene, SheetPos};
-use onesim_protocol::{KeyboardEvent, PointerEvent, PointerKind};
+use onesim_protocol::{GestureTarget, GestureTouch, KeyboardEvent, PointerEvent, PointerKind, TouchPhase};
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Effect {
     /// Nothing changed.
     None,
@@ -15,6 +15,8 @@ pub enum Effect {
     Action { id: u64, version: u64 },
     /// Deliver new text for a field to the guest.
     TextInput { field: u64, version: u64, text: String },
+    /// Deliver touches to SwiftUI gesture views, in order (protocol section L). Not version-gated.
+    Gesture(Vec<GestureTouch>),
     /// Only interaction state changed (scroll, focus, shift): re-layout, no guest call.
     Redraw,
 }
@@ -45,6 +47,54 @@ pub struct Interaction {
     /// Scrollers in flight: node id -> (velocity along the axis in pt/s, spring target). Without a
     /// target it is momentum (and a bounce past an edge); with one, a spring to that offset.
     motion: HashMap<String, (f64, Option<f64>)>,
+    /// Fingers on SwiftUI gesture views (section L).
+    touch: Option<Touch>,
+    /// Time (ms) of the last synthesized touch (`pointer`), so whole gestures never overlap in time.
+    clock: f64,
+}
+
+/// A touch sequence owned by SwiftUI gesture views.
+#[derive(Debug)]
+struct Touch {
+    targets: Vec<GestureTarget>,
+    /// Whether any target follows a moving finger; if none does, a scroller under it takes a moving touch.
+    pans: bool,
+    start: (f64, f64),
+    points: Vec<[f64; 2]>,
+    time: f64,
+    /// Touch time last reported by `hold`.
+    held: f64,
+    /// First caller timestamp seen and the touch time it maps to: a touch begun by `pointer` (wall clock) and
+    /// continued by `drag` (the transport's clock) keeps one time line.
+    base: Option<(f64, f64)>,
+}
+
+impl Touch {
+    /// Move the touch to time `t` on the caller's clock (never backwards).
+    fn at(&mut self, t: f64) {
+        let (t0, time0) = *self.base.get_or_insert((t, self.time));
+        self.time = self.time.max(time0 + (t - t0));
+    }
+}
+
+/// A finger must move this far (pt) before a scroller takes a touch from a tap-only gesture view (UIScrollView's slop).
+const PAN_SLOP: f64 = 10.0;
+/// Synthesized whole gestures (`drag`, `pinch`, `rotate`) move in this many steps, one per frame.
+const GESTURE_STEPS: u32 = 8;
+const FRAME_MS: f64 = 16.0;
+/// A synthesized long press reports the held finger this often (ms).
+const HOLD_MS: f64 = 100.0;
+/// A resting live finger is reported at most this often (ms).
+const LIVE_HOLD_MS: f64 = 50.0;
+/// Synthesized two-finger gestures start with the fingers this far apart (pt), side by side.
+const FINGER_GAP: f64 = 100.0;
+
+/// Wall-clock milliseconds. ponytail: 0 on wasm32-unknown-unknown (no clock); only the GPU presenter builds there and it sends no input.
+fn now_ms() -> f64 {
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    return 0.0;
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64() * 1000.0)
 }
 
 #[derive(Debug)]
@@ -171,6 +221,9 @@ impl Interaction {
         self.forget_gone(scene);
         self.hit = None;
         self.acted = false;
+        if let Some(e) = self.gesture_pointer(scene, &ev) {
+            return e;
+        }
         if let Some(e) = self.slide(scene, &ev) {
             return e;
         }
@@ -290,6 +343,9 @@ impl Interaction {
     /// past the edges; on release it carries on with the finger's velocity (see `tick`).
     pub fn drag(&mut self, scene: &Scene, phase: DragPhase, x: f64, y: f64, t: f64) -> Effect {
         self.forget_gone(scene);
+        if let Some(e) = self.touch_drag(scene, phase, x, y, t) {
+            return e;
+        }
         if phase == DragPhase::Begin {
             self.slider_drag = scene
                 .hit_test(x, y)
@@ -348,6 +404,168 @@ impl Interaction {
                 Effect::None
             }
         }
+    }
+
+    /// The gesture views a finger landing at (x, y) belongs to, innermost first, or `None` when there are none or a
+    /// control (button, field, slider, key) above the innermost one takes the touch, as a `Button` inside a view with
+    /// gestures does on iOS. Sets `hit` to the innermost gesture view.
+    fn touch_at(&mut self, scene: &Scene, x: f64, y: f64, time: f64) -> Option<Touch> {
+        let targets = scene.gesture_targets(x, y);
+        let &inner = targets.first()?;
+        if scene.hit_test(x, y).is_some_and(|c| c > inner) {
+            return None;
+        }
+        self.hit = Some(scene.nodes[inner].id.clone());
+        let nodes = targets.iter().map(|&i| &scene.nodes[i]);
+        Some(Touch {
+            pans: nodes.clone().any(|n| n.gesture.as_ref().is_some_and(|g| g.pans)),
+            targets: nodes
+                .map(|n| GestureTarget { key: n.gesture.as_ref().map(|g| g.key.clone()).unwrap_or_default(), frame: [n.bounds.x, n.bounds.y, n.bounds.w, n.bounds.h] })
+                .collect(),
+            start: (x, y),
+            points: vec![[x, y]],
+            time,
+            held: time,
+            base: Some((time, time)),
+        })
+    }
+
+    fn touch_event(t: &Touch, phase: TouchPhase) -> GestureTouch {
+        GestureTouch { phase, time: t.time, points: t.points.clone(), targets: t.targets.clone() }
+    }
+
+    /// Live fingers on gesture views. Returns `None` when the touch is not (or no longer) the gesture views'.
+    fn touch_drag(&mut self, scene: &Scene, phase: DragPhase, x: f64, y: f64, t: f64) -> Option<Effect> {
+        match phase {
+            DragPhase::Begin => {
+                // A touch already down here (a `pointer` down, then the finger moved): it carries on.
+                if let Some(touch) = self.touch.as_mut().filter(|tc| tc.start == (x, y)) {
+                    touch.base = None;
+                    touch.at(t);
+                    return Some(Effect::None);
+                }
+                self.touch = None;
+                let touch = self.touch_at(scene, x, y, t)?;
+                self.pressed = None;
+                self.drag = None;
+                self.pending = None;
+                self.sheet_drag = None;
+                self.slider_drag = None;
+                let e = Self::touch_event(&touch, TouchPhase::Start);
+                self.touch = Some(touch);
+                Some(Effect::Gesture(vec![e]))
+            }
+            DragPhase::Move => {
+                let touch = self.touch.as_mut()?;
+                let (sx, sy) = touch.start;
+                if !touch.pans && scene.scroll_target(sx, sy).is_some() && (x - sx).hypot(y - sy) > PAN_SLOP {
+                    // The scroller takes over from where the finger came down; the gesture views see a cancel.
+                    let mut touch = self.touch.take()?;
+                    touch.at(t);
+                    self.scroll_begin(scene, sx, sy, t);
+                    self.drag(scene, DragPhase::Move, x, y, t);
+                    return Some(Effect::Gesture(vec![Self::touch_event(&touch, TouchPhase::Cancel)]));
+                }
+                touch.points = vec![[x, y]];
+                touch.at(t);
+                Some(Effect::Gesture(vec![Self::touch_event(touch, TouchPhase::Move)]))
+            }
+            DragPhase::End => {
+                let mut touch = self.touch.take()?;
+                touch.points = vec![[x, y]];
+                touch.at(t);
+                Some(Effect::Gesture(vec![Self::touch_event(&touch, TouchPhase::End)]))
+            }
+        }
+    }
+
+    /// While a finger rests on a gesture view, report it again `dt` seconds later (no movement), so a long press can
+    /// fire before the finger lifts. Live transports call this every frame; `Effect::None` without a finger.
+    pub fn hold(&mut self, dt: f64) -> Effect {
+        let Some(touch) = self.touch.as_mut() else { return Effect::None };
+        touch.time += dt * 1000.0;
+        touch.base = None; // the next caller timestamp continues from here
+        // Every frame would re-evaluate the guest for nothing; a long press needs far less.
+        if touch.time - touch.held < LIVE_HOLD_MS {
+            return Effect::None;
+        }
+        touch.held = touch.time;
+        Effect::Gesture(vec![Self::touch_event(touch, TouchPhase::Move)])
+    }
+
+    /// Whether a finger is down on a gesture view (call `hold` every frame meanwhile).
+    pub fn holding(&self) -> bool {
+        self.touch.is_some()
+    }
+
+    /// Whole pointer gestures on gesture views. Times are wall-clock ms, never before the previous gesture's end.
+    fn gesture_pointer(&mut self, scene: &Scene, ev: &PointerEvent) -> Option<Effect> {
+        let t0 = now_ms().max(self.clock);
+        let (x, y) = (ev.x, ev.y);
+        let mut out = vec![];
+        match ev.kind {
+            PointerKind::Down => return self.touch_drag(scene, DragPhase::Begin, x, y, t0),
+            PointerKind::Up => {
+                let touch = self.touch.as_mut()?;
+                touch.base = Some((t0, t0)); // wall clock again, as at the down
+                let e = self.touch_drag(scene, DragPhase::End, x, y, t0);
+                self.acted = true;
+                return e;
+            }
+            PointerKind::Click => {
+                let mut touch = self.touch_at(scene, x, y, t0)?;
+                out.push(Self::touch_event(&touch, TouchPhase::Start));
+                touch.time += FRAME_MS * 3.0;
+                out.push(Self::touch_event(&touch, TouchPhase::End));
+            }
+            PointerKind::LongPress => {
+                let mut touch = self.touch_at(scene, x, y, t0)?;
+                let end = t0 + ev.duration.unwrap_or(1.0) * 1000.0;
+                out.push(Self::touch_event(&touch, TouchPhase::Start));
+                while touch.time + HOLD_MS < end {
+                    touch.time += HOLD_MS;
+                    out.push(Self::touch_event(&touch, TouchPhase::Move));
+                }
+                touch.time = end;
+                out.push(Self::touch_event(&touch, TouchPhase::End));
+            }
+            PointerKind::Pinch | PointerKind::Rotate => {
+                let mut touch = self.touch_at(scene, x, y, t0)?;
+                let (scale, deg) = (ev.scale.unwrap_or(1.0), ev.degrees.unwrap_or(0.0));
+                for i in 0..=GESTURE_STEPS {
+                    let f = f64::from(i) / f64::from(GESTURE_STEPS);
+                    let (half, a) = (FINGER_GAP / 2.0 * (1.0 + (scale - 1.0) * f), (deg * f).to_radians());
+                    let (dx, dy) = (half * a.cos(), half * a.sin());
+                    touch.points = vec![[x - dx, y - dy], [x + dx, y + dy]];
+                    touch.time = t0 + FRAME_MS * f64::from(i);
+                    out.push(Self::touch_event(&touch, if i == 0 { TouchPhase::Start } else { TouchPhase::Move }));
+                }
+                touch.time += FRAME_MS;
+                out.push(Self::touch_event(&touch, TouchPhase::End));
+            }
+            PointerKind::Drag => {
+                let Some(Effect::Gesture(start)) = self.touch_drag(scene, DragPhase::Begin, x, y, t0) else { return None };
+                out.extend(start);
+                let mut t = t0;
+                for i in 1..=GESTURE_STEPS {
+                    let f = f64::from(i) / f64::from(GESTURE_STEPS);
+                    t += FRAME_MS;
+                    if let Effect::Gesture(e) = self.drag(scene, DragPhase::Move, x + ev.dx * f, y + ev.dy * f, t) {
+                        out.extend(e);
+                    }
+                }
+                t += FRAME_MS;
+                // Handed to a scroller: release it like a resting finger (no fling). ponytail: a whole `drag` never flings.
+                let e = self.drag(scene, DragPhase::End, x + ev.dx, y + ev.dy, if self.touch.is_some() { t } else { t + 1000.0 });
+                if let Effect::Gesture(e) = e {
+                    out.extend(e);
+                }
+            }
+            PointerKind::Scroll => return None,
+        }
+        self.clock = out.last().map_or(t0, |e| e.time);
+        self.acted = true;
+        Some(Effect::Gesture(out))
     }
 
     fn scroll_begin(&mut self, scene: &Scene, x: f64, y: f64, t: f64) -> Effect {
@@ -567,7 +785,9 @@ pub fn resolve_label(tree: &onesim_protocol::UiNode, spec: &str) -> Result<(f64,
         })
         // A native stack header's back pill is labelled with the previous title; `Back` always finds it.
         .or_else(|| find(tree, &|n| spec.eq_ignore_ascii_case("back") && n.id.ends_with("#back")))
-        .ok_or_else(|| format!("no button, toggle, text field or key labelled {spec:?}"))?,
+        // Any other view by its text (views with gestures have no control role).
+        .or_else(|| find(tree, &|n| n.role.as_deref() == Some("text") && n.label.as_deref() == Some(spec)))
+        .ok_or_else(|| format!("no button, toggle, text field, key or text labelled {spec:?}"))?,
     };
     Ok(center(n))
 }
@@ -643,7 +863,7 @@ mod tests {
                 ios: Default::default(), nodes, unsupported_symbols: vec![], notes: vec![] }
         };
         let mut it = Interaction::default();
-        let ev = |kind, dy| PointerEvent { kind, x: 100.0, y: 100.0, dx: 0.0, dy };
+        let ev = |kind, dy| PointerEvent::moved(kind, 100.0, 100.0, 0.0, dy);
         assert_eq!(it.pointer(&screen(true), ev(PointerKind::Scroll, 120.0)), Effect::Redraw);
         assert_eq!(it.scroll.get("0/s1"), Some(&(0.0, 120.0)));
         // Back to a screen without it (the pop), then a new screen reusing the id starts at the top.

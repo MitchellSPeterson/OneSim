@@ -133,6 +133,13 @@ pub enum PointerKind {
     Scroll,
     /// A finger drag from (x, y) by (dx, dy) points, as one gesture (touch scrolling, sheet swipes; React Native: touch start, moves, end).
     Drag,
+    /// A finger held still at (x, y) for `duration` seconds (default 1), then lifted.
+    #[serde(rename = "long_press")]
+    LongPress,
+    /// Two fingers centred on (x, y), 100 pt apart horizontally, spread (or pinched) to `scale` times that distance.
+    Pinch,
+    /// Two fingers centred on (x, y), 100 pt apart horizontally, turned by `degrees` (positive = clockwise).
+    Rotate,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -145,11 +152,25 @@ pub struct PointerEvent {
     pub dx: f64,
     #[serde(default)]
     pub dy: f64,
+    /// `long_press`: how long the finger stays down (seconds, default 1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+    /// `pinch`: final finger distance over the initial one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scale: Option<f64>,
+    /// `rotate`: how far the fingers turn, clockwise degrees.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degrees: Option<f64>,
 }
 
 impl PointerEvent {
     pub fn new(kind: PointerKind, x: f64, y: f64) -> Self {
-        Self { kind, x, y, dx: 0.0, dy: 0.0 }
+        Self { kind, x, y, dx: 0.0, dy: 0.0, duration: None, scale: None, degrees: None }
+    }
+
+    /// `scroll` / `drag` by (dx, dy) points.
+    pub fn moved(kind: PointerKind, x: f64, y: f64, dx: f64, dy: f64) -> Self {
+        Self { dx, dy, ..Self::new(kind, x, y) }
     }
 }
 
@@ -244,6 +265,12 @@ mod tests {
         assert_eq!((e.kind, e.dy), (PointerKind::Scroll, -30.5));
         let c: PointerEvent = serde_json::from_str(r#"{"kind":"click","x":1,"y":2}"#).unwrap();
         assert_eq!((c.dx, c.dy), (0.0, 0.0));
+        let p: PointerEvent = serde_json::from_str(r#"{"kind":"pinch","x":1,"y":2,"scale":1.5}"#).unwrap();
+        assert_eq!((p.kind, p.scale), (PointerKind::Pinch, Some(1.5)));
+        let r: PointerEvent = serde_json::from_str(r#"{"kind":"rotate","x":1,"y":2,"degrees":30}"#).unwrap();
+        assert_eq!((r.kind, r.degrees), (PointerKind::Rotate, Some(30.0)));
+        let l: PointerEvent = serde_json::from_str(r#"{"kind":"long_press","x":1,"y":2,"duration":0.8}"#).unwrap();
+        assert_eq!((l.kind, l.duration), (PointerKind::LongPress, Some(0.8)));
         let k: KeyboardEvent = serde_json::from_str(r#"{"kind":"text","text":"abc"}"#).unwrap();
         assert_eq!(k, KeyboardEvent::Text { text: "abc".into() });
         let k: KeyboardEvent = serde_json::from_str(r#"{"kind":"key","key":"backspace"}"#).unwrap();

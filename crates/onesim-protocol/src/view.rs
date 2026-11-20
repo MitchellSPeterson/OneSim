@@ -241,6 +241,28 @@ pub enum Modifier {
     NavigationTitle(String),
     ImageScale(ImageScale),
     Glass(GlassMod),
+    /// `.offset(x:y:)`: draws (and hit-tests) the view moved by (x, y) points without changing its layout.
+    Offset(Offset),
+    /// The view carries SwiftUI gestures (section L).
+    Gesture(GestureMod),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+pub struct Offset {
+    #[serde(default)]
+    pub x: f64,
+    #[serde(default)]
+    pub y: f64,
+}
+
+/// `.gesture` / `.simultaneousGesture` / `.highPriorityGesture` (section L). `key` names the view's gestures in
+/// touch messages; `pans` is true when any of them follows a moving finger (drag, magnify, rotate), so a
+/// scroller under it does not take the touch.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GestureMod {
+    pub key: String,
+    #[serde(default)]
+    pub pans: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -803,6 +825,8 @@ mod tests {
           "modifiers":[{"imageScale":"large"},{"font":{"style":"footnote","weight":"semibold"}}]});
         let n: ViewNode = serde_json::from_value(j).unwrap();
         assert_eq!(n.modifiers[0], Modifier::ImageScale(ImageScale::Large));
+        let g: ViewNode = serde_json::from_value(json!({"kind":"empty","id":"0","modifiers":[{"offset":{"x":3,"y":-4}},{"gesture":{"key":"0","pans":true}}]})).unwrap();
+        assert_eq!(g.modifiers, vec![Modifier::Offset(Offset { x: 3.0, y: -4.0 }), Modifier::Gesture(GestureMod { key: "0".into(), pans: true })]);
         assert_eq!(n.modifiers[1], Modifier::Font(Font::Style { style: TextStyle::Footnote, weight: Some(Weight::Semibold) }));
         let ViewKind::Label { icon, .. } = &n.kind else { panic!() };
         assert!(matches!(&icon.kind, ViewKind::Image { resizable: true, content_mode: Some(ContentMode::Fit), scale: None, .. }));
