@@ -232,7 +232,7 @@ not the font. A resizable image takes the proposal; with `contentMode` it keeps 
 `fill` occupies the whole proposal and crops). The glyph is rasterized at device scale into an alpha mask, tinted with the foreground color
 and cached by (name, size, weight, scale, device scale, target size). In a list row, `label` puts the icon (imageScale large) centered in a
 24pt leading column and starts the title 16pt later (title at row content x + 40); the row separator aligns with the title.
-The default is a monochrome alpha mask tinted with the foreground. Hierarchical, palette, multicolor and gradient modes are section N. For a name with no mapping the
+The default is a monochrome alpha mask tinted with the foreground. Hierarchical, palette, multicolor and gradient modes are section O. For a name with no mapping the
 host draws a rounded-square outline placeholder and records one `get_errors` entry per name, `{"source":"host","message":"unsupported_symbol: ..."}`.
 
 ### Software keyboard (host chrome)
@@ -300,7 +300,7 @@ System chrome uses the same effect:
 
 ## G. v1 additions: Text runs, button roles, presentation layers (additive)
 
-- `text` may carry `"runs"` (from `Text + Text`, or a lone `Text` whose styling is not a modifier). `"text"` is the plain concatenation (labels, inspection). Unset fields inherit the environment. Runs lay out and wrap as one paragraph; line metrics come from the largest run. Italic is the font's oblique (synthesized when the face has none). Underline and strikethrough are rules under or through the glyphs, in the run's color unless a line color is set (section N). A lone styled `Text` whose only styles are modifiers still uses those modifiers.
+- `text` may carry `"runs"` (from `Text + Text`, or a lone `Text` whose styling is not a modifier). `"text"` is the plain concatenation (labels, inspection). Unset fields inherit the environment. Runs lay out and wrap as one paragraph; line metrics come from the largest run. Italic is the font's oblique (synthesized when the face has none). Underline and strikethrough are rules under or through the glyphs, in the run's color unless a line color is set (section O). A lone styled `Text` whose only styles are modifiers still uses those modifiers.
 - `button` gains `"role"?: "cancel"|"destructive"`.
 - New kind `presentation`: `{"kind":"presentation","id","content": ViewNode, "layers": [Layer]}`. The guest emits it as the root only while something is presented (otherwise the tree is unchanged); `content` is the normal tree and `layers` run bottom to top. A layer presented from inside another layer's content comes after it. `Layer` is one of:
 
@@ -709,7 +709,23 @@ Host → guest:
 - `scrollTo` aligns the target's anchor with the same anchor of the scroll viewport: `offset = content - (viewport - targetSize) * anchor`, clamped to the max offset. `content` is the target's position in the scrolled content.
 - `.scrollPosition` writeback sends the anchored id whose content position is the greatest that is still at or above the top edge (within 1 pt). Setting the binding to a new id sends `scroll_to_id`. A writeback of the same id does not.
 
-## N. v1 additions: text and image styling (additive, protocol version stays 1)
+## N. v1 additions: SwiftUI shapes and paths (additive, protocol version stays 1)
+
+- `shape` kind gains new `shape` values: `"ellipse"`, `"unevenRoundedRectangle"`, `"containerRelative"`, `"concentricRectangle"`, and `"path"`, alongside existing `"rectangle"`, `"circle"`, `"capsule"`, `"roundedRectangle"`.
+- Additional optional `shape` fields:
+  - `"cornerSize"?: [w, h]` (for `RoundedRectangle(cornerSize:)`)
+  - `"cornerRadii"?: [topLeading, topTrailing, bottomTrailing, bottomLeading]` (for `UnevenRoundedRectangle`)
+  - `"cornerStyle"?: "continuous"|"circular"` (default `"circular"` when omitted for fast-path compatibility; SwiftUI emits `"continuous"` for `.continuous` shapes)
+  - `"concentric"?: {"corners": [{"fixed": r}|{"concentric": min?}, ...4], "uniform"?: "all"|"top"|"bottom"|"leading"|"trailing"|"topAndBottom"|"leadingAndTrailing"}` (for `ConcentricRectangle`)
+  - `"path"?: [PathOp]` where `PathOp` is `{"m":[x,y]}`, `{"l":[x,y]}`, `{"q":[cx,cy,x,y]}`, `{"c":[c1x,c1y,c2x,c2y,x,y]}`, or `"z"`
+  - `"pathSize"?: [w, h]` and `"custom"?: bool`: when `custom` is true, the guest evaluates `Shape.path(in:)` in Swift for the shape's laid-out bounds. When a custom shape's laid-out `(w, h)` differs from `pathSize` (or `pathSize` is absent), the host sends a `layout` message (`{"type":"layout","frames":{"<id>":[x,y,w,h]}}`) and waits for the guest's updated tree. C ABI: `simcore_runtime_set_layout_callback` (header `simcore_runtime.h`); the callback receives the whole JSON line, including in the web build.
+  - `"sizeHint"?: "square"|{"fixed":[w,h]}|{"aspect":ratio}|{"ideal":[w,h]}` (from custom `Shape.sizeThatFits(_:)`)
+  - `"mirrorRtl"?: bool` (from `Shape.layoutDirectionBehavior`)
+  - `"fillStyle"?: {"eoFill"?: bool, "antialiased"?: bool}` (`FillStyle`)
+- `stroke` object allows optional `"color"` (omitted means inherit current foreground color, matching `ForegroundStyle`) and gains optional `StrokeStyle` fields: `"lineCap"?: "butt"|"round"|"square"`, `"lineJoin"?: "miter"|"round"|"bevel"`, `"miterLimit"?: f64` (default 10), `"dash"?: [f64]`, `"dashPhase"?: f64`, `"antialiased"?: bool` (default true), `"inset"?: f64` (`InsettableShape.strokeBorder`).
+- New modifier `{"containerShape": {"shape": "...", ...}}` (`.containerShape(_:)`): records the enclosing container shape and its laid-out frame so descendant `ContainerRelativeShape` and `ConcentricRectangle` nodes resolve their corner geometry concentrically against the container's corners and edge insets.
+
+## O. v1 additions: text and image styling (additive, protocol version stays 1)
 
 Existing `text` and `image` documents parse unchanged. New fields are omitted when absent. `Font` system fonts gain an optional `"design"` (`"default"`, `"serif"`, `"rounded"`, `"monospaced"`).
 

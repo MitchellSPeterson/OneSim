@@ -1,13 +1,13 @@
-use crate::scene::{Color, Glyph, Scene, Shadow, SymbolRun};
+use crate::scene::{Color, Glyph, Scene, Shadow, SymbolRun, VectorGeom, VectorShape, VectorStroke};
 use crate::symbols;
 use crate::text::{FontSpec, Fonts};
-use onesim_protocol::IosVersion;
+use onesim_protocol::{IosVersion, LineCap as ProtoLineCap, LineJoin as ProtoLineJoin, PathOp};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::rc::Rc;
 use tiny_skia::{
-    FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke, Transform,
+    FillRule, LineCap, LineJoin, Mask, Paint, Path, PathBuilder, Pixmap, PixmapPaint, Rect, Stroke, StrokeDash, Transform,
 };
 
 fn rrect(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
@@ -25,6 +25,195 @@ fn rrect(x: f32, y: f32, w: f32, h: f32, r: f32) -> Option<Path> {
     b.cubic_to(x, y + k, x + k, y, x + r, y);
     b.close();
     b.finish()
+}
+
+/// Build an uneven (and optionally Apple-continuous squircle) rounded rectangle path.
+/// `radii` = `[top_left, top_right, bottom_right, bottom_left]` each `(rx, ry)`.
+fn uneven_rrect(x: f32, y: f32, w: f32, h: f32, radii: [(f64, f64); 4], continuous: bool) -> Option<Path> {
+    if w <= 0.0 || h <= 0.0 {
+        return None;
+    }
+    let mut r = radii.map(|(rx, ry)| ((rx as f32).max(0.0), (ry as f32).max(0.0)));
+    // Proportionally clamp adjacent corners so edges never cross.
+    let mut f = 1.0f32;
+    let check = |sum: f32, len: f32, f: &mut f32| {
+        if sum > len && sum > 0.0 {
+            *f = (*f).min(len / sum);
+        }
+    };
+    check(r[0].0 + r[1].0, w, &mut f);
+    check(r[3].0 + r[2].0, w, &mut f);
+    check(r[0].1 + r[3].1, h, &mut f);
+    check(r[1].1 + r[2].1, h, &mut f);
+    if f < 1.0 {
+        for c in &mut r {
+            c.0 *= f;
+            c.1 *= f;
+        }
+    }
+    let (tl, tr, br, bl) = (r[0], r[1], r[2], r[3]);
+    let k = 0.552_284_8_f32;
+
+    // Emit one corner transition from incoming straight edge to outgoing straight edge.
+    // `corner` = sharp corner vertex, `u` = unit direction back along incoming edge, `v` = unit direction forward along outgoing edge,
+    // `(ru, rv)` = corner radii along `u` and `v`, `(au, av)` = available edge budget along `u` and `v`.
+    let corner = |b: &mut PathBuilder, cx: f32, cy: f32, (ux, uy): (f32, f32), (vx, vy): (f32, f32), (ru, rv): (f32, f32), (au, av): (f32, f32)| {
+        let pt = |du: f32, dv: f32| (cx + ux * du + vx * dv, cy + uy * du + vy * dv);
+        if ru <= 1e-4 || rv <= 1e-4 {
+            let (px, py) = pt(0.0, 0.0);
+            b.line_to(px, py);
+            return;
+        }
+        // Apple continuous corner (measured from SwiftUICore.RoundedRectangle(style: .continuous)):
+        // p = 1.52866, c1 = 1.08849, c2 = 0.868407, p1 = (0.631494, 0.0749114), c3 = (0.372824, 0.16906).
+        const P: f32 = 1.528_66;
+        if continuous && au >= ru * P - 1e-3 && av >= rv * P - 1e-3 {
+            let (s0x, s0y) = pt(ru * P, 0.0);
+            b.line_to(s0x, s0y);
+            let (c1x, c1y) = pt(ru * 1.088_49, 0.0);
+            let (c2x, c2y) = pt(ru * 0.868_407, 0.0);
+            let (p1x, p1y) = pt(ru * 0.631_494, rv * 0.074_911_4);
+            b.cubic_to(c1x, c1y, c2x, c2y, p1x, p1y);
+            let (c3x, c3y) = pt(ru * 0.372_824, rv * 0.169_06);
+            let (c4x, c4y) = pt(ru * 0.169_06, rv * 0.372_824);
+            let (p2x, p2y) = pt(ru * 0.074_911_4, rv * 0.631_494);
+            b.cubic_to(c3x, c3y, c4x, c4y, p2x, p2y);
+            let (c5x, c5y) = pt(0.0, rv * 0.868_407);
+            let (c6x, c6y) = pt(0.0, rv * 1.088_49);
+            let (p3x, p3y) = pt(0.0, rv * P);
+            b.cubic_to(c5x, c5y, c6x, c6y, p3x, p3y);
+        } else {
+            let (sx, sy) = pt(ru, 0.0);
+            b.line_to(sx, sy);
+            let (c1x, c1y) = pt(ru * (1.0 - k), 0.0);
+            let (c2x, c2y) = pt(0.0, rv * (1.0 - k));
+            let (ex, ey) = pt(0.0, rv);
+            b.cubic_to(c1x, c1y, c2x, c2y, ex, ey);
+        }
+    };
+
+    // Half-edge budgets so two continuous corners on the same edge never overlap.
+    let budget = |a: f32, b: f32, len: f32| -> (f32, f32) {
+        if a + b <= 1e-6 {
+            (len * 0.5, len * 0.5)
+        } else {
+            (len * a / (a + b), len * b / (a + b))
+        }
+    };
+    let (top_l, top_r) = budget(tl.0, tr.0, w);
+    let (bot_l, bot_r) = budget(bl.0, br.0, w);
+    let (left_t, left_b) = budget(tl.1, bl.1, h);
+    let (right_t, right_b) = budget(tr.1, br.1, h);
+
+    let mut b = PathBuilder::new();
+    // Start at midpoint of top edge so every corner can simply `line_to` its entry point.
+    b.move_to(x + top_l, y);
+    // Top-right: incoming (-1, 0), outgoing (0, 1)
+    corner(&mut b, x + w, y, (-1.0, 0.0), (0.0, 1.0), (tr.0, tr.1), (top_r, right_t));
+    // Bottom-right: incoming (0, -1), outgoing (-1, 0)
+    corner(&mut b, x + w, y + h, (0.0, -1.0), (-1.0, 0.0), (br.1, br.0), (right_b, bot_r));
+    // Bottom-left: incoming (1, 0), outgoing (0, -1)
+    corner(&mut b, x, y + h, (1.0, 0.0), (0.0, -1.0), (bl.0, bl.1), (bot_l, left_b));
+    // Top-left: incoming (0, 1), outgoing (1, 0)
+    corner(&mut b, x, y, (0.0, 1.0), (1.0, 0.0), (tl.1, tl.0), (left_t, top_l));
+    b.close();
+    b.finish()
+}
+
+fn build_vector_path(geom: &VectorGeom, b: crate::scene::Rect, inset: f64) -> Option<Path> {
+    let bx = b.x as f32;
+    let by = b.y as f32;
+    let bw = b.w as f32;
+    let bh = b.h as f32;
+    let ins = inset as f32;
+    match geom {
+        VectorGeom::Ellipse => {
+            let (w, h) = (bw - 2.0 * ins, bh - 2.0 * ins);
+            if w <= 0.0 || h <= 0.0 {
+                return None;
+            }
+            Rect::from_xywh(bx + ins, by + ins, w, h).and_then(PathBuilder::from_oval)
+        }
+        VectorGeom::RoundedRect { radii, continuous } => {
+            let (w, h) = (bw - 2.0 * ins, bh - 2.0 * ins);
+            let inset_radii = radii.map(|(rx, ry)| ((rx - inset).max(0.0), (ry - inset).max(0.0)));
+            uneven_rrect(bx + ins, by + ins, w, h, inset_radii, *continuous)
+        }
+        VectorGeom::Path { ops, mirror_x } => {
+            let mut pb = PathBuilder::new();
+            let px = |x: f64| if *mirror_x { bx + bw - x as f32 } else { bx + x as f32 };
+            let py = |y: f64| by + y as f32;
+            for op in ops {
+                match *op {
+                    PathOp::M([x, y]) => pb.move_to(px(x), py(y)),
+                    PathOp::L([x, y]) => pb.line_to(px(x), py(y)),
+                    PathOp::Q([cx, cy, x, y]) => pb.quad_to(px(cx), py(cy), px(x), py(y)),
+                    PathOp::C([c1x, c1y, c2x, c2y, x, y]) => pb.cubic_to(px(c1x), py(c1y), px(c2x), py(c2y), px(x), py(y)),
+                    PathOp::Z => pb.close(),
+                }
+            }
+            pb.finish()
+        }
+        VectorGeom::ContainerRelative | VectorGeom::Concentric(_) => {
+            uneven_rrect(bx + ins, by + ins, bw - 2.0 * ins, bh - 2.0 * ins, [(0.0, 0.0); 4], false)
+        }
+    }
+}
+
+fn to_skia_stroke(st: &VectorStroke) -> Stroke {
+    let line_cap = match st.line_cap {
+        ProtoLineCap::Butt => LineCap::Butt,
+        ProtoLineCap::Round => LineCap::Round,
+        ProtoLineCap::Square => LineCap::Square,
+    };
+    let line_join = match st.line_join {
+        ProtoLineJoin::Miter => LineJoin::Miter,
+        ProtoLineJoin::Round => LineJoin::Round,
+        ProtoLineJoin::Bevel => LineJoin::Bevel,
+    };
+    let dash = if st.dash.is_empty() {
+        None
+    } else {
+        let mut d: Vec<f32> = st.dash.iter().map(|&v| (v as f32).max(0.0)).collect();
+        if d.len() % 2 == 1 {
+            let copy = d.clone();
+            d.extend(copy);
+        }
+        let sum: f32 = d.iter().sum();
+        if sum > 0.0 {
+            StrokeDash::new(d, st.dash_phase as f32)
+        } else {
+            None
+        }
+    };
+    Stroke {
+        width: st.line_width.max(0.0) as f32,
+        miter_limit: st.miter_limit.max(1.0) as f32,
+        line_cap,
+        line_join,
+        dash,
+    }
+}
+
+fn draw_vector(pm: &mut Pixmap, v: &VectorShape, bounds: crate::scene::Rect, opacity: f32, xf: Transform, mask: Option<&Mask>) {
+    if let Some(f) = v.fill {
+        if let Some(p) = build_vector_path(&v.geom, bounds, 0.0) {
+            let mut pt = paint(f.color, opacity);
+            pt.anti_alias = f.antialiased;
+            let rule = if f.eo_fill { FillRule::EvenOdd } else { FillRule::Winding };
+            pm.fill_path(&p, &pt, rule, xf, mask);
+        }
+    }
+    if let Some(st) = &v.stroke {
+        if st.line_width > 0.0 {
+            if let Some(p) = build_vector_path(&v.geom, bounds, st.inset) {
+                let mut pt = paint(st.color, opacity);
+                pt.anti_alias = st.antialiased;
+                let sk = to_skia_stroke(st);
+                pm.stroke_path(&p, &pt, &sk, xf, mask);
+            }
+        }
+    }
 }
 
 /// `mask` (or the whole canvas) intersected with `path`, which is in points.
@@ -909,6 +1098,8 @@ pub fn apply_backdrop_op(pm: &mut Pixmap, op: &crate::display::Op, clips: &[crat
 /// Which part of a node's content [`node_sprite`] draws.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SpriteLayer {
+    /// Rich vector shape (painted alongside fill/stroke, before icons/image/text).
+    Shape,
     /// Vector glyph icon and SF Symbol (painted before the node's image).
     Icons,
     /// Text with underline / strikethrough (painted last).
@@ -935,6 +1126,7 @@ pub struct SpriteKey {
 pub fn sprite_key(n: &crate::scene::Node, fonts: &Fonts, scale: f64, layer: SpriteLayer) -> Option<SpriteKey> {
     use std::hash::{Hash, Hasher};
     let has = match layer {
+        SpriteLayer::Shape => n.vector.is_some(),
         SpriteLayer::Icons => n.glyph.is_some() || n.symbol.is_some(),
         SpriteLayer::Text => n.text.is_some(),
     };
@@ -946,6 +1138,7 @@ pub fn sprite_key(n: &crate::scene::Node, fonts: &Fonts, scale: f64, layer: Spri
     let (ax, ay) = (px.floor(), py.floor());
     let mut h = std::collections::hash_map::DefaultHasher::new();
     let content = match layer {
+        SpriteLayer::Shape => format!("{:?}", n.vector),
         SpriteLayer::Icons => format!("{:?}", (&n.glyph, &n.symbol)),
         SpriteLayer::Text => format!("{:?}", n.text),
     };
@@ -963,6 +1156,48 @@ pub fn node_sprite(n: &crate::scene::Node, fonts: &mut Fonts, scale: f64, layer:
     let b = n.bounds;
     let sh = (b.x as f32, b.y as f32, b.w as f32, b.h as f32);
     match layer {
+        SpriteLayer::Shape => {
+            let v = n.vector.as_ref()?;
+            // Tightly bound the rasterized path (expanded for stroke width / miter / caps).
+            let mut min_x = f32::INFINITY;
+            let mut min_y = f32::INFINITY;
+            let mut max_x = f32::NEG_INFINITY;
+            let mut max_y = f32::NEG_INFINITY;
+            let mut grow = |p: &Path, pad: f32| {
+                let pb = p.bounds();
+                min_x = min_x.min(pb.left() - pad);
+                min_y = min_y.min(pb.top() - pad);
+                max_x = max_x.max(pb.right() + pad);
+                max_y = max_y.max(pb.bottom() + pad);
+            };
+            if v.fill.is_some() {
+                if let Some(p) = build_vector_path(&v.geom, b, 0.0) {
+                    grow(&p, 2.0);
+                }
+            }
+            if let Some(st) = &v.stroke {
+                if st.line_width > 0.0 {
+                    if let Some(p) = build_vector_path(&v.geom, b, st.inset) {
+                        let pad = (st.line_width as f32 * (st.miter_limit as f32).clamp(1.0, 10.0) * 0.5 + 2.0).max(st.line_width as f32 + 2.0);
+                        grow(&p, pad);
+                    }
+                }
+            }
+            if !min_x.is_finite() || !min_y.is_finite() || max_x <= min_x || max_y <= min_y {
+                return None;
+            }
+            let ox = (min_x * s).floor() as i32;
+            let oy = (min_y * s).floor() as i32;
+            let w = (max_x * s).ceil() as i32 - ox + 1;
+            let h = (max_y * s).ceil() as i32 - oy + 1;
+            if w <= 0 || h <= 0 || w > MAX_SPRITE || h > MAX_SPRITE {
+                return None;
+            }
+            let mut pm = Pixmap::new(w as u32, h as u32)?;
+            let xf = Transform::from_scale(s, s).post_translate(-ox as f32, -oy as f32);
+            draw_vector(&mut pm, v, b, n.opacity, xf, None);
+            crop(ox, oy, pm).map(|(x, y, pixmap)| Sprite { x, y, pixmap })
+        }
         SpriteLayer::Icons => {
             let mut parts: Vec<(i32, i32, Pixmap)> = vec![];
             if let Some((g, c)) = n.glyph {
@@ -1086,6 +1321,9 @@ pub fn render(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Pixmap {
                 pm.stroke_path(&p, &paint(c, n.opacity), &st, xf, mask.as_deref());
             }
         }
+        if let Some(v) = &n.vector {
+            draw_vector(&mut pm, v, b, n.opacity, xf, mask.as_deref());
+        }
         if let Some((g, c)) = n.glyph {
             draw_glyph(&mut pm, g, c, sh, n.opacity, xf, mask.as_deref());
         }
@@ -1111,7 +1349,7 @@ pub fn render_png(scene: &Scene, fonts: &mut Fonts, scale: f64) -> Result<Vec<u8
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scene::{Node, Rect as SRect};
+    use crate::scene::{Node, Rect as SRect, VectorFill};
     use onesim_protocol::Appearance;
 
     #[test]
@@ -1204,5 +1442,133 @@ mod tests {
             gaussian(&mut full, w, h, sigma, replicate);
             assert!(full.iter().zip(&want).all(|(a, b)| a.to_bits() == b.to_bits()), "replicate={replicate}");
         }
+    }
+
+    #[test]
+    fn ellipse_is_true_oval_not_capsule() {
+        let mut n = Node::new("e", "shape");
+        n.bounds = SRect { x: 10.0, y: 10.0, w: 120.0, h: 40.0 };
+        n.vector = Some(Box::new(VectorShape {
+            geom: VectorGeom::Ellipse,
+            fill: Some(VectorFill { color: Color::rgba(1.0, 0.0, 0.0, 1.0), eo_fill: false, antialiased: true }),
+            stroke: None,
+        }));
+        let scene = Scene { size: (140.0, 60.0), appearance: Appearance::Light,
+            ios: Default::default(), nodes: vec![n], unsupported_symbols: vec![], notes: vec![] };
+        let pm = render(&scene, &mut Fonts::new(), 1.0);
+        // Center (70, 30) is inside the ellipse.
+        assert!(pm.pixel(70, 30).unwrap().alpha() > 240);
+        // (32, 12) is inside a capsule (straight top edge starts at x=30) but OUTSIDE a 120x40 ellipse:
+        // ((32-70)/60)^2 + ((12-30)/20)^2 = 0.401 + 0.81 = 1.21 > 1.
+        assert_eq!(pm.pixel(32, 12).unwrap().alpha(), 0);
+    }
+
+    #[test]
+    fn uneven_rrect_and_eo_fill_and_dashed_stroke_and_sprite_parity() {
+        // 1. Even-odd fill cuts a hole where two same-winding squares overlap; winding fill does not.
+        let ops = vec![
+            PathOp::M([0.0, 0.0]), PathOp::L([40.0, 0.0]), PathOp::L([40.0, 40.0]), PathOp::L([0.0, 40.0]), PathOp::Z,
+            PathOp::M([10.0, 10.0]), PathOp::L([30.0, 10.0]), PathOp::L([30.0, 30.0]), PathOp::L([10.0, 30.0]), PathOp::Z,
+        ];
+        for (eo, want_center_a) in [(true, 0u8), (false, 255u8)] {
+            let mut n = Node::new("p", "shape");
+            n.bounds = SRect { x: 0.0, y: 0.0, w: 40.0, h: 40.0 };
+            n.vector = Some(Box::new(VectorShape {
+                geom: VectorGeom::Path { ops: ops.clone(), mirror_x: false },
+                fill: Some(VectorFill { color: Color::rgba(0.0, 0.5, 1.0, 1.0), eo_fill: eo, antialiased: true }),
+                stroke: None,
+            }));
+            let scene = Scene { size: (40.0, 40.0), appearance: Appearance::Light,
+                ios: Default::default(), nodes: vec![n], unsupported_symbols: vec![], notes: vec![] };
+            let pm = render(&scene, &mut Fonts::new(), 1.0);
+            assert_eq!(pm.pixel(20, 20).unwrap().alpha(), want_center_a, "eo={eo}");
+            assert_eq!(pm.pixel(5, 5).unwrap().alpha(), 255);
+        }
+
+        // 2. Inset stroke (strokeBorder) stays strictly inside bounds; dash creates gaps.
+        let mut n = Node::new("s", "shape");
+        n.bounds = SRect { x: 10.0, y: 10.0, w: 60.0, h: 40.0 };
+        n.vector = Some(Box::new(VectorShape {
+            geom: VectorGeom::RoundedRect { radii: [(16.0, 16.0), (0.0, 0.0), (16.0, 16.0), (0.0, 0.0)], continuous: false },
+            fill: None,
+            stroke: Some(VectorStroke {
+                color: Color::rgba(0.0, 0.0, 0.0, 1.0),
+                line_width: 6.0,
+                line_cap: ProtoLineCap::Butt,
+                line_join: ProtoLineJoin::Miter,
+                miter_limit: 10.0,
+                dash: vec![10.0, 10.0],
+                dash_phase: 0.0,
+                antialiased: true,
+                inset: 3.0,
+            }),
+        }));
+        let scene = Scene { size: (80.0, 60.0), appearance: Appearance::Light,
+            ios: Default::default(), nodes: vec![n.clone()], unsupported_symbols: vec![], notes: vec![] };
+        let pm = render(&scene, &mut Fonts::new(), 1.0);
+        // Outside the bounds (x=9) must be empty because inset = lineWidth/2 = 3.
+        assert_eq!(pm.pixel(9, 30).unwrap().alpha(), 0);
+        // Sprite rendering matches CPU render pixel-for-pixel.
+        let sp = node_sprite(&n, &mut Fonts::new(), 1.0, SpriteLayer::Shape).expect("shape sprite");
+        let mut via_sprite = Pixmap::new(80, 60).unwrap();
+        via_sprite.draw_pixmap(sp.x, sp.y, sp.pixmap.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+        assert_eq!(pm.data(), via_sprite.data());
+    }
+
+    #[test]
+    fn container_relative_and_concentric_resolve_against_container_shape() {
+        let tree: onesim_protocol::ViewNode = serde_json::from_value(serde_json::json!({
+            "kind": "vstack", "id": "0", "spacing": 0.0, "alignment": "center",
+            "modifiers": [
+                {"padding": {"top": 10.0, "leading": 10.0, "bottom": 10.0, "trailing": 10.0}},
+                {"frame": {"width": 120.0, "height": 80.0}},
+                {"containerShape": {"shape": "roundedRectangle", "cornerRadius": 28.0, "cornerStyle": "continuous"}}
+            ],
+            "children": [
+                {"kind": "shape", "id": "0/0", "shape": "containerRelative", "fill": {"r": 0.0, "g": 0.0, "b": 1.0, "a": 1.0}},
+                {"kind": "shape", "id": "0/1", "shape": "concentricRectangle",
+                 "concentric": {"corners": [{"concentric": null}, {"concentric": null}, {"concentric": 6.0}, {"fixed": 4.0}]}},
+                {"kind": "shape", "id": "0/2", "shape": "path", "custom": true}
+            ]
+        })).unwrap();
+        let params = crate::SceneParams {
+            viewport: (402.0, 874.0),
+            device: crate::device(crate::DEFAULT_DEVICE).unwrap(),
+            scale: 3.0,
+            appearance: Appearance::Light,
+            dynamic_type: Default::default(),
+            ios: Default::default(),
+            scroll: &Default::default(),
+            sheets: &Default::default(),
+            focus: None,
+            overscroll: false,
+            status_bar: false,
+            chrome: Default::default(),
+        };
+        let scene = crate::build_scene(&tree, &params, &mut Fonts::new());
+        // ContainerRelativeShape at top of container (d_top=10, d_left=10, d_right=10, d_bottom=50)
+        // resolves top corners to 28-10=18 and bottom corners to max(28-50, 0)=0.
+        let rel = scene.nodes.iter().find(|n| n.id == "0/0").unwrap();
+        let VectorGeom::RoundedRect { radii, .. } = &rel.vector.as_ref().unwrap().geom else { panic!("expected resolved rrect") };
+        assert!((radii[0].0 - 18.0).abs() < 0.1 && (radii[1].0 - 18.0).abs() < 0.1, "top radii: {radii:?}");
+        assert!(radii[2].0 < 0.1 && radii[3].0 < 0.1, "bottom radii: {radii:?}");
+        // ConcentricRectangle in middle: bottomTrailing has minimum 6, bottomLeading is fixed 4.
+        let conc = scene.nodes.iter().find(|n| n.id == "0/1").unwrap();
+        let VectorGeom::RoundedRect { radii: cr, .. } = &conc.vector.as_ref().unwrap().geom else { panic!("expected resolved rrect") };
+        assert!((cr[2].0 - 6.0).abs() < 0.1 && (cr[3].0 - 4.0).abs() < 0.1, "concentric radii: {cr:?}");
+        // Custom shape without pathSize appears in pending_shape_frames.
+        let pending = scene.pending_shape_frames();
+        assert!(pending.contains_key("0/2"), "pending: {pending:?}");
+
+        // Stroke with omitted color inherits foregroundColor from environment.
+        let fg_stroke_tree: onesim_protocol::ViewNode = serde_json::from_value(serde_json::json!({
+            "kind": "shape", "id": "fg", "shape": "circle",
+            "stroke": {"lineWidth": 4.0, "inset": 2.0},
+            "modifiers": [{"foregroundColor": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}}, {"frame": {"width": 40.0, "height": 40.0}}]
+        })).unwrap();
+        let fg_scene = crate::build_scene(&fg_stroke_tree, &params, &mut Fonts::new());
+        let fg_node = fg_scene.nodes.iter().find(|n| n.id == "fg").unwrap();
+        let st_col = fg_node.vector.as_ref().unwrap().stroke.as_ref().unwrap().color;
+        assert_eq!(st_col, Color::rgba(1.0, 0.0, 0.0, 1.0));
     }
 }

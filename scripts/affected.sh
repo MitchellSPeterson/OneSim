@@ -36,12 +36,14 @@ swiftui  scripts/build-ios-sim.sh
 swiftui  tests/fixtures/showcase-ios/*
 swiftui  tests/fixtures/swiftui-tabs-ios/*
 swiftui  tests/fixtures/swiftui-gestures-ios/*
+swiftui  tests/fixtures/swiftui-shapes-ios/*
 swiftui  tests/fixtures/swiftui-layout-ios/*
 swiftui  tests/fixtures/swiftui-type-ios/*
 swiftui  tests/fixtures/devices/*
 swiftui  tests/fixtures/ios27/showcase-ios/*
 swiftui  tests/fixtures/ios27/swiftui-tabs-ios/*
 swiftui  tests/fixtures/ios27/swiftui-gestures-ios/*
+swiftui  tests/fixtures/ios27/swiftui-shapes-ios/*
 swiftui  tests/fixtures/ios27/swiftui-layout-ios/*
 swiftui  tests/fixtures/ios27/swiftui-type-ios/*
 swiftui  tests/fixtures/ios27/devices/*
@@ -60,6 +62,7 @@ web      scripts/build-web.sh
 web      scripts/compare-web.sh
 web      scripts/compare-web-expo.sh
 web      scripts/compare-web-compose.sh
+web      scripts/serve-web.sh
 none     docs/*
 none     *.md
 none     LICENSE
