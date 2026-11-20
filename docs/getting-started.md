@@ -6,7 +6,9 @@ Run one of the example apps, interact with it by label, and save the resulting s
 
 ## Run the SwiftUI counter
 
-On macOS, install Rust stable and the Swift toolchain from Xcode or Command Line Tools. From a checkout of OneSim, run the counter.
+Install Rust stable and a Swift toolchain: Xcode or Command Line Tools on macOS, or the [swift.org toolchain](https://www.swift.org/install/) on Linux and Windows. On Windows, also install [Git for Windows](https://gitforwindows.org); OneSim runs its build scripts with its Bash (set `SIMCORE_BASH` to use another). From a checkout of OneSim, run the counter.
+
+Apple's SF Pro and SF Symbols ship only with macOS. On Linux and Windows, OneSim renders with the bundled Inter and Phosphor fallbacks, the same as `SIMCORE_FALLBACK=1` on macOS.
 
 ```sh
 cargo run -p onesim-cli -- run examples/swiftui-counter --root-view CounterView \

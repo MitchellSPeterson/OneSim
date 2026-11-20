@@ -29,7 +29,7 @@
 
 ## Quick start
 
-On macOS with Rust stable and the Swift toolchain from Xcode or Command Line Tools, clone the repository and run the counter.
+With Rust stable and a Swift toolchain (Xcode or Command Line Tools on macOS, [swift.org](https://www.swift.org/install/) on Linux and Windows), clone the repository and run the counter. Windows also needs [Git for Windows](https://gitforwindows.org) for its Bash.
 
 ```sh
 git clone https://github.com/MitchellSPeterson/OneSim.git OneSim

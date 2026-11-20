@@ -3,6 +3,17 @@ use onesim_protocol::*;
 
 const GUEST: &str = env!("CARGO_BIN_EXE_onesim-fake-guest");
 
+/// `GUEST` under another name (the fake guest picks its behaviour from it): a symlink, or a copy on Windows.
+fn alias(path: std::path::PathBuf) -> std::path::PathBuf {
+    let path = path.with_extension(std::env::consts::EXE_EXTENSION);
+    let _ = std::fs::remove_file(&path);
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(GUEST, &path).unwrap();
+    #[cfg(not(unix))]
+    std::fs::copy(GUEST, &path).unwrap();
+    path
+}
+
 fn params(path: &str) -> CreateSessionParams {
     serde_json::from_value(serde_json::json!({"framework": "swiftui", "app_path": path})).unwrap()
 }
@@ -58,9 +69,7 @@ fn counter_flow() {
 fn crash_is_isolated() {
     let dir = std::env::temp_dir().join(format!("onesim-crash-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let crasher = dir.join("fake-crash-guest");
-    let _ = std::fs::remove_file(&crasher);
-    std::os::unix::fs::symlink(GUEST, &crasher).unwrap();
+    let crasher = alias(dir.join("fake-crash-guest"));
 
     let mut host = Host::new();
     let bad = host.create_session(params(crasher.to_str().unwrap())).unwrap();
@@ -86,11 +95,12 @@ fn crash_is_isolated() {
 fn json_api_basics() {
     let mut host = Host::new();
     let mut out = Vec::new();
+    let guest = serde_json::Value::from(GUEST); // JSON-escaped: Windows paths have backslashes
     let input = format!(
         r#"{{"id":1,"method":"get_capabilities"}}
 {{"id":2,"method":"hello","params":{{"protocol_version":2}}}}
 {{"id":3,"method":"hello","params":{{"protocol_version":1}}}}
-{{"id":4,"method":"create_session","params":{{"framework":"swiftui","app_path":"{GUEST}"}}}}
+{{"id":4,"method":"create_session","params":{{"framework":"swiftui","app_path":{guest}}}}}
 {{"id":5,"method":"send_keyboard_event","params":{{"session_id":"s1","event":{{}}}}}}
 {{"id":6,"method":"shutdown"}}
 "#
@@ -108,10 +118,7 @@ fn json_api_basics() {
 fn nav_guest() -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("onesim-nav-{}-{:?}", std::process::id(), std::thread::current().id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let g = dir.join("fake-nav-guest");
-    let _ = std::fs::remove_file(&g);
-    std::os::unix::fs::symlink(GUEST, &g).unwrap();
-    g
+    alias(dir.join("fake-nav-guest"))
 }
 
 fn center(n: &UiNode) -> (f64, f64) {
@@ -303,9 +310,7 @@ fn unknown_device_is_unsupported() {
 fn react_native_touch_round_trip() {
     let dir = std::env::temp_dir().join(format!("onesim-rn-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let rn = dir.join("fake-rn-guest");
-    let _ = std::fs::remove_file(&rn);
-    std::os::unix::fs::symlink(GUEST, &rn).unwrap();
+    let rn = alias(dir.join("fake-rn-guest"));
 
     let mut host = Host::new();
     let p = serde_json::json!({"framework": "expo", "app_path": rn, "prebuilt": true, "metroUrl": "http://localhost:1"});
@@ -344,9 +349,7 @@ fn react_native_touch_round_trip() {
 fn android_multiline_submit_retains_focus() {
     let dir = std::env::temp_dir().join(format!("onesim-android-rn-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let rn = dir.join("fake-rn-guest");
-    let _ = std::fs::remove_file(&rn);
-    std::os::unix::fs::symlink(GUEST, &rn).unwrap();
+    let rn = alias(dir.join("fake-rn-guest"));
 
     let p = serde_json::json!({"framework": "expo", "platform": "android", "app_path": rn, "prebuilt": true});
     let mut host = Host::new();

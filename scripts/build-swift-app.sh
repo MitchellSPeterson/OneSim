@@ -9,6 +9,13 @@ TARGET="${CARGO_TARGET_DIR:-$ROOT/target}"
 CACHE="$TARGET/swiftui-cache"
 FW="$ROOT/frameworks/swiftui/Sources"
 LIB="$TARGET/release/libonesim_runtime.a"
+# System libraries the Rust staticlib needs (`cargo rustc -- --print native-static-libs`); macOS needs none extra.
+case "$(uname -s)" in
+  Linux) SYS=(-lgcc_s -lutil -lrt -lpthread -lm -ldl) ;;
+  MINGW*|MSYS*|CYGWIN*) LIB="$TARGET/release/onesim_runtime.lib"
+    SYS=(-llegacy_stdio_definitions -lkernel32 -lntdll -luserenv -lws2_32 -ldbghelp) ;;
+  *) SYS=() ;;
+esac
 LOG="$(mktemp)"; GEN=""; trap 'rm -f "$LOG"; [ -z "$GEN" ] || rm -rf "$GEN"' EXIT
 fail() { echo "build failed:" >&2; cat "$LOG" >&2; exit 1; }
 run() { "$@" >>"$LOG" 2>&1 || fail; }
@@ -37,5 +44,5 @@ elif grep -qs '^[[:space:]]*@main' "${SRCS[@]}"; then PAL=(-parse-as-library); f
 mkdir -p "$(dirname "$OUT")"
 # `-I $CACHE` is searched before the SDK's frameworks, so `import SwiftUI` resolves to ours.
 run swiftc -swift-version 5 -O ${PAL[@]+"${PAL[@]}"} -module-name OneSimApp -I "$CACHE" -I "$FW/OneSimBridge" \
-  "${SRCS[@]}" ${EXTRA[@]+"${EXTRA[@]}"} "$CACHE/SwiftUI.o" "$LIB" -o "$OUT"
+  "${SRCS[@]}" ${EXTRA[@]+"${EXTRA[@]}"} "$CACHE/SwiftUI.o" "$LIB" ${SYS[@]+"${SYS[@]}"} -o "$OUT"
 [ -z "${GEN:-}" ] || rm -rf "$GEN"

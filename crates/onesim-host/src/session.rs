@@ -180,19 +180,28 @@ const SIGCONT: i32 = libc::SIGCONT;
 #[cfg(not(unix))]
 const SIGSTOP: i32 = 0;
 #[cfg(not(unix))]
-const SIGCONT: i32 = 0;
+const SIGCONT: i32 = 1;
 
-/// Send a stop/continue signal to the guest child (unix only; a no-op elsewhere, `pause` refuses first).
+#[cfg(windows)]
+#[link(name = "ntdll")]
+extern "system" {
+    fn NtSuspendProcess(process: std::os::windows::io::RawHandle) -> i32;
+    fn NtResumeProcess(process: std::os::windows::io::RawHandle) -> i32;
+}
+
+/// Stop or continue the guest child: kill(2) on unix, NtSuspendProcess/NtResumeProcess on Windows.
+// ponytail: Windows suspends the direct child only; a Compose `.cmd` launcher's java keeps running.
 fn signal(c: &Child, sig: i32) -> bool {
     #[cfg(unix)]
     {
         // SAFETY: plain kill(2) on a pid we spawned and still own (not yet waited).
         unsafe { libc::kill(c.id() as i32, sig) == 0 }
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     {
-        let _ = (c, sig);
-        false
+        use std::os::windows::io::AsRawHandle;
+        // SAFETY: the handle belongs to a child we spawned and still own (not yet waited).
+        unsafe { (if sig == SIGSTOP { NtSuspendProcess } else { NtResumeProcess })(c.as_raw_handle()) >= 0 }
     }
 }
 
@@ -208,11 +217,34 @@ fn err(code: ErrorCode, msg: impl Into<String>) -> ApiError {
 
 /// Test hook: a regular executable that is not a `.swift` file is spawned directly.
 fn is_prebuilt(p: &CreateSessionParams) -> bool {
-    use std::os::unix::fs::PermissionsExt;
     let path = Path::new(&p.app_path);
+    #[cfg(unix)]
+    let exe = |m: &std::fs::Metadata| std::os::unix::fs::PermissionsExt::mode(&m.permissions()) & 0o111 != 0;
+    #[cfg(not(unix))]
+    let exe = |_: &std::fs::Metadata| path.extension().is_some_and(|e| e == "exe");
     p.prebuilt
         || (path.extension().is_none_or(|e| e != "swift" && e != "kt")
-            && path.metadata().is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0))
+            && path.metadata().is_ok_and(|m| m.is_file() && exe(&m)))
+}
+
+/// The build scripts are bash. On Windows that is Git Bash, never System32's WSL launcher (`SIMCORE_BASH` overrides).
+fn bash() -> Command {
+    if let Some(b) = std::env::var_os("SIMCORE_BASH") {
+        return Command::new(b);
+    }
+    #[cfg(windows)]
+    for dir in ["ProgramW6432", "ProgramFiles"].iter().filter_map(std::env::var_os) {
+        let git = PathBuf::from(dir).join("Git/bin/bash.exe");
+        if git.is_file() {
+            return Command::new(git);
+        }
+    }
+    Command::new("bash")
+}
+
+/// Path argument for a bash script: forward slashes, which Git Bash accepts and backslash-escaping cannot break.
+fn sh_path(p: &Path) -> String {
+    p.to_string_lossy().replace('\\', "/")
 }
 
 impl Session {
@@ -362,9 +394,10 @@ impl Session {
         }
         let dir = home.join("target/onesim-apps").join(format!("{}-{}", std::process::id(), self.id));
         std::fs::create_dir_all(&dir).map_err(|e| err(ErrorCode::BuildFailed, e.to_string()))?;
-        let out = dir.join("app");
-        let mut cmd = Command::new(&script);
-        cmd.arg(&self.params.app_path).arg(&out);
+        // Windows runs the Compose guest through a batch launcher (build-app.sh writes one for a `.cmd` output).
+        let out = dir.join(if cfg!(windows) && self.is_compose() { "app.cmd".into() } else { format!("app{}", std::env::consts::EXE_SUFFIX) });
+        let mut cmd = bash();
+        cmd.arg(sh_path(&script)).arg(sh_path(Path::new(&self.params.app_path))).arg(sh_path(&out));
         if let Some(r) = &self.params.root_view {
             cmd.arg(r);
         }
@@ -681,11 +714,8 @@ impl Session {
         Ok(())
     }
 
-    /// Suspend the guest process (SIGSTOP). Input and reload are refused until `resume`.
+    /// Suspend the guest process (SIGSTOP, or NtSuspendProcess on Windows). Input and reload are refused until `resume`.
     pub fn pause(&mut self) -> Result<(), ApiError> {
-        if cfg!(not(unix)) {
-            return Err(err(ErrorCode::Unsupported, "runtime.pause needs a unix host"));
-        }
         self.require_running()?;
         let c = self.child.as_ref().ok_or_else(|| err(ErrorCode::InvalidState, "guest not running"))?;
         if !signal(c, SIGSTOP) {
@@ -697,9 +727,6 @@ impl Session {
     }
 
     pub fn resume(&mut self) -> Result<(), ApiError> {
-        if cfg!(not(unix)) {
-            return Err(err(ErrorCode::Unsupported, "runtime.resume needs a unix host"));
-        }
         if self.state != State::Paused {
             return Err(err(ErrorCode::InvalidState, format!("session {} is {}", self.id, self.state().as_str())));
         }
