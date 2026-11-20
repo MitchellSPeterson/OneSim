@@ -390,6 +390,10 @@ impl Host {
         if let Some(again) = self.dispatch_geometry(id, scene)? {
             return Ok(again);
         }
+        let frames = scene.pending_shape_frames();
+        if !frames.is_empty() {
+            return self.get(id)?.send_and_wait_tree(&HostMessage::Layout { frames });
+        }
         let next = {
             let sent = &self.get(id)?.sent_positions;
             next_scroll_position(scene, sent)

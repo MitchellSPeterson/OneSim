@@ -9,7 +9,7 @@ pub type TextCb = Option<unsafe extern "C" fn(*mut c_void, u64, *const c_char)>;
 pub type EnvCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char, f64, f64)>;
 /// (ctx, phase 0 start / 1 move / 2 end / 3 cancel, time ms, points, point count, keys, frames, target count).
 pub type GestureCb = Option<unsafe extern "C" fn(*mut c_void, i32, f64, *const f64, usize, *const *const c_char, *const f64, usize)>;
-/// (ctx, whole host JSON line for `geometry` / `scroll_position`).
+/// (ctx, whole host JSON line for `geometry`, `scroll_position`, or `layout`).
 pub type LayoutCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char)>;
 
 #[derive(Default)]
@@ -111,7 +111,7 @@ fn handle_line(line: &str) -> bool {
                 deliver_gesture(cb, ctx, &v);
             }
         }
-        Some("geometry") | Some("scroll_position") => {
+        Some("geometry" | "scroll_position" | "layout") => {
             if let Some(cb) = STATE.with(|s| s.borrow().on_layout) {
                 let owned = CString::new(line).unwrap_or_default();
                 unsafe { cb(ctx as *mut c_void, owned.as_ptr()) };
@@ -325,6 +325,15 @@ mod tests {
             r#"g0@10.5 [1.0, 2.0, 3.0, 4.0] ["0/1", "0"] [0.0, 0.0, 10.0, 20.0, 0.0, 0.0, 30.0, 40.0]"#,
             "g3@12 [5.0, 6.0] [] []",
         ]));
+    }
+
+    #[test]
+    fn layout_frames_reach_the_callback() {
+        setup();
+        simcore_runtime_set_layout_callback(Some(on_layout));
+        submit(b"{}", 1).unwrap();
+        assert!(handle_line(r#"{"type":"layout","frames":{"0/2":[10,20,120,80]}}"#));
+        SEEN.with(|s| assert_eq!(*s.borrow(), vec![r#"l{"type":"layout","frames":{"0/2":[10,20,120,80]}}"#]));
     }
 
     fn setup() -> Buf {
