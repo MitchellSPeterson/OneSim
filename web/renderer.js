@@ -6,8 +6,8 @@
 //   start --(renderer=cpu | no navigator.gpu | no display-list export)--> cpu
 //   start --(GPU init ok)--> gpu --(render throws | device lost | init-time failure)--> cpu   (one way)
 //
-// A canvas hands out one context type for its whole life, so every switch to CPU after a `webgpu` context was
-// requested swaps in a fresh <canvas> (same id/style). Input listeners live on the stage element wrapping it.
+// A canvas hands out one context type for its whole life, so switching from WebGPU to CPU requires a fresh canvas.
+// Input listeners live on the stage element wrapping it.
 
 const KEY = "simcore.renderer";
 
@@ -18,10 +18,14 @@ export function preferredRenderer(q) {
   return v === "cpu" || v === "gpu" ? v : "auto";
 }
 
+function freeGpu(gpu) {
+  try { gpu?.free(); } catch { /* already unusable */ }
+}
+
 export class Presenter {
   /** `sim`: the OneSim driver; `stage`: element holding the canvas; `canvas`: the initial canvas. */
-  constructor({ sim, stage, canvas, preference = "auto", diag = null, log = console }) {
-    Object.assign(this, { sim, stage, canvas, preference, diag, log });
+  constructor({ sim, stage, canvas, preference = "auto", diag = null, log = console, requestFrame = null }) {
+    Object.assign(this, { sim, stage, canvas, preference, diag, log, requestFrame });
     this.mode = "cpu";
     this.reason = "";
     this.gpu = null;
@@ -31,25 +35,52 @@ export class Presenter {
     this.watch = 0;
   }
 
-  /** Choose a backend. Call before `sim.init` so the first frame is already in the right form. Never throws. */
-  async start() {
-    if (this.preference === "cpu") return this.#report("cpu", "renderer=cpu requested");
-    if (!navigator.gpu) return this.#report("cpu", "WebGPU unavailable (navigator.gpu missing)");
-    if (!this.sim.supportsDisplayList) return this.#report("cpu", "app.wasm has no display-list output (rebuild with scripts/build-web.sh)");
+  /** Choose a backend before `sim.init`. A pending runtime can load alongside WebGPU startup. */
+  async start(runtime = this.sim) {
+    const cpuReason = this.preference === "cpu" ? "renderer=cpu requested"
+      : !navigator.gpu ? "WebGPU unavailable (navigator.gpu missing)" : "";
+    const pending = typeof runtime.then === "function";
+    const canPrepare = !cpuReason && (pending || runtime.supportsDisplayList);
+    // Until we know the runtime supports display lists, keep its canvas available for a 2d context.
+    const canvas = canPrepare && (pending ? this.canvas.cloneNode(false) : this.canvas);
+    let prepared = canvas ? this.#prepareGpu(canvas) : null;
+    try {
+      this.sim = await runtime;
+      if (cpuReason) this.#report("cpu", cpuReason);
+      else if (!this.sim.supportsDisplayList) this.#report("cpu", "app.wasm has no display-list output (rebuild with scripts/build-web.sh)");
+      else {
+        const { gpu, failure } = await prepared;
+        prepared = null;
+        this.gpu = gpu;
+        try {
+          if (!gpu) throw failure;
+          this.sim.setOutput(1);
+          if (canvas !== this.canvas) this.#replaceCanvas(canvas);
+          this.tainted = true;
+          this.#report("gpu", "");
+          this.watch = setInterval(() => {
+            const failure = this.#gpuFailure();
+            if (failure) this.fallback(failure, this.requestFrame);
+          }, 1000);
+        } catch (e) {
+          this.fallback(`GPU init failed: ${e?.message ?? e}`);
+        }
+      }
+      return this.sim;
+    } finally {
+      // The runtime can fail or fall back without waiting for speculative GPU work to finish.
+      prepared?.then(({ gpu }) => freeGpu(gpu));
+    }
+  }
+
+  async #prepareGpu(canvas) {
     try {
       const m = await import("./gpu/onesim_web_gpu.js");
       await m.default({ module_or_path: new URL("./gpu/onesim_web_gpu_bg.wasm", import.meta.url) });
-      this.tainted = true;
-      this.gpu = await m.init(this.canvas);
-      this.sim.setOutput(1);
-      this.mode = "gpu";
-      this.#report("gpu", "");
-      this.watch = setInterval(() => {
-        const failure = this.#gpuFailure();
-        if (failure) this.fallback(failure);
-      }, 1000);
-    } catch (e) {
-      this.fallback(`GPU init failed: ${e?.message ?? e}`);
+      if (canvas === this.canvas) this.tainted = true;
+      return { gpu: await m.init(canvas) };
+    } catch (failure) {
+      return { gpu: null, failure };
     }
   }
 
@@ -71,15 +102,20 @@ export class Presenter {
   }
 
   /** Switch to CPU pixels for good (device loss, errors) and redraw. */
-  fallback(reason) {
+  fallback(reason, requestFrame = null) {
     clearInterval(this.watch);
-    if (this.gpu) { try { this.gpu.free(); } catch { /* already unusable */ } this.gpu = null; }
+    freeGpu(this.gpu);
+    this.gpu = null;
     try { this.sim.setOutput(0); } catch (e) { this.log.error("onesim: cannot switch runtime to CPU output", e); }
-    if (this.tainted) this.#freshCanvas();
+    if (this.tainted) {
+      this.#replaceCanvas(this.canvas.cloneNode(false));
+      this.tainted = false;
+    }
     this.ctx = null;
     this.mode = "cpu";
     this.#report("cpu", reason);
-    if (this.sim.width) this.#presentCpu();
+    if (requestFrame) requestFrame();
+    else if (this.sim.width) this.#presentCpu();
   }
 
   #gpuFailure() {
@@ -98,13 +134,9 @@ export class Presenter {
     this.frames++;
   }
 
-  #freshCanvas() {
-    const old = this.canvas, c = document.createElement("canvas");
-    c.id = old.id; c.className = old.className; c.style.cssText = old.style.cssText;
-    c.width = old.width; c.height = old.height;
-    old.replaceWith(c);
-    this.canvas = c;
-    this.tainted = false;
+  #replaceCanvas(canvas) {
+    this.canvas.replaceWith(canvas);
+    this.canvas = canvas;
   }
 
   #report(mode, reason) {

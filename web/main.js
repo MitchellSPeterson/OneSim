@@ -60,7 +60,9 @@ async function main() {
   initHeaderChrome();
   const rn = q.has("metro") || q.has("bundle"), android = q.get("platform") === "android";
   // React Native mode never calls the module's JS-guest imports (Compose's); the Worker is the guest.
-  const sim = await load(await fetch("app.wasm"), rn ? { guest: {} } : {});
+  const runtime = fetch("app.wasm").then((source) => load(source, rn ? { guest: {} } : {}));
+  const presenter = new Presenter({ stage, canvas: document.getElementById("screen"), preference: preferredRenderer(q), diag, requestFrame });
+  const sim = await presenter.start(runtime); // choose the backend before init so the first frame uses it
   const devices = sim.devices;
   const vp = viewportFromUrl(devices, rn ? devices.find((d) => d.android === android).name : sim.defaultDevice.name);
   const platform = rn ? (android ? "android" : "ios") : sim.platform;
@@ -79,7 +81,6 @@ async function main() {
   };
   applyPageTheme(dark);
 
-  const presenter = new Presenter({ sim, stage, canvas: document.getElementById("screen"), preference: preferredRenderer(q), diag });
   const rendererBtn = document.getElementById("renderer-btn");
   const rendererDot = document.getElementById("renderer-dot");
   const rendererText = document.getElementById("renderer-text");
@@ -129,8 +130,6 @@ async function main() {
     });
   }
 
-  await presenter.start(); // before init: the first frame is made in the chosen form
-  syncRendererUi();
   const dpr = () => window.devicePixelRatio || 1;
 
   // Fit the canvas into the window keeping the aspect ratio; render at the physical resolution
@@ -149,30 +148,45 @@ async function main() {
   let shown = !rn; // React Native: nothing to show before the guest's first tree
   let flush = () => {}; // React Native: post the host messages input produced to the guest
   let trees = 0; // React Native: trees received (tests wait for them to stop)
-  const present = () => {
-    if (shown) {
-      presenter.present();
-      syncRendererUi();
-      if (loader && !loader.hidden) loader.hidden = true;
+  let presentedVersion;
+  const present = (force = false) => {
+    if (!shown) return;
+    const version = sim.frameVersion;
+    if (!force && version !== undefined && version === presentedVersion) return;
+    presenter.present();
+    presentedVersion = sim.frameVersion; // a failed GPU render can switch output mode
+    syncRendererUi();
+    if (loader && !loader.hidden) loader.hidden = true;
+  };
+
+  let pendingFrame = null, lastTick = null, resizePending = false;
+  function requestFrame() {
+    pendingFrame ??= requestAnimationFrame(frame);
+  }
+  function frame(now) {
+    pendingFrame = null;
+    if (resizePending) {
+      resizePending = false;
+      const scale = fit();
+      if (scale !== sim.scale) sim.setScale(scale);
+    }
+    if (lastTick !== null) {
+      const active = sim.tick(Math.max(0, Math.min(now - lastTick, 100)));
+      lastTick = active ? now : null;
+      if (active) requestFrame();
     }
     flush();
+    present();
+  }
+  const act = (f) => {
+    const result = f();
+    flush();
+    lastTick ??= performance.now();
+    requestFrame();
+    return result;
   };
-  // Run an input/environment change, then show the new frame.
-  // Animation clock: after any input, run frames while momentum/bounce is moving.
-  let ticking = false;
-  const animate = () => {
-    if (ticking) return;
-    ticking = true;
-    let last = performance.now();
-    const frame = (now) => {
-      const moved = sim.tick(Math.min(now - last, 100)); // a stalled tab must not teleport
-      last = now;
-      if (moved) present(); else flush();
-      if (moved) requestAnimationFrame(frame); else ticking = false;
-    };
-    requestAnimationFrame(frame);
-  };
-  const act = (f) => { const r = f(); present(); animate(); return r; };
+
+  syncRendererUi();
 
   if (rn) {
     sim.initRn({ device: vp.device, width: vp.width, height: vp.height, scale: fit(), dark, android });
@@ -192,18 +206,24 @@ async function main() {
         if (m.type === "hello" || m.type === "tree" || m.type === "focus_request" || m.type === "scroll_to") {
           if (m.type === "tree") trees++;
           try { if (sim.receive(m)) shown = true; } catch (e) { console.warn("onesim:", e.message); }
-          present();
+          flush();
+          requestFrame();
         } else if (m.type === "error") console.error("guest:", m.message);
         else if (m.type === "event") console.debug("guest event", m.name, m.detail);
       },
-      onFile(path, bytes) { if (sim.putImage(path, bytes)) present(); },
+      onFile(path, bytes) {
+        if (sim.putImage(path, bytes)) {
+          flush();
+          requestFrame();
+        }
+      },
     });
     flush = () => { for (const m of sim.outbox()) guest.post(m); };
     window.onesimGuest = guest;
   } else {
     sim.init({ device: vp.device, width: vp.width, height: vp.height, scale: fit(), dark, dynamicType: q.get("dynamicType") ?? "large" });
   }
-  present();
+  requestFrame();
 
   document.getElementById("theme-btn").addEventListener("click", () => {
     const nextDark = !dark;
@@ -212,10 +232,9 @@ async function main() {
     act(() => sim.setAppearance(nextDark ? "dark" : "light"));
   });
 
-  let resizing = 0;
   addEventListener("resize", () => {
-    cancelAnimationFrame(resizing);
-    resizing = requestAnimationFrame(() => { const s = fit(); if (s !== sim.scale) act(() => sim.setScale(s)); });
+    resizePending = true;
+    requestFrame();
   });
 
   const toPoints = (e) => {
@@ -238,11 +257,13 @@ async function main() {
     if (!drag.scrolling && Math.hypot(e.clientX - drag.cx, e.clientY - drag.cy) < 8) return;
     if (!drag.scrolling) sim.drag("begin", drag.x, drag.y, e.timeStamp);
     drag.scrolling = true;
-    for (const c of e.getCoalescedEvents?.() ?? [e]) {
+    const samples = e.getCoalescedEvents?.();
+    for (const c of samples?.length ? samples : [e]) {
       const [x, y] = toPoints(c);
       sim.drag("move", x, y, c.timeStamp);
     }
-    present();
+    flush();
+    requestFrame();
   });
   const lift = (e) => {
     if (!drag || e.pointerId !== drag.id) return;
@@ -275,7 +296,7 @@ async function main() {
 
   // Debug/test hooks.
   window.onesim = window.simcore = {
-    ready: true,
+    get ready() { return rn || presenter.frames > 0; },
     get trees() { return trees; },
     lastTreeText: () => sim.lastTreeText(),
     inspect: () => sim.inspect(),
@@ -294,7 +315,7 @@ async function main() {
     key: (name) => act(() => sim.key(name)),
     click: (label) => act(() => sim.clickLabel(label)),
     find: (label) => sim.find(label),
-    present,
+    present: () => { present(true); flush(); },
     sim,
   };
   // Which backend is showing and why: mode "gpu" | "cpu", `reason` = why it is CPU when WebGPU was not used.
@@ -305,7 +326,7 @@ async function main() {
     get info() { return presenter.info; },
     get frames() { return presenter.frames; },
     get canvas() { return presenter.canvas; },
-    fallback: (reason = "forced") => { presenter.fallback(reason); syncRendererUi(); },
+    fallback: (reason = "forced") => { presenter.fallback(reason, requestFrame); syncRendererUi(); },
   };
 }
 

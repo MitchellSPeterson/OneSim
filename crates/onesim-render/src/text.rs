@@ -1,5 +1,7 @@
-use cosmic_text::{fontdb, Align, Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, Style, SwashCache, Weight};
+use cosmic_text::{fontdb, Align, Attrs, Buffer, CacheKey, Color, Family, FontSystem, LayoutGlyph, Metrics, Shaping, Style, SwashCache, SwashContent, Weight};
 use std::collections::HashMap;
+
+use crate::raster::PaintClip;
 
 /// macOS system UI font (variable SF Pro: wght axis). Family name as registered in fontdb.
 const SF_FILE: &str = "/System/Library/Fonts/SFNS.ttf";
@@ -164,6 +166,8 @@ pub fn fonts_capability() -> &'static str {
 
 /// Text, size bits, weight, wrap width bits, Android tracking bits.
 type MeasureKey = (String, u32, u16, u32, u32);
+const MEASURE_MAX_ENTRIES: usize = 4096;
+const MEASURE_MAX_TEXT_BYTES: usize = 1024 * 1024;
 
 /// System fonts + glyph cache, shared by layout (measuring) and raster (drawing).
 pub struct Fonts {
@@ -173,6 +177,7 @@ pub struct Fonts {
     inter: bool,
     has_mono: bool,
     measured: HashMap<MeasureKey, (f64, f64)>,
+    measured_text_bytes: usize,
 }
 
 /// One drawn text line: x range and baseline, relative to the text origin (device px).
@@ -182,6 +187,37 @@ pub struct LineSpan {
     pub baseline: f32,
     /// Index of the styled run this extent belongs to (`None` for plain text).
     pub run: Option<usize>,
+}
+
+pub(crate) struct PositionedGlyph {
+    pub key: CacheKey,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl PositionedGlyph {
+    fn bounds(&self) -> PaintClip {
+        PaintClip::pixels(self.x, self.y, self.width, self.height)
+    }
+}
+
+fn glyph_positioning(origin: (f32, f32), fractional: bool) -> impl Fn(&LayoutGlyph, f32) -> (CacheKey, i32, i32) {
+    let (ix, iy) = if fractional { (origin.0.floor(), origin.1.floor()) } else { (origin.0.round(), origin.1.round()) };
+    let (fx, fy) = if fractional { (origin.0 - ix, origin.1 - iy) } else { (0.0, 0.0) };
+    move |g, baseline| {
+        let gy = g.y - g.font_size * g.y_offset + baseline;
+        let (key, gx, gy) = CacheKey::new(
+            g.font_id,
+            g.glyph_id,
+            g.font_size,
+            (g.x + g.font_size * g.x_offset + fx, if fractional { gy + fy } else { gy.trunc() }),
+            g.font_weight,
+            g.cache_key_flags,
+        );
+        (key, gx + ix as i32, gy + iy as i32)
+    }
 }
 
 impl Default for Fonts {
@@ -211,7 +247,7 @@ impl Fonts {
         db.load_font_data(ROBOTO.to_vec());
         let sys = FontSystem::new_with_locale_and_db("en-US".into(), db);
         let has_mono = sys.db().faces().any(|f| f.families.iter().any(|(n, _)| n == MONO_FAMILY));
-        Self { sys, cache: SwashCache::new(), sf, inter, has_mono, measured: HashMap::new() }
+        Self { sys, cache: SwashCache::new(), sf, inter, has_mono, measured: HashMap::new(), measured_text_bytes: 0 }
     }
 
     /// True when Apple's SF Pro is in use.
@@ -341,12 +377,13 @@ impl Fonts {
 
     /// Size of `text`, wrapping at `width` when given.
     pub fn measure(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span]) -> (f64, f64) {
-        // Android text carries its own tracking (Compose letterSpacing) and face; iOS tracking follows size and weight.
-        let tracking = if f.android { f.tracking.to_bits() ^ 0x8000_0000 } else { 0 };
-        let key = (text.to_string(), f.size.to_bits(), f.weight, width.map_or(u32::MAX, f32::to_bits), tracking);
-        let plain = spans.is_empty() && f.lines.is_none();
-        if plain {
-            if let Some(r) = self.measured.get(&key) {
+        let key = (spans.is_empty() && f.lines.is_none() && text.len() <= MEASURE_MAX_TEXT_BYTES).then(|| {
+            // Android text carries its own tracking (Compose letterSpacing) and face; iOS tracking follows size and weight.
+            let tracking = if f.android { f.tracking.to_bits() ^ 0x8000_0000 } else { 0 };
+            (text.to_string(), f.size.to_bits(), f.weight, width.map_or(u32::MAX, f32::to_bits), tracking)
+        });
+        if let Some(key) = &key {
+            if let Some(r) = self.measured.get(key) {
                 return *r;
             }
         }
@@ -357,7 +394,12 @@ impl Fonts {
             lines += 1;
         }
         let r = (w as f64, (f.line_height + (lines.max(1) - 1) as f32 * f.pitch) as f64);
-        if plain {
+        if let Some(key) = key {
+            if self.measured.len() >= MEASURE_MAX_ENTRIES || self.measured_text_bytes + text.len() > MEASURE_MAX_TEXT_BYTES {
+                self.measured.clear();
+                self.measured_text_bytes = 0;
+            }
+            self.measured_text_bytes += text.len();
             self.measured.insert(key, r);
         }
         r
@@ -377,10 +419,77 @@ impl Fonts {
         rgba: [u8; 4],
         origin: (f32, f32),
         spans: &[Span],
-        mut f: impl FnMut(i32, i32, u32, u32, [u8; 4]),
+        f: impl FnMut(i32, i32, u32, u32, [u8; 4]),
     ) -> Vec<LineSpan> {
+        self.draw_if_visible(text, spec, width, rgba, origin, spans, None, f).unwrap_or_default()
+    }
+
+    /// Visible mask glyphs that can be composited individually. Overlap needs a run sprite so the
+    /// masks combine before the executor applies the ancestor clip.
+    pub(crate) fn mask_glyphs(&mut self, text: &str, spec: &FontSpec, width: f32, origin: (f32, f32), clip: PaintClip) -> Option<Vec<PositionedGlyph>> {
+        let b = self.buffer(text, spec, Some(width), &[]);
+        let positioned = glyph_positioning(origin, spec.pt > 40.0);
+        let mut glyphs: Vec<PositionedGlyph> = Vec::new();
+        for run in b.layout_runs() {
+            for g in run.glyphs {
+                let (key, x, y) = positioned(g, run.line_y);
+                let Some(image) = self.cache.get_image(&mut self.sys, key) else { continue };
+                let p = image.placement;
+                let glyph = PositionedGlyph { key, x: x + p.left, y: y - p.top, width: p.width, height: p.height };
+                let bounds = glyph.bounds();
+                if p.width == 0 || p.height == 0 || !clip.overlaps(bounds) {
+                    continue;
+                }
+                if image.content != SwashContent::Mask || glyphs.iter().any(|prior| bounds.overlaps(prior.bounds())) {
+                    return None;
+                }
+                glyphs.push(glyph);
+            }
+        }
+        Some(glyphs)
+    }
+
+    /// Called with a key validated by `mask_glyphs`, against the same Swash cache.
+    pub(crate) fn glyph_mask(&mut self, key: CacheKey) -> &[u8] {
+        &self.cache.get_image(&mut self.sys, key).as_ref().expect("known glyph mask").data
+    }
+
+    /// For undecorated text, test the glyph images before emitting pixels. Sprite callers
+    /// need the full run whenever any glyph can paint inside the clip.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn draw_if_visible(
+        &mut self,
+        text: &str,
+        spec: &FontSpec,
+        width: f32,
+        rgba: [u8; 4],
+        origin: (f32, f32),
+        spans: &[Span],
+        clip: Option<crate::raster::PaintClip>,
+        mut f: impl FnMut(i32, i32, u32, u32, [u8; 4]),
+    ) -> Result<Vec<LineSpan>, crate::raster::PaintClip> {
         let mut b = self.buffer(text, spec, Some(width), spans);
         b.shape_until_scroll(&mut self.sys, false);
+        // Body-size text snaps like UIKit (whole-pixel baseline and origin); accessibility sizes keep
+        // the sub-pixel phase, which iOS does at large sizes (measured on the scrolled fixtures).
+        let positioned = glyph_positioning(origin, spec.pt > 40.0);
+        if let Some(clip) = clip {
+            let mut ink: Option<crate::raster::PaintClip> = None;
+            let visible = b.layout_runs().any(|run| {
+                run.glyphs.iter().any(|g| {
+                    let (key, x, y) = positioned(g, run.line_y);
+                    self.cache.get_image(&mut self.sys, key).as_ref().is_some_and(|image| {
+                        let p = image.placement;
+                        let glyph = crate::raster::PaintClip::pixels(x + p.left, y - p.top, p.width, p.height);
+                        ink = Some(ink.map_or(glyph, |bounds| bounds.union(glyph)));
+                        clip.overlaps(glyph)
+                    })
+                })
+            });
+            if !visible {
+                return ink.map_or_else(|| Ok(Vec::new()), Err);
+            }
+        }
         let lines = b
             .layout_runs()
             .flat_map(|r| {
@@ -396,23 +505,9 @@ impl Fonts {
             })
             .collect();
         let c = Color::rgba(rgba[0], rgba[1], rgba[2], rgba[3]);
-        // Body-size text snaps like UIKit (whole-pixel baseline and origin); accessibility sizes keep
-        // the sub-pixel phase, which iOS does at large sizes (measured on the scrolled fixtures).
-        let frac = spec.pt > 40.0;
-        let (ix, iy) = if frac { (origin.0.floor(), origin.1.floor()) } else { (origin.0.round(), origin.1.round()) };
-        let (fx, fy) = if frac { (origin.0 - ix, origin.1 - iy) } else { (0.0, 0.0) };
         for run in b.layout_runs() {
             for g in run.glyphs {
-                let gy = g.y - g.font_size * g.y_offset + run.line_y;
-                let (key, gx, gy) = cosmic_text::CacheKey::new(
-                    g.font_id,
-                    g.glyph_id,
-                    g.font_size,
-                    (g.x + g.font_size * g.x_offset + fx, if frac { gy + fy } else { gy.trunc() }),
-                    g.font_weight,
-                    g.cache_key_flags,
-                );
-                let (bx, by) = (gx + ix as i32, gy + iy as i32);
+                let (key, bx, by) = positioned(g, run.line_y);
                 // cosmic-text replaces the color alpha with glyph coverage: reapply the run's own alpha.
                 let sa = spans.get(g.metadata).map_or(1.0, |s| s.color.a);
                 self.cache.with_pixels(&mut self.sys, key, g.color_opt.unwrap_or(c), |px, py, col| {
@@ -420,7 +515,7 @@ impl Fonts {
                 });
             }
         }
-        lines
+        Ok(lines)
     }
 }
 
