@@ -1,5 +1,6 @@
-# Level B: the full suites of every affected check (iOS 27.2 and Android pixel diffs, web parity), once a PR is
-# ready to merge. Reports the `ci-premerge` commit status on the PR's head commit:
+# The only CI a pull request gets: the full suites of every affected check (iOS 27.2 and Android pixel diffs, web
+# parity), once the PR is ready to merge. Commits on a PR without the label run nothing but the cheap gate job.
+# Reports the `ci-premerge` commit status (and `ci`, its alias for the current ruleset) on the PR's head commit:
 #   - no `ready-to-merge` label: pending ("add the ready-to-merge label")
 #   - labelled: pending while it runs, then success or failure
 #   - each new commit on a labelled PR runs it again; the new head has no status until it passes
@@ -25,6 +26,8 @@ env:
   SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   GH_TOKEN: ${{ github.token }}
   RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+  # `ci` is what the current ruleset requires; drop it once the ruleset requires `ci-premerge` (docs/ci.md).
+  CONTEXTS: ci-premerge ci
 
 jobs:
   gate:
@@ -44,8 +47,10 @@ jobs:
           else
             echo run=false >>"$GITHUB_OUTPUT"; desc="add the ready-to-merge label to run the pre-merge checks"
           fi
-          gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" -f state=pending -f context=ci-premerge \
-            -f description="$desc" -f target_url="$RUN_URL" >/dev/null
+          for context in $CONTEXTS; do
+            gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" -f state=pending -f context="$context" \
+              -f description="$desc" -f target_url="$RUN_URL" >/dev/null
+          done
 
   checks:
     needs: gate
@@ -67,6 +72,8 @@ jobs:
             cancelled) state=error desc="cancelled (superseded or stopped); rerun or push again" ;;
             *) state=failure desc="pre-merge checks: $RESULT" ;;
           esac
-          gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" -f state="$state" -f context=ci-premerge \
-            -f description="$desc" -f target_url="$RUN_URL" >/dev/null
+          for context in $CONTEXTS; do
+            gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" -f state="$state" -f context="$context" \
+              -f description="$desc" -f target_url="$RUN_URL" >/dev/null
+          done
           [ "$state" = success ]

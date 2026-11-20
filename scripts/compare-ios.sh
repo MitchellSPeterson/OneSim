@@ -13,7 +13,7 @@ printf '{"id":1,"method":"hello","params":{"protocol_version":1}}\n{"id":2,"meth
 only=${SIMCORE_ONLY:-all}
 case $only in all|swiftui|expo) ;; *) echo "unknown SIMCORE_ONLY=$only (swiftui|expo)"; exit 2 ;; esac
 want() { [ "$only" = all ] || [ "$only" = "$1" ]; }
-# SIMCORE_SMOKE=1: a few representative states per framework (the per-commit CI check, scripts/ci-local.sh fast level).
+# SIMCORE_SMOKE=1: a few representative states per framework (scripts/ci-local.sh fast level).
 # Same fixtures and thresholds; the full run compares every state before merge.
 smoke=${SIMCORE_SMOKE:-}
 SMOKE_STATES=" home home-dark controls sheet todos-typed form controls-typed "

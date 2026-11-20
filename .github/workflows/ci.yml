@@ -1,12 +1,9 @@
-# Level A on every PR commit and push to main (fast: the checks the change affects, compile + targeted tests +
-# smoke states), level C nightly, on `v*` tags and on manual runs (full: every check, Linux/Windows included).
-# Level B (premerge) is premerge.yml. Required check: `ci-fast` (and `ci-premerge`, the status premerge.yml sets).
-# See docs/ci.md.
+# Full regression: every check, Linux/Windows included, nightly, on `v*` tags and on manual runs (which can also pick
+# the fast or premerge level). Pull requests run no CI until they are ready to merge: premerge.yml runs the affected
+# checks once a PR has the `ready-to-merge` label and sets the required statuses. See docs/ci.md.
 name: CI
 on:
-  pull_request:
   push:
-    branches: [main] # other branches are covered by their PR run
     tags: ['v*']
   schedule:
     - cron: '0 8 * * *' # nightly full regression
@@ -18,10 +15,10 @@ on:
         options: [full, premerge, fast]
         default: full
 
-# A new commit cancels the PR's previous run. Everything else (main, tags, nightly, manual) gets its own group.
+# Tags, nightly and manual runs never cancel each other.
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.run_id }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -31,24 +28,3 @@ jobs:
     uses: ./.github/workflows/checks.yml
     with:
       level: ${{ inputs.level || '' }}
-
-  # The required check. Runs even when the checks failed or were cancelled, so it can only pass on success.
-  ci-fast:
-    needs: checks
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - run: '[ "$RESULT" = success ] || { echo "::error::checks: $RESULT"; exit 1; }'
-        env:
-          RESULT: ${{ needs.checks.result }}
-
-  # Deprecated alias of ci-fast for the current ruleset (which requires `ci`). Delete once the ruleset requires
-  # `ci-fast` and `ci-premerge` instead (docs/ci.md, "GitHub settings").
-  ci:
-    needs: ci-fast
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - run: '[ "$RESULT" = success ] || { echo "::error::ci-fast: $RESULT"; exit 1; }'
-        env:
-          RESULT: ${{ needs.ci-fast.result }}

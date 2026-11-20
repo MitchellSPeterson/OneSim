@@ -28,7 +28,7 @@ To run only the checks your branch needs, use `scripts/ci-local.sh`. It diffs ag
 
 ```sh
 scripts/ci-local.sh --explain               # what would run, and why
-scripts/ci-local.sh --affected --level fast # the per-commit checks: compile, targeted tests, smoke states
+scripts/ci-local.sh --affected --level fast # quick checks: compile, targeted tests, smoke states
 scripts/ci-local.sh --affected              # the pre-merge checks: every affected suite in full
 scripts/ci-local.sh --all                   # everything, as nightly
 ```

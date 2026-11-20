@@ -7,7 +7,7 @@
   ci_select.py verify                                       CI: fail unless every selected job passed ($PLAN, $NEEDS)
 
 Levels (docs/ci.md):
-  fast      every PR commit: compilation, targeted tests, small smoke checks
+  fast      local and manual runs: compilation, targeted tests, small smoke checks
   premerge  before merge: the full suites of every affected check (pixel diffs, web parity)
   full      nightly, `v*` tags, manual runs: every check, whatever changed
 
