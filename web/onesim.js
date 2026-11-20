@@ -242,6 +242,8 @@ export class OneSim {
   }
   /** Whether this build of app.wasm can emit display lists for the GPU presenter. */
   get supportsDisplayList() { return typeof this.wasm.simcore_web_set_output === "function"; }
+  /** Current frame version, when supported by the runtime. Reading it does not render. */
+  get frameVersion() { return this.wasm.simcore_web_frame_version?.(); }
   /** Select what the runtime draws: 0 (or "pixels") = RGBA framebuffer, 1 (or "displaylist") = encoded display list. Resets the resource table. */
   setOutput(mode) {
     const m = mode === "displaylist" ? 1 : mode === "pixels" ? 0 : mode;
@@ -249,7 +251,8 @@ export class OneSim {
   }
   /** Latest display list bytes (output mode 1): a view into Wasm memory, valid until the next draw. */
   displayList() {
-    return new Uint8Array(this.mem, this.wasm.simcore_web_dl_ptr(), this.wasm.simcore_web_dl_len());
+    const ptr = this.wasm.simcore_web_dl_ptr(), len = this.wasm.simcore_web_dl_len();
+    return new Uint8Array(this.mem, ptr, len);
   }
   setScale(scale) { this.scale = scale; this.wasm.simcore_web_set_scale(scale); }
 
@@ -261,6 +264,7 @@ export class OneSim {
   /** Current frame without copying: a view into Wasm memory, valid only until the next call. */
   frameView() {
     const w = this.wasm.simcore_web_fb_width(), h = this.wasm.simcore_web_fb_height();
-    return { width: w, height: h, data: new Uint8ClampedArray(this.mem, this.wasm.simcore_web_fb_ptr(), w * h * 4) };
+    const ptr = this.wasm.simcore_web_fb_ptr();
+    return { width: w, height: h, data: new Uint8ClampedArray(this.mem, ptr, w * h * 4) };
   }
 }

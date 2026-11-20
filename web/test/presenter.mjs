@@ -15,6 +15,7 @@
 //   lost      destroy the WebGPU device -> CPU with the latest runtime state
 //   --app     repeat lifecycle and idle checks with the built SwiftUI showcase
 //   --compose repeat lifecycle, GPU/CPU fallback, and input checks with the built Compose app
+//   --bench target/web-before [--gpu]   compare a baseline showcase build with target/web in headless Chrome
 import { spawn, execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, existsSync, statSync } from "node:fs";
@@ -29,6 +30,14 @@ const appDir = join(process.env.CARGO_TARGET_DIR ?? join(root, "target"), "web")
 const gpuDir = join(appDir, "gpu");
 const testApp = process.argv.includes("--app");
 const testCompose = process.argv.includes("--compose");
+const benchIndex = process.argv.indexOf("--bench");
+const bench = benchIndex !== -1;
+const benchMode = process.argv.includes("--gpu") ? "gpu" : "cpu";
+const beforeDir = bench && process.argv[benchIndex + 1] ? resolve(process.argv[benchIndex + 1]) : null;
+if (bench && (!beforeDir || !existsSync(join(beforeDir, "app.wasm")) || !existsSync(join(appDir, "app.wasm")))) {
+  console.error("usage: node web/test/presenter.mjs --bench <baseline showcase build directory> (current build in target/web)");
+  process.exit(2);
+}
 if ((testApp || testCompose) && !existsSync(join(appDir, "app.wasm"))) {
   console.error(`missing ${appDir}/app.wasm: build an app with scripts/build-web.sh first`);
   process.exit(2);
@@ -37,16 +46,17 @@ if (testCompose && !existsSync(join(appDir, "guest/guest.mjs"))) {
   console.error(`missing ${appDir}/guest/guest.mjs: build a Compose app with scripts/build-web.sh first`);
   process.exit(2);
 }
-if (!existsSync(join(gpuDir, "onesim_web_gpu_bg.wasm"))) { console.error(`missing ${gpuDir}: build the GPU module first (see header)`); process.exit(2); }
+if (!bench && !existsSync(join(gpuDir, "onesim_web_gpu_bg.wasm"))) { console.error(`missing ${gpuDir}: build the GPU module first (see header)`); process.exit(2); }
 
-const fx = mkdtempSync(join(tmpdir(), "onesim-fx-"));
-execFileSync("cargo", ["test", "-q", "-p", "onesim-web", "write_browser_fixtures"], { cwd: root, env: { ...process.env, SIMCORE_WEB_FIXTURE_DIR: fx }, stdio: "inherit" });
+const fx = bench ? null : mkdtempSync(join(tmpdir(), "onesim-fx-"));
+if (fx) execFileSync("cargo", ["test", "-q", "-p", "onesim-web", "write_browser_fixtures"], { cwd: root, env: { ...process.env, SIMCORE_WEB_FIXTURE_DIR: fx }, stdio: "inherit" });
 
 const types = { ".js": "text/javascript", ".mjs": "text/javascript", ".html": "text/html", ".wasm": "application/wasm", ".json": "application/json" };
 const server = createServer((req, res) => {
   const p = new URL(req.url, "http://x").pathname;
-  const file = p.startsWith("/fx/") ? join(fx, p.slice(4)) : p.startsWith("/gpu/") ? join(gpuDir, p.slice(5))
+  const file = fx && p.startsWith("/fx/") ? join(fx, p.slice(4)) : p.startsWith("/gpu/") ? join(gpuDir, p.slice(5))
     : p.startsWith("/app/") ? join(appDir, p.slice(5))
+    : beforeDir && p.startsWith("/before/") ? join(beforeDir, p.slice(8))
     : ["/renderer.js", "/onesim.js"].includes(p) ? join(root, "web", p) : join(root, "web/test", p);
   if (!existsSync(file) || !statSync(file).isFile()) { res.writeHead(404).end(); return; }
   res.writeHead(200, { "content-type": types[extname(file)] ?? "application/octet-stream" }).end(readFileSync(file));
@@ -112,6 +122,8 @@ async function probeApp() {
     if (error) throw new Error(error);
     await sleep(25);
   }
+  const refresh = () => new Promise(requestAnimationFrame);
+  await refresh();
   const s = window.onesim, r = window.onesimRenderer;
   const mode = r.mode, initialFrames = r.frames;
   const size = () => [r.canvas.width, r.canvas.height].join("x");
@@ -119,6 +131,10 @@ async function probeApp() {
   const idleStart = performance.now();
   await sleep(1200);
   const idleMs = performance.now() - idleStart, idleFrames = r.frames - initialFrames;
+  const beforeNoOp = r.frames;
+  s.scroll(200, 400, 0, 0);
+  await refresh();
+  const noOpFrames = r.frames - beforeNoOp;
   s.click("Todos");
   s.click("New todo");
   s.type("Buy milk");
@@ -132,12 +148,16 @@ async function probeApp() {
   const stateRetained = beforeLoss === s.lastTreeText() && s.sim.focused;
   s.click("Add");
   const beforeResize = r.frames;
+  s.setViewport(310, 530);
   s.setViewport(320, 550);
+  const immediateResizeFrames = r.frames - beforeResize;
+  const snapshotWidth = r.mode === "cpu" ? s.sim.frameView().width : 0;
+  await refresh();
   const resizeFrames = r.frames - beforeResize;
   const resized = size();
   s.setAppearance("dark");
   return {
-    mode, finalMode: r.mode, reason: r.reason, initialSize, resized, resizeFrames, idleMs, idleFrames,
+    mode, finalMode: r.mode, reason: r.reason, initialSize, resized, resizeFrames, immediateResizeFrames, idleMs, idleFrames, noOpFrames, snapshotWidth,
     stateRetained, canvasSwapped: r.canvas !== canvas, todoAdded: s.lastTreeText().includes("Buy milk"),
   };
 }
@@ -153,6 +173,8 @@ async function probeComposeApp() {
     if (error) throw new Error(error);
     await sleep(25);
   }
+  const refresh = () => new Promise(requestAnimationFrame);
+  await refresh();
   const s = window.onesim, r = window.onesimRenderer;
   const mode = r.mode, initialFrames = r.frames;
   const size = () => [r.canvas.width, r.canvas.height].join("x");
@@ -198,6 +220,7 @@ async function probeComposeApp() {
   }
   const beforeResize = r.frames;
   s.setViewport(320, 600);
+  await refresh();
   const resizeFrames = r.frames - beforeResize;
   const resized = size();
   s.setAppearance("dark");
@@ -214,6 +237,94 @@ async function liveComposeApp(scale, gpu) {
 }
 
 const cpuOk = (r) => { check(r.mode === "cpu" && r.output === 0, "mode is cpu"); check(r.diffPct === 0, `CPU pixels exact (diff ${r.diffPct})`); check(r.nonBlankPct > 5, "not blank"); check(r.canvasConnected, "canvas attached"); };
+
+async function probeDragFrames() {
+  while (!window.onesim?.ready) {
+    const error = document.getElementById("err")?.textContent;
+    if (error) throw new Error(error);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  const s = window.onesim, renderer = window.onesimRenderer;
+  const raf = window.requestAnimationFrame.bind(window);
+  const refresh = () => new Promise(raf);
+  s.click("Long list");
+  if (!s.scroll(200, 400, 0, 250)) throw new Error("could not position the list");
+  await refresh();
+  await refresh();
+
+  // Time the page's RAF callbacks plus synchronous event work, excluding the wait for refresh.
+  let callbackMs = 0;
+  window.requestAnimationFrame = (fn) => raf((now) => {
+    const start = performance.now();
+    fn(now);
+    callbackMs += performance.now() - start;
+  });
+
+  const stage = document.getElementById("stage");
+  stage.setPointerCapture = () => {}; // synthetic pointers cannot be captured
+  const { left, top, width, height } = renderer.canvas.getBoundingClientRect();
+  const x = left + width * 200 / s.sim.width;
+  const screenY = (y) => top + height * y / s.sim.height;
+  let timestamp = performance.now();
+  const pointer = (kind, y) => {
+    const event = new PointerEvent(kind, { pointerId: 1, pointerType: "touch", clientX: x, clientY: screenY(y) });
+    Object.defineProperty(event, "timeStamp", { value: timestamp });
+    return event;
+  };
+  stage.dispatchEvent(pointer("pointerdown", 400));
+  await refresh();
+  const warmup = 30, samples = [], dispatchTimes = [];
+  let immediateFrames = 0, presentedFrames = 0, y = 400;
+  for (let i = 0; i < warmup + 120; i++) {
+    const samplesForMove = [];
+    for (let j = 0; j < 3; j++) {
+      y += i % 2 ? 4.5 : -4.5;
+      timestamp += 4;
+      samplesForMove.push(pointer("pointermove", y));
+    }
+    const event = pointer("pointermove", y);
+    Object.defineProperty(event, "getCoalescedEvents", { value: () => samplesForMove });
+    const before = renderer.frames;
+    callbackMs = 0;
+    const start = performance.now();
+    stage.dispatchEvent(event);
+    const dispatchMs = performance.now() - start;
+    const immediate = renderer.frames - before;
+    await refresh();
+    if (i >= warmup) {
+      samples.push(dispatchMs + callbackMs);
+      dispatchTimes.push(dispatchMs);
+      immediateFrames += immediate;
+      presentedFrames += renderer.frames - before;
+    }
+  }
+  samples.sort((a, b) => a - b);
+  dispatchTimes.sort((a, b) => a - b);
+  const percentile = (p) => samples[Math.ceil(samples.length * p) - 1];
+  return {
+    mode: renderer.mode, samples: samples.length, immediateFrames, presentedFrames,
+    p50Ms: percentile(0.5), p95Ms: percentile(0.95), dispatchP95Ms: dispatchTimes[Math.ceil(samples.length * 0.95) - 1],
+  };
+}
+
+if (bench) {
+  try {
+    const probe = `(${probeDragFrames})().then(result => { window.__result = result; }, error => { window.__result = { error: String(error) }; });`;
+    for (let trial = 0; trial < 3; trial++) {
+      const builds = trial % 2 ? ["app", "before"] : ["before", "app"];
+      for (const build of builds) {
+        const result = await run(`device=iphone-17-pro&scale=3&renderer=${benchMode}`, { preload: probe, page: `${build}/index.html` });
+        if (result.error) throw new Error(result.error);
+        console.log(JSON.stringify({ trial: trial + 1, build, ...result }));
+        check(result.mode === benchMode && result.presentedFrames === result.samples, "each drag batch presents one frame with the requested renderer");
+        if (build === "app") check(result.immediateFrames === 0, "drag defers presentation to refresh");
+      }
+    }
+  } finally {
+    proc.kill(); server.close(); ws.close();
+  }
+  process.exit(failed ? 1 : 0);
+}
 
 try {
   const gpu = await run("renderer=gpu&fixture=home");
@@ -267,8 +378,10 @@ try {
         const live = await liveApp(device, scale, useGpu);
         console.log(`app ${device} @${scale}x ${JSON.stringify(live)}`);
         check(live.mode === (useGpu ? "gpu" : "cpu") && live.finalMode === "cpu", "live app selects and recovers its presenter");
-        check(live.initialSize === expected && live.resized === `${320 * scale}x${550 * scale}` && live.resizeFrames === 1, "live resize presents one correctly sized frame");
-        check(live.idleFrames === 0, "static live app presents no idle frames");
+        check(live.initialSize === expected && live.resized === `${320 * scale}x${550 * scale}` && live.resizeFrames === 1 && live.immediateResizeFrames === 0,
+          "live resizes coalesce to one correctly sized frame on refresh");
+        check(live.idleFrames === 0 && live.noOpFrames === 0, "idle and no-op input present no frames");
+        check(live.snapshotWidth === 320 * scale, "CPU snapshot reads pending pixels before presentation");
         check(live.stateRetained && live.todoAdded, "live app retains edited text and focus and accepts input");
         if (useGpu) check(live.canvasSwapped && /device lost/i.test(live.reason), "live device loss swaps the canvas");
       }

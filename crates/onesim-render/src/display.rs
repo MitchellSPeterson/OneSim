@@ -105,9 +105,9 @@ pub struct DisplayList {
 
 // ---------------------------------------------------------------------------------------------- encoding
 
-struct W(Vec<u8>);
+struct W<'a>(&'a mut Vec<u8>);
 
-impl W {
+impl W<'_> {
     fn u8(&mut self, v: u8) {
         self.0.push(v);
     }
@@ -214,7 +214,7 @@ impl R<'_> {
     }
 }
 
-fn encode_spec(w: &mut W, s: &GlassSpec) {
+fn encode_spec(w: &mut W<'_>, s: &GlassSpec) {
     w.u8(match s.variant {
         GlassVariant::Regular => 0,
         GlassVariant::Clear => 1,
@@ -249,7 +249,16 @@ fn decode_spec(r: &mut R) -> Res<GlassSpec> {
 
 impl DisplayList {
     pub fn encode(&self) -> Vec<u8> {
-        let mut w = W(Vec::with_capacity(64 + self.ops.len() * 32 + self.added.iter().map(|r| r.rgba.len() + 20).sum::<usize>()));
+        let mut bytes = Vec::new();
+        self.encode_into(&mut bytes);
+        bytes
+    }
+
+    /// Replace the encoded frame in a caller-owned buffer, reusing its allocation.
+    pub fn encode_into(&self, bytes: &mut Vec<u8>) {
+        bytes.clear();
+        bytes.reserve(64 + self.ops.len() * 32 + self.added.iter().map(|r| r.rgba.len() + 20).sum::<usize>());
+        let mut w = W(bytes);
         w.0.extend_from_slice(MAGIC);
         w.u16(VERSION);
         w.u32(self.width);
@@ -343,7 +352,6 @@ impl DisplayList {
                 }
             }
         }
-        w.0
     }
 
     pub fn decode(bytes: &[u8]) -> Result<Self, String> {

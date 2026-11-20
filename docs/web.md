@@ -104,7 +104,7 @@ for the page's lifetime (they survive app reloads, not page reloads).
 ## GPU rendering
 
 Two Wasm modules. `app.wasm` (wasm32-wasip1: Swift + layout + fonts + CPU raster) stays the runtime. With
-`simcore_web_set_output(1)` its `draw` lowers the scene with a persistent `onesim_render::Builder` to an encoded
+`simcore_web_set_output(1)` the runtime lowers the scene with a persistent `onesim_render::Builder` to an encoded
 `DisplayList` (`simcore_web_dl_ptr/len`) instead of pixels (mode 0 produces CPU pixels).
 Hit testing and interaction still come from the `Scene`. `gpu/onesim_web_gpu*.{js,wasm}`
 (`crates/onesim-web-gpu`, wasm32-unknown-unknown + wasm-bindgen, built by `scripts/build-web.sh`) wraps
@@ -119,7 +119,9 @@ without display-list output, or any init failure -> CPU; otherwise GPU. After th
 once a second, plus checked after every frame) or an uncaptured GPU error switches to CPU for good: `setOutput(0)`
 (resets the builder), a fresh `<canvas>` (a canvas that got a `webgpu` context cannot give a `2d` one; input listeners are
 on the `#stage` wrapper so they survive), and the same frame is shown with `putImageData`.
-Rendering stays event-driven: a frame is presented only when input or the animation tick changed something.
+Input updates the scene synchronously for hit testing and guest callbacks. The page schedules one presentation
+per browser refresh and skips presentation when the frame version has not changed.
+Direct framebuffer and display-list reads still produce the latest output synchronously.
 `window.onesimRenderer` exposes `mode` (`gpu|cpu`), `reason`, `requested`, `info`, `frames`, `fallback()`.
 Deploy `app.wasm`, the JavaScript and `gpu/` from the same build. Both Wasm modules use the internal display-list
 version, and an incompatible pair triggers CPU fallback.
@@ -127,7 +129,7 @@ version, and an incompatible pair triggers CPU fallback.
 ## How it works
 
 - **ABI.** `onesim-web` exports the [`simcore_runtime_*` C ABI](protocol.md#c-c-abi-cratesonesim-runtime-header-simcore_runtimeh) in-process.
-  `submit_tree` parses the ViewNode and renders it to an RGBA framebuffer. `run` returns at once.
+  `submit_tree` parses the ViewNode and updates the scene. `run` returns at once.
 - **Reactor.** Linked with `-mexec-model=reactor`. JS calls `_initialize`, then
   `simcore_web_init(w, h, scale, dark)`, which runs the Swift entry (`__main_argc_argv`: registers the app and
   *returns*; works for `_onesimRun(Root())` mains and `@main App`) and then pushes the environment, which
@@ -145,7 +147,7 @@ version, and an incompatible pair triggers CPU fallback.
   `set_dynamic_type` (index into the 12 Dynamic Type sizes), `set_scale`, `focused`,
   `inspect`, `find`, and `fb_ptr/len/width/height`. The browser page and Node harness share the `web/onesim.js` driver.
 - **React Native exports.** `simcore_web_rn_init(w,h,scale,dark,android)` replaces `init`;
-  `simcore_web_rn_receive(len)` takes a guest message (JSON, protocol section H) and draws a `tree`;
+  `simcore_web_rn_receive(len)` takes a guest message (JSON, protocol section H) and applies a `tree`;
   `simcore_web_rn_outbox()` hands the page the host messages to post to the guest (touches, scrolls, `layout`,
   focus, keyboard, environment); `simcore_web_put_image(len)` supplies an image file the guest wrote (path, NUL,
   bytes). The same pointer/drag/key exports drive both modes. The React Native build is the same standalone
@@ -172,6 +174,7 @@ node web/test/run.mjs --click Todos --click "New todo" --type "Buy milk" --scree
                                                       # CLI-style steps: --device NAME --click LABEL|X,Y --type --key --scroll X,Y,DX,DY --drag X,Y,DX,DY --dark --width/--height/--scale --inspect
 node web/test/presenter.mjs                            # headless Chrome GPU and CPU fallback checks
 node web/test/presenter.mjs --app                      # check the built SwiftUI showcase and state retained after device loss
+node web/test/presenter.mjs --bench target/web-before  # compare drag cost against a saved showcase build (add --gpu for WebGPU)
 node web/test/presenter.mjs --compose                  # check the built Compose app on CPU and WebGPU
 scripts/compare-web.sh                                # compare each SwiftUI showcase state with native fallback, each < 2%
 scripts/compare-web-compose.sh                        # compare each Compose state with native Compose, each < 2%

@@ -258,7 +258,7 @@ impl Lay {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 struct Env {
     fg: Option<Color>,
     /// Axis of the directly enclosing stack (true = vertical), for Spacer/Divider.
@@ -315,6 +315,62 @@ struct Env {
     sym_original: bool,
     /// 0 nearest, 1 bilinear, 2 bicubic.
     img_filter: u8,
+}
+
+/// Prepared layout for one static SwiftUI list. Clear it before replacing or mutating the view tree
+/// or replacing its font system. Layout inputs are checked separately on each pass.
+#[derive(Default)]
+pub struct SwiftUiLayoutCache {
+    list: Option<(ListLayoutKey, ListContent)>,
+}
+
+impl SwiftUiLayoutCache {
+    /// Release the retained list before starting a new tree or font-system lease.
+    pub fn clear(&mut self) {
+        self.list = None;
+    }
+}
+
+#[derive(PartialEq)]
+struct ListLayoutKey {
+    node: usize,
+    width: f64,
+    env: Env,
+    scale: f64,
+    margin: f64,
+    row_pad: f64,
+    dark: bool,
+    dynamic_type: DynamicTypeSize,
+    ios: IosVersion,
+    system_fonts: bool,
+}
+
+#[derive(Clone)]
+struct ListContent {
+    bottom: f64,
+    kids: Vec<(f64, f64, Lay)>,
+}
+
+fn cacheable_list(v: &ViewNode, sections: &[Section]) -> bool {
+    // Bound retained nodes and strings even if a guest submits a single very large list.
+    const MAX_SECTIONS: usize = 64;
+    const MAX_ROWS: usize = 512;
+    const MAX_TEXT_BYTES: usize = 64 * 1024;
+    if v.id.len() > 128 || sections.len() > MAX_SECTIONS || sections.iter().map(|s| s.rows.len()).sum::<usize>() > MAX_ROWS {
+        return false;
+    }
+    let mut bytes = 0;
+    for section in sections {
+        bytes += section.header.as_ref().map_or(0, String::len) + section.footer.as_ref().map_or(0, String::len);
+        for row in &section.rows {
+            let ViewKind::Text { text, runs } = &row.kind else { return false };
+            if !runs.is_empty() || !row.modifiers.is_empty() {
+                return false;
+            }
+            bytes += row.id.len() + text.len();
+        }
+    }
+    bytes <= MAX_TEXT_BYTES
 }
 
 impl Env {
@@ -405,6 +461,7 @@ struct Ctx<'a> {
     /// Keyed by (node address, proposal bits). A node's Env is fixed by its ancestors,
     /// so node + proposal fully determines its layout within one pass.
     memo: HashMap<(usize, u64, u64), Lay>,
+    list_cache: Option<&'a mut SwiftUiLayoutCache>,
     /// Symbols that fell back to a placeholder.
     unsupported: BTreeSet<String>,
     /// Elevated grouped colors (content of a sheet in dark mode).
@@ -482,6 +539,7 @@ fn ctx<'a>(params: &'a SceneParams, fonts: &'a mut Fonts) -> Ctx<'a> {
         overscroll: params.overscroll,
         focus: params.focus,
         memo: HashMap::new(),
+        list_cache: None,
         unsupported: BTreeSet::new(),
         elevated: false,
         floating: false,
@@ -586,6 +644,15 @@ pub(super) fn embedded(
 }
 
 pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
+    layout_inner(root, params, fonts, None)
+}
+
+/// Layout with a cache leased to this tree and font system.
+pub fn layout_with_cache(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts, cache: &mut SwiftUiLayoutCache) -> Scene {
+    layout_inner(root, params, fonts, Some(cache))
+}
+
+fn layout_inner<'a>(root: &ViewNode, params: &'a SceneParams<'a>, fonts: &'a mut Fonts, cache: Option<&'a mut SwiftUiLayoutCache>) -> Scene {
     let (w, h) = params.viewport;
     // Keyboard avoidance: the keyboard top replaces the bottom safe-area inset.
     let kb = params.chrome.keyboard && params.focus.is_some();
@@ -603,6 +670,9 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         ViewKind::Presentation { content, layers } => (layers, &**content),
         _ => (&[], root),
     };
+    if layers.is_empty() {
+        cx.list_cache = cache;
+    }
     cx.desat = !layers.is_empty();
     cx.sheet_up = layers.iter().any(|l| matches!(l, Layer::Sheet { .. }));
     // A right status column (iPhone Duo) narrows the content; full-width backgrounds still reach the edge.
@@ -3165,7 +3235,9 @@ impl Ctx<'_> {
         } else {
             Prop { w: None, h: p.h.map(|h| (h - margins.top - margins.bottom).max(0.0)) }
         };
+        let cache = self.list_cache.take();
         let mut c = self.view(child, cp, child_env);
+        self.list_cache = cache;
         let fin = |x: Option<f64>| x.filter(|x| x.is_finite());
         let (cw, ch) = if vertical {
             (c.size.w, c.size.h + margins.top + margins.bottom + top + bottom)
@@ -3213,16 +3285,57 @@ impl Ctx<'_> {
     }
 
     fn list(&mut self, v: &ViewNode, style: ListStyle, sections: &[Section], p: Prop, env: Env) -> Lay {
-        let inset = style == ListStyle::InsetGrouped;
-        let (top, bottom) = (env.safe_top, env.bottom_inset);
         let w = p.w.filter(|w| w.is_finite()).unwrap_or(402.0);
+        let fin_h = p.h.filter(|h| h.is_finite());
+        let key = (self.list_cache.is_some() && !env.in_row && w > 0.0 && fin_h.is_some()
+            && env.anim.is_none() && env.content_transition == ContentTransitionKind::Identity).then(|| ListLayoutKey {
+            node: v as *const ViewNode as usize,
+            width: w,
+            env,
+            scale: self.scale,
+            margin: self.margin,
+            row_pad: self.row_pad,
+            dark: self.dark,
+            dynamic_type: self.dts,
+            ios: self.ios,
+            system_fonts: self.fonts.is_sf(),
+        });
+        let cached = key.as_ref().and_then(|key| self.list_cache.as_deref()?.list.as_ref().filter(|(cached_key, _)| cached_key == key));
+        let mut content = if let Some((_, content)) = cached {
+            content.clone()
+        } else {
+            let content = self.list_content(v, style, sections, w, env);
+            if let Some((key, cache)) = key.zip(self.list_cache.as_deref_mut()) {
+                // A sibling list follows the normal layout path while this tree owns the cache.
+                if cache.list.as_ref().is_none_or(|(cached_key, _)| cached_key.node == key.node) && cacheable_list(v, sections) {
+                    cache.list = Some((key, content.clone()));
+                }
+            }
+            content
+        };
+        let ch = content.bottom + env.bottom_inset;
+        let h = fin_h.unwrap_or(ch);
+        let max = (0.0, (ch - h).max(0.0));
+        let off = self.clamp_offset(self.scroll.get(&v.id).map_or(0.0, |o| o.1), max.1, h);
+        let mut n = Node::new(&v.id, "list");
+        n.fill = (!self.floating).then(|| self.semantic(if style == ListStyle::InsetGrouped { Semantic::GroupedBackground } else { Semantic::Background }));
+        n.clip_radius = Some(0.0);
+        n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max, snap: None, content: None, page: None, aligned: false });
+        for (_, y, _) in &mut content.kids {
+            *y -= off;
+        }
+        Lay::new(Size { w, h }, Some(n), content.kids)
+    }
+
+    fn list_content(&mut self, v: &ViewNode, style: ListStyle, sections: &[Section], w: f64, env: Env) -> ListContent {
+        let inset = style == ListStyle::InsetGrouped;
         let margin = if inset { self.margin } else { 0.0 };
         let gw = w - 2.0 * margin;
         let inner_w = gw - 2.0 * self.row_pad;
         let row_env = Env { axis: None, safe_top: 0.0, bottom_inset: 0.0, fg: None, in_row: true, ..env };
         let sec_col = if self.floating { let c = if self.dark { FLOAT_CARD.1 } else { FLOAT_CARD.0 }; rgba(c.0, c.1, c.2, 1.0) } else { self.semantic(Semantic::SecondaryGroupedBackground) };
         let sep_col = if self.floating { let c = if self.dark { FLOAT_SEP.1 } else { FLOAT_SEP.0 }; rgba(c.0, c.1, c.2, 1.0) } else { self.semantic(Semantic::Separator) };
-        let mut y = top;
+        let mut y = env.safe_top;
         let mut kids: Vec<(f64, f64, Lay)> = vec![];
         for (si, sec) in sections.iter().enumerate() {
             let sid = format!("{}#s{si}", v.id);
@@ -3285,17 +3398,7 @@ impl Ctx<'_> {
                 y += HEADERLESS_EXTRA_GAP;
             }
         }
-        let ch = y + bottom;
-        let fin_h = p.h.filter(|h| h.is_finite());
-        let h = fin_h.unwrap_or(ch);
-        let max = (0.0, (ch - h).max(0.0));
-        let off = self.clamp_offset(self.scroll.get(&v.id).map_or(0.0, |o| o.1), max.1, h);
-        let mut n = Node::new(&v.id, "list");
-        n.fill = (!self.floating).then(|| self.semantic(if inset { Semantic::GroupedBackground } else { Semantic::Background }));
-        n.clip_radius = Some(0.0);
-        n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max, snap: None, content: None, page: None, aligned: false });
-        let kids = kids.into_iter().map(|(x, ky, k)| (x, ky - off, k)).collect();
-        Lay::new(Size { w, h }, Some(n), kids)
+        ListContent { bottom: y, kids }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -4188,6 +4291,39 @@ mod tests {
 
     fn near(a: f64, b: f64) {
         assert!((a - b).abs() < 0.2, "{a} != {b}");
+    }
+
+    #[test]
+    fn retained_list_reuses_scroll_layout_and_matches_a_fresh_pass() {
+        let tree: ViewNode = serde_json::from_str(r#"{"kind":"list","id":"list","sections":[{"header":"Rows","rows":[
+            {"kind":"text","id":"a","text":"First row"}, {"kind":"text","id":"b","text":"Second row"},
+            {"kind":"text","id":"c","text":"Third row"}]}]}"#).unwrap();
+        let mut fonts = Fonts::with_fallback(true);
+        let mut cache = SwiftUiLayoutCache::default();
+        let no_scroll = HashMap::new();
+        let scrolled = HashMap::from([("list".into(), (0.0, 35.0))]);
+        let mut params = SceneParams {
+            viewport: (180.0, 100.0), device: crate::device::device("iphone-17-pro").unwrap(), scale: 2.0,
+            appearance: Appearance::Light, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios27,
+            scroll: &no_scroll, sheets: &HashMap::new(), focus: None, overscroll: false, status_bar: false, chrome: Default::default(),
+        };
+        let initial = layout_with_cache(&tree, &params, &mut fonts, &mut cache);
+        let retained_kids = cache.list.as_ref().unwrap().1.kids.as_ptr();
+        params.scroll = &scrolled;
+        let scroll = layout_with_cache(&tree, &params, &mut fonts, &mut cache);
+        let fresh = layout(&tree, &params, &mut fonts);
+        assert_eq!(cache.list.as_ref().unwrap().1.kids.as_ptr(), retained_kids);
+        assert_eq!(by_id(&initial, "a").bounds.y - by_id(&scroll, "a").bounds.y, 35.0);
+        assert_eq!(scroll.ui_tree(), fresh.ui_tree());
+        assert_eq!(crate::render(&scroll, &mut fonts, params.scale).data(), crate::render(&fresh, &mut fonts, params.scale).data());
+
+        params.appearance = Appearance::Dark;
+        params.viewport.0 = 160.0;
+        let dark = layout_with_cache(&tree, &params, &mut fonts, &mut cache);
+        let fresh = layout(&tree, &params, &mut fonts);
+        assert_ne!(cache.list.as_ref().unwrap().1.kids.as_ptr(), retained_kids);
+        assert_eq!(dark.ui_tree(), fresh.ui_tree());
+        assert_eq!(crate::render(&dark, &mut fonts, params.scale).data(), crate::render(&fresh, &mut fonts, params.scale).data());
     }
 
     #[test]
