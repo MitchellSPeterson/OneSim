@@ -412,7 +412,7 @@ assert "visits 1, sidebar false" in alltexts(tv(t))
 finish(p)
 
 # --- page selection works in both directions and survives leaving its enclosing tab
-p = spawn(sys.argv[12]); assert recv(p)["type"] == "hello"; t = recv(p)
+p = spawn(sys.argv[13]); assert recv(p)["type"] == "hello"; t = recv(p)
 def pager(t): return next(m for m in walk(t["root"]) if m["kind"] == "pagetabview")
 assert [item.get("badge") for item in tv(t)["tabs"]] == [None, "New", "12"]
 assert pager(t)["selected"] == 0 and pager(t)["indexBackground"] == "always"
@@ -589,5 +589,42 @@ assert any(m.get("kind") == "empty" for m in walk(t["root"]))
 bm = next(m for m in walk(t["root"]) if m.get("kind") == "image" and "bitmap" in m)
 assert bm["bitmap"]["path"].endswith("onesim-typelab.png"), bm
 assert bm["bitmap"]["width"] == 8 and bm["bitmap"]["height"] == 8, bm
+finish(p)
+
+# --- state and environment (#47)
+p = spawn(sys.argv[12], env={**os.environ, "SIMCORE_DYNAMIC_TYPE": "accessibility1"})
+assert recv(p)["type"] == "hello"; t = recv(p)
+tx = alltexts(t["root"])
+assert tx[:4] == ["Accent: plain enabled: true", "Accent: loud enabled: true", "Accent: outer enabled: false",
+                  "Accent: inner enabled: false"], tx  # nearest .environment wins; .disabled reaches isEnabled
+assert "Size: compact/regular" in tx, tx  # portrait iPhone
+assert "Badge: ada 0 some" in tx, tx
+# body 17 -> 28 at accessibility1, caption 12 -> 22 (Apple's Dynamic Type table)
+assert f"Metric: {10 * 28 / 17} 22.0 active" in tx, tx
+assert "Metric: 10.0 12.0 active" in tx, tx  # .environment(\.dynamicTypeSize, .large) override
+assert button(t, "Inner")["disabled"], button(t, "Inner")
+t = act(p, t, [m for m in walk(t["root"]) if m.get("kind") == "button" and "Draft: none" in alltexts(m)][0]["action"])
+assert alltexts(t["root"]).count("Draft: saved") == 2, alltexts(t["root"])  # both views share the key
+send(p, type="action", id=button(t, "Open")["action"], version=t["version"])
+ev = recv(p)  # system open: reported to the host, no state change, so no tree follows
+assert ev == {"type": "event", "name": "module.called",
+              "detail": {"module": "OpenURLAction", "method": "openURL", "args": ["https://example.com/a"]}}, ev
+t = act(p, t, button(t, "Local")["action"])  # handled in-app: no event, completion(true)
+assert "Result: true" in alltexts(t["root"]), alltexts(t["root"])
+t = act(p, t, button(t, "Like")["action"])
+assert "Badge: ada 1 some" in alltexts(t["root"]), alltexts(t["root"])  # @Observable mutation re-renders
+fld = next(m for m in walk(t["root"]) if m.get("kind") == "text_field")
+send(p, type="text_input", field=fld["field"], version=t["version"], text="grace"); t = recv(p)
+assert "Badge: grace 1 some" in alltexts(t["root"]), alltexts(t["root"])  # $bindable.name writes through
+send(p, type="environment", appearance="light", viewport={"width": 956, "height": 440}); t = recv(p)
+assert "Size: regular/compact" in alltexts(t["root"]), alltexts(t["root"])  # Pro Max landscape
+send(p, type="environment", appearance="light", viewport={"width": 874, "height": 402}); t = recv(p)
+assert "Size: compact/compact" in alltexts(t["root"]), alltexts(t["root"])  # Pro landscape
+send(p, type="environment", appearance="light", viewport={"width": 1032, "height": 1376}); t = recv(p)
+assert "Size: regular/regular" in alltexts(t["root"]), alltexts(t["root"])  # iPad
+t = act(p, t, button(t, "Push")["action"])
+assert "Pushed: day inner" in alltexts(t["root"]), alltexts(t["root"])
+t = act(p, t, button(t, "Pushed: day inner")["action"])  # changes the value set above the NavigationStack
+assert "Pushed: night inner" in alltexts(t["root"]), alltexts(t["root"])
 finish(p)
 print("PASS")

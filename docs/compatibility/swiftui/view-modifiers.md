@@ -126,7 +126,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.dropDestination` | 16 | ⬜ |  |  |
 | `.dynamicTypeSize` | 15 | ⬜ |  |  |
 | `.edgesIgnoringSafeArea` | 13 | ⬜ |  | Deprecated |
-| `.environment` | 13 | ⬜ |  |  |
+| `.environment` | 13 | 🟠 | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) | Built-in values change what views read; of those only `isEnabled` changes drawing (`colorScheme`, `dynamicTypeSize` overrides do not restyle) |
 | `.environmentObject` | 13 | ✅ |  |  |
 | `.equatable` | 13 | ⬜ |  |  |
 | `.fileDialogBrowserOptions` | 17 | ⬜ |  |  |
