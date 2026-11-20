@@ -12,7 +12,7 @@ use crate::scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, Shadow, Sy
 use crate::symbols::{self, SymbolSpec};
 use crate::text::{FontSpec, Fonts, Span, TextAlign};
 use onesim_protocol::{
-    Alignment, Appearance, ButtonStyle, Detent, Layer, PickerOption, PickerStyle, DynamicTypeSize, GlassShapeKind, GlassVariant, ContentMode, DisplayMode, Font, ImageScale, IosVersion, ListStyle, Modifier, Section, Semantic, ShapeKind, Stroke,
+    Alignment, Appearance, Axis, ButtonStyle, ContentMode, Detent, DisplayMode, DynamicTypeSize, Edges, FitAxes, Font, GlassShapeKind, GlassVariant, GridTrack, ImageScale, IosVersion, Layer, ListStyle, Modifier, PickerOption, PickerStyle, ScrollSnap, Section, Semantic, ShapeKind, Stroke, TrackSize,
     ViewKind, ViewNode,
 };
 use std::cmp::Ordering;
@@ -620,6 +620,9 @@ fn first_text(v: &ViewNode) -> Option<String> {
             first_text(label)
         }
         ViewKind::Label { title, .. } => first_text(title),
+        ViewKind::Grid { rows, .. } => rows.iter().find_map(|r| r.cells.iter().find_map(first_text)),
+        ViewKind::LazyGrid { children, .. } | ViewKind::ViewThatFits { children, .. } => children.iter().find_map(first_text),
+        ViewKind::Geometry { child, .. } => first_text(child),
         _ => None,
     }
 }
@@ -706,6 +709,9 @@ fn has_bordered(v: &ViewNode) -> bool {
         ViewKind::VStack { children, .. } | ViewKind::HStack { children, .. } | ViewKind::ZStack { children, .. } => {
             children.iter().any(has_bordered)
         }
+        ViewKind::Grid { rows, .. } => rows.iter().any(|r| r.cells.iter().any(has_bordered)),
+        ViewKind::LazyGrid { children, .. } | ViewKind::ViewThatFits { children, .. } => children.iter().any(has_bordered),
+        ViewKind::Geometry { child, .. } => has_bordered(child),
         _ => false,
     }
 }
@@ -716,6 +722,205 @@ fn is_list(v: &ViewNode) -> bool {
 
 fn is_scroller(v: &ViewNode) -> bool {
     matches!(v.kind, ViewKind::List { .. } | ViewKind::Scroll { .. })
+}
+
+/// First scene node of `l`: itself, or the single child of a node-less wrapper (frame, padding).
+fn first_node(l: &mut Lay) -> Option<&mut Node> {
+    if let Some(n) = l.node.as_deref_mut() {
+        return Some(n);
+    }
+    if l.kids.len() == 1 {
+        first_node(&mut l.kids[0].2)
+    } else {
+        None
+    }
+}
+
+/// Scene node of a direct child, walking one node-less wrapper (a frame).
+fn direct_target(l: &mut Lay) -> Option<&mut Node> {
+    if let Some(n) = l.node.as_deref_mut() {
+        return Some(n);
+    }
+    if l.kids.len() == 1 {
+        l.kids[0].2.node.as_deref_mut()
+    } else {
+        None
+    }
+}
+
+fn content_margins(mods: &[Modifier]) -> Edges {
+    let mut e = Edges::default();
+    for m in mods {
+        if let Modifier::ContentMargins(c) = m {
+            e.top += c.top;
+            e.leading += c.leading;
+            e.bottom += c.bottom;
+            e.trailing += c.trailing;
+        }
+    }
+    e
+}
+
+fn cell_columns(cell: &ViewNode) -> usize {
+    let mut span = 1usize;
+    for m in &cell.modifiers {
+        if let Modifier::GridCellColumns(n) = m {
+            span = (*n).max(1) as usize;
+        }
+    }
+    span
+}
+
+fn slot_width(cols: &[f64], col: usize, span: usize, gap: f64) -> f64 {
+    let end = (col + span).min(cols.len());
+    if col >= end {
+        return 0.0;
+    }
+    cols[col..end].iter().sum::<f64>() + gap * (end - col - 1) as f64
+}
+
+struct PinHit {
+    path: Vec<usize>,
+    natural: f64,
+    h: f64,
+}
+
+fn find_pins(l: &Lay, main: f64, path: &[usize], vertical: bool, pins: &mut Vec<PinHit>) {
+    if !path.is_empty() && l.node.as_ref().is_some_and(|n| n.pinned.as_deref() == Some("header")) {
+        let extent = if vertical { l.size.h } else { l.size.w };
+        pins.push(PinHit { path: path.to_vec(), natural: main, h: extent });
+    }
+    for (i, (dx, dy, k)) in l.kids.iter().enumerate() {
+        let mut child = path.to_vec();
+        child.push(i);
+        find_pins(k, main + if vertical { *dy } else { *dx }, &child, vertical, pins);
+    }
+}
+
+/// Index in `path` whose parent lay has a scene node: the stack-child offset, including a
+/// node-less frame sitting above the pinned node.
+fn place_depth(root: &Lay, path: &[usize]) -> usize {
+    let mut lay = root;
+    let mut place = 0;
+    for (depth, &i) in path.iter().enumerate() {
+        if lay.node.is_some() {
+            place = depth;
+        }
+        if depth + 1 == path.len() {
+            break;
+        }
+        lay = &lay.kids[i].2;
+    }
+    place
+}
+
+fn add_main(l: &mut Lay, path: &[usize], at: usize, delta: f64, vertical: bool) {
+    let Some(&i) = path.first() else { return };
+    let Some(slot) = l.kids.get_mut(i) else { return };
+    if at == 0 {
+        if vertical { slot.1 += delta; } else { slot.0 += delta; }
+    } else {
+        add_main(&mut slot.2, &path[1..], at - 1, delta, vertical);
+    }
+}
+
+/// Sticky section headers on the scroll's main axis. Content position becomes
+/// `max(natural, offset)` but not past the next header.
+fn pin_headers(root: &mut Lay, offset: f64, vertical: bool) {
+    let mut pins = Vec::new();
+    find_pins(root, 0.0, &[], vertical, &mut pins);
+    pins.sort_by(|a, b| a.natural.total_cmp(&b.natural));
+    let targets: Vec<f64> = pins
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let mut t = p.natural.max(offset);
+            if let Some(next) = pins.get(i + 1) {
+                t = t.min(next.natural - p.h);
+            }
+            t
+        })
+        .collect();
+    for (p, target) in pins.iter().zip(targets) {
+        let delta = target - p.natural;
+        if delta.abs() < 1e-9 {
+            continue;
+        }
+        let at = place_depth(root, &p.path);
+        add_main(root, &p.path, at, delta, vertical);
+    }
+}
+
+struct TrackSlot {
+    w: f64,
+    gap: f64,
+    align: Option<Alignment>,
+}
+
+fn track_gap(t: &GridTrack) -> f64 {
+    t.spacing.unwrap_or(DEFAULT_SPACING)
+}
+
+fn track_min(t: &GridTrack) -> f64 {
+    t.min.filter(|v| v.is_finite()).unwrap_or(10.0)
+}
+
+fn track_max(t: &GridTrack) -> f64 {
+    match t.max {
+        Some(m) if m.is_finite() => m,
+        _ => INF,
+    }
+}
+
+fn expand_adaptive(t: &GridTrack, available: f64) -> Vec<TrackSlot> {
+    let g = track_gap(t);
+    let min = track_min(t);
+    let denom = min + g;
+    let n = if denom <= 0.0 { 1 } else { ((available + g) / denom).floor().max(1.0) as usize };
+    let n = n.max(1);
+    let w = (available - g * (n as f64 - 1.0)) / n as f64;
+    let w = w.max(0.0);
+    (0..n)
+        .map(|i| TrackSlot { w, gap: if i + 1 == n { 0.0 } else { g }, align: t.alignment })
+        .collect()
+}
+
+fn resolve_tracks(tracks: &[GridTrack], available: f64) -> Vec<TrackSlot> {
+    if tracks.len() == 1 && tracks[0].size == TrackSize::Adaptive {
+        return expand_adaptive(&tracks[0], available);
+    }
+    let mut slots: Vec<TrackSlot> = Vec::with_capacity(tracks.len());
+    let mut flex_at = Vec::new();
+    let mut fixed_sum = 0.0;
+    for (i, t) in tracks.iter().enumerate() {
+        let gap = if i + 1 == tracks.len() { 0.0 } else { track_gap(t) };
+        match t.size {
+            TrackSize::Fixed => {
+                let w = t.value.unwrap_or(10.0);
+                fixed_sum += w;
+                slots.push(TrackSlot { w, gap, align: t.alignment });
+            }
+            TrackSize::Flexible | TrackSize::Adaptive => {
+                flex_at.push(slots.len());
+                slots.push(TrackSlot { w: 0.0, gap, align: t.alignment });
+            }
+        }
+    }
+    let gap_sum: f64 = slots.iter().map(|s| s.gap).sum();
+    if !flex_at.is_empty() {
+        let share = ((available - fixed_sum - gap_sum) / flex_at.len() as f64).max(0.0);
+        for i in flex_at {
+            let t = &tracks[i];
+            let min = track_min(t);
+            let max = track_max(t).max(min);
+            slots[i].w = share.clamp(min, max);
+        }
+    }
+    slots
+}
+
+fn fits_axis(size: f64, prop: Option<f64>) -> bool {
+    prop.filter(|p| p.is_finite()).is_none_or(|p| size <= p + 0.5)
 }
 
 /// A corner radius scaled by `k` (pill/circle radii stay pills).
@@ -941,6 +1146,37 @@ impl Ctx<'_> {
                 let inner = self.mods(v, rest, p, env);
                 gesture_layer(format!("{}#gesture{}", v.id, rest.len()), g, inner)
             }
+            Modifier::Identity(id) => {
+                let mut inner = self.mods(v, rest, p, env);
+                if let Some(n) = first_node(&mut inner) {
+                    n.anchor = Some(id.clone());
+                }
+                inner
+            }
+            Modifier::Pin(pin) => {
+                let mut inner = self.mods(v, rest, p, env);
+                if let Some(n) = first_node(&mut inner) {
+                    n.pinned = Some(pin.clone());
+                }
+                inner
+            }
+            Modifier::ScrollTargetLayout(enabled) => {
+                let mut inner = self.mods(v, rest, p, env);
+                if *enabled {
+                    for (_, _, kid) in &mut inner.kids {
+                        if let Some(n) = direct_target(kid) {
+                            n.scroll_target = true;
+                        }
+                    }
+                }
+                inner
+            }
+            // Read by the owning container (grid columns, scroll margins and snap).
+            Modifier::GridCellColumns(_)
+            | Modifier::ContentMargins(_)
+            | Modifier::ScrollIndicators(_)
+            | Modifier::ScrollTargetBehavior(_)
+            | Modifier::ScrollPosition => self.mods(v, rest, p, env),
         }
     }
 
@@ -980,10 +1216,10 @@ impl Ctx<'_> {
                 }
                 l
             }
-            ViewKind::VStack { spacing, alignment, children } => {
+            ViewKind::VStack { spacing, alignment, children, .. } => {
                 self.stack(v, "vstack", children, *spacing, *alignment, true, p, child_env)
             }
-            ViewKind::HStack { spacing, alignment, children } => {
+            ViewKind::HStack { spacing, alignment, children, .. } => {
                 self.stack(v, "hstack", children, *spacing, *alignment, false, p, child_env)
             }
             ViewKind::ZStack { alignment, children } => {
@@ -1063,7 +1299,15 @@ impl Ctx<'_> {
             ViewKind::Empty | ViewKind::Rn { .. } | ViewKind::Compose { .. } => Lay::new(Size::default(), Some(Node::new(&v.id, "empty")), vec![]),
             // Only the root's presentation layer is drawn (see `layout`); nested, it is transparent.
             ViewKind::Presentation { content, .. } => self.view(content, p, env),
-            ViewKind::Scroll { axis, child } => self.scroll(v, *axis == onesim_protocol::Axis::Vertical, child, p, env),
+            ViewKind::Scroll { axis, child, .. } => self.scroll(v, *axis == Axis::Vertical, child, p, env),
+            ViewKind::Grid { alignment, horizontal_spacing, vertical_spacing, rows } => {
+                self.grid(v, *alignment, *horizontal_spacing, *vertical_spacing, rows, p, child_env)
+            }
+            ViewKind::LazyGrid { axis, alignment, spacing, tracks, children } => {
+                self.lazy_grid(v, *axis, *alignment, *spacing, tracks, children, p, child_env)
+            }
+            ViewKind::Geometry { proposal, child } => self.geometry(v, *proposal, child, p, child_env),
+            ViewKind::ViewThatFits { axes, children } => self.view_that_fits(v, *axes, children, p, child_env),
             ViewKind::List { style, sections } => self.list(v, *style, sections, p, env),
             ViewKind::TabView { selected, tabs, content } => self.tab_view(v, *selected, tabs, content, p, env),
             ViewKind::Navigation { title, display_mode, back, content } => {
@@ -1549,28 +1793,241 @@ impl Ctx<'_> {
         Lay::new(Size { w, h }, None, vec![(0.0, 0.0, scrim), (x, y, Lay::new(Size { w: cw, h: ch }, Some(card), kids))])
     }
 
+    /// `Grid`: column widths come from the cells. The grid stays content-sized.
+    #[allow(clippy::too_many_arguments)]
+    fn grid(&mut self, v: &ViewNode, alignment: Alignment, hs: Option<f64>, vs: Option<f64>, rows: &[onesim_protocol::GridLine], _p: Prop, env: Env) -> Lay {
+        let hgap = hs.unwrap_or(DEFAULT_SPACING);
+        let vgap = vs.unwrap_or(DEFAULT_SPACING);
+        let spans: Vec<Vec<usize>> = rows.iter().map(|r| r.cells.iter().map(cell_columns).collect()).collect();
+        let cols = spans.iter().map(|r| r.iter().sum::<usize>()).max().unwrap_or(0);
+        let mut ideals = Vec::with_capacity(rows.len());
+        for row in rows {
+            let mut ws = Vec::with_capacity(row.cells.len());
+            for cell in &row.cells {
+                ws.push(self.view(cell, Prop { w: None, h: None }, env).size.w);
+            }
+            ideals.push(ws);
+        }
+        let mut col_w = vec![0.0_f64; cols];
+        for (ri, row) in rows.iter().enumerate() {
+            let mut col = 0;
+            for (ci, _) in row.cells.iter().enumerate() {
+                let span = spans[ri][ci];
+                if span == 1 && col < cols {
+                    col_w[col] = col_w[col].max(ideals[ri][ci]);
+                }
+                col += span;
+            }
+        }
+        for _ in 0..4 {
+            let mut changed = false;
+            for (ri, row) in rows.iter().enumerate() {
+                let mut col = 0;
+                for (ci, _) in row.cells.iter().enumerate() {
+                    let span = spans[ri][ci];
+                    if span > 1 && col + span <= cols {
+                        let sum: f64 = col_w[col..col + span].iter().sum();
+                        let gaps = hgap * (span - 1) as f64;
+                        let need = ideals[ri][ci];
+                        if need > sum + gaps + 1e-6 {
+                            let add = (need - sum - gaps) / span as f64;
+                            for w in &mut col_w[col..col + span] {
+                                *w += add;
+                            }
+                            changed = true;
+                        }
+                    }
+                    col += span;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+        let mut col_x = vec![0.0; cols];
+        let mut x = 0.0;
+        for i in 0..cols {
+            col_x[i] = x;
+            x += col_w[i];
+            if i + 1 != cols {
+                x += hgap;
+            }
+        }
+        let grid_w = x;
+        let mut y = 0.0;
+        let mut kids = Vec::new();
+        for (ri, row) in rows.iter().enumerate() {
+            let align_v = row.alignment.unwrap_or(alignment);
+            let mut laid_row = Vec::new();
+            let mut col = 0;
+            let mut rh = 0.0_f64;
+            for (ci, cell) in row.cells.iter().enumerate() {
+                let span = spans[ri][ci];
+                let slot = slot_width(&col_w, col, span, hgap);
+                let laid = self.view(cell, Prop { w: Some(slot), h: None }, env);
+                rh = rh.max(laid.size.h);
+                laid_row.push((col, slot, laid));
+                col += span;
+            }
+            for (col, slot, laid) in laid_row {
+                let dx = col_x.get(col).copied().unwrap_or(0.0) + (slot - laid.size.w) * h_frac(alignment);
+                let dy = y + (rh - laid.size.h) * v_frac(align_v);
+                kids.push((dx, dy, laid));
+            }
+            y += rh;
+            if ri + 1 != rows.len() {
+                y += vgap;
+            }
+        }
+        Lay::new(Size { w: grid_w, h: y }, Some(Node::new(&v.id, "grid")), kids)
+    }
+
+    /// `LazyVGrid` / `LazyHGrid`. Tracks run along the cross axis; `spacing` separates lines.
+    #[allow(clippy::too_many_arguments)]
+    fn lazy_grid(&mut self, v: &ViewNode, axis: Axis, alignment: Alignment, spacing: Option<f64>, tracks: &[GridTrack], children: &[ViewNode], p: Prop, env: Env) -> Lay {
+        let vertical = axis == Axis::Vertical;
+        let cross_prop = if vertical { p.w } else { p.h };
+        let available = cross_prop.filter(|x| x.is_finite()).unwrap_or(10.0);
+        let slots = resolve_tracks(tracks, available);
+        let n = slots.len();
+        if n == 0 {
+            return Lay::new(Size::default(), Some(Node::new(&v.id, "lazygrid")), vec![]);
+        }
+        let line_gap = spacing.unwrap_or(DEFAULT_SPACING);
+        let mut items = Vec::with_capacity(children.len());
+        for (i, child) in children.iter().enumerate() {
+            let col = i % n;
+            let line = i / n;
+            let prop = if vertical { Prop { w: Some(slots[col].w), h: None } } else { Prop { w: None, h: Some(slots[col].w) } };
+            items.push((col, line, self.view(child, prop, env)));
+        }
+        let nlines = items.iter().map(|(_, line, _)| *line + 1).max().unwrap_or(0);
+        let mut line_main = vec![0.0_f64; nlines];
+        for (_, line, laid) in &items {
+            let main = if vertical { laid.size.h } else { laid.size.w };
+            line_main[*line] = line_main[*line].max(main);
+        }
+        let mut cross_at = vec![0.0; n];
+        let mut acc = 0.0;
+        for (i, slot) in slots.iter().enumerate() {
+            cross_at[i] = acc;
+            acc += slot.w + slot.gap;
+        }
+        let cross_total = acc;
+        let mut line_at = vec![0.0; nlines];
+        let mut acc = 0.0;
+        for i in 0..nlines {
+            line_at[i] = acc;
+            acc += line_main[i];
+            if i + 1 != nlines {
+                acc += line_gap;
+            }
+        }
+        let main_total = acc;
+        let kids = items
+            .into_iter()
+            .map(|(col, line, laid)| {
+                let align = slots[col].align.unwrap_or(alignment);
+                if vertical {
+                    let dx = cross_at[col] + (slots[col].w - laid.size.w) * h_frac(align);
+                    let dy = line_at[line] + (line_main[line] - laid.size.h) * v_frac(align);
+                    (dx, dy, laid)
+                } else {
+                    let dx = line_at[line] + (line_main[line] - laid.size.w) * h_frac(align);
+                    let dy = cross_at[col] + (slots[col].w - laid.size.h) * v_frac(align);
+                    (dx, dy, laid)
+                }
+            })
+            .collect();
+        let size = if vertical { Size { w: cross_total, h: main_total } } else { Size { w: main_total, h: cross_total } };
+        Lay::new(size, Some(Node::new(&v.id, "lazygrid")), kids)
+    }
+
+    /// `GeometryReader`: greedy on each finite parent axis, otherwise the guest's proposal.
+    fn geometry(&mut self, v: &ViewNode, proposal: [f64; 2], child: &ViewNode, p: Prop, env: Env) -> Lay {
+        let axis = |prop: Option<f64>, guest: f64| prop.filter(|x| x.is_finite()).unwrap_or(guest);
+        let (w, h) = (axis(p.w, proposal[0]), axis(p.h, proposal[1]));
+        let child = self.view(child, Prop { w: Some(w), h: Some(h) }, env);
+        let mut n = Node::new(&v.id, "geometry");
+        n.proposal = Some(proposal);
+        Lay::new(Size { w, h }, Some(n), vec![(0.0, 0.0, child)])
+    }
+
+    /// `ViewThatFits`: the first child that fits the checked axes, else the last.
+    fn view_that_fits(&mut self, v: &ViewNode, axes: FitAxes, children: &[ViewNode], p: Prop, env: Env) -> Lay {
+        let fits = |size: Size| match axes {
+            FitAxes::Both => fits_axis(size.w, p.w) && fits_axis(size.h, p.h),
+            FitAxes::Horizontal => fits_axis(size.w, p.w),
+            FitAxes::Vertical => fits_axis(size.h, p.h),
+        };
+        let mut chosen = None;
+        for (i, c) in children.iter().enumerate() {
+            let laid = self.view(c, p, env);
+            let ok = fits(laid.size);
+            if ok || i + 1 == children.len() {
+                chosen = Some(laid);
+                break;
+            }
+        }
+        let inner = chosen.unwrap_or_else(|| Lay::new(Size::default(), None, vec![]));
+        let size = inner.size;
+        Lay::new(size, Some(Node::new(&v.id, "viewThatFits")), vec![(0.0, 0.0, inner)])
+    }
+
     fn scroll(&mut self, v: &ViewNode, vertical: bool, child: &ViewNode, p: Prop, env: Env) -> Lay {
         let (top, bottom) = (env.safe_top, env.bottom_inset);
+        let margins = content_margins(&v.modifiers);
         let child_env = Env { axis: None, safe_top: 0.0, bottom_inset: 0.0, ..env };
         let cp = if vertical {
-            Prop { w: p.w, h: None }
+            Prop { w: p.w.map(|w| (w - margins.leading - margins.trailing).max(0.0)), h: None }
         } else {
-            Prop { w: None, h: p.h }
+            Prop { w: None, h: p.h.map(|h| (h - margins.top - margins.bottom).max(0.0)) }
         };
-        let c = self.view(child, cp, child_env);
+        let mut c = self.view(child, cp, child_env);
         let fin = |x: Option<f64>| x.filter(|x| x.is_finite());
-        let (cw, ch) = if vertical { (c.size.w, c.size.h + top + bottom) } else { (c.size.w, c.size.h) };
+        let (cw, ch) = if vertical {
+            (c.size.w, c.size.h + margins.top + margins.bottom + top + bottom)
+        } else {
+            (c.size.w + margins.leading + margins.trailing, c.size.h)
+        };
         let w = fin(p.w).unwrap_or(cw);
         let h = fin(p.h).unwrap_or(ch);
         let max = ((cw - w).max(0.0), (ch - h).max(0.0));
         let off = self.scroll.get(&v.id).copied().unwrap_or((0.0, 0.0));
         let off = if vertical { (0.0, self.clamp_offset(off.1, max.1, h)) } else { (self.clamp_offset(off.0, max.0, w), 0.0) };
+        pin_headers(&mut c, if vertical { off.1 } else { off.0 }, vertical);
+        let mut page = None;
+        let mut aligned = false;
+        for m in &v.modifiers {
+            if let Modifier::ScrollTargetBehavior(behavior) = m {
+                match behavior {
+                    ScrollSnap::Paging => {
+                        page = Some(if vertical { h } else { w });
+                        aligned = false;
+                    }
+                    ScrollSnap::ViewAligned => {
+                        aligned = true;
+                        page = None;
+                    }
+                }
+            }
+        }
         let mut n = Node::new(&v.id, "scroll");
         n.clip_radius = Some(0.0);
-        n.scroll = Some(ScrollInfo { vertical, offset: off, max, snap: None, content: None });
+        n.scroll = Some(ScrollInfo { vertical, offset: off, max, snap: None, content: None, page, aligned });
+        if v.modifiers.iter().any(|m| matches!(m, Modifier::ScrollPosition)) {
+            n.value = Some("position".to_string());
+        }
         n.inspect = true;
-        let cx = if vertical { (w - c.size.w) / 2.0 } else { 0.0 };
-        Lay::new(Size { w, h }, Some(n), vec![(cx - off.0, top - off.1, c)])
+        // No margins: keep the old cross-axis placement (centered when vertical).
+        let (x0, y0) = if vertical {
+            let cx = if margins.leading == 0.0 && margins.trailing == 0.0 { (w - c.size.w) / 2.0 } else { margins.leading };
+            (cx, top + margins.top)
+        } else {
+            let cy = if margins.top == 0.0 && margins.bottom == 0.0 { top } else { top + margins.top };
+            (margins.leading, cy)
+        };
+        Lay::new(Size { w, h }, Some(n), vec![(x0 - off.0, y0 - off.1, c)])
     }
 
     fn list(&mut self, v: &ViewNode, style: ListStyle, sections: &[Section], p: Prop, env: Env) -> Lay {
@@ -1654,7 +2111,7 @@ impl Ctx<'_> {
         let mut n = Node::new(&v.id, "list");
         n.fill = (!self.floating).then(|| self.semantic(if inset { Semantic::GroupedBackground } else { Semantic::Background }));
         n.clip_radius = Some(0.0);
-        n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max, snap: None, content: None });
+        n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max, snap: None, content: None, page: None, aligned: false });
         let kids = kids.into_iter().map(|(x, ky, k)| (x, ky - off, k)).collect();
         Lay::new(Size { w, h }, Some(n), kids)
     }
@@ -1962,6 +2419,7 @@ impl Ctx<'_> {
                 sc.offset = (sc.offset.0 * k, sc.offset.1 * k);
                 sc.max = (sc.max.0 * k, sc.max.1 * k);
                 sc.snap = sc.snap.map(|s| s * k);
+                sc.page = sc.page.map(|p| p * k);
             }
         }
         for (dx, dy, c) in l.kids.iter_mut() {
@@ -3117,5 +3575,201 @@ mod tests {
         touches(it.drag(&s, DragPhase::Begin, 150.0, 200.0, 0.0));
         assert_eq!(phases(&touches(it.drag(&s, DragPhase::Move, 150.0, 150.0, 16.0))), vec![TouchPhase::Move]);
         assert!(it.scroll.get("sc").is_none_or(|o| o.1 == 0.0), "a drag gesture keeps the touch");
+    }
+
+    fn color(id: &str, frame: &str, extra: &str) -> String {
+        format!(
+            r#"{{"kind":"color","id":"{id}","color":{{"r":1,"g":0,"b":0,"a":1}},"modifiers":[{frame}{extra}]}}"#
+        )
+    }
+
+    #[test]
+    fn grid_sizes_columns_from_cells() {
+        let cell = |id, w| color(id, &format!(r#"{{"frame":{{"width":{w},"height":36}}}}"#), "");
+        let e = color("e", r#"{"frame":{"width":100,"height":36}}"#, r#",{"gridCellColumns":2}"#);
+        let json = format!(
+            r#"{{"kind":"grid","id":"g","alignment":"leading","horizontalSpacing":8,"verticalSpacing":8,"rows":[
+                {{"cells":[{},{},{}]}},
+                {{"cells":[{},{}]}}]}}"#,
+            cell("a", 64),
+            cell("b", 64),
+            cell("c", 64),
+            cell("d", 64),
+            e
+        );
+        let s = scene(&json, (400.0, 400.0));
+        let (a, b, c, d, e) = (by_id(&s, "a").bounds, by_id(&s, "b").bounds, by_id(&s, "c").bounds, by_id(&s, "d").bounds, by_id(&s, "e").bounds);
+        assert_eq!(b.x - a.x, 72.0);
+        assert_eq!(c.x - b.x, 72.0);
+        assert_eq!(e.x - d.x, 72.0);
+        assert_eq!(e.w, 100.0);
+        assert_eq!(d.w, 64.0);
+        assert_eq!(d.y - a.y, 44.0);
+        assert_eq!(by_id(&s, "g").bounds.w, 208.0);
+    }
+
+    #[test]
+    fn lazy_vgrid_flexible_tracks() {
+        let kids: Vec<String> = (0..4).map(|i| color(&format!("c{i}"), r#"{"frame":{"height":36}}"#, "")).collect();
+        let json = format!(
+            r#"{{"kind":"lazyGrid","id":"g","axis":"vertical","spacing":8,"tracks":[{{"size":"flexible"}},{{"size":"flexible"}}],"children":[{}]}}"#,
+            kids.join(",")
+        );
+        let s = scene(&json, (200.0, 400.0));
+        let (c0, c1, c2) = (by_id(&s, "c0").bounds, by_id(&s, "c1").bounds, by_id(&s, "c2").bounds);
+        assert_eq!(c1.x - c0.x, 104.0);
+        assert_eq!(c2.y - c0.y, 44.0);
+        assert_eq!(c0.w, 96.0);
+        assert_eq!(c0.h, 36.0);
+    }
+
+    #[test]
+    fn lazy_vgrid_adaptive_track() {
+        let kids: Vec<String> = (0..3).map(|i| color(&format!("c{i}"), r#"{"frame":{"height":10}}"#, "")).collect();
+        let json = format!(
+            r#"{{"kind":"lazyGrid","id":"g","axis":"vertical","tracks":[{{"size":"adaptive","min":50}}],"children":[{}]}}"#,
+            kids.join(",")
+        );
+        let s = scene(&json, (200.0, 400.0));
+        let (c0, c1, c2) = (by_id(&s, "c0").bounds, by_id(&s, "c1").bounds, by_id(&s, "c2").bounds);
+        let w = 184.0 / 3.0;
+        near(c0.w, w);
+        near(c1.x - c0.x, w + 8.0);
+        near(c2.x - c1.x, w + 8.0);
+        near(c1.y, c0.y);
+        near(c2.y, c0.y);
+    }
+
+    #[test]
+    fn view_that_fits_picks_the_first_child_that_fits() {
+        let json = format!(
+            r#"{{"kind":"viewThatFits","id":"f","axes":"both","children":[{},{}]}}"#,
+            color("wide", r#"{"frame":{"width":200,"height":10}}"#, ""),
+            color("narrow", r#"{"frame":{"width":40,"height":10}}"#, "")
+        );
+        let s = scene(&json, (100.0, 200.0));
+        assert!(s.nodes.iter().all(|n| n.id != "wide"));
+        assert!(s.nodes.iter().any(|n| n.id == "narrow"));
+        assert_eq!(by_id(&s, "f").bounds.w, 40.0);
+    }
+
+    #[test]
+    fn geometry_reader_fills_a_finite_proposal() {
+        let json = format!(
+            r#"{{"kind":"geometry","id":"g","proposal":[10.0,10.0],"child":{}}}"#,
+            color("c", "", "")
+        );
+        let s = scene(&json, (120.0, 80.0));
+        let g = by_id(&s, "g");
+        assert_eq!((g.bounds.x, g.bounds.y, g.bounds.w, g.bounds.h), (0.0, 0.0, 120.0, 80.0));
+        assert_eq!(g.proposal, Some([10.0, 10.0]));
+        let c = by_id(&s, "c").bounds;
+        assert_eq!((c.x, c.y, c.w, c.h), (0.0, 0.0, 120.0, 80.0));
+    }
+
+    #[test]
+    fn geometry_reader_in_a_scroll_keeps_the_guest_height() {
+        let json = format!(
+            r#"{{"kind":"scroll","id":"s","child":{{"kind":"geometry","id":"g","proposal":[10.0,40.0],"child":{}}}}}"#,
+            color("c", "", "")
+        );
+        let s = scene(&json, (200.0, 100.0));
+        let g = by_id(&s, "g");
+        assert_eq!((g.bounds.w, g.bounds.h), (200.0, 40.0));
+        assert_eq!(g.proposal, Some([10.0, 40.0]));
+    }
+
+    #[test]
+    fn scroll_content_margins_inset_the_child() {
+        let json = r#"{"kind":"scroll","id":"s","modifiers":[{"contentMargins":{"top":5,"leading":10,"bottom":7,"trailing":10}}],
+            "child":{"kind":"color","id":"c","color":{"r":1,"g":0,"b":0,"a":1}}}"#;
+        let s = scene(json, (200.0, 100.0));
+        let c = by_id(&s, "c").bounds;
+        assert_eq!((c.x, c.y, c.w, c.h), (10.0, 5.0, 180.0, 10.0));
+    }
+
+    #[test]
+    fn paging_scroll_records_the_page_length() {
+        let json = format!(
+            r#"{{"kind":"scroll","id":"s","modifiers":[{{"scrollTargetBehavior":"paging"}}],"child":{}}}"#,
+            color("c", r#"{"frame":{"height":350}}"#, "")
+        );
+        let s = scene(&json, (100.0, 100.0));
+        let info = by_id(&s, "s").scroll.unwrap();
+        assert_eq!(info.page, Some(100.0));
+        assert_eq!(info.max.1, 250.0);
+    }
+
+    #[test]
+    fn view_aligned_marks_direct_children() {
+        let kids: Vec<String> = ["a", "b", "c"].iter().map(|id| color(id, r#"{"frame":{"width":80,"height":20}}"#, "")).collect();
+        let json = format!(
+            r#"{{"kind":"scroll","id":"s","axis":"horizontal","modifiers":[{{"scrollTargetBehavior":"viewAligned"}}],
+                "child":{{"kind":"hstack","id":"h","spacing":0,"modifiers":[{{"scrollTargetLayout":true}}],"children":[{}]}}}}"#,
+            kids.join(",")
+        );
+        let s = scene(&json, (200.0, 80.0));
+        let info = by_id(&s, "s").scroll.unwrap();
+        assert!(info.aligned);
+        assert!(info.page.is_none());
+        assert!(by_id(&s, "a").scroll_target && by_id(&s, "b").scroll_target && by_id(&s, "c").scroll_target);
+    }
+
+    #[test]
+    fn identity_sets_the_anchor() {
+        let s = scene(r#"{"kind":"text","id":"t","text":"Row","modifiers":[{"id":"row"}]}"#, (200.0, 80.0));
+        assert_eq!(by_id(&s, "t").anchor.as_deref(), Some("row"));
+    }
+
+    #[test]
+    fn pinned_headers_stick_and_push() {
+        let header = |id| {
+            color(id, r#"{"pin":"header"}"#, r#",{"frame":{"height":20,"maxWidth":"inf"}}"#)
+        };
+        let json = format!(
+            r#"{{"kind":"scroll","id":"s","child":{{"kind":"vstack","id":"v","spacing":0,"alignment":"leading","children":[{},{},{},{}]}}}}"#,
+            header("h1"),
+            color("c1", r#"{"frame":{"height":400}}"#, ""),
+            header("h2"),
+            color("c2", r#"{"frame":{"height":400}}"#, "")
+        );
+        let at = |off: f64| {
+            let mut m = HashMap::new();
+            m.insert("s".to_string(), (0.0, off));
+            scene_with(&json, (200.0, 300.0), false, (50.0, 0.0), &m, None)
+        };
+        let s = at(0.0);
+        assert_eq!(by_id(&s, "h1").bounds.y, 50.0);
+        assert_eq!(by_id(&s, "h2").bounds.y, 470.0);
+        let s = at(30.0);
+        assert_eq!(by_id(&s, "h1").bounds.y, 50.0);
+        assert_eq!(by_id(&s, "h2").bounds.y, 440.0);
+        let s = at(410.0);
+        assert_eq!(by_id(&s, "h1").bounds.y, 40.0);
+    }
+
+    #[test]
+    fn pinned_headers_stick_on_a_horizontal_scroll() {
+        let header = |id| color(id, r#"{"pin":"header"}"#, r#",{"frame":{"width":20,"height":20}}"#);
+        let json = format!(
+            r#"{{"kind":"scroll","id":"s","axis":"horizontal","child":{{"kind":"hstack","id":"h","spacing":0,"alignment":"top","children":[{},{},{},{}]}}}}"#,
+            header("h1"),
+            color("c1", r#"{"frame":{"width":400,"height":20}}"#, ""),
+            header("h2"),
+            color("c2", r#"{"frame":{"width":400,"height":20}}"#, "")
+        );
+        let at = |off: f64| {
+            let mut m = HashMap::new();
+            m.insert("s".to_string(), (off, 0.0));
+            scene_with(&json, (300.0, 80.0), false, (0.0, 0.0), &m, None)
+        };
+        let s = at(0.0);
+        assert_eq!(by_id(&s, "h1").bounds.x, 0.0);
+        assert_eq!(by_id(&s, "h2").bounds.x, 420.0);
+        let s = at(30.0);
+        assert_eq!(by_id(&s, "h1").bounds.x, 0.0);
+        assert_eq!(by_id(&s, "h2").bounds.x, 390.0);
+        let s = at(410.0);
+        assert_eq!(by_id(&s, "h1").bounds.x, -10.0);
     }
 }

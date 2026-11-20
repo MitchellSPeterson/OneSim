@@ -26,6 +26,9 @@ def kids(n):
     for k in ("label", "child", "content"):
         if k in n: out.append(n[k])
     for sec in n.get("sections", []): out += sec["rows"]
+    for row in n.get("rows", []) or []:
+        if isinstance(row, dict):
+            out += row.get("cells", [])
     return out
 
 def walk(n):
@@ -487,5 +490,17 @@ assert not any("gesture" in x for m in walk(t["root"]) if "Hidden 0" in alltexts
 t = taps(gkeys(t, "Either "), 21000); assert txt(t, "Either ") == "Either 1", "only the chosen branch runs: " + txt(t, "Either ")
 assert not any("gesture" in x for m in walk(t["root"]) if "Off 0" in alltexts(m) for x in m.get("modifiers", [])), "disabled views take no gestures"
 t = touch(["stale#g0"], "start", 17000, (1, 1)); t = touch(["stale#g0"], "end", 17050, (1, 1))  # unknown keys: no-op
+finish(p)
+
+# --- layout (protocol section M). The layout example app is not required here.
+p = spawn(sys.argv[9]); assert recv(p)["type"] == "hello"; t = recv(p)
+kinds = {m.get("kind") for m in walk(t["root"])}
+assert {"grid", "lazyGrid", "geometry", "viewThatFits"} <= kinds, kinds
+geo = next(m for m in walk(t["root"]) if m.get("kind") == "geometry")
+prop = geo.get("proposal")
+assert isinstance(prop, list) and len(prop) == 2 and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in prop), geo
+send(p, type="action", id=button(t, "Jump")["action"], version=t["version"])
+line = recv(p)
+assert line["type"] == "scroll_to_id" and isinstance(line.get("scroll"), str) and line["scroll"] and line["target"] == "there", line
 finish(p)
 print("PASS")

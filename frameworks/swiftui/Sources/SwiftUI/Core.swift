@@ -139,6 +139,14 @@ final class _Runtime {
     var gestures: [String: _GestureEntry] = [:]
     var gesturesOff = false
     var touch: _TouchSession?   // the touch sequence in progress (spans evaluations)
+    // Layout (section M). Frames and the last scroll-to key survive a pass; the stacks are rebuilt each pass.
+    var geometries: [String: _Geo] = [:]
+    var safeTop = 0.0, safeBottom = 0.0   // SIMCORE_INSETS at launch ("top,bottom"); leading/trailing stay 0
+    var scrollStack: [String] = []
+    var anchorScrollNow: [String: String] = [:]
+    var anchorScroll: [String: String] = [:]
+    var scrolledTo: [String: String?] = [:]
+    var scrollPos: [String: (String?) -> Void] = [:]
 
     /// Compare `value` with the previous pass's; queue `fire(old, new)` on a change (or on first sight when `initial`).
     func noteChange<V: Equatable>(_ path: String, _ value: V, initial: Bool, _ fire: @escaping (V, V) -> Void) {
@@ -186,11 +194,15 @@ final class _Runtime {
         layers = []; autoDismiss = nil; dismissHook = nil
         lifecycleNow = [:]; lifecycleOrder = []; changeNow = [:]; changePending = []
         gestures = [:]; gesturesOff = false
+        scrollStack.removeAll(keepingCapacity: true)
+        anchorScrollNow.removeAll(keepingCapacity: true)
+        scrollPos.removeAll(keepingCapacity: true)
         touched.removeAll(keepingCapacity: true)
         var tree = render()
         if !layers.isEmpty { tree = ["kind": "presentation", "id": "presentation", "content": tree, "layers": layers] }
         slots = slots.filter { touched.contains($0.key) }
         changeSeen = changeNow
+        anchorScroll = anchorScrollNow   // a later button action (stack empty) can still scrollTo
         dirty = false
         return tree
     }
@@ -254,6 +266,9 @@ public func _onesimRun<V: View>(_ root: V) -> Never {
     if let vp = env["SIMCORE_VIEWPORT"]?.split(separator: "x").compactMap({ Double($0) }), vp.count == 2 {
         rt.viewport = (vp[0], vp[1])
     }
+    if let ins = env["SIMCORE_INSETS"]?.split(separator: ",").compactMap({ Double($0.trimmingCharacters(in: .whitespaces)) }), ins.count == 2 {
+        rt.safeTop = ins[0]; rt.safeBottom = ins[1]
+    }
     if let d = env["SIMCORE_DYNAMIC_TYPE"], let s = DynamicTypeSize.allCases.first(where: { "\($0)" == d }) { rt.dynamicType = s }
     rt.render = { _eval(root, "0") }
     _onesimRegisterCallbacks()
@@ -285,5 +300,68 @@ func _onesimRegisterCallbacks() {
         let rt = _Runtime.shared
         if let text { let t = String(cString: text); _pool { rt.fields[field]?(t) } }
         if rt.dirty { rt.submitTree() }
+    }
+    simcore_runtime_set_layout_callback { _, line in
+        guard let line else { return }
+        let text = String(cString: line)
+        let rt = _Runtime.shared
+        _pool { _applyLayout(text) }
+        if rt.dirty { rt.submitTree() }
+    }
+}
+
+/// One guest line (`scroll_to_id`). Key order does not matter.
+func _send(_ msg: Node) {
+    #if os(WASI)
+    var json = ""
+    _json(msg, &json)
+    json.withCString { _ = simcore_send_line($0) }
+    #else
+    guard let data = try? JSONSerialization.data(withJSONObject: msg, options: [.withoutEscapingSlashes]),
+          let s = String(data: data, encoding: .utf8) else { return }
+    s.withCString { _ = simcore_send_line($0) }
+    #endif
+}
+
+func _sendScroll(_ scroll: String, _ target: String, _ anchor: UnitPoint?) {
+    var m: Node = ["type": "scroll_to_id", "scroll": scroll, "target": target]
+    if let anchor { m["anchor"] = [Double(anchor.x), Double(anchor.y)] }
+    _send(m)
+}
+
+func _jsonObject(_ line: String) -> [String: Any]? {
+    #if os(WASI)
+    return _jsonParse(line) as? [String: Any]
+    #else
+    (try? JSONSerialization.jsonObject(with: Data(line.utf8))) as? [String: Any]
+    #endif
+}
+
+func _f64(_ v: Any?) -> Double {
+    switch v {
+    case let d as Double: return d
+    case let i as Int: return Double(i)
+    #if !os(WASI)
+    case let n as NSNumber: return n.doubleValue
+    #endif
+    default: return 0
+    }
+}
+
+/// Host layout line: `geometry` frames or a `scroll_position` writeback. The scroll setter runs in the caller's pool.
+func _applyLayout(_ line: String) {
+    guard let obj = _jsonObject(line), let type = obj["type"] as? String else { return }
+    let rt = _Runtime.shared
+    if type == "geometry" {
+        guard let frames = obj["frames"] as? [String: Any] else { return }
+        for (id, raw) in frames {
+            guard let box = raw as? [String: Any] else { continue }
+            let g = _Geo(w: _f64(box["width"]), h: _f64(box["height"]), x: _f64(box["x"]), y: _f64(box["y"]),
+                         safeTop: _f64(box["safeTop"]), safeBottom: _f64(box["safeBottom"]),
+                         safeLeading: _f64(box["safeLeading"]), safeTrailing: _f64(box["safeTrailing"]))
+            if rt.geometries[id] != g { rt.geometries[id] = g; rt.dirty = true }
+        }
+    } else if type == "scroll_position", let scroll = obj["scroll"] as? String {
+        rt.scrollPos[scroll]?(obj["target"] as? String)   // NSNull target becomes nil
     }
 }

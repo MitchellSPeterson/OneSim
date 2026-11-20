@@ -14,6 +14,7 @@ pub type ActionCb = Option<unsafe extern "C" fn(*mut c_void, u64)>;
 pub type TextCb = Option<unsafe extern "C" fn(*mut c_void, u64, *const c_char)>;
 pub type EnvCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char, f64, f64)>;
 pub type GestureCb = Option<unsafe extern "C" fn(*mut c_void, i32, f64, *const f64, usize, *const *const c_char, *const f64, usize)>;
+pub type LayoutCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char)>;
 
 struct State {
     ctx: usize,
@@ -21,6 +22,9 @@ struct State {
     on_env: EnvCb,
     on_text: TextCb,
     on_gesture: GestureCb,
+    /// ABI parity with `onesim-runtime`. The web host does not deliver geometry lines.
+    #[allow(dead_code)]
+    on_layout: LayoutCb,
     version: Option<u64>,
     tree: Option<ViewNode>,
     scene: Option<Scene>,
@@ -50,7 +54,7 @@ struct State {
 thread_local! {
     // ponytail: thread-local state; protocol says single-threaded.
     static STATE: RefCell<State> = RefCell::new(State {
-        ctx: 0, on_action: None, on_env: None, on_text: None, on_gesture: None, version: None, tree: None, scene: None,
+        ctx: 0, on_action: None, on_env: None, on_text: None, on_gesture: None, on_layout: None, version: None, tree: None, scene: None,
         fonts: None, device: device(DEFAULT_DEVICE).unwrap(), viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios27, inter: Interaction::default(),
         stale: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), output: 0, builder: Builder::new(), dl: Vec::new(), buf: Vec::new(),
     });
@@ -134,6 +138,21 @@ pub extern "C" fn simcore_runtime_set_text_callback(on_text: TextCb) {
 #[no_mangle]
 pub extern "C" fn simcore_runtime_set_gesture_callback(on_gesture: GestureCb) {
     STATE.with(|s| s.borrow_mut().on_gesture = on_gesture);
+}
+
+/// Stored for ABI parity with `onesim-runtime`. The web host does not send geometry corrections.
+#[no_mangle]
+pub extern "C" fn simcore_runtime_set_layout_callback(on_layout: LayoutCb) {
+    STATE.with(|s| s.borrow_mut().on_layout = on_layout);
+}
+
+/// Web has no host pipe. Guest `scroll_to_id` lines are dropped.
+///
+/// # Safety
+/// `line` is unused.
+#[no_mangle]
+pub unsafe extern "C" fn simcore_send_line(_line: *const c_char) -> i32 {
+    0
 }
 
 /// # Safety

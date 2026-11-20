@@ -982,7 +982,7 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
         let initial = p.get("contentOffset").map_or((0.0, 0.0), |o| (num(o, "x").unwrap_or(0.0), num(o, "y").unwrap_or(0.0)));
         let off = params.scroll.get(&it.node.id).copied().unwrap_or(initial);
         let off = (off.0.clamp(0.0, max.0), off.1.clamp(0.0, max.1));
-        n.scroll = Some(ScrollInfo { vertical, offset: off, max, snap: None, content: Some(content) });
+        n.scroll = Some(ScrollInfo { vertical, offset: off, max, snap: None, content: Some(content), page: None, aligned: false });
         (ox, oy) = (x - off.0, y - off.1 + it_top);
     }
     if let Some(g) = p.get("experimental_backgroundImage").and_then(Value::as_array).and_then(|a| a.first()) {

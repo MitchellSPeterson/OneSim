@@ -9,6 +9,8 @@ pub type TextCb = Option<unsafe extern "C" fn(*mut c_void, u64, *const c_char)>;
 pub type EnvCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char, f64, f64)>;
 /// (ctx, phase 0 start / 1 move / 2 end / 3 cancel, time ms, points, point count, keys, frames, target count).
 pub type GestureCb = Option<unsafe extern "C" fn(*mut c_void, i32, f64, *const f64, usize, *const *const c_char, *const f64, usize)>;
+/// (ctx, whole host JSON line for `geometry` / `scroll_position`).
+pub type LayoutCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char)>;
 
 #[derive(Default)]
 struct State {
@@ -19,6 +21,7 @@ struct State {
     on_env: EnvCb,
     on_text: TextCb,
     on_gesture: GestureCb,
+    on_layout: LayoutCb,
 }
 
 thread_local! {
@@ -108,6 +111,12 @@ fn handle_line(line: &str) -> bool {
                 deliver_gesture(cb, ctx, &v);
             }
         }
+        Some("geometry") | Some("scroll_position") => {
+            if let Some(cb) = STATE.with(|s| s.borrow().on_layout) {
+                let owned = CString::new(line).unwrap_or_default();
+                unsafe { cb(ctx as *mut c_void, owned.as_ptr()) };
+            }
+        }
         Some("environment") => {
             let appearance = CString::new(v["appearance"].as_str().unwrap_or("light")).unwrap_or_default();
             let (w, h) = (v["viewport"]["width"].as_f64().unwrap_or(0.0), v["viewport"]["height"].as_f64().unwrap_or(0.0));
@@ -184,6 +193,31 @@ pub extern "C" fn simcore_runtime_set_gesture_callback(on_gesture: GestureCb) {
     STATE.with(|s| s.borrow_mut().on_gesture = on_gesture);
 }
 
+/// Optional section M layout callback; uses the ctx given to `simcore_runtime_set_callbacks`.
+#[no_mangle]
+pub extern "C" fn simcore_runtime_set_layout_callback(on_layout: LayoutCb) {
+    STATE.with(|s| s.borrow_mut().on_layout = on_layout);
+}
+
+/// # Safety
+/// `line` must be NUL-terminated or null.
+#[no_mangle]
+pub unsafe extern "C" fn simcore_send_line(line: *const c_char) -> i32 {
+    if line.is_null() {
+        set_err("null line");
+        return 1;
+    }
+    let text = CStr::from_ptr(line).to_string_lossy();
+    let text = text.trim_end_matches(['\n', '\r']);
+    match send_line(text) {
+        Ok(()) => 0,
+        Err(e) => {
+            set_err(e);
+            1
+        }
+    }
+}
+
 /// # Safety
 /// `json` must point to `len` readable bytes.
 #[no_mangle]
@@ -253,6 +287,30 @@ mod tests {
         let keys: Vec<_> = std::slice::from_raw_parts(keys, nt).iter().map(|k| CStr::from_ptr(*k).to_str().unwrap().to_string()).collect();
         let frames = std::slice::from_raw_parts(frames, nt * 4);
         SEEN.with(|s| s.borrow_mut().push(format!("g{phase}@{time} {pts:?} {keys:?} {frames:?}")))
+    }
+
+    unsafe extern "C" fn on_layout(_: *mut c_void, line: *const c_char) {
+        SEEN.with(|s| s.borrow_mut().push(format!("l{}", CStr::from_ptr(line).to_str().unwrap())))
+    }
+
+    #[test]
+    fn geometry_line_reaches_the_layout_callback() {
+        let b = setup();
+        simcore_runtime_set_layout_callback(Some(on_layout));
+        assert!(handle_line(r#"{"type":"geometry","frames":{}}"#));
+        assert!(handle_line(r#"{"type":"scroll_position","scroll":"0","target":"row"}"#));
+        SEEN.with(|s| {
+            assert_eq!(
+                s.borrow().as_slice(),
+                [
+                    r#"l{"type":"geometry","frames":{}}"#,
+                    r#"l{"type":"scroll_position","scroll":"0","target":"row"}"#,
+                ]
+            )
+        });
+        let msg = CString::new(r#"{"type":"scroll_to_id","scroll":"0","target":"row"}"#).unwrap();
+        assert_eq!(unsafe { simcore_send_line(msg.as_ptr()) }, 0);
+        assert!(lines(&b).iter().any(|l| l.contains("scroll_to_id")));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 //! One guest OS process and everything we know about it.
 
 use onesim_protocol::{
-    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, GuestMessage, HostMessage, IosVersion, ScrollPhase, SessionError, Viewport,
+    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, GeoBox, GuestMessage, HostMessage, IosVersion, ScrollPhase, SessionError, Viewport,
     ViewNode,
 };
 pub use onesim_render::{device, Device, DEFAULT_DEVICE, DEVICES};
@@ -136,6 +136,10 @@ pub struct Session {
     pub inter: Interaction,
     /// React Native: frames last sent to the guest (`layout` message), to send only changes.
     pub sent_frames: BTreeMap<String, [f64; 4]>,
+    /// SwiftUI: last `scroll_position` target sent per scroll-node id.
+    pub sent_positions: BTreeMap<String, Option<String>>,
+    /// SwiftUI: last `geometry` box sent per reader id, so a stable frame is not sent again.
+    pub sent_geometry: BTreeMap<String, GeoBox>,
     /// React Native: tag the current touch started on.
     pub touch: Option<u64>,
     /// React Native: `false` (live viewers, set per call by the v2 API) skips every wait for the guest:
@@ -260,6 +264,8 @@ impl Session {
             ios: p.os_version.unwrap_or_default(),
             inter: Interaction::default(),
             sent_frames: BTreeMap::new(),
+            sent_positions: BTreeMap::new(),
+            sent_geometry: BTreeMap::new(),
             touch: None,
             settle: true,
             last_sent: Instant::now(),
@@ -273,6 +279,10 @@ impl Session {
 
     pub fn is_rn(&self) -> bool {
         self.params.framework == "react-native"
+    }
+
+    pub fn is_swiftui(&self) -> bool {
+        self.params.framework == "swiftui"
     }
 
     pub fn os_version(&self) -> &'static str {
@@ -480,7 +490,7 @@ impl Session {
                         }
                         sh.log.render_updated(version);
                     }
-                    Ok(m @ (GuestMessage::FocusRequest { .. } | GuestMessage::ScrollTo { .. })) => {
+                    Ok(m @ (GuestMessage::FocusRequest { .. } | GuestMessage::ScrollTo { .. } | GuestMessage::ScrollToId { .. })) => {
                         let mut g = sh.lock();
                         g.requests.push(m);
                         g.last_event = Some(Instant::now());
