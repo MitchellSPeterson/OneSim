@@ -118,14 +118,23 @@ extension EnvironmentValues {
 }
 
 extension View {
+    private func _foregroundPalette(_ primary: Node, _ secondary: Node, _ tertiary: Node?) -> some View {
+        _modified {
+            func inherited(_ paint: Node) -> Node { paint.isEmpty ? ["style": "foreground"] : paint }
+            var palette: Node = ["primary": inherited(primary), "secondary": inherited(secondary)]
+            if let tertiary { palette["tertiary"] = inherited(tertiary) }
+            return ["foregroundPalette": palette]
+        }
+    }
+
     public func foregroundStyle<S1: ShapeStyle, S2: ShapeStyle>(_ primary: S1, _ secondary: S2) -> some View {
-        foregroundStyle(primary)
+        _foregroundPalette(primary._json, secondary._json, nil)
     }
 
     public func foregroundStyle<S1: ShapeStyle, S2: ShapeStyle, S3: ShapeStyle>(
         _ primary: S1, _ secondary: S2, _ tertiary: S3
     ) -> some View {
-        foregroundStyle(primary)
+        _foregroundPalette(primary._json, secondary._json, tertiary._json)
     }
 
     public func backgroundStyle<S: ShapeStyle>(_ style: S) -> some View {

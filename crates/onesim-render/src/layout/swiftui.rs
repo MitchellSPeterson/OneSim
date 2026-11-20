@@ -265,6 +265,8 @@ impl Lay {
 struct Env {
     fg: Option<Color>,
     foreground_paint: Option<usize>,
+    secondary_paint: Option<usize>,
+    tertiary_paint: Option<usize>,
     background_paint: Option<usize>,
     tint_paint: Option<usize>,
     /// Axis of the directly enclosing stack (true = vertical), for Spacer/Divider.
@@ -384,6 +386,8 @@ impl Env {
         Env {
             fg: None,
             foreground_paint: None,
+            secondary_paint: None,
+            tertiary_paint: None,
             background_paint: None,
             tint_paint: None,
             axis: None,
@@ -1611,6 +1615,14 @@ impl Ctx<'_> {
     }
 
     fn hierarchical_paint(&self, style: StyleReference, env: Env) -> ResolvedPaint {
+        let supplied = match style {
+            StyleReference::Secondary => env.secondary_paint,
+            StyleReference::Tertiary => env.tertiary_paint,
+            _ => None,
+        };
+        if let Some(index) = supplied {
+            return self.paints[index].clone();
+        }
         let (factor, default) = match style {
             StyleReference::Primary => (1.0, self.semantic(Semantic::Primary)),
             StyleReference::Secondary => (0.60, self.semantic(Semantic::Secondary)),
@@ -1675,6 +1687,12 @@ impl Ctx<'_> {
             },
         };
         ResolvedPaint::Color(color)
+    }
+
+    fn store_paint(&mut self, paint: ResolvedPaint) -> usize {
+        let index = self.paints.len();
+        self.paints.push(paint);
+        index
     }
 
     fn visual_op(&self, id: String, op: VisualOp, inner: Lay) -> Lay {
@@ -1816,11 +1834,12 @@ impl Ctx<'_> {
             Modifier::ForegroundColor(c) => {
                 if let Some(paint) = self.inherited_paint(c, env) {
                     let fg = paint.color();
-                    let index = self.paints.len();
-                    self.paints.push(paint);
-                    return self.mods(v, rest, p, Env { foreground_paint: Some(index), fg: Some(fg), ..env });
+                    let index = self.store_paint(paint);
+                    return self.mods(v, rest, p, Env {
+                        foreground_paint: Some(index), secondary_paint: None, tertiary_paint: None, fg: Some(fg), ..env
+                    });
                 }
-                let mut env = Env { fg: Some(self.color(c)), foreground_paint: None, ..env };
+                let mut env = Env { fg: Some(self.color(c)), foreground_paint: None, secondary_paint: None, tertiary_paint: None, ..env };
                 // Inside a tinted control the hierarchical styles stay accent-coloured, dimmed.
                 if let (Some(t), onesim_protocol::Color::Semantic { semantic }) = (env.tint, c) {
                     let k = match semantic {
@@ -1838,22 +1857,30 @@ impl Ctx<'_> {
             Modifier::ForegroundPaint(paint) => {
                 let paint = self.shape_paint(paint, env);
                 let fg = paint.color();
-                let index = self.paints.len();
-                self.paints.push(paint);
-                self.mods(v, rest, p, Env { foreground_paint: Some(index), fg: Some(fg), ..env })
+                let index = self.store_paint(paint);
+                self.mods(v, rest, p, Env {
+                    foreground_paint: Some(index), secondary_paint: None, tertiary_paint: None, fg: Some(fg), ..env
+                })
+            }
+            Modifier::ForegroundPalette(palette) => {
+                let primary = self.shape_paint(&palette.primary, env);
+                let fg = primary.color();
+                let primary = self.store_paint(primary);
+                let secondary = self.store_paint(self.shape_paint(&palette.secondary, env));
+                let tertiary = palette.tertiary.as_ref().map(|p| self.store_paint(self.shape_paint(p, env)));
+                self.mods(v, rest, p, Env {
+                    foreground_paint: Some(primary), secondary_paint: Some(secondary), tertiary_paint: tertiary, fg: Some(fg), ..env
+                })
             }
             Modifier::BackgroundPaint(paint) => {
                 let paint = self.shape_paint(paint, env);
-                let index = self.paints.len();
-                self.paints.push(paint);
+                let index = self.store_paint(paint);
                 self.mods(v, rest, p, Env { background_paint: Some(index), ..env })
             }
             Modifier::Tint(paint) => {
                 let index = paint.as_ref().map(|paint| {
                     let paint = self.shape_paint(paint, env);
-                    let index = self.paints.len();
-                    self.paints.push(paint);
-                    index
+                    self.store_paint(paint)
                 });
                 self.mods(v, rest, p, Env { tint_paint: index, ..env })
             }
@@ -4624,6 +4651,29 @@ mod tests {
     }
 
     #[test]
+    fn canvas_copy_preserves_coverage_of_transformed_and_transparent_paths() {
+        let scene = scene(r#"{"kind":"canvas","id":"canvas","proposal":[40,20],"children":[
+            {"kind":"color","id":"under","color":{"r":1,"g":0,"b":0,"a":1}},
+            {"kind":"shape","id":"blue","shape":"path","fill":{"r":0,"g":0,"b":1,"a":1},
+             "path":[{"m":[0,0]},{"l":[10,0]},{"l":[10,20]},{"l":[0,20]},"z"],
+             "modifiers":[{"effect":{"kind":"affine","matrix":[1,0,0,1,10,0],"anchor":[0,0]}},
+                          {"effect":{"kind":"blend","mode":"copy"}}]},
+            {"kind":"shape","id":"clear","shape":"path","fill":{"r":0,"g":0,"b":0,"a":0},
+             "path":[{"m":[25,0]},{"l":[35,0]},{"l":[35,20]},{"l":[25,20]},"z"],
+             "modifiers":[{"effect":{"kind":"blend","mode":"copy"}}]}
+        ]}"#, (40.0, 20.0));
+        let pixels = crate::render(&scene, &mut Fonts::with_fallback(true), 1.0);
+        let rgb = |x| {
+            let p = pixels.pixel(x, 10).unwrap();
+            (p.red(), p.green(), p.blue())
+        };
+        assert_eq!(rgb(5), (255, 0, 0));
+        assert_eq!(rgb(15), (0, 0, 255));
+        assert_eq!(rgb(30), (255, 255, 255));
+        assert_eq!(rgb(38), (255, 0, 0));
+    }
+
+    #[test]
     fn hierarchical_fills_apply_to_the_inherited_paint() {
         let scene = scene(r#"{"kind":"vstack","id":"stack","spacing":0,"children":[
             {"kind":"shape","id":"level","shape":"rectangle","fill":{"semantic":"secondary","hierarchical":true},
@@ -4645,6 +4695,20 @@ mod tests {
         ]}"#, (40.0, 20.0));
         let bg = by_id(&scene, "bg");
         assert_eq!((bg.bounds.x, bg.bounds.y, bg.bounds.w, bg.bounds.h), (15.0, 6.0, 10.0, 8.0));
+    }
+
+    #[test]
+    fn foreground_palette_selects_explicit_secondary_and_tertiary_paints() {
+        let scene = scene(r#"{"kind":"vstack","id":"stack","spacing":0,"children":[
+            {"kind":"shape","id":"blue","shape":"rectangle","fill":{"semantic":"secondary","hierarchical":true}},
+            {"kind":"shape","id":"green","shape":"rectangle","fill":{"semantic":"tertiary","hierarchical":true}}],
+            "modifiers":[{"foregroundPalette":{"primary":{"r":1,"g":0,"b":0,"a":1},
+                "secondary":{"r":0,"g":0,"b":1,"a":1},"tertiary":{"r":0,"g":1,"b":0,"a":1}}}]}"#, (40.0, 40.0));
+        let pixels = crate::render(&scene, &mut Fonts::with_fallback(true), 1.0);
+        let upper = pixels.pixel(20, 10).unwrap();
+        let lower = pixels.pixel(20, 30).unwrap();
+        assert_eq!((upper.red(), upper.green(), upper.blue()), (0, 0, 255));
+        assert_eq!((lower.red(), lower.green(), lower.blue()), (0, 255, 0));
     }
 
     #[test]

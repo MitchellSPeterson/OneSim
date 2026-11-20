@@ -12,6 +12,14 @@ pub enum ShapePaint {
     Style { style: StyleReference },
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ForegroundPalette {
+    pub primary: ShapePaint,
+    pub secondary: ShapePaint,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tertiary: Option<ShapePaint>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum StyleReference {

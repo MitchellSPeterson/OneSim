@@ -52,7 +52,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `DoubleColumnNavigationViewStyle` | 13 | ⬜ |  | Deprecated |
 | `FillShapeStyle` | 17 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Fill levels with light and dark colors. UIKit fill colors are approximated. |
 | `FillStyle` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
-| `ForegroundStyle` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Inherits solid or gradient paint for shapes and text. Symbols and multi-style hierarchy are gaps. |
+| `ForegroundStyle` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Inherits solid or gradient paint for shapes and text. Symbol palette rendering is a gap. |
 | `FormStyle` | 16 | ⬜ |  |  |
 | `GaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `GlassButtonStyle` | 26 | ✅ |  |  |
@@ -61,7 +61,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `GroupBoxStyle` | 14 | ⬜ |  |  |
 | `GroupedFormStyle` | 16 | ⬜ |  |  |
 | `GroupedListStyle` | 13 | ⬜ |  |  |
-| `HierarchicalShapeStyle` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | All five levels for solid and gradient foreground paints. Multiple foreground styles are a gap. |
+| `HierarchicalShapeStyle` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | All five levels for solid and gradient foreground paints. Symbol palette rendering is a gap. |
 | `IconOnlyLabelStyle` | 14 | ⬜ |  |  |
 | `IndexViewStyle` | 14 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Built-in style only |
 | `InlinePickerStyle` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | No label row in a list |

@@ -827,6 +827,9 @@ t = recv(p)
 canvas = lambda t: next(n for n in walk(t["root"]) if n["kind"] == "canvas")
 effect = lambda t: next(n for n in walk(t["root"]) if n["kind"] == "visualEffect")
 cid, eid = canvas(t)["id"], effect(t)["id"]
+palette = next(m["foregroundPalette"] for n in walk(t["root"]) for m in n.get("modifiers", []) if "foregroundPalette" in m)
+assert palette["primary"]["r"] == 1 and palette["secondary"]["b"] == 1
+assert palette["tertiary"]["g"] > palette["tertiary"]["r"]
 assert canvas(t)["children"] == [], "initial Canvas waits for its layout size"
 send(p, type="layout", frames={cid: [3, 4, 44, 28], eid: [7, 11, 80, 20]})
 t = recv(p)

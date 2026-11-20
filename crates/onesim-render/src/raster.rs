@@ -259,10 +259,10 @@ fn to_skia_stroke(st: &VectorStroke) -> Stroke {
     }
 }
 
-fn draw_vector(pm: &mut Pixmap, v: &VectorShape, bounds: crate::scene::Rect, opacity: f32, xf: Transform, mask: Option<&Mask>) {
+fn draw_vector(pm: &mut Pixmap, v: &VectorShape, bounds: crate::scene::Rect, opacity: f32, xf: Transform, mask: Option<&Mask>, color: Option<Color>) {
     if let Some(f) = v.fill {
         if let Some(p) = build_vector_path(&v.geom, bounds, 0.0) {
-            let mut pt = paint(f.color, opacity);
+            let mut pt = paint(color.unwrap_or(f.color), opacity);
             pt.anti_alias = f.antialiased;
             let rule = if f.eo_fill { FillRule::EvenOdd } else { FillRule::Winding };
             pm.fill_path(&p, &pt, rule, xf, mask);
@@ -271,7 +271,7 @@ fn draw_vector(pm: &mut Pixmap, v: &VectorShape, bounds: crate::scene::Rect, opa
     if let Some(st) = &v.stroke {
         if st.line_width > 0.0 {
             if let Some(p) = build_vector_path(&v.geom, bounds, st.inset) {
-                let mut pt = paint(st.color, opacity);
+                let mut pt = paint(color.unwrap_or(st.color), opacity);
                 pt.anti_alias = st.antialiased;
                 let sk = to_skia_stroke(st);
                 pm.stroke_path(&p, &pt, &sk, xf, mask);
@@ -1281,7 +1281,7 @@ pub fn node_sprite(n: &crate::scene::Node, fonts: &mut Fonts, scale: f64, layer:
             }
             let mut pm = Pixmap::new(w as u32, h as u32)?;
             let xf = Transform::from_scale(s, s).post_translate(-ox as f32, -oy as f32);
-            draw_vector(&mut pm, v, b, n.opacity, xf, None);
+            draw_vector(&mut pm, v, b, n.opacity, xf, None, None);
             crop(ox, oy, pm).map(|(x, y, pixmap)| Sprite { x, y, pixmap })
         }
         SpriteLayer::Icons => {
@@ -1469,7 +1469,7 @@ impl ScenePainter<'_> {
             if n.fill_paint.is_some() || n.stroke_paint.is_some() {
                 draw_painted_vector(pm, n, v, s, mask);
             } else {
-                draw_vector(pm, v, b, n.opacity, xf, mask);
+                draw_vector(pm, v, b, n.opacity, xf, mask, None);
             }
         }
         if let Some((g, c)) = n.glyph {
@@ -1562,6 +1562,14 @@ impl ScenePainter<'_> {
                     }
                 }
                 self.subtree(&mut layer, viewport, content, nodes, children);
+                if coverage_blend(&nodes[cursor]) {
+                    // RGB and alpha already include the path's antialiasing. Remove that factor
+                    // before applying the same coverage to both the source and the backdrop.
+                    let shape = self.vector_coverage(&layer, content, nodes, children)
+                        .unwrap_or_else(|| Mask::from_pixmap(layer.as_ref(), tiny_skia::MaskType::Alpha));
+                    remove_coverage(&mut layer, &shape);
+                    coverage = Some(intersect_coverage(shape, coverage.as_ref()));
+                }
             }
             Some(Composite::Mask { inverted }) => {
                 let Some((&source, content)) = children[cursor].split_last() else { return };
@@ -1591,6 +1599,38 @@ impl ScenePainter<'_> {
         }
     }
 
+
+    fn vector_coverage(&self, target: &Pixmap, content: &[usize], nodes: &[crate::Node], children: &[Vec<usize>]) -> Option<Mask> {
+        let mut content = content;
+        use onesim_protocol::VisualOp;
+
+        let mut transforms = Vec::new();
+        let (node, vector) = loop {
+            let [i] = content else { return None };
+            let node = &nodes[*i];
+            if let Some(vector) = node.vector.as_deref() { break (node, vector); }
+            match node.composite.as_deref() {
+                Some(crate::effects::Composite::Effect(op @ (VisualOp::Affine { .. } | VisualOp::Projection { .. } | VisualOp::Blur { .. }), _)) => {
+                    transforms.push((node.bounds, *op));
+                }
+                Some(crate::effects::Composite::Mask { .. }) => return None,
+                _ => {}
+            }
+            content = &children[*i];
+        };
+        let (w, h) = (target.width(), target.height());
+        let mut shape = Pixmap::new(w, h)?;
+        let white = Color::rgba(1.0, 1.0, 1.0, 1.0);
+        let xf = Transform::from_scale(self.scale, self.scale);
+        draw_vector(&mut shape, vector, node.bounds, 1.0, xf, None, Some(white));
+        for (bounds, op) in transforms.into_iter().rev() {
+            let mut transformed = Pixmap::new(w, h)?;
+            crate::effects::composite(&mut transformed, shape, Some((op, None)), bounds, self.scale, 1.0, None);
+            shape = transformed;
+        }
+        Some(Mask::from_pixmap(shape.as_ref(), tiny_skia::MaskType::Alpha))
+    }
+
 }
 
 fn coverage_blend(node: &crate::Node) -> bool {
@@ -1607,6 +1647,21 @@ fn intersect_coverage(mut first: Mask, second: Option<&Mask>) -> Mask {
         }
     }
     first
+}
+
+fn remove_coverage(layer: &mut Pixmap, mask: &Mask) {
+    for (pixel, &coverage) in layer.data_mut().as_chunks_mut::<4>().0.iter_mut().zip(mask.data()) {
+        match coverage {
+            0 => *pixel = [0; 4],
+            255 => {}
+            _ => {
+                let coverage = u16::from(coverage);
+                for channel in pixel {
+                    *channel = ((u16::from(*channel) * 255 + coverage / 2) / coverage).min(255) as u8;
+                }
+            }
+        }
+    }
 }
 
 fn draw_painted_vector(pm: &mut Pixmap, node: &crate::Node, vector: &VectorShape, scale: f32, mask: Option<&Mask>) {

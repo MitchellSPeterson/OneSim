@@ -31,6 +31,7 @@ struct EffectsLab: View {
                 Text("星").tag("星")
             }
             .frame(width: 44, height: 28)
+            Rectangle().fill(.secondary).foregroundStyle(Color.red, Color.blue, Color.green)
             Rectangle().fill(AnyShapeStyle(.linearGradient(
                 Gradient(colors: [.red, .blue]).colorSpace(.perceptual), startPoint: .leading, endPoint: .trailing)))
                 .frame(width: 80, height: 20)

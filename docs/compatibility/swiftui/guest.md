@@ -165,7 +165,8 @@ SwiftUI apps reach for more than `SwiftUI`. Each of these will be reimplemented 
   Mesh gradients accept point grids or Bézier controls and resolved or environment
   colors. Apple color-space interpolation and folded mesh patches are approximate.
 - `AnyShapeStyle` erases supported styles. `.foreground`, `.background` and `.tint`
-  inherit their paint. System fill levels and selection colors are approximate.
+  inherit their paint. The two- and three-style foreground modifiers supply
+  explicit secondary and tertiary styles. System fill levels and selection colors are approximate.
   Gradient symbol palettes, per-run gradient text, safe-area extension for style
   backgrounds and full tint inheritance for controls are gaps.
 - `Canvas` draws paths, strokes, text, images and tagged symbols using the

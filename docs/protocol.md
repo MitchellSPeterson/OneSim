@@ -834,7 +834,9 @@ The host lists `canvas`, `canvasItem` and `visualEffect` in `get_capabilities.vi
 A shape's `fill` and `stroke.color` accept a paint. Existing `Color` objects still work.
 A paint may also be `{"style":"foreground" | "background" | "tint" | ...}` for an inherited or
 semantic style, or `{"gradient": GradientPaint}`. The `foregroundPaint`, `backgroundPaint`
-and optional `tint` modifiers set the inherited styles. `alignedBackground` uses the same
+and optional `tint` modifiers set the inherited styles. `foregroundPalette` carries a
+`primary`, `secondary`, and optional `tertiary` paint for the respective hierarchical levels.
+`alignedBackground` uses the same
 `{view, alignment}` representation as `overlay`. A `background` without alignment centers
 its view. A semantic color with `hierarchical: true` first resolves against the inherited
 foreground style. With the field omitted, semantic colors keep their original meaning.
@@ -884,5 +886,7 @@ The `effect` modifier takes one effect object. The same objects can appear in th
 | `group` | `opaque` |
 
 `mask` and `invertedMask` take `{view, alignment}` and multiply the rendered content by the
-mask's alpha or its complement. Effects preserve layout size. The host resolves these
+mask's alpha or its complement. Canvas source-domain blend modes use the clip and path
+coverage when compositing, including when the drawing paint is transparent.
+Effects preserve layout size. The host resolves these
 layers with the CPU rasterizer and submits the resulting RGBA frame to GPU clients.

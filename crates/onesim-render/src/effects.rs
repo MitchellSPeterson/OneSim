@@ -34,7 +34,7 @@ fn blend_mode(mode: BlendMode) -> tiny_skia::BlendMode {
         BlendMode::DestinationOver => Skia::DestinationOver,
         BlendMode::DestinationOut => Skia::DestinationOut,
         BlendMode::PlusDarker | BlendMode::PlusLighter => Skia::Plus,
-        BlendMode::Clear => Skia::DestinationOut,
+        BlendMode::Clear => Skia::Clear,
         BlendMode::Copy => Skia::Source,
         BlendMode::SourceIn => Skia::SourceIn,
         BlendMode::SourceOut => Skia::SourceOut,
@@ -47,7 +47,8 @@ fn blend_mode(mode: BlendMode) -> tiny_skia::BlendMode {
 pub(crate) fn needs_blend_coverage(mode: BlendMode) -> bool {
     matches!(
         mode,
-        BlendMode::Copy
+        BlendMode::Clear
+            | BlendMode::Copy
             | BlendMode::SourceIn
             | BlendMode::SourceOut
             | BlendMode::DestinationIn
@@ -120,20 +121,13 @@ pub(crate) fn composite(
                     plus_darker(parent, &layer, opacity, clip);
                     return;
                 }
-                config.blend_mode = blend_mode(mode);
                 if needs_blend_coverage(mode) {
-                    let Some(area) = crate::paint::Tile::new(parent, bounds, bounds, scale) else {
-                        return;
-                    };
-                    let Some(rect) = tiny_skia::IntRect::from_xywh(area.x, area.y, area.w, area.h)
-                    else {
-                        return;
-                    };
-                    if let Some(tile) = layer.clone_rect(rect) {
-                        parent.draw_pixmap(area.x, area.y, tile.as_ref(), &config, affine, clip);
+                    if let Some(coverage) = clip {
+                        blend_with_coverage(parent, &layer, coverage, mode, opacity);
                     }
                     return;
                 }
+                config.blend_mode = blend_mode(mode);
             }
             VisualOp::Blur { radius, opaque } if radius > 0.0 => {
                 blur(&mut layer, radius * f64::from(scale), opaque, bounds, scale);
@@ -149,6 +143,38 @@ pub(crate) fn composite(
         }
     }
     parent.draw_pixmap(0, 0, layer.as_ref(), &config, affine, clip);
+}
+
+fn blend_with_coverage(
+    target: &mut Pixmap,
+    source: &Pixmap,
+    coverage: &Mask,
+    mode: BlendMode,
+    opacity: f32,
+) {
+    let pixels = target.data_mut().as_chunks_mut::<4>().0;
+    let source = source.data().as_chunks::<4>().0;
+    for ((dst, src), &coverage) in pixels.iter_mut().zip(source).zip(coverage.data()) {
+        if coverage == 0 {
+            continue;
+        }
+        let coverage = f32::from(coverage) / 255.0 * opacity;
+        let sa = f32::from(src[3]) / 255.0;
+        let da = f32::from(dst[3]) / 255.0;
+        let (s, d) = match mode {
+            BlendMode::Clear => (0.0, 0.0),
+            BlendMode::Copy => (1.0, 0.0),
+            BlendMode::SourceIn => (da, 0.0),
+            BlendMode::SourceOut => (1.0 - da, 0.0),
+            BlendMode::DestinationIn => (0.0, sa),
+            BlendMode::DestinationAtop => (1.0 - da, sa),
+            _ => unreachable!(),
+        };
+        let (s, d) = (s * coverage, 1.0 - coverage + d * coverage);
+        for (dst, &src) in dst.iter_mut().zip(src) {
+            *dst = (f32::from(src) * s + f32::from(*dst) * d).round() as u8;
+        }
+    }
 }
 
 fn plus_darker(parent: &mut Pixmap, layer: &Pixmap, opacity: f32, clip: Option<&Mask>) {

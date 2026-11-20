@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ShapePaint, VisualOp};
+use crate::{ForegroundPalette, ShapePaint, VisualOp};
 
 /// A Fabric view whose single child is a SwiftUI or Compose subtree.
 pub const EXPO_UI_HOST: &str = "ViewManagerAdapter_ExpoUI_HostView";
@@ -239,6 +239,7 @@ pub enum Modifier {
     Frame(Frame),
     ForegroundColor(Color),
     ForegroundPaint(Box<ShapePaint>),
+    ForegroundPalette(Box<ForegroundPalette>),
     BackgroundPaint(Box<ShapePaint>),
     Tint(Option<Box<ShapePaint>>),
     Effect(VisualOp),
