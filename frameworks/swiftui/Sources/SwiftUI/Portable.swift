@@ -20,8 +20,7 @@ public struct CGSize: Equatable, Hashable, Sendable {
 public struct CGRect: Equatable, Hashable, Sendable {
     public var origin: CGPoint
     public var size: CGSize
-    public init() { origin = .zero; size = .zero }
-    public init(origin: CGPoint, size: CGSize) { self.origin = origin; self.size = size }
+    public init(origin: CGPoint = .zero, size: CGSize = .zero) { self.origin = origin; self.size = size }
     public init(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) {
         self.origin = CGPoint(x: x, y: y); self.size = CGSize(width: width, height: height)
     }
@@ -35,8 +34,14 @@ public struct CGRect: Equatable, Hashable, Sendable {
         let y = size.height < 0 ? origin.y + size.height : origin.y
         return CGRect(x: x, y: y, width: abs(size.width), height: abs(size.height))
     }
-    public var width: CGFloat { standardized.size.width }
-    public var height: CGFloat { standardized.size.height }
+    public var width: CGFloat {
+        get { standardized.size.width }
+        set { size.width = newValue }
+    }
+    public var height: CGFloat {
+        get { standardized.size.height }
+        set { size.height = newValue }
+    }
     public var minX: CGFloat { standardized.origin.x }
     public var midX: CGFloat { let s = standardized; return s.origin.x + s.size.width / 2 }
     public var maxX: CGFloat { let s = standardized; return s.origin.x + s.size.width }
