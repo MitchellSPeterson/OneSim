@@ -76,6 +76,7 @@ struct StateLab: View {
             VStack {
                 AccentLabel()
                 AccentLabel().environment(\.accent, "inner")
+                Button("Inner") {}.environment(\.isEnabled, true)   // still disabled: the ancestor wins
             }
             .environment(\.accent, "outer")
             .disabled(true)
@@ -83,7 +84,10 @@ struct StateLab: View {
             ProfileBadge().environment(profile)
             Draft()
             Draft()
-            Metrics()
+            Group {
+                Metrics()
+                Metrics().environment(\.dynamicTypeSize, .large)
+            }
             Links()
             Text("Size: \(h == .compact ? "compact" : "regular")/\(v == .compact ? "compact" : "regular")")
         }

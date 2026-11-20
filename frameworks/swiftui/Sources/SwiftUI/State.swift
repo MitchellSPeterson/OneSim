@@ -302,7 +302,7 @@ extension View {
             var env = EnvironmentValues()
             env[keyPath: keyPath] = value
             rt.envObjects = env.values
-            rt.disabled = !env.isEnabled
+            rt.disabled = rt.disabled || !env.isEnabled   // a disabled ancestor wins, as with `.disabled`
         }
     }
     public func onAppear(perform action: (() -> Void)? = nil) -> some View { _LifecycleView(content: self, onAppear: action, onDisappear: nil) }
@@ -434,12 +434,15 @@ extension SceneStorage {
 /// Scales with the Dynamic Type size like `UIFontMetrics.scaledValue(for:)`: by the text style's point size at the
 /// current size over its size at `.large`.
 @propertyWrapper
-public struct ScaledMetric<Value: BinaryFloatingPoint> {
+public struct ScaledMetric<Value: BinaryFloatingPoint>: _StateProperty {
+    final class Box { var size: DynamicTypeSize? }
     let base: Value, style: Font.TextStyle
+    let box = Box()
     public init(wrappedValue: Value, relativeTo textStyle: Font.TextStyle) { base = wrappedValue; style = textStyle }
     public init(wrappedValue: Value) { self.init(wrappedValue: wrappedValue, relativeTo: .body) }
+    func _bind(_ key: String) { box.size = EnvironmentValues().dynamicTypeSize }   // honours `.environment(\.dynamicTypeSize, _)`
     public var wrappedValue: Value {
-        let i = DynamicTypeSize.allCases.firstIndex(of: _Runtime.shared.dynamicType)!
+        let i = DynamicTypeSize.allCases.firstIndex(of: box.size ?? EnvironmentValues().dynamicTypeSize)!
         let row = style.sizes
         return Value(Double(base) * row[i] / row[3])
     }

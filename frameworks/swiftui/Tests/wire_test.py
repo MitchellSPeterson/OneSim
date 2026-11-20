@@ -514,6 +514,8 @@ assert "Size: compact/regular" in tx, tx  # portrait iPhone
 assert "Badge: ada 0 some" in tx, tx
 # body 17 -> 28 at accessibility1, caption 12 -> 22 (Apple's Dynamic Type table)
 assert f"Metric: {10 * 28 / 17} 22.0 active" in tx, tx
+assert "Metric: 10.0 12.0 active" in tx, tx  # .environment(\.dynamicTypeSize, .large) override
+assert button(t, "Inner")["disabled"], button(t, "Inner")
 t = act(p, t, [m for m in walk(t["root"]) if m.get("kind") == "button" and "Draft: none" in alltexts(m)][0]["action"])
 assert alltexts(t["root"]).count("Draft: saved") == 2, alltexts(t["root"])  # both views share the key
 send(p, type="action", id=button(t, "Open")["action"], version=t["version"])
