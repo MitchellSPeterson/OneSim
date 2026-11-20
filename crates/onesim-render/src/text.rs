@@ -19,6 +19,12 @@ fn width_scale(width: i8) -> f32 {
         _ => 1.0,
     }
 }
+
+/// `width` is the visual wrap. Shaping happens before the horizontal scale, so the shaper's limit is `width / k`.
+fn shape_limit(width: Option<f32>, width_code: i8) -> Option<f32> {
+    let k = width_scale(width_code);
+    width.map(|w| if (k - 1.0).abs() >= 0.001 && k > 0.0 { w / k } else { w })
+}
 /// Open-licensed fallback (Inter, SIL OFL 1.1; variable `wght` axis), embedded for determinism.
 const INTER: &[u8] = include_bytes!("../../../assets/fonts/InterVariable.ttf");
 const INTER_FAMILY: &str = "Inter Variable";
@@ -74,6 +80,8 @@ pub struct Span {
     pub strike_pat: u8,
     /// Strike color when it differs from the run color.
     pub strike_color: Option<crate::scene::Color>,
+    /// Index into the spans the caller passed. Truncation drops runs, and glyph metadata still has to find the original one.
+    pub(crate) origin: Option<usize>,
 }
 
 impl Span {
@@ -96,6 +104,7 @@ impl Span {
             under_color: None,
             strike_pat: 0,
             strike_color: None,
+            origin: None,
         }
     }
 }
@@ -561,7 +570,7 @@ impl Fonts {
         let big = !self.sf && !f.android && f.pt > 40.0;
         let size = if big { f.size * INTER_BIG_SCALE } else { f.size };
         let mut b = Buffer::new(&mut self.sys, Metrics::new(size, f.pitch));
-        b.set_size(width, None);
+        b.set_size(shape_limit(width, f.width), None);
         let inter_size = if f.inter_point_tracking { f.pt } else { f.size };
         let (family, tracking, wght, stretch) = self.face(f.mono || f.design == 3, f.android, f.pt, inter_size, f.weight, f.tracking, big, f.design, f.width);
         let tracking = tracking + extra_em(f.extra, f.pt);
@@ -583,7 +592,8 @@ impl Fonts {
                 let tracking = tracking + extra_em(s.extra, s.pt);
                 let m = Metrics::new(if big { size_px * INTER_BIG_SCALE } else { size_px }, if f.fixed_pitch { f.pitch } else { f.pitch * k });
                 let c = Color::rgba((s.color.r * 255.0).round() as u8, (s.color.g * 255.0).round() as u8, (s.color.b * 255.0).round() as u8, (s.color.a * 255.0).round() as u8);
-                let mut a = Attrs::new().family(fam).weight(Weight(wght)).stretch(stretch).letter_spacing(tracking).metrics(m).color(c).metadata(i);
+                let meta = s.origin.unwrap_or(i);
+                let mut a = Attrs::new().family(fam).weight(Weight(wght)).stretch(stretch).letter_spacing(tracking).metrics(m).color(c).metadata(meta);
                 if s.digits || f.digits {
                     a = a.font_features(tabular());
                 }
@@ -761,7 +771,7 @@ fn fold_case(text: &str, case_fold: u8) -> std::borrow::Cow<'_, str> {
 fn take_range(spans: &[Span], start: usize, end: usize) -> Vec<Span> {
     let mut at = 0;
     let mut out = Vec::new();
-    for sp in spans {
+    for (i, sp) in spans.iter().enumerate() {
         let a = at;
         let b = at + sp.text.len();
         at = b;
@@ -771,7 +781,7 @@ fn take_range(spans: &[Span], start: usize, end: usize) -> Vec<Span> {
         let lo = start.max(a) - a;
         let hi = end.min(b) - a;
         if sp.text.is_char_boundary(lo) && sp.text.is_char_boundary(hi) {
-            out.push(Span { text: sp.text[lo..hi].to_string(), ..sp.clone() });
+            out.push(Span { text: sp.text[lo..hi].to_string(), origin: Some(sp.origin.unwrap_or(i)), ..sp.clone() });
         }
     }
     out
@@ -851,6 +861,36 @@ mod span_tests {
             b.layout_runs().map(|r| r.line_y).fold(0.0f32, f32::max)
         };
         assert!(h(&mut f, false) < h(&mut f, true), "scaled runs pack tighter than a fixed pitch");
+    }
+
+    /// A condensed phrase measured with no wrap must stay one line when drawn at that measured width.
+    #[test]
+    fn condensed_wrap_uses_the_visual_width() {
+        let mut fonts = Fonts::new();
+        let text = "hello world again";
+        let spec = FontSpec { width: -1, ..FontSpec::new(17.0, 22.0, 400, TextAlign::Leading) };
+        let (w, h) = fonts.measure(text, &spec, None, &[]);
+        let (_, h2) = fonts.measure(text, &spec, Some(w as f32), &[]);
+        assert!((h2 - h).abs() < 0.6, "measured width {w} rewrapped: {h} vs {h2}");
+    }
+
+    /// Head truncation that drops a whole run must keep the surviving run's index.
+    #[test]
+    fn truncation_keeps_the_original_run_index() {
+        let mut fonts = Fonts::new();
+        let spec = FontSpec { lines: Some(1), trunc: 1, ..FontSpec::new(17.0, 22.0, 400, TextAlign::Leading) };
+        let red = crate::scene::Color::rgba(1.0, 0.0, 0.0, 1.0);
+        let blue = crate::scene::Color::rgba(0.0, 0.0, 1.0, 1.0);
+        let prefix = "drop this whole prefix ";
+        let suffix = "kept tail of the line";
+        let spans = [
+            Span { underline: false, ..Span::basic(prefix, 17.0, 400, red) },
+            Span { underline: true, ..Span::basic(suffix, 17.0, 400, blue) },
+        ];
+        let text = format!("{prefix}{suffix}");
+        let lines = fonts.draw(&text, &spec, 80.0, [0, 0, 0, 255], (0.0, 0.0), &spans, |_, _, _, _, _| {});
+        let runs: Vec<_> = lines.iter().map(|l| l.run).collect();
+        assert_eq!(runs, vec![Some(1)], "{runs:?}");
     }
 
     /// A single full-text run (with a line cap) shapes with the same per-size tracking as plain text.

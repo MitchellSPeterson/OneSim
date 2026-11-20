@@ -283,6 +283,9 @@ public func _onesimRun<V: View>(_ root: V) -> Never {
     if let d = env["SIMCORE_DYNAMIC_TYPE"], let s = DynamicTypeSize.allCases.first(where: { "\($0)" == d }) { rt.dynamicType = s }
     rt.render = { _eval(root, "0") }
     _onesimRegisterCallbacks()
+    #if !os(WASI)
+    _installImageWake()
+    #endif
     rt.submitTree()
     exit(simcore_runtime_run())
 }

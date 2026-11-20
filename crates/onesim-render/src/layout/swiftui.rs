@@ -1957,12 +1957,18 @@ impl Ctx<'_> {
         }
     }
 
-    /// Tighten tracking, then scale down to `min_scale`, when a line is wider than the wrap.
+    /// Tighten tracking, then scale down to `min_scale`, when the text is wider than the wrap or uses more lines than the cap.
     fn fit_text(&mut self, text: &str, spec: FontSpec, wrap: Option<f32>, spans: Vec<Span>) -> (FontSpec, Vec<Span>) {
         let Some(limit) = wrap else { return (spec, spans) };
         let overflows = |fonts: &mut Fonts, spec: &FontSpec, spans: &[Span]| {
             let probe = FontSpec { lines: None, ..*spec };
-            fonts.measure(text, &probe, Some(limit), spans).0 > limit as f64 + 0.51
+            let (w, h) = fonts.measure(text, &probe, Some(limit), spans);
+            if w > limit as f64 + 0.51 {
+                return true;
+            }
+            let Some(max) = spec.lines else { return false };
+            let cap = f64::from(spec.line_height) + (max.saturating_sub(1) as f64) * f64::from(spec.pitch);
+            h > cap + 0.51
         };
         if !overflows(self.fonts, &spec, &spans) {
             return (spec, spans);
@@ -3679,6 +3685,18 @@ mod tests {
             (400.0, 80.0),
         );
         assert!(by_id(&shrunk, "t").bounds.w < by_id(&full, "t").bounds.w * 0.75, "minimumScaleFactor shrinks a word that does not fit");
+        let sentence = "alpha beta gamma delta";
+        let open = scene(
+            &format!(r#"{{"kind":"text","id":"t","text":"{sentence}","modifiers":[{{"font":{{"size":17,"weight":"regular"}}}},{{"lineLimit":{{"max":1}}}},{{"minimumScaleFactor":0.5}},{{"frame":{{"width":220,"height":40}}}}]}}"#),
+            (400.0, 80.0),
+        );
+        let tight = scene(
+            &format!(r#"{{"kind":"text","id":"t","text":"{sentence}","modifiers":[{{"font":{{"size":17,"weight":"regular"}}}},{{"lineLimit":{{"max":1}}}},{{"minimumScaleFactor":0.5}},{{"frame":{{"width":80,"height":40}}}}]}}"#),
+            (400.0, 80.0),
+        );
+        let open_pt = by_id(&open, "t").text.as_ref().unwrap().font.pt;
+        let tight_pt = by_id(&tight, "t").text.as_ref().unwrap().font.pt;
+        assert!(tight_pt < open_pt - 0.5, "lineLimit 1 scales a sentence that wraps: {tight_pt} vs {open_pt}");
         let one = scene(r#"{"kind":"text","id":"t","text":"Line","modifiers":[{"font":{"size":17,"weight":"regular"}}]}"#, (200.0, 80.0));
         let two = scene(r#"{"kind":"text","id":"t","text":"Line","modifiers":[{"font":{"size":17,"weight":"regular"}},{"lineLimit":{"min":2}}]}"#, (200.0, 120.0));
         assert!(by_id(&two, "t").bounds.h > by_id(&one, "t").bounds.h * 1.6, "a lower line limit reserves a second line");

@@ -151,6 +151,8 @@ const char *simcore_last_error(void);
 
 All Swift values cross as bytes/C strings; no Swift objects or pointers to
 temporaries are retained by Rust. Single-threaded: all calls from one thread.
+`simcore_runtime_set_wake` registers the read end of a pipe. `simcore_runtime_run` polls it with stdin
+and runs the callback on that same thread. `AsyncImage` HTTP completions use it, because this loop does not service Dispatch.
 
 ---
 
@@ -770,4 +772,4 @@ A run may also carry `kerning`, `tracking`, `baselineOffset` (points), `fontDesi
 
 - Serif uses `.New York` when that family is installed, otherwise a generic serif. Rounded uses `.SF NS Rounded` when installed, otherwise SF Pro. Monospaced uses `.SF NS Mono` when installed. Optical tracking stays on the default SF sans and is dropped for serif, rounded, and mono. The `wdth` axis is not driven: condensed is 0.80 of the standard face's advance, compressed is 0.70, and expanded stays the standard face. A missing face is a gap, not a protocol change.
 - Colored symbols (hierarchical, palette, multicolor, gradient, or a non-automatic variable mode) are an AppKit RGBA bitmap on macOS when the pixels have chroma. Palette is the foreground at full, 0.6 and 0.3 alpha. The Phosphor fallback stays an alpha mask. The default monochrome path is unchanged.
-- `textCase` is folded before measure. Tightening runs before `minimumScaleFactor`, and truncation runs on the scaled text. The probe that decides to scale ignores the line cap, so an ellipsis cannot hide an overflow.
+- `textCase` is folded before measure. Tightening runs before `minimumScaleFactor`, and truncation runs on the scaled text. The probe that decides to scale counts wrapped lines against the line cap, so a one-line limit scales a sentence that would otherwise wrap. Shaping uses the visual width divided by the font-width scale, and truncation keeps each surviving run's original index.

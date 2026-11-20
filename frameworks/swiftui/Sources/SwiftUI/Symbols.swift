@@ -1,5 +1,7 @@
 #if !os(WASI)
 import Foundation
+import Darwin
+internal import OneSimBridge
 #endif
 
 // SF Symbols: the guest only names the symbol; the host rasterizes it (docs/protocol.md section E).
@@ -180,6 +182,43 @@ enum _ImgState { case loading, failed, ready(String, Int, Int) }
 
 enum _ImgCache { static var items: [String: _ImgState] = [:] }
 
+/// HTTP completions arrive on a URLSession queue. The guest runtime blocks in `poll` and never
+/// drains Dispatch, so a finished load writes one byte and the runtime invokes `_drainImageWake` on its thread.
+private final class _ImgBox {
+    let lock = NSLock()
+    var pending: [(String, _ImgState)] = []
+}
+private let _imgBox = _ImgBox()
+private var _imgWrite: Int32 = -1
+
+func _installImageWake() {
+    var fds = [Int32](repeating: 0, count: 2)
+    guard pipe(&fds) == 0 else { return }
+    let flags = fcntl(fds[1], F_GETFL)
+    if flags >= 0 { _ = fcntl(fds[1], F_SETFL, flags | O_NONBLOCK) }
+    _imgWrite = fds[1]
+    simcore_runtime_set_wake(fds[0]) { _ in _drainImageWake() }
+}
+
+func _enqueueImage(_ key: String, _ state: _ImgState) {
+    _imgBox.lock.lock()
+    _imgBox.pending.append((key, state))
+    _imgBox.lock.unlock()
+    guard _imgWrite >= 0 else { return }
+    var byte: UInt8 = 1
+    _ = write(_imgWrite, &byte, 1)
+}
+
+func _drainImageWake() {
+    _imgBox.lock.lock()
+    let items = _imgBox.pending
+    _imgBox.pending.removeAll(keepingCapacity: true)
+    _imgBox.lock.unlock()
+    guard !items.isEmpty else { return }
+    for (key, state) in items { _ImgCache.items[key] = state }
+    _Runtime.shared.submitTree()
+}
+
 /// PNG or JPEG pixel size. Nil if the bytes are neither.
 func _pixelSize(_ data: Data) -> (Int, Int)? {
     let b = [UInt8](data)
@@ -229,7 +268,7 @@ func _phase(_ state: _ImgState, scale: CGFloat) -> AsyncImagePhase {
     }
 }
 
-/// File URLs load during this evaluation so the first tree contains the bitmap. HTTP completes on the main queue.
+/// File URLs load during this evaluation so the first tree contains the bitmap. HTTP completes through the guest wake pipe.
 func _asyncPhase(url: URL?, scale: CGFloat) -> AsyncImagePhase {
     guard let url else { return .empty }
     let key = url.absoluteString
@@ -254,10 +293,7 @@ func _asyncPhase(url: URL?, scale: CGFloat) -> AsyncImagePhase {
             let px = _pixelSize(data) ?? (0, 0)
             state = .ready(path, px.0, px.1)
         } else { state = .failed }
-        DispatchQueue.main.async {
-            _ImgCache.items[key] = state
-            _Runtime.shared.submitTree()
-        }
+        _enqueueImage(key, state)
     }.resume()
     return .empty
 }
