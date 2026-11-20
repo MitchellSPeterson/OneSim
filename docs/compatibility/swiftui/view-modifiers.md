@@ -61,7 +61,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.backgroundExtensionEffect` | 26 | ⬜ |  |  |
 | `.backgroundPreferenceValue` | 13 | ⬜ |  |  |
 | `.backgroundStyle` | 16 | ⬜ |  |  |
-| `.badge` | 15 | 🟠 |  | Tab items only (ignored on list rows) |
+| `.badge` | 15 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Plain-text tab badges. List badges and localized resource overloads are unsupported. |
 | `.badgeProminence` | 17 | ⬜ |  |  |
 | `.baselineOffset` | 16 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Positive lengthens the line downward. Glyphs stay at the top |
 | `.blendMode` | 13 | ⬜ |  |  |
@@ -185,7 +185,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.id` | 13 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Names the view for `scrollTo`. Does not reset `@State` |
 | `.ignoresSafeArea` | 13 | ⬜ |  |  |
 | `.imageScale` | 13 | ✅ |  |  |
-| `.indexViewStyle` | 14 | ⬜ |  |  |
+| `.indexViewStyle` | 14 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Built-in page style. Interactive background is unsupported. |
 | `.inspector` | 17 | ⬜ |  |  |
 | `.inspectorColumnWidth` | 17 | ⬜ |  |  |
 | `.interactionActivityTrackingTag` | 16 | ⬜ |  |  |
@@ -387,7 +387,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.tabViewSidebarBottomBar` | 18 | ⬜ |  |  |
 | `.tabViewSidebarFooter` | 18 | ⬜ |  |  |
 | `.tabViewSidebarHeader` | 18 | ⬜ |  |  |
-| `.tabViewStyle` | 14 | ⬜ |  |  |
+| `.tabViewStyle` | 14 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Automatic, tab-bar-only, sidebar-adaptable (compact iPhone) and page styles. |
 | `.tag` | 13 | ✅ |  |  |
 | `.task` | 15 | ⬜ |  |  |
 | `.textCase` | 14 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Uppercase and lowercase. The stored label is folded |

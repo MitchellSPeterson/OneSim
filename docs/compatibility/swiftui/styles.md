@@ -45,7 +45,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `DefaultNavigationViewStyle` | 13 | ⬜ |  | Deprecated |
 | `DefaultPickerStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `DefaultProgressViewStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
-| `DefaultTabViewStyle` | 14 | ⬜ |  |  |
+| `DefaultTabViewStyle` | 14 | ✅ | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | iPhone tab bar |
 | `DefaultTextFieldStyle` | 13 | ⬜ |  |  |
 | `DefaultToggleStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `DisclosureGroupStyle` | 16 | ⬜ |  |  |
@@ -63,7 +63,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `GroupedListStyle` | 13 | ⬜ |  |  |
 | `HierarchicalShapeStyle` | 15 | ✅ |  |  |
 | `IconOnlyLabelStyle` | 14 | ⬜ |  |  |
-| `IndexViewStyle` | 14 | ⬜ |  |  |
+| `IndexViewStyle` | 14 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Built-in style only |
 | `InlinePickerStyle` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | No label row in a list |
 | `InsetGroupedListStyle` | 14 | ⬜ |  |  |
 | `InsetListStyle` | 14 | ⬜ |  |  |
@@ -82,8 +82,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `NavigationSplitViewStyle` | 16 | ⬜ |  |  |
 | `NavigationViewStyle` | 13 | ⬜ |  | Deprecated |
 | `OverlayArrangementViewStyle` | 13 | ⬜ |  |  |
-| `PageIndexViewStyle` | 14 | ⬜ |  |  |
-| `PageTabViewStyle` | 14 | ⬜ |  |  |
+| `PageIndexViewStyle` | 14 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Indicator taps, automatic, always and never backgrounds. Interactive background and scrubbing are unsupported. |
+| `PageTabViewStyle` | 14 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Horizontal drag and selection binding. Release and programmatic changes snap. Whole simulated swipes that turn the page bypass child tap gesture callbacks. |
 | `PaletteControlGroupStyle` | 17 | ⬜ |  |  |
 | `PalettePickerStyle` | 17 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Drawn as a segmented control (as outside a menu); no palette row inside a `Menu` |
 | `PickerStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
@@ -103,17 +103,17 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `SeparatorShapeStyle` | 17 | ⬜ |  |  |
 | `ShadowStyle` | 16 | ⬜ |  |  |
 | `ShapeStyle` | 13 | 🟠 |  | `Color` and `.primary`/`.secondary`/`.tertiary` only |
-| `SidebarAdaptableTabViewStyle` | 18 | ⬜ |  |  |
+| `SidebarAdaptableTabViewStyle` | 18 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Compact iPhone tab bar. Sidebar layout is unsupported. |
 | `SidebarListStyle` | 14 | ⬜ |  |  |
 | `SplitArrangementViewStyle` | 13 | ⬜ |  |  |
 | `StackNavigationViewStyle` | 13 | ⬜ |  | Deprecated |
 | `StrokeStyle` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `SwitchToggleStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `SystemFormatStyle` | 18 | ⬜ |  |  |
-| `TabBarOnlyTabViewStyle` | 18 | ⬜ |  |  |
+| `TabBarOnlyTabViewStyle` | 18 | ✅ | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | iPhone tab bar |
 | `TableStyle` | 16 | ⬜ |  |  |
 | `TabsPickerStyle` | 27 | ⬜ |  |  |
-| `TabViewStyle` | 14 | ⬜ |  |  |
+| `TabViewStyle` | 14 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Built-in styles only |
 | `TextEditorStyle` | 17 | ⬜ |  |  |
 | `TextFieldStyle` | 13 | ⬜ |  |  |
 | `TintShapeStyle` | 15 | ⬜ |  |  |

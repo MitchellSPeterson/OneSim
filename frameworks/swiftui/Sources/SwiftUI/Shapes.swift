@@ -1335,15 +1335,13 @@ struct _CtxView<Content: View>: View, _Flattenable {
     let apply: (_Runtime) -> Void
     func _children(_ path: String) -> [Node] {
         let rt = _Runtime.shared
-        #if os(WASI)
-        let saved = (rt.disabled, rt.buttonStyle, rt.pickerStyle, rt.styles, rt.envObjects, rt.envLocal)
-        apply(rt)
-        defer { (rt.disabled, rt.buttonStyle, rt.pickerStyle, rt.styles, rt.envObjects, rt.envLocal) = saved }
-        #else
-        let saved = (rt.disabled, rt.buttonStyle, rt.pickerStyle, rt.styles, rt.imageSession, rt.envObjects, rt.envLocal)
-        apply(rt)
-        defer { (rt.disabled, rt.buttonStyle, rt.pickerStyle, rt.styles, rt.imageSession, rt.envObjects, rt.envLocal) = saved }
+        let saved = (rt.disabled, rt.buttonStyle, rt.pickerStyle, rt.styles, rt.pageTabStyle, rt.pageIndexStyle, rt.envObjects, rt.envLocal)
+        defer { (rt.disabled, rt.buttonStyle, rt.pickerStyle, rt.styles, rt.pageTabStyle, rt.pageIndexStyle, rt.envObjects, rt.envLocal) = saved }
+        #if !os(WASI)
+        let imageSession = rt.imageSession
+        defer { rt.imageSession = imageSession }
         #endif
+        apply(rt)
         return SwiftUI._children(content, path)
     }
 }
