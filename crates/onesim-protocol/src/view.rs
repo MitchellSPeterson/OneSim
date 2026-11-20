@@ -245,6 +245,8 @@ pub enum Modifier {
     Offset(Offset),
     /// The view carries SwiftUI gestures (section L).
     Gesture(GestureMod),
+    /// `.containerShape(_:)`: records the container shape for descendant `ContainerRelativeShape` and `ConcentricRectangle` (section N).
+    ContainerShape(ContainerShapeSpec),
     /// `.id(_:)`: names the view for `ScrollViewProxy.scrollTo` (section M).
     #[serde(rename = "id")]
     Identity(String),
@@ -349,6 +351,34 @@ pub enum ButtonRole {
 
 fn is_false(b: &bool) -> bool {
     !*b
+}
+
+fn is_true(b: &bool) -> bool {
+    *b
+}
+
+fn yes() -> bool {
+    true
+}
+
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
+}
+
+fn ten() -> f64 {
+    10.0
+}
+
+fn is_ten(v: &f64) -> bool {
+    (*v - 10.0).abs() < 1e-9
+}
+
+fn is_default_cap(c: &LineCap) -> bool {
+    *c == LineCap::Butt
+}
+
+fn is_default_join(j: &LineJoin) -> bool {
+    *j == LineJoin::Miter
 }
 
 /// One styled run of a concatenated `Text` (`Text + Text`). Unset fields inherit from the environment.
@@ -472,13 +502,156 @@ pub enum ShapeKind {
     Circle,
     Capsule,
     RoundedRectangle,
+    Ellipse,
+    UnevenRoundedRectangle,
+    ContainerRelative,
+    ConcentricRectangle,
+    Path,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RoundedCornerStyle {
+    Circular,
+    #[default]
+    Continuous,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LineCap {
+    #[default]
+    Butt,
+    Round,
+    Square,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LineJoin {
+    #[default]
+    Miter,
+    Round,
+    Bevel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FillStyle {
+    #[serde(rename = "eoFill", default, skip_serializing_if = "is_false")]
+    pub eo_fill: bool,
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub antialiased: bool,
+}
+
+impl Default for FillStyle {
+    fn default() -> Self {
+        Self { eo_fill: false, antialiased: true }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Stroke {
-    pub color: Color,
+    /// Absent means inherit the current foreground color (`ForegroundStyle`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<Color>,
     #[serde(rename = "lineWidth", default = "one")]
     pub line_width: f64,
+    #[serde(rename = "lineCap", default, skip_serializing_if = "is_default_cap")]
+    pub line_cap: LineCap,
+    #[serde(rename = "lineJoin", default, skip_serializing_if = "is_default_join")]
+    pub line_join: LineJoin,
+    #[serde(rename = "miterLimit", default = "ten", skip_serializing_if = "is_ten")]
+    pub miter_limit: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dash: Vec<f64>,
+    #[serde(rename = "dashPhase", default, skip_serializing_if = "is_zero")]
+    pub dash_phase: f64,
+    #[serde(default = "yes", skip_serializing_if = "is_true")]
+    pub antialiased: bool,
+    /// Inset distance for `InsettableShape.strokeBorder` (points, applied inside the bounds before stroking).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub inset: f64,
+}
+
+/// One vector path command in a shape's local coordinate space (section N).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PathOp {
+    M([f64; 2]),
+    L([f64; 2]),
+    Q([f64; 4]),
+    C([f64; 6]),
+    Z,
+}
+
+/// One corner specification for `ConcentricRectangle` (`Edge.Corner.Style`).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CornerStyleSpec {
+    Fixed(f64),
+    Concentric(Option<f64>),
+}
+
+/// Which corners of a `ConcentricRectangle` share a uniform minimum concentric radius.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum UniformCorners {
+    All,
+    Top,
+    Bottom,
+    Leading,
+    Trailing,
+    TopAndBottom,
+    LeadingAndTrailing,
+}
+
+/// Four-corner configuration for `ConcentricRectangle`: `[topLeading, topTrailing, bottomTrailing, bottomLeading]`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct ConcentricCorners {
+    pub corners: [CornerStyleSpec; 4],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uniform: Option<UniformCorners>,
+}
+
+/// Sizing hint from a custom `Shape.sizeThatFits(_:)` override.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ShapeSizeHint {
+    Square,
+    Fixed([f64; 2]),
+    Aspect(f64),
+    Ideal([f64; 2]),
+}
+
+/// Shape carried by `.containerShape(_:)` for descendant `ContainerRelativeShape` and `ConcentricRectangle`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "shape", rename_all = "camelCase")]
+pub enum ContainerShapeSpec {
+    Rectangle,
+    Circle,
+    Capsule {
+        #[serde(default, rename = "cornerStyle")]
+        corner_style: RoundedCornerStyle,
+    },
+    Ellipse,
+    RoundedRectangle {
+        #[serde(default, rename = "cornerRadius", skip_serializing_if = "Option::is_none")]
+        corner_radius: Option<f64>,
+        #[serde(default, rename = "cornerSize", skip_serializing_if = "Option::is_none")]
+        corner_size: Option<[f64; 2]>,
+        #[serde(default, rename = "cornerStyle")]
+        corner_style: RoundedCornerStyle,
+    },
+    UnevenRoundedRectangle {
+        #[serde(rename = "cornerRadii")]
+        corner_radii: [f64; 4],
+        #[serde(default, rename = "cornerStyle")]
+        corner_style: RoundedCornerStyle,
+    },
+    ConcentricRectangle {
+        concentric: ConcentricCorners,
+    },
+    ContainerRelative,
 }
 
 fn one() -> f64 {
@@ -608,6 +781,37 @@ pub enum DisplayMode {
     Inline,
 }
 
+/// Extra fields for `ViewKind::Shape` (boxed so `ViewKind` stays small on the stack).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ShapeExtra {
+    #[serde(default, rename = "cornerRadius", skip_serializing_if = "Option::is_none")]
+    pub corner_radius: Option<f64>,
+    #[serde(default, rename = "cornerSize", skip_serializing_if = "Option::is_none")]
+    pub corner_size: Option<[f64; 2]>,
+    #[serde(default, rename = "cornerRadii", skip_serializing_if = "Option::is_none")]
+    pub corner_radii: Option<[f64; 4]>,
+    #[serde(default, rename = "cornerStyle", skip_serializing_if = "Option::is_none")]
+    pub corner_style: Option<RoundedCornerStyle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub concentric: Option<ConcentricCorners>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<Vec<PathOp>>,
+    #[serde(default, rename = "pathSize", skip_serializing_if = "Option::is_none")]
+    pub path_size: Option<[f64; 2]>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub custom: bool,
+    #[serde(default, rename = "sizeHint", skip_serializing_if = "Option::is_none")]
+    pub size_hint: Option<ShapeSizeHint>,
+    #[serde(default, rename = "mirrorRtl", skip_serializing_if = "is_false")]
+    pub mirror_rtl: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill: Option<Color>,
+    #[serde(default, rename = "fillStyle", skip_serializing_if = "Option::is_none")]
+    pub fill_style: Option<FillStyle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stroke: Option<Stroke>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ViewKind {
@@ -682,12 +886,8 @@ pub enum ViewKind {
     },
     Shape {
         shape: ShapeKind,
-        #[serde(default, rename = "cornerRadius")]
-        corner_radius: Option<f64>,
-        #[serde(default)]
-        fill: Option<Color>,
-        #[serde(default)]
-        stroke: Option<Stroke>,
+        #[serde(flatten)]
+        extra: Box<ShapeExtra>,
     },
     Divider,
     Scroll {
@@ -1028,5 +1228,47 @@ mod tests {
         // An ordinary stack still parses with no pinned field.
         let plain: ViewNode = serde_json::from_str(r#"{"kind":"hstack","id":"h","children":[]}"#).unwrap();
         assert!(matches!(plain.kind, ViewKind::HStack { pinned: None, .. }));
+    }
+
+    #[test]
+    fn section_n_shapes_and_paths_parse() {
+        let j = json!({
+            "kind": "vstack", "id": "0",
+            "modifiers": [{"containerShape": {"shape": "roundedRectangle", "cornerRadius": 24.0, "cornerStyle": "continuous"}}],
+            "children": [
+                {"kind": "shape", "id": "0/0", "shape": "ellipse", "fill": {"semantic": "accent"}},
+                {"kind": "shape", "id": "0/1", "shape": "unevenRoundedRectangle", "cornerRadii": [20.0, 4.0, 16.0, 8.0], "cornerStyle": "circular",
+                 "stroke": {"color": {"semantic": "primary"}, "lineWidth": 3.0, "lineCap": "round", "lineJoin": "bevel", "miterLimit": 5.0, "dash": [8.0, 4.0], "dashPhase": 2.0, "antialiased": false, "inset": 1.5}},
+                {"kind": "shape", "id": "0/2", "shape": "containerRelative"},
+                {"kind": "shape", "id": "0/3", "shape": "concentricRectangle",
+                 "concentric": {"corners": [{"concentric": null}, {"concentric": 6.0}, {"fixed": 12.0}, {"concentric": null}], "uniform": "top"}},
+                {"kind": "shape", "id": "0/4", "shape": "path",
+                 "path": [{"m": [0.0, 0.0]}, {"l": [40.0, 0.0]}, {"q": [50.0, 20.0, 40.0, 40.0]}, {"c": [30.0, 50.0, 10.0, 50.0, 0.0, 40.0]}, "z"],
+                 "pathSize": [40.0, 40.0], "custom": true, "sizeHint": {"fixed": [40.0, 40.0]}, "mirrorRtl": true,
+                 "fill": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0},
+                 "fillStyle": {"eoFill": true, "antialiased": false}}
+            ]
+        });
+        let n: ViewNode = serde_json::from_value(j).unwrap();
+        assert!(matches!(n.modifiers[0], Modifier::ContainerShape(ContainerShapeSpec::RoundedRectangle { corner_radius: Some(24.0), .. })));
+        let ViewKind::VStack { children, .. } = &n.kind else { panic!() };
+        assert!(matches!(children[0].kind, ViewKind::Shape { shape: ShapeKind::Ellipse, .. }));
+        let ViewKind::Shape { extra, .. } = &children[1].kind else { panic!() };
+        let (Some(st), Some(radii)) = (&extra.stroke, &extra.corner_radii) else { panic!() };
+        assert_eq!(*radii, [20.0, 4.0, 16.0, 8.0]);
+        assert_eq!(st.line_cap, LineCap::Round);
+        assert_eq!(st.line_join, LineJoin::Bevel);
+        assert_eq!(st.dash, vec![8.0, 4.0]);
+        assert_eq!(st.inset, 1.5);
+        assert!(!st.antialiased);
+        let ViewKind::Shape { extra: ex4, .. } = &children[4].kind else { panic!() };
+        let (Some(ops), Some(fs), Some(ShapeSizeHint::Fixed(sz))) = (&ex4.path, &ex4.fill_style, &ex4.size_hint) else { panic!() };
+        assert!(ex4.custom && ex4.mirror_rtl);
+        assert_eq!(ops.len(), 5);
+        assert_eq!(ops[4], PathOp::Z);
+        assert!(fs.eo_fill && !fs.antialiased);
+        assert_eq!(*sz, [40.0, 40.0]);
+        let again: ViewNode = serde_json::from_value(serde_json::to_value(&n).unwrap()).unwrap();
+        assert_eq!(n, again);
     }
 }

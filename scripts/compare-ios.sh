@@ -28,11 +28,13 @@ trap cleanup EXIT
 app="$guests/showcase"
 tabs="$guests/tabs"
 gest="$guests/gestures"
+shp="$guests/shapes"
 layout="$guests/layout"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
   scripts/build-swift-app.sh examples/swiftui-tabs "$tabs"
   scripts/build-swift-app.sh examples/swiftui-gestures "$gest"
+  scripts/build-swift-app.sh examples/swiftui-shapes "$shp"
   scripts/build-swift-app.sh examples/swiftui-layout "$layout"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
@@ -111,6 +113,13 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     gshot gestures-pinched       --pinch "Pinch or rotate,1.5"
     echo "== SwiftUI gestures (swiftui-gestures, iOS $ios)"
     python3 scripts/compare_ios.py $fx/swiftui-gestures-ios "$gout/onesim" "$gout" || rc=1
+    # SwiftUI shapes & paths: tests/fixtures/swiftui-shapes-ios (see its README).
+    sout=$out/swiftui-shapes; mkdir -p "$sout/onesim"
+    sshot() { local name=$1; shift; ./target/debug/onesim run "$shp" "${base[@]}" "$@" --screenshot "$sout/onesim/$name.png" >/dev/null; }
+    sshot shapes
+    sshot shapes-dark --dark
+    echo "== SwiftUI shapes (swiftui-shapes, iOS $ios)"
+    python3 scripts/compare_ios.py $fx/swiftui-shapes-ios "$sout/onesim" "$sout" || rc=1
     # SwiftUI layout: tests/fixtures/swiftui-layout-ios (see its README). Pages are 320pt; --scroll does not tick.
     lout=$out/swiftui-layout; mkdir -p "$lout/onesim"
     lshot() { local name=$1; shift; ./target/debug/onesim run "$layout" "${base[@]}" "$@" --screenshot "$lout/onesim/$name.png" >/dev/null; }

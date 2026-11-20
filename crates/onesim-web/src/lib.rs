@@ -26,9 +26,9 @@ struct State {
     on_env: EnvCb,
     on_text: TextCb,
     on_gesture: GestureCb,
-    /// ABI parity with `onesim-runtime`. The web host does not deliver geometry lines.
-    #[allow(dead_code)]
     on_layout: LayoutCb,
+    /// Guards against infinite re-entry when a layout callback submits a new tree.
+    in_layout: bool,
     version: Option<u64>,
     tree: Option<ViewNode>,
     scene: Option<Scene>,
@@ -72,7 +72,7 @@ struct Rn {
 thread_local! {
     // ponytail: thread-local state; protocol says single-threaded.
     static STATE: RefCell<State> = RefCell::new(State {
-        ctx: 0, on_action: None, on_env: None, on_text: None, on_gesture: None, on_layout: None, version: None, tree: None, scene: None,
+        ctx: 0, on_action: None, on_env: None, on_text: None, on_gesture: None, on_layout: None, in_layout: false, version: None, tree: None, scene: None,
         fonts: None, device: device(DEFAULT_DEVICE).unwrap(), viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios27, inter: Interaction::default(),
         stale: false, initialized: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), output: 0, builder: Builder::new(), dl: Vec::new(), unread: None, buf: Vec::new(), rn: None,
     });
@@ -132,7 +132,7 @@ fn draw(s: &mut State) {
 fn submit(json: &[u8], version: u64) -> Result<(), String> {
     let text = std::str::from_utf8(json).map_err(|e| format!("tree is not UTF-8: {e}"))?;
     let root: ViewNode = serde_json::from_str(text).map_err(|e| format!("tree is not valid ViewNode JSON: {e}"))?;
-    STATE.with(|s| {
+    let pending = STATE.with(|s| {
         let mut s = s.borrow_mut();
         if s.version.is_some_and(|v| version <= v) {
             return Err("tree version must increase monotonically".to_string());
@@ -142,8 +142,24 @@ fn submit(json: &[u8], version: u64) -> Result<(), String> {
         s.tree = Some(root);
         s.tree_json = text.to_string();
         draw(&mut s);
-        Ok(())
-    })
+        if s.in_layout {
+            return Ok(None);
+        }
+        let frames = s.scene.as_ref().map(|sc| sc.pending_shape_frames()).unwrap_or_default();
+        if !frames.is_empty() {
+            if let Some(cb) = s.on_layout {
+                s.in_layout = true;
+                return Ok(Some((cb, s.ctx, frames)));
+            }
+        }
+        Ok(None)
+    })?;
+    if let Some((cb, ctx, frames)) = pending {
+        let line = CString::new(serde_json::json!({"type": "layout", "frames": frames}).to_string()).unwrap_or_default();
+        unsafe { cb(ctx as *mut c_void, line.as_ptr()) };
+        STATE.with(|s| s.borrow_mut().in_layout = false);
+    }
+    Ok(())
 }
 
 #[no_mangle]
@@ -172,7 +188,7 @@ pub extern "C" fn simcore_runtime_set_gesture_callback(on_gesture: GestureCb) {
     STATE.with(|s| s.borrow_mut().on_gesture = on_gesture);
 }
 
-/// Stored for ABI parity with `onesim-runtime`. The web host does not send geometry corrections.
+/// Optional section N layout callback (same ctx as the action callback); called when custom SwiftUI shapes need `path(in:)`.
 #[no_mangle]
 pub extern "C" fn simcore_runtime_set_layout_callback(on_layout: LayoutCb) {
     STATE.with(|s| s.borrow_mut().on_layout = on_layout);
