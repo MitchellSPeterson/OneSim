@@ -64,11 +64,12 @@ optimize_wasm() {
         --enable-simd --enable-reference-types --enable-multivalue "$src" -o "$dst.opt.wasm" >>"$LOG" 2>&1; then
       mv "$dst.opt.wasm" "$dst"
     else
-      rm -f "$dst.opt.wasm"; cp "$src" "$dst"
+      rm -f "$dst.opt.wasm"
+      [ "$src" -ef "$dst" ] || cp "$src" "$dst"
       echo "note: wasm-opt failed - keeping the unoptimised module (see below)"; tail -5 "$LOG"
     fi
   else
-    cp "$src" "$dst"
+    [ "$src" -ef "$dst" ] || cp "$src" "$dst"
     echo "note: wasm-opt not found (brew install binaryen) - skipping size optimization"
   fi
 }
