@@ -458,6 +458,8 @@ its existing focus + software-keyboard machinery.
   (`scrollToEnd`: `x`/`y` = `"end"`); host sets the offset (clamped), re-renders and replies
   with a `scroll` message (phase `end`).
 - `contentOffset` prop sets the initial offset.
+- `scrollEnabled={false}`: the user cannot scroll it. Drags and the wheel skip it (the touch stays JS's, or an outer
+  scroll view takes a drag its way); `scrollTo` and `contentOffset` still apply.
 
 **Image** (`RCTImageView`). The guest downloads `source[0].uri` (http(s), `data:`, Metro
 assets) with Node `fetch` into `$TMPDIR/onesim-images/<sha1(uri)>.<ext>` and adds

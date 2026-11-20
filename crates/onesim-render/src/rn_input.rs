@@ -816,6 +816,49 @@ mod tests {
         stayed_in_js(&msgs, &sc);
     }
 
+    /// `root` with `props` merged into the props of view `id`.
+    fn with_props(root: &ViewNode, id: &str, props: Value) -> ViewNode {
+        fn patch(v: &mut Value, id: &str, props: &Value) {
+            if v["id"] == id {
+                v["props"].as_object_mut().unwrap().extend(props.as_object().unwrap().clone());
+            }
+            v["children"].as_array_mut().into_iter().flatten().for_each(|c| patch(c, id, props));
+        }
+        let mut v = serde_json::to_value(root).unwrap();
+        patch(&mut v, id, &props);
+        serde_json::from_value(v).unwrap()
+    }
+
+    #[test]
+    fn a_scroll_disabled_list_leaves_drags_and_the_wheel_alone() {
+        let root = with_props(&list(json!({"height":44}), false), "2", json!({"scrollEnabled":false}));
+        // The drag stays JS's: nothing is asked, the list does not move.
+        let (msgs, sc) = drag_on(&root, "12", (0.0, -200.0), 16.0, 500.0, PLAIN);
+        assert_eq!(asks(&msgs), 0);
+        stayed_in_js(&msgs, &sc);
+        // The wheel does not scroll it either; `scrollTo` still does.
+        let (mut inter, mut rn) = (Interaction::default(), RnInput::default());
+        let sc = scene(&root, &inter);
+        let (x, y) = center(&sc, "12");
+        let out = rn.pointer(&mut inter, &RnCtx { scene: &sc, root: &root, keyboard: 0.0 }, PointerEvent::moved(PointerKind::Scroll, x, y, 0.0, 100.0)).2;
+        assert!(sent(&out).is_empty(), "{out:?}");
+        let to = GuestMessage::ScrollTo { tag: 2, x: onesim_protocol::ScrollTarget::Pos(0.0), y: onesim_protocol::ScrollTarget::Pos(100.0) };
+        rn.apply_requests(&mut inter, &RnCtx { scene: &sc, root: &root, keyboard: 0.0 }, vec![to]);
+        assert_eq!(offset(&scene(&root, &inter), "2").1, 100.0);
+    }
+
+    #[test]
+    fn a_scroll_disabled_carousel_hands_drags_to_the_list_around_it() {
+        let root = with_props(&list(json!({"height":44}), true), "50", json!({"scrollEnabled":false}));
+        let (_, sc) = drag_on(&root, "52", (0.0, -200.0), 16.0, 500.0, PLAIN);
+        assert_eq!((offset(&sc, "2").1, offset(&sc, "50").0), (180.0, 0.0));
+        // Sideways there is no enabled scroller: the touch stays JS's.
+        let (msgs, sc) = drag_on(&root, "52", (-200.0, 0.0), 16.0, 500.0, PLAIN);
+        assert_eq!(asks(&msgs), 0);
+        assert_eq!((offset(&sc, "2").1, offset(&sc, "50").0), (0.0, 0.0));
+        assert_eq!(touches(&msgs, 52).last(), Some(&TouchPhase::End));
+    }
+
     #[test]
     fn pulling_down_at_the_top_reports_the_overscroll() {
         // RefreshControl fires on a negative offset; the content springs back to 0.
