@@ -49,7 +49,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.allowsTightening` | 13 | ⬜ |  |  |
 | `.allowsWindowActivationEvents` | 18 | ⬜ |  |  |
 | `.anchorPreference` | 13 | ⬜ |  |  |
-| `.animation` | 13 | ⬜ |  |  |
+| `.animation` | 13 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `.arrangementViewStyle` | 13 | ⬜ |  |  |
 | `.aspectRatio` | 13 | 🟠 |  | Applies to images only |
 | `.assistiveAccessNavigationIcon` | 26 | ⬜ |  |  |
@@ -89,7 +89,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.contentMargins` | 13 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Length and edges on `ScrollView` only. Placement does not change the insets. No-op elsewhere |
 | `.contentShape` | 13 | ⬜ |  |  |
 | `.contentToolbar` | 18.4 | ⬜ |  |  |
-| `.contentTransition` | 16 | ⬜ |  |  |
+| `.contentTransition` | 16 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | `identity`, `interpolate`, `opacity`, `numericText`, `symbolEffect`; no per-glyph morphing |
 | `.contextMenu` | 13 | ⬜ |  |  |
 | `.contrast` | 13 | ⬜ |  |  |
 | `.controlGroupStyle` | 15 | ⬜ |  |  |
@@ -196,7 +196,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.kerning` | 16 | ⬜ |  |  |
 | `.keyboardShortcut` | 14 | ⬜ |  |  |
 | `.keyboardType` | 13 | ⬜ |  |  |
-| `.keyframeAnimator` | 17 | ⬜ |  |  |
+| `.keyframeAnimator` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `.labeledContentStyle` | 16 | ⬜ |  |  |
 | `.labelIconToTitleSpacing` | 26 | ⬜ |  |  |
 | `.labelReservedIconWidth` | 26 | ⬜ |  |  |
@@ -224,7 +224,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.listStyle` | 13 | ⬜ |  |  |
 | `.luminanceToAlpha` | 13 | ⬜ |  |  |
 | `.mask` | 13 | ⬜ |  |  |
-| `.matchedGeometryEffect` | 14 | ⬜ |  |  |
+| `.matchedGeometryEffect` | 14 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `.matchedTransitionSource` | 18 | ⬜ |  |  |
 | `.materialActiveAppearance` | 18 | ⬜ |  |  |
 | `.menuActionDismissBehavior` | 16.4 | ⬜ |  |  |
@@ -286,7 +286,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.paletteSelectionEffect` | 17 | ⬜ |  |  |
 | `.pasteDestination` | 27 | ⬜ |  |  |
 | `.persistentSystemOverlays` | 16 | ⬜ |  |  |
-| `.phaseAnimator` | 17 | ⬜ |  |  |
+| `.phaseAnimator` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `.pickerStyle` | 13 | 🟠 |  | `.automatic`, `.menu`, `.segmented` only |
 | `.popover` | 13 | ⬜ |  |  |
 | `.position` | 13 | ⬜ |  |  |
@@ -419,12 +419,12 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.toolbarVerticalCompressionBehavior` | 13 | ⬜ |  |  |
 | `.toolbarVisibility` | 18 | ⬜ |  |  |
 | `.tracking` | 16 | ⬜ |  |  |
-| `.transaction` | 13 | ⬜ |  |  |
+| `.transaction` | 13 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `.transformAnchorPreference` | 13 | ⬜ |  |  |
 | `.transformEffect` | 13 | ⬜ |  |  |
 | `.transformEnvironment` | 13 | ⬜ |  |  |
 | `.transformPreference` | 13 | ⬜ |  |  |
-| `.transition` | 13 | ⬜ |  |  |
+| `.transition` | 13 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Built-in transitions run natively; custom `Transition` extracts `opacity` and `offset` |
 | `.truncationMode` | 13 | ⬜ |  |  |
 | `.typeSelectEquivalent` | 16 | ⬜ |  |  |
 | `.typesettingLanguage` | 17 | ⬜ |  |  |

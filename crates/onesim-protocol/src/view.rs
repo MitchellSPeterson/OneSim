@@ -262,6 +262,157 @@ pub enum Modifier {
     ScrollTargetLayout(bool),
     /// `.scrollPosition(id:)` is attached to this scroll view.
     ScrollPosition,
+    /// `.animation` / `withAnimation` (section N). `None` disables animation for this subtree.
+    Animation(Option<Box<AnimationSpec>>),
+    /// `.transition` (section N): insertion and removal effects.
+    Transition(Box<TransitionSpec>),
+    /// `.matchedGeometryEffect` (section N).
+    MatchedGeometry(Box<MatchedGeometryMod>),
+    /// `.contentTransition` (section N), inherited by `text` and `image` descendants.
+    ContentTransition(ContentTransitionKind),
+}
+
+/// Animation timing curve (section N).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AnimationCurve {
+    Linear,
+    EaseIn,
+    EaseOut,
+    EaseInOut,
+    /// Cubic Bezier control points `[c1x, c1y, c2x, c2y]`.
+    Bezier([f64; 4]),
+    /// Damped harmonic spring parameters.
+    Spring {
+        #[serde(default = "one")]
+        mass: f64,
+        stiffness: f64,
+        damping: f64,
+        #[serde(default, rename = "initialVelocity")]
+        initial_velocity: f64,
+        #[serde(default = "default_spring_settling")]
+        settling: f64,
+    },
+    /// Sampled `CustomAnimation` progress values in `0...1` over `duration`.
+    Samples(Vec<f64>),
+}
+
+/// Finite repeat count or `"forever"`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RepeatCount {
+    Count(u32),
+    Forever(ForeverTag),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ForeverTag {
+    Forever,
+}
+
+fn default_anim_duration() -> f64 {
+    0.35
+}
+fn default_spring_settling() -> f64 {
+    0.5
+}
+fn default_true() -> bool {
+    true
+}
+
+/// Wire description of a SwiftUI `Animation` (section N).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AnimationSpec {
+    pub curve: AnimationCurve,
+    #[serde(default = "default_anim_duration")]
+    pub duration: f64,
+    #[serde(default)]
+    pub delay: f64,
+    #[serde(default = "one")]
+    pub speed: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat: Option<RepeatCount>,
+    #[serde(default = "default_true")]
+    pub autoreverses: bool,
+    /// Monotonic token bumped by the guest when `withAnimation` / `.animation(value:)` triggers.
+    /// `0` = deprecated `.animation(_:)` (animate any property change).
+    #[serde(default)]
+    pub token: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TransitionEdge {
+    Top,
+    Bottom,
+    Leading,
+    Trailing,
+}
+
+/// Visual state at the active (inserted/removed) end of a `.transition` (section N).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct TransitionEffect {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opacity: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scale: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchor: Option<[f64; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub offset: Option<[f64; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edge: Option<TransitionEdge>,
+}
+
+/// `.transition(_:)` (section N).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct TransitionSpec {
+    #[serde(default)]
+    pub insertion: TransitionEffect,
+    #[serde(default)]
+    pub removal: TransitionEffect,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub animation: Option<AnimationSpec>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MatchedProps {
+    #[default]
+    Frame,
+    Position,
+    Size,
+}
+
+fn default_center_anchor() -> [f64; 2] {
+    [0.5, 0.5]
+}
+
+/// `.matchedGeometryEffect(id:in:properties:anchor:isSource:)` (section N).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MatchedGeometryMod {
+    pub id: String,
+    pub namespace: String,
+    #[serde(default)]
+    pub properties: MatchedProps,
+    #[serde(default = "default_center_anchor")]
+    pub anchor: [f64; 2],
+    #[serde(default = "default_true", rename = "isSource")]
+    pub is_source: bool,
+}
+
+/// `.contentTransition(_:)` (section N).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ContentTransitionKind {
+    #[default]
+    Identity,
+    Interpolate,
+    Opacity,
+    NumericTextUp,
+    NumericTextDown,
+    SymbolEffect,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
@@ -1028,5 +1179,28 @@ mod tests {
         // An ordinary stack still parses with no pinned field.
         let plain: ViewNode = serde_json::from_str(r#"{"kind":"hstack","id":"h","children":[]}"#).unwrap();
         assert!(matches!(plain.kind, ViewKind::HStack { pinned: None, .. }));
+    }
+
+    #[test]
+    fn section_n_round_trip() {
+        let j = json!({
+            "kind": "text", "id": "t", "text": "42",
+            "modifiers": [
+                {"animation": {"curve": {"spring": {"mass": 1.0, "stiffness": 157.9, "damping": 25.1, "initialVelocity": 0.0, "settling": 0.5}}, "duration": 0.5, "delay": 0.1, "speed": 1.5, "repeat": "forever", "autoreverses": false, "token": 7}},
+                {"animation": null},
+                {"transition": {"insertion": {"opacity": 0.0, "edge": "leading"}, "removal": {"scale": 0.5, "anchor": [0.5, 0.5], "offset": [10.0, -5.0]}}},
+                {"matchedGeometry": {"id": "pill", "namespace": "ns1", "properties": "position", "anchor": [0.0, 0.5], "isSource": false}},
+                {"contentTransition": "numericTextUp"}
+            ]
+        });
+        let n: ViewNode = serde_json::from_value(j).unwrap();
+        assert_eq!(n.modifiers.len(), 5);
+        assert!(matches!(&n.modifiers[0], Modifier::Animation(Some(spec)) if spec.token == 7 && spec.repeat == Some(RepeatCount::Forever(ForeverTag::Forever)) && !spec.autoreverses));
+        assert_eq!(n.modifiers[1], Modifier::Animation(None));
+        assert!(matches!(&n.modifiers[2], Modifier::Transition(t) if t.insertion.edge == Some(TransitionEdge::Leading) && t.removal.scale == Some(0.5)));
+        assert!(matches!(&n.modifiers[3], Modifier::MatchedGeometry(m) if m.id == "pill" && m.namespace == "ns1" && m.properties == MatchedProps::Position && !m.is_source));
+        assert_eq!(n.modifiers[4], Modifier::ContentTransition(ContentTransitionKind::NumericTextUp));
+        let again: ViewNode = serde_json::from_value(serde_json::to_value(&n).unwrap()).unwrap();
+        assert_eq!(n, again);
     }
 }

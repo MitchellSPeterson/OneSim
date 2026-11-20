@@ -189,6 +189,16 @@ pub struct ScrollInfo {
     pub aligned: bool,
 }
 
+/// SwiftUI animation / transition metadata attached to a scene node (protocol section N).
+/// Boxed on `Node` so non-animated nodes pay only a null pointer.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct NodeAnim {
+    pub animation: Option<onesim_protocol::AnimationSpec>,
+    pub transition: Option<onesim_protocol::TransitionSpec>,
+    pub matched: Option<onesim_protocol::MatchedGeometryMod>,
+    pub content_transition: onesim_protocol::ContentTransitionKind,
+}
+
 /// One positioned element. `bounds` are absolute, in points.
 #[derive(Debug, Clone)]
 pub struct Node {
@@ -242,6 +252,8 @@ pub struct Node {
     pub pinned: Option<String>,
     /// Direct child of `.scrollTargetLayout()`.
     pub scroll_target: bool,
+    /// Animation / transition / matchedGeometryEffect metadata (protocol section N).
+    pub anim: Option<Box<NodeAnim>>,
     /// False for layout-only helper nodes (clip/opacity layers); hidden from inspection.
     pub inspect: bool,
 }
@@ -283,6 +295,7 @@ impl Node {
             proposal: None,
             pinned: None,
             scroll_target: false,
+            anim: None,
             inspect: true,
         }
     }

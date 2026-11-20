@@ -12,7 +12,7 @@ use crate::scene::{Color, Glyph, Node, Rect, Role, Scene, ScrollInfo, Shadow, Sy
 use crate::symbols::{self, SymbolSpec};
 use crate::text::{FontSpec, Fonts, Span, TextAlign};
 use onesim_protocol::{
-    Alignment, Appearance, Axis, ButtonStyle, ContentMode, Detent, DisplayMode, DynamicTypeSize, Edges, FitAxes, Font, GlassShapeKind, GlassVariant, GridTrack, ImageScale, IosVersion, Layer, ListStyle, Modifier, PickerOption, PickerStyle, ScrollSnap, Section, Semantic, ShapeKind, Stroke, TrackSize,
+    Alignment, AnimationSpec, Appearance, Axis, ButtonStyle, ContentMode, ContentTransitionKind, Detent, DisplayMode, DynamicTypeSize, Edges, FitAxes, Font, GlassShapeKind, GlassVariant, GridTrack, ImageScale, IosVersion, Layer, ListStyle, MatchedGeometryMod, MatchedProps, Modifier, PickerOption, PickerStyle, ScrollSnap, Section, Semantic, ShapeKind, Stroke, TrackSize, TransitionSpec,
     ViewKind, ViewNode,
 };
 use std::cmp::Ordering;
@@ -229,6 +229,10 @@ struct Env {
     img: ImageScale,
     /// Laid out as (part of) a list row: `Label` uses the fixed icon column and accent icon.
     in_row: bool,
+    /// Active animation index into `Ctx::anims` (section N); `None` = no animation.
+    anim: Option<u32>,
+    /// Inherited `.contentTransition` (section N).
+    content_transition: ContentTransitionKind,
 }
 
 impl Env {
@@ -246,6 +250,8 @@ impl Env {
             bottom_inset: 0.0,
             img: ImageScale::Medium,
             in_row: false,
+            anim: None,
+            content_transition: ContentTransitionKind::Identity,
         }
     }
 }
@@ -303,6 +309,8 @@ struct Ctx<'a> {
     desat: bool,
     /// A sheet is up over this screen: its back button loses the glass circle (alerts keep it).
     sheet_up: bool,
+    /// Animation specs referenced by `Env::anim` (keeps `Env` `Copy` and small).
+    anims: Vec<AnimationSpec>,
 }
 
 /// Fill `sw` as an iOS switch track (role, value, fill, disabled dimming; `fill` overrides the state's default color) and return its knob node
@@ -373,6 +381,7 @@ fn ctx<'a>(params: &'a SceneParams, fonts: &'a mut Fonts) -> Ctx<'a> {
         floating: false,
         desat: false,
         sheet_up: false,
+        anims: Vec::new(),
     }
 }
 
@@ -495,6 +504,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     let geo = Geo { w: wc, h, safe_top, safe_bottom, dev_bottom, body };
     let lay = cx.place_root(root, &geo);
     flatten(lay, 0.0, 0.0, Some(0), 1.0, &mut nodes);
+    apply_matched_geometry(&mut nodes);
     if wc < w {
         for n in nodes.iter_mut().skip(1) {
             if n.fill.is_some()
@@ -658,6 +668,110 @@ fn gesture_layer(id: String, g: &onesim_protocol::GestureMod, inner: Lay) -> Lay
     let (dx, dy) = moved_by(&inner);
     let size = inner.size;
     Lay::new(size, None, vec![(dx, dy, Lay::new(size, Some(n), vec![(-dx, -dy, inner)]))])
+}
+
+/// Wrap `inner` in a layout-only transition or matchedGeometryEffect node (out of line for stack budget).
+#[inline(never)]
+fn anim_layer(
+    id: String,
+    kind: &'static str,
+    inner: Lay,
+    animation: Option<AnimationSpec>,
+    transition: Option<TransitionSpec>,
+    matched: Option<MatchedGeometryMod>,
+) -> Lay {
+    let mut n = Node::new(id, kind);
+    n.anim = Some(Box::new(crate::scene::NodeAnim {
+        animation,
+        transition,
+        matched,
+        content_transition: ContentTransitionKind::Identity,
+    }));
+    n.inspect = false;
+    Lay::new(inner.size, Some(n), vec![(0.0, 0.0, inner)])
+}
+
+/// Same-frame `.matchedGeometryEffect(isSource: false)`: align each non-source subtree to its
+/// source `(namespace, id)` according to `properties` and `anchor`.
+fn apply_matched_geometry(nodes: &mut [Node]) {
+    let mut sources: HashMap<(String, String), Rect> = HashMap::new();
+    for n in nodes.iter() {
+        if let Some(m) = n.anim.as_ref().and_then(|a| a.matched.as_ref()) {
+            if m.is_source {
+                sources.entry((m.namespace.clone(), m.id.clone())).or_insert(n.bounds);
+            }
+        }
+    }
+    if sources.is_empty() {
+        return;
+    }
+    let targets: Vec<(usize, Rect, MatchedProps, [f64; 2])> = nodes
+        .iter()
+        .enumerate()
+        .filter_map(|(i, n)| {
+            let m = n.anim.as_ref()?.matched.as_ref()?;
+            if m.is_source {
+                return None;
+            }
+            let src = *sources.get(&(m.namespace.clone(), m.id.clone()))?;
+            Some((i, src, m.properties, m.anchor))
+        })
+        .collect();
+
+    for (root_i, src, props, anchor) in targets {
+        let cur = nodes[root_i].bounds;
+        let new_w = match props {
+            MatchedProps::Frame | MatchedProps::Size => src.w,
+            MatchedProps::Position => cur.w,
+        };
+        let new_h = match props {
+            MatchedProps::Frame | MatchedProps::Size => src.h,
+            MatchedProps::Position => cur.h,
+        };
+        let (new_x, new_y) = match props {
+            MatchedProps::Frame | MatchedProps::Position => {
+                let sax = src.x + src.w * anchor[0];
+                let say = src.y + src.h * anchor[1];
+                (sax - new_w * anchor[0], say - new_h * anchor[1])
+            }
+            MatchedProps::Size => {
+                let cax = cur.x + cur.w * anchor[0];
+                let cay = cur.y + cur.h * anchor[1];
+                (cax - new_w * anchor[0], cay - new_h * anchor[1])
+            }
+        };
+        let dx = new_x - cur.x;
+        let dy = new_y - cur.y;
+        let dw = new_w - cur.w;
+        let dh = new_h - cur.h;
+
+        // Collect subtree rooted at `root_i`.
+        let mut in_sub = vec![false; nodes.len()];
+        in_sub[root_i] = true;
+        for j in (root_i + 1)..nodes.len() {
+            if nodes[j].parent.is_some_and(|p| in_sub[p]) {
+                in_sub[j] = true;
+            }
+        }
+        for (j, n) in nodes.iter_mut().enumerate() {
+            if !in_sub[j] {
+                continue;
+            }
+            let fills = (n.bounds.x - cur.x).abs() < 0.5
+                && (n.bounds.y - cur.y).abs() < 0.5
+                && (n.bounds.w - cur.w).abs() < 0.5
+                && (n.bounds.h - cur.h).abs() < 0.5;
+            if j == root_i || fills {
+                n.bounds = Rect { x: new_x, y: new_y, w: new_w, h: new_h };
+            } else {
+                n.bounds.x += dx + dw * anchor[0];
+                n.bounds.y += dy + dh * anchor[1];
+            }
+            if let Some(im) = n.image.as_mut() {
+                im.dest = n.bounds;
+            }
+        }
+    }
 }
 
 /// How far `.offset` wrappers (node-less, one same-sized child) move `l`'s content.
@@ -1035,10 +1149,34 @@ impl Ctx<'_> {
         l
     }
 
+    fn push_anim(&mut self, spec: &AnimationSpec) -> u32 {
+        let idx = self.anims.len() as u32;
+        self.anims.push(spec.clone());
+        idx
+    }
+
+    fn stamp_node(&self, n: &mut Node, env: Env) {
+        let anim = env.anim.and_then(|i| self.anims.get(i as usize).cloned());
+        if anim.is_none() && env.content_transition == ContentTransitionKind::Identity {
+            return;
+        }
+        let slot = n.anim.get_or_insert_with(|| Box::new(crate::scene::NodeAnim::default()));
+        if slot.animation.is_none() {
+            slot.animation = anim;
+        }
+        if slot.content_transition == ContentTransitionKind::Identity {
+            slot.content_transition = env.content_transition;
+        }
+    }
+
     /// Applies modifiers outermost-first by recursion (array order is innermost first).
     fn mods(&mut self, v: &ViewNode, mods: &[Modifier], p: Prop, env: Env) -> Lay {
         let Some((last, rest)) = mods.split_last() else {
-            return self.base(v, p, env);
+            let mut out = self.base(v, p, env);
+            if let Some(n) = out.node.as_deref_mut() {
+                self.stamp_node(n, env);
+            }
+            return out;
         };
         match last {
             Modifier::Padding(e) => {
@@ -1095,7 +1233,11 @@ impl Ctx<'_> {
             }
             Modifier::Opacity(o) => {
                 let inner = self.mods(v, rest, p, env);
-                layer(format!("{}#opacity{}", v.id, rest.len()), "opacity", inner, |n| n.opacity = *o as f32)
+                let mut out = layer(format!("{}#opacity{}", v.id, rest.len()), "opacity", inner, |n| n.opacity = *o as f32);
+                if let Some(n) = out.node.as_deref_mut() {
+                    self.stamp_node(n, env);
+                }
+                out
             }
             Modifier::Shadow(s) => {
                 let inner = self.mods(v, rest, p, env);
@@ -1177,6 +1319,21 @@ impl Ctx<'_> {
             | Modifier::ScrollIndicators(_)
             | Modifier::ScrollTargetBehavior(_)
             | Modifier::ScrollPosition => self.mods(v, rest, p, env),
+            Modifier::Animation(opt) => {
+                let anim = opt.as_deref().map(|s| self.push_anim(s));
+                self.mods(v, rest, p, Env { anim, ..env })
+            }
+            Modifier::Transition(t) => {
+                let inner = self.mods(v, rest, p, env);
+                let anim = env.anim.and_then(|i| self.anims.get(i as usize).cloned());
+                anim_layer(format!("{}#transition{}", v.id, rest.len()), "transition", inner, anim, Some((**t).clone()), None)
+            }
+            Modifier::MatchedGeometry(m) => {
+                let inner = self.mods(v, rest, p, env);
+                let anim = env.anim.and_then(|i| self.anims.get(i as usize).cloned());
+                anim_layer(format!("{}#match{}", v.id, rest.len()), "matched", inner, anim, None, Some((**m).clone()))
+            }
+            Modifier::ContentTransition(ct) => self.mods(v, rest, p, Env { content_transition: *ct, ..env }),
         }
     }
 
@@ -3791,5 +3948,42 @@ mod tests {
         assert_eq!(by_id(&s, "h2").bounds.x, 390.0);
         let s = at(410.0);
         assert_eq!(by_id(&s, "h1").bounds.x, -10.0);
+    }
+
+    #[test]
+    fn matched_geometry_aligns_non_source_to_source() {
+        let json = r#"{
+            "kind": "zstack", "id": "z", "alignment": "topLeading",
+            "children": [
+                {"kind": "shape", "id": "pill", "shape": "capsule",
+                 "modifiers": [{"matchedGeometry": {"id": "tab", "namespace": "ns", "properties": "frame", "anchor": [0.5, 0.5], "isSource": false}}]},
+                {"kind": "hstack", "id": "h", "spacing": 10, "alignment": "center", "children": [
+                    {"kind": "color", "id": "a", "color": {"r": 1, "g": 0, "b": 0, "a": 1}, "modifiers": [{"frame": {"width": 60, "height": 30}}]},
+                    {"kind": "color", "id": "b", "color": {"r": 0, "g": 1, "b": 0, "a": 1},
+                     "modifiers": [{"frame": {"width": 80, "height": 30}}, {"matchedGeometry": {"id": "tab", "namespace": "ns", "isSource": true}}]}
+                ]}
+            ]
+        }"#;
+        let s = scene(json, (200.0, 100.0));
+        assert_eq!(by_id(&s, "pill").bounds, by_id(&s, "b").bounds);
+    }
+
+    #[test]
+    fn animation_and_content_transition_propagate_and_disable() {
+        let json = r#"{
+            "kind": "vstack", "id": "v",
+            "modifiers": [{"animation": {"curve": "linear", "duration": 0.4, "token": 3}}, {"contentTransition": "numericTextUp"}],
+            "children": [
+                {"kind": "text", "id": "a", "text": "1"},
+                {"kind": "text", "id": "b", "text": "2", "modifiers": [{"animation": null}]}
+            ]
+        }"#;
+        let s = scene(json, (200.0, 100.0));
+        let a = by_id(&s, "a").anim.as_ref().expect("a inherits animation");
+        assert_eq!(a.animation.as_ref().unwrap().token, 3);
+        assert_eq!(a.content_transition, ContentTransitionKind::NumericTextUp);
+        let b = by_id(&s, "b").anim.as_ref().expect("b inherits contentTransition");
+        assert!(b.animation.is_none(), "animation(nil) disables outer animation");
+        assert_eq!(b.content_transition, ContentTransitionKind::NumericTextUp);
     }
 }

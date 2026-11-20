@@ -204,6 +204,49 @@ fn send(v: serde_json::Value) {
     o.flush().unwrap();
 }
 
+fn anim_tree(expanded: bool, ticks: u32) -> serde_json::Value {
+    let w = if expanded { 200.0 } else { 40.0 };
+    json!({
+        "kind": "vstack", "id": "a.root", "spacing": 16.0, "alignment": "center",
+        "children": [
+            {"kind": "rectangle", "id": "a.box", "modifiers": [
+                {"frame": {"width": w, "height": 40.0}},
+                {"animation": {"curve": "linear", "duration": 0.4}}
+            ]},
+            {"kind": "text", "id": "a.ticks", "text": format!("Tick: {ticks}")},
+            {"kind": "button", "id": "a.toggle", "action": 1, "label": {
+                "kind": "text", "id": "a.toggle.l", "text": "Toggle",
+                "modifiers": [{"padding": {"top": 10.0, "leading": 20.0, "bottom": 10.0, "trailing": 20.0}}]
+            }}
+        ]
+    })
+}
+
+fn run_anim() {
+    let (mut expanded, mut ticks, mut version) = (false, 0u32, 1u64);
+    send(json!({"type": "hello", "protocol": 1}));
+    send(json!({"type": "tree", "version": version, "root": anim_tree(expanded, ticks)}));
+    for line in std::io::stdin().lock().lines() {
+        let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line.unwrap_or_default()) else { continue };
+        match msg["type"].as_str() {
+            Some("action") if msg["version"] == version && msg["id"] == 1 => {
+                expanded = !expanded;
+                send(json!({"type": "schedule", "afterMs": 100.0}));
+                version += 1;
+                send(json!({"type": "tree", "version": version, "root": anim_tree(expanded, ticks)}));
+            }
+            Some("tick") => {
+                ticks += 1;
+                version += 1;
+                send(json!({"type": "tree", "version": version, "root": anim_tree(expanded, ticks)}));
+                send(json!({"type": "schedule"}));
+            }
+            Some("shutdown") => return,
+            _ => {}
+        }
+    }
+}
+
 fn main() {
     let crash = std::env::args().next().is_some_and(|a| a.contains("crash"));
     eprintln!(
@@ -217,6 +260,9 @@ fn main() {
     }
     if std::env::args().next().is_some_and(|a| a.contains("nav")) {
         return run_nav();
+    }
+    if std::env::args().next().is_some_and(|a| a.contains("anim")) {
+        return run_anim();
     }
     let (mut count, mut version) = (0u32, 1u64);
     send(json!({"type": "hello", "protocol": 1}));

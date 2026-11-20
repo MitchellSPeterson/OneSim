@@ -33,7 +33,7 @@ public struct State<Value>: _StateProperty {
         get { storage.slot?.value ?? storage.initial }
         nonmutating set {
             if let s = storage.slot { s.value = newValue } else { storage.initial = newValue }
-            _Runtime.shared.dirty = true
+            _Runtime.shared.markDirty()
         }
     }
     public var projectedValue: Binding<Value> {
@@ -66,7 +66,7 @@ extension Binding where Value: MutableCollection {
 
 public final class ObservableObjectPublisher {
     public init() {}
-    public func send() { _Runtime.shared.dirty = true }
+    public func send() { _Runtime.shared.markDirty() }
 }
 public protocol ObservableObject: AnyObject {
     var objectWillChange: ObservableObjectPublisher { get }
@@ -78,7 +78,7 @@ extension ObservableObject {
 /// Any assignment (including in-place mutation) marks the runtime dirty so the host gets a new tree.
 @propertyWrapper
 public struct Published<Value> {
-    public var wrappedValue: Value { didSet { _Runtime.shared.dirty = true } }
+    public var wrappedValue: Value { didSet { _Runtime.shared.markDirty() } }
     public init(wrappedValue: Value) { self.wrappedValue = wrappedValue }
 }
 
@@ -137,6 +137,8 @@ public struct DismissAction {
 public struct EnvironmentValues {
     var nav: _NavState? = _Runtime.shared.nav   // captured at body time so `dismiss` still works from an action later
     var sheetDismiss: (() -> Void)? = _Runtime.shared.dismissHook
+    public var contentTransition: ContentTransition = _Runtime.shared.contentTransition
+    public var contentTransitionAddsDrawingGroup: Bool = _Runtime.shared.contentTransitionAddsDrawingGroup
     public init() {}
     public var colorScheme: ColorScheme { _Runtime.shared.appearance == "dark" ? .dark : .light }
     public var dynamicTypeSize: DynamicTypeSize { _Runtime.shared.dynamicType }
@@ -275,7 +277,7 @@ public struct AppStorage<Value> {
     }
     public var wrappedValue: Value {
         get { _defaultsGet(key).flatMap(read) ?? fallback }
-        nonmutating set { _defaultsSet(key, write(newValue)); _Runtime.shared.dirty = true }
+        nonmutating set { _defaultsSet(key, write(newValue)); _Runtime.shared.markDirty() }
     }
     public var projectedValue: Binding<Value> { Binding(get: { self.wrappedValue }, set: { self.wrappedValue = $0 }) }
 }

@@ -111,7 +111,7 @@ fn handle_line(line: &str) -> bool {
                 deliver_gesture(cb, ctx, &v);
             }
         }
-        Some("geometry") | Some("scroll_position") => {
+        Some("geometry") | Some("scroll_position") | Some("tick") => {
             if let Some(cb) = STATE.with(|s| s.borrow().on_layout) {
                 let owned = CString::new(line).unwrap_or_default();
                 unsafe { cb(ctx as *mut c_void, owned.as_ptr()) };
@@ -299,12 +299,14 @@ mod tests {
         simcore_runtime_set_layout_callback(Some(on_layout));
         assert!(handle_line(r#"{"type":"geometry","frames":{}}"#));
         assert!(handle_line(r#"{"type":"scroll_position","scroll":"0","target":"row"}"#));
+        assert!(handle_line(r#"{"type":"tick","time":120.0}"#));
         SEEN.with(|s| {
             assert_eq!(
                 s.borrow().as_slice(),
                 [
                     r#"l{"type":"geometry","frames":{}}"#,
                     r#"l{"type":"scroll_position","scroll":"0","target":"row"}"#,
+                    r#"l{"type":"tick","time":120.0}"#,
                 ]
             )
         });

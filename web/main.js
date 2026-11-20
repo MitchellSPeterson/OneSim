@@ -91,6 +91,7 @@ async function main() {
     sim.init({ device: vp.device, width: vp.width, height: vp.height, scale: fit(), dark, dynamicType: q.get("dynamicType") ?? "large" });
   }
   present();
+  if (!rn) animate();
   let resizing = 0;
   addEventListener("resize", () => {
     cancelAnimationFrame(resizing);

@@ -8,15 +8,15 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `AppStorage` | 14 | 🟠 |  | No `store:`, optionals, `URL`/`Data`/`Date`; in-memory on WASI |
 | `Bindable` | 17 | ⬜ |  |  |
 | `Binding` | 13 | ✅ |  |  |
-| `Environment` | 13 | 🟠 |  | `colorScheme`, `dismiss`, `dynamicTypeSize` only |
+| `Environment` | 13 | 🟠 |  | `colorScheme`, `dismiss`, `dynamicTypeSize`, `contentTransition`, `contentTransitionAddsDrawingGroup` only |
 | `EnvironmentObject` | 13 | ✅ |  |  |
 | `FetchRequest` | 13 | ⬜ |  |  |
 | `FocusedBinding` | 14 | ⬜ |  |  |
 | `FocusedObject` | 16 | ⬜ |  |  |
 | `FocusedValue` | 14 | ⬜ |  |  |
 | `FocusState` | 15 | ⬜ |  |  |
-| `GestureState` | 13 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | `resetTransaction` is ignored (no animations) |
-| `Namespace` | 14 | ⬜ |  |  |
+| `GestureState` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
+| `Namespace` | 14 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `ObservedObject` | 13 | ✅ |  |  |
 | `ScaledMetric` | 14 | ⬜ |  |  |
 | `SceneStorage` | 14 | ⬜ |  |  |

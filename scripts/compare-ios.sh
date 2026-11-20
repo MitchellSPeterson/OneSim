@@ -29,11 +29,13 @@ app="$guests/showcase"
 tabs="$guests/tabs"
 gest="$guests/gestures"
 layout="$guests/layout"
+anim="$guests/animation"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
   scripts/build-swift-app.sh examples/swiftui-tabs "$tabs"
   scripts/build-swift-app.sh examples/swiftui-gestures "$gest"
   scripts/build-swift-app.sh examples/swiftui-layout "$layout"
+  scripts/build-swift-app.sh examples/swiftui-animation "$anim"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
 # (docs/compatibility/versions.json): 26.5 on the iPhone 17 Pro in tests/fixtures/, 27.2 on the iPhone 18 Pro
@@ -119,6 +121,14 @@ for ios in ${SIMCORE_IOS:-26.5 27.2}; do
     lshot layout-paged --scroll 201,658,320,0
     echo "== SwiftUI layout (swiftui-layout, iOS $ios)"
     python3 scripts/compare_ios.py $fx/swiftui-layout-ios "$lout/onesim" "$lout" || rc=1
+    # SwiftUI animation: tests/fixtures/swiftui-animation-ios (see its README). --wait 600 settles all spring/ease animations.
+    aout=$out/swiftui-animation; mkdir -p "$aout/onesim"
+    ashot() { local name=$1; shift; ./target/debug/onesim run "$anim" "${base[@]}" "$@" --screenshot "$aout/onesim/$name.png" >/dev/null; }
+    ashot animation
+    ashot animation-dark   --dark
+    ashot animation-active --click Beta --click "Toggle Card" --click Increment --wait 600
+    echo "== SwiftUI animation (swiftui-animation, iOS $ios)"
+    python3 scripts/compare_ios.py $fx/swiftui-animation-ios "$aout/onesim" "$aout" || rc=1
   fi
   # React Native / Expo showcase: tests/fixtures/rn-showcase-ios (see its README). Needs node + `npm install` in the example.
   if want expo; then

@@ -267,6 +267,10 @@ impl App {
             log::debug!("pointer {ev:?}: {e}");
         }
         self.sched.invalidate(Reason::Input);
+        if !self.cfg.rn && self.host.is_animating(&self.id) {
+            self.sched.set_animating(true);
+            self.last_tick = Instant::now();
+        }
     }
 
     fn drag(&mut self, phase: DragPhase, p: (f64, f64)) {
@@ -503,6 +507,10 @@ impl App {
                 if d.shown {
                     self.hidden = None;
                     self.sched.drawn(Instant::now(), version);
+                    if !self.cfg.rn && !self.sched.animating() && self.host.is_animating(&self.id) {
+                        self.sched.set_animating(true);
+                        self.last_tick = Instant::now();
+                    }
                     let guest = std::mem::take(&mut self.guest);
                     self.stats.frame(Frame { guest, scene: scene_t, list: d.list, exec: d.exec, present: d.present }, os_initiated);
                 } else {

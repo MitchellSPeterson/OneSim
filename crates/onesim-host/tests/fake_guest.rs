@@ -392,3 +392,44 @@ fn rn_text_input_flow(host: &mut Host, id: &str) {
     assert!(find(&root, &|n| n.kind == "keyboard").is_none(), "return blurs a single-line input");
     assert_eq!(find(&root, &|n| n.id == "8").unwrap().value.as_deref(), Some("Ann"));
 }
+
+#[test]
+fn animation_and_schedule_flow() {
+    let dir = std::env::temp_dir().join(format!("onesim-anim-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let anim = alias(dir.join("fake-anim-guest"));
+
+    let mut host = Host::new();
+    let id = host.create_session(params(anim.to_str().unwrap())).unwrap();
+    host.start_session(&id).unwrap();
+
+    let root = host.inspect(&id).unwrap().1;
+    let w0 = find(&root, &|n| n.id == "a.box").unwrap().frame.width;
+    assert!((w0 - 40.0).abs() < 0.5, "initial width {w0}");
+    assert!(find(&root, &|n| n.text.as_deref() == Some("Tick: 0")).is_some());
+    assert!(!host.is_animating(&id));
+
+    // Toggle starts a 400ms linear width animation (40 -> 200) and schedules a guest tick at +100ms.
+    let (_, acted) = click(&mut host, &id, &labelled("button", "Toggle"));
+    assert!(acted);
+    let _ = host.inspect(&id).unwrap();
+    assert!(host.is_animating(&id), "animation + schedule should be active");
+
+    // Advance 200ms: guest tick fires at +100ms and box width is halfway (~120pt).
+    host.wait(&id, 200.0).unwrap();
+    let root = host.inspect(&id).unwrap().1;
+    let w_mid = find(&root, &|n| n.id == "a.box").unwrap().frame.width;
+    assert!(w_mid > 60.0 && w_mid < 180.0, "mid-flight width should interpolate, got {w_mid}");
+    assert!(find(&root, &|n| n.text.as_deref() == Some("Tick: 1")).is_some(), "scheduled tick should have fired");
+    assert!(host.is_animating(&id), "400ms animation should still be active at 200ms");
+
+    // Advance another 300ms (total 500ms > 400ms): animation settles at 200pt.
+    host.wait(&id, 300.0).unwrap();
+    let root = host.inspect(&id).unwrap().1;
+    let w_end = find(&root, &|n| n.id == "a.box").unwrap().frame.width;
+    assert!((w_end - 200.0).abs() < 0.5, "settled width {w_end}");
+    assert!(!host.is_animating(&id), "animation and schedule should have settled");
+
+    host.shutdown();
+    let _ = std::fs::remove_dir_all(dir);
+}

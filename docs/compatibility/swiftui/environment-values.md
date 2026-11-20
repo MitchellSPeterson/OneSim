@@ -33,8 +33,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.calendar` | 13 | ⬜ |  |  |
 | `\.colorScheme` | 13 | ✅ |  |  |
 | `\.colorSchemeContrast` | 13 | ⬜ |  |  |
-| `\.contentTransition` | 16 | ⬜ |  |  |
-| `\.contentTransitionAddsDrawingGroup` | 16 | ⬜ |  |  |
+| `\.contentTransition` | 16 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
+| `\.contentTransitionAddsDrawingGroup` | 16 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Readable in environment; drawing-group flag has no separate effect |
 | `\.controlSize` | 15 | ⬜ |  |  |
 | `\.defaultMinListHeaderHeight` | 13 | ⬜ |  |  |
 | `\.defaultMinListRowHeight` | 13 | ⬜ |  |  |

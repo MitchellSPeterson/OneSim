@@ -10,7 +10,7 @@ use onesim_protocol::{Appearance, DynamicTypeSize, GuestMessage, HostMessage, Io
 use onesim_protocol::TouchPhase;
 use onesim_render::rn_input::{effect_messages, Out, RnCtx, RnInput};
 use onesim_render::display::DisplayList;
-use onesim_render::{build_scene, Builder, device, look, render, resolve_label, Device, DEFAULT_DEVICE, DEVICES, DragPhase, Effect, Fonts, Interaction, Scene, SceneParams};
+use onesim_render::{build_scene, Builder, device, look, render, resolve_label, Animator, Device, DEFAULT_DEVICE, DEVICES, DragPhase, Effect, Fonts, Interaction, Scene, SceneParams};
 use std::cell::RefCell;
 use std::ffi::{c_char, c_void, CStr, CString};
 
@@ -26,8 +26,7 @@ struct State {
     on_env: EnvCb,
     on_text: TextCb,
     on_gesture: GestureCb,
-    /// ABI parity with `onesim-runtime`. The web host does not deliver geometry lines.
-    #[allow(dead_code)]
+    /// Section M/N layout & tick callback (`geometry` / `scroll_position` / `tick`).
     on_layout: LayoutCb,
     version: Option<u64>,
     tree: Option<ViewNode>,
@@ -41,6 +40,10 @@ struct State {
     dynamic_type: DynamicTypeSize,
     ios: IosVersion,
     inter: Interaction,
+    anim: Animator,
+    clock_ms: f64,
+    guest_due_ms: Option<f64>,
+    last_anim_ver: Option<u64>,
     /// Set before a guest callback; a tree submit clears it by drawing.
     stale: bool,
     initialized: bool,
@@ -74,6 +77,7 @@ thread_local! {
     static STATE: RefCell<State> = RefCell::new(State {
         ctx: 0, on_action: None, on_env: None, on_text: None, on_gesture: None, on_layout: None, version: None, tree: None, scene: None,
         fonts: None, device: device(DEFAULT_DEVICE).unwrap(), viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios27, inter: Interaction::default(),
+        anim: Animator::new(), clock_ms: 0.0, guest_due_ms: None, last_anim_ver: None,
         stale: false, initialized: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), output: 0, builder: Builder::new(), dl: Vec::new(), unread: None, buf: Vec::new(), rn: None,
     });
     static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
@@ -101,7 +105,16 @@ fn draw(s: &mut State) {
         status_bar: true,
         chrome: s.inter.chrome(),
     };
-    let scene = build_scene(root, &params, fonts);
+    let mut scene = build_scene(root, &params, fonts);
+    if s.rn.is_none() {
+        if s.version != s.last_anim_ver {
+            s.anim.update(&scene);
+            s.last_anim_ver = s.version;
+        }
+        if s.anim.is_animating() {
+            scene = s.anim.render_scene(&scene);
+        }
+    }
     if s.output == 1 {
         let mut list = s.builder.build(&scene, fonts, s.scale);
         if let Some(old) = s.unread.take() {
@@ -178,12 +191,21 @@ pub extern "C" fn simcore_runtime_set_layout_callback(on_layout: LayoutCb) {
     STATE.with(|s| s.borrow_mut().on_layout = on_layout);
 }
 
-/// Web has no host pipe. Guest `scroll_to_id` lines are dropped.
+/// Guest JSON line (`scroll_to_id` dropped; `schedule` updates the animation tick deadline).
 ///
 /// # Safety
-/// `line` is unused.
+/// `line` must be NUL-terminated or null.
 #[no_mangle]
-pub unsafe extern "C" fn simcore_send_line(_line: *const c_char) -> i32 {
+pub unsafe extern "C" fn simcore_send_line(line: *const c_char) -> i32 {
+    if !line.is_null() {
+        if let Ok(text) = CStr::from_ptr(line).to_str() {
+            if let Ok(GuestMessage::Schedule { after_ms }) = serde_json::from_str::<GuestMessage>(text.trim()) {
+                with(|s| {
+                    s.guest_due_ms = after_ms.map(|ms| s.clock_ms + ms.max(0.0));
+                });
+            }
+        }
+    }
     0
 }
 
@@ -550,19 +572,41 @@ pub extern "C" fn simcore_web_drag(phase: i32, x: f64, y: f64, t: f64) -> i32 {
     e.map_or(0, dispatch)
 }
 
-/// Advance scroll animations by `dt_ms`. Returns 1 while anything moved (redrawn); 0 = at rest.
+/// Advance scroll animations, SwiftUI animations, and scheduled guest ticks by `dt_ms`.
+/// Returns 1 while anything is still active (redrawn); 0 = at rest.
 #[no_mangle]
 pub extern "C" fn simcore_web_tick(dt_ms: f64) -> i32 {
-    let moved = with(|s| s.scene.as_ref().is_some_and(|sc| s.inter.tick(sc, dt_ms / 1000.0)));
-    if moved {
+    let dt_ms = dt_ms.max(0.0);
+    let dt = dt_ms / 1000.0;
+    let tick_guest = with(|s| {
+        s.clock_ms += dt_ms;
+        if s.guest_due_ms.is_some_and(|due| s.clock_ms + 1e-6 >= due) {
+            s.guest_due_ms = None;
+            Some((s.ctx, s.on_layout, s.clock_ms))
+        } else {
+            None
+        }
+    });
+    if let Some((ctx, Some(cb), time)) = tick_guest {
+        if let Ok(msg) = CString::new(format!(r#"{{"type":"tick","time":{time}}}"#)) {
+            unsafe { cb(ctx as *mut c_void, msg.as_ptr()) };
+        }
+    }
+    let (scroll_moved, anim_moved) = with(|s| {
+        let sm = s.scene.as_ref().is_some_and(|sc| s.inter.tick(sc, dt));
+        let am = s.anim.tick(dt);
+        (sm, am)
+    });
+    if scroll_moved || anim_moved || tick_guest.is_some() {
         with(draw);
     }
     // A finger resting on a gesture view keeps reporting (long presses fire while held).
     let held = with(|s| s.inter.holding());
     if held {
-        dispatch(with(|s| s.inter.hold(dt_ms / 1000.0)));
+        dispatch(with(|s| s.inter.hold(dt)));
     }
-    (moved || held) as i32
+    let more = with(|s| s.anim.is_animating() || s.guest_due_ms.is_some());
+    (scroll_moved || anim_moved || held || more) as i32
 }
 
 /// Keyboard input for the focused field; the payload is `len` UTF-8 bytes in the scratch buffer.
