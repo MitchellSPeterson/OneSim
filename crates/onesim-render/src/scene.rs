@@ -314,7 +314,7 @@ pub struct Node {
     pub pinned: Option<String>,
     /// Direct child of `.scrollTargetLayout()`.
     pub scroll_target: bool,
-    /// Animation / transition / matchedGeometryEffect metadata (protocol section N).
+    /// Animation / transition / matchedGeometryEffect metadata (protocol section O).
     pub anim: Option<Box<NodeAnim>>,
     /// False for layout-only helper nodes (clip/opacity layers); hidden from inspection.
     pub inspect: bool,

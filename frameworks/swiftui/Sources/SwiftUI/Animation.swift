@@ -6,7 +6,7 @@ import WASILibc
 #endif
 
 // Animation, transitions, matchedGeometryEffect, contentTransition, PhaseAnimator, KeyframeAnimator,
-// and TimelineView (docs/protocol.md section N).
+// and TimelineView (docs/protocol.md section O).
 
 // MARK: - VectorArithmetic & Animatable
 
@@ -625,23 +625,30 @@ struct _AnimationImplicitView<Content: View>: View, _Flattenable {
     }
 }
 
+private func _applyTransaction(_ tx: Transaction, to nodes: [Node], rt: _Runtime) -> [Node] {
+    if tx.disablesAnimations {
+        return nodes.map { var n = $0; n["modifiers"] = ((n["modifiers"] as? [Node]) ?? []) + [["animation": NSNull()]]; return n }
+    }
+    if let anim = tx.animation {
+        let mod: Node = ["animation": anim._wire(token: rt.nextAnimToken())]
+        return nodes.map { var n = $0; n["modifiers"] = ((n["modifiers"] as? [Node]) ?? []) + [mod]; return n }
+    }
+    return nodes
+}
+
 struct _TransactionView<Content: View>: View, _Flattenable {
     typealias Body = Never
     var body: Never { fatalError() }
     let content: Content, transform: (inout Transaction) -> Void
     func _children(_ path: String) -> [Node] {
         let rt = _Runtime.shared
-        var tx = rt.pendingTransaction ?? Transaction()
+        let prevActive = rt.activeTransaction
+        var tx = prevActive ?? Transaction()
         transform(&tx)
+        rt.activeTransaction = tx
         let nodes = _modTargets(content, path)
-        if tx.disablesAnimations {
-            return nodes.map { var n = $0; n["modifiers"] = ((n["modifiers"] as? [Node]) ?? []) + [["animation": NSNull()]]; return n }
-        }
-        if let anim = tx.animation {
-            let mod: Node = ["animation": anim._wire(token: rt.nextAnimToken())]
-            return nodes.map { var n = $0; n["modifiers"] = ((n["modifiers"] as? [Node]) ?? []) + [mod]; return n }
-        }
-        return nodes
+        rt.activeTransaction = prevActive
+        return _applyTransaction(tx, to: nodes, rt: rt)
     }
 }
 
@@ -654,16 +661,9 @@ struct _TransactionValueView<Content: View, V: Equatable>: View, _Flattenable {
         let changed = rt.noteAnimValue(path, value)
         let nodes = _modTargets(content, path)
         guard changed else { return nodes }
-        var tx = Transaction()
+        var tx = rt.activeTransaction ?? Transaction()
         transform(&tx)
-        if tx.disablesAnimations {
-            return nodes.map { var n = $0; n["modifiers"] = ((n["modifiers"] as? [Node]) ?? []) + [["animation": NSNull()]]; return n }
-        }
-        if let anim = tx.animation {
-            let mod: Node = ["animation": anim._wire(token: rt.nextAnimToken())]
-            return nodes.map { var n = $0; n["modifiers"] = ((n["modifiers"] as? [Node]) ?? []) + [mod]; return n }
-        }
-        return nodes
+        return _applyTransaction(tx, to: nodes, rt: rt)
     }
 }
 
@@ -1552,6 +1552,7 @@ final class _KeyframeState {
     var active = false
     var startMs: Double = 0
     var lastTrigger: Any? = nil
+    var settledValue: Any? = nil
 }
 
 public struct KeyframeAnimator<Value, KeyframePath: Keyframes, Content: View>: View, _Flattenable where KeyframePath.Value == Value {
@@ -1609,7 +1610,8 @@ public struct KeyframeAnimator<Value, KeyframePath: Keyframes, Content: View>: V
         if !st.initialized {
             st.initialized = true
             st.lastTrigger = trigger
-            if triggerChanged == nil && repeating && timeline.duration > 0 {
+            // Non-triggered KeyframeAnimator starts immediately (repeating or one-shot when repeating == false).
+            if triggerChanged == nil && timeline.duration > 0 {
                 st.active = true
                 st.startMs = rt.clockMs
             }
@@ -1618,6 +1620,7 @@ public struct KeyframeAnimator<Value, KeyframePath: Keyframes, Content: View>: V
             if timeline.duration > 0 {
                 st.active = true
                 st.startMs = rt.clockMs
+                st.settledValue = nil
             }
         }
 
@@ -1629,8 +1632,14 @@ public struct KeyframeAnimator<Value, KeyframePath: Keyframes, Content: View>: V
             } else if elapsed >= timeline.duration - 1e-6 {
                 elapsed = timeline.duration
                 st.active = false
+                let finalVal = timeline.value(time: elapsed)
+                st.settledValue = finalVal
+                currentVal = finalVal
+                return SwiftUI._children(content(currentVal), path)
             }
             currentVal = timeline.value(time: elapsed)
+        } else if let settled = st.settledValue as? Value {
+            currentVal = settled
         } else {
             currentVal = initialValue
         }
@@ -1710,8 +1719,7 @@ public struct PeriodicTimelineSchedule: TimelineSchedule {
     public func entries(from startDate: Date, mode: TimelineScheduleMode) -> Entries {
         let step = mode == .lowFrequency ? max(interval, 1.0) : interval
         let diff = startDate.timeIntervalSince(self.startDate)
-        let n = diff >= 0 ? floor(diff / step) : floor(diff / step)
-        let first = self.startDate.addingTimeInterval(n * step)
+        let first = diff <= 0 ? self.startDate : self.startDate.addingTimeInterval(floor(diff / step) * step)
         return Entries(current: first, interval: step)
     }
 }
@@ -1812,10 +1820,6 @@ public struct TimelineViewDefaultContext {
     public init(date: Date, cadence: Cadence = .live) { self.date = date; self.cadence = cadence }
 }
 
-final class _TimelineState {
-    var lastEntry: Date? = nil
-}
-
 public struct TimelineView<Schedule: TimelineSchedule, Content: View>: View, _Flattenable {
     public typealias Body = Never
     public var body: Never { fatalError() }
@@ -1830,15 +1834,6 @@ public struct TimelineView<Schedule: TimelineSchedule, Content: View>: View, _Fl
 
     func _children(_ path: String) -> [Node] {
         let rt = _Runtime.shared
-        let key = path + "#timeline"
-        rt.touched.insert(key)
-        let st: _TimelineState
-        if let existing = rt.slots[key] as? _TimelineState {
-            st = existing
-        } else {
-            st = _TimelineState()
-            rt.slots[key] = st
-        }
         let now = rt.currentDate
         let cadence: TimelineViewDefaultContext.Cadence
         if schedule is AnimationTimelineSchedule { cadence = .live }
@@ -1858,7 +1853,6 @@ public struct TimelineView<Schedule: TimelineSchedule, Content: View>: View, _Fl
                 break
             }
         }
-        st.lastEntry = activeDate
 
         if let next = nextDate {
             let delayMs = max(1.0, (next.timeIntervalSince1970 - now.timeIntervalSince1970) * 1000.0)

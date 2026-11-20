@@ -754,7 +754,7 @@ Host → guest (delivered to `simcore_runtime_set_layout_callback`):
 {"type":"tick","time":16.0}
 ```
 
-Advances the guest's monotonic animation clock (`time` in ms; starts at 0). On normal renders (`action`, launch, `environment`), any changed `schedule` line is emitted before `tree`; in response to `tick`, the guest emits any new `tree` first and always terminates with a `schedule` line so the host observes both atomically.
+Advances the guest's monotonic animation clock (`time` in ms; starts at 0). On normal renders (`action`, launch, `environment`), any changed `schedule` line is emitted before `tree`; in response to `tick`, the guest emits any new `tree` first and always terminates with a `schedule` line so the host observes both atomically. The guest optionally reads `SIMCORE_TIME` (Unix epoch seconds as a decimal float) at launch to anchor `TimelineView` / `Date` deterministically in tests.
 
 ### Host animation semantics
 

@@ -34,7 +34,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.colorScheme` | 13 | ✅ |  |  |
 | `\.colorSchemeContrast` | 13 | ⬜ |  |  |
 | `\.contentTransition` | 16 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `\.contentTransitionAddsDrawingGroup` | 16 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Readable in environment; drawing-group flag has no separate effect |
+| `\.contentTransitionAddsDrawingGroup` | 16 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Read-only default `false`; `.environment(_:_:)` is not implemented |
 | `\.controlSize` | 15 | ⬜ |  |  |
 | `\.defaultMinListHeaderHeight` | 13 | ⬜ |  |  |
 | `\.defaultMinListRowHeight` | 13 | ⬜ |  |  |

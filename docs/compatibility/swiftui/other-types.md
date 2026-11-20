@@ -129,7 +129,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `EmptyVisualEffect` | 17 | ⬜ |  |  |
 | `EmptyWidgetConfiguration` | 14 | ⬜ |  |  |
 | `EnabledTextSelectability` | 15 | ⬜ |  |  |
-| `EnvironmentValues` | 13 | 🟠 |  | `colorScheme`, `dismiss`, `dynamicTypeSize` only |
+| `EnvironmentValues` | 13 | 🟠 |  | `colorScheme`, `dismiss`, `dynamicTypeSize`, `contentTransition`, `contentTransitionAddsDrawingGroup` only |
 | `EventModifiers` | 13 | ⬜ |  |  |
 | `EveryMinuteTimelineSchedule` | 15 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `ExplicitTimelineSchedule` | 15 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |

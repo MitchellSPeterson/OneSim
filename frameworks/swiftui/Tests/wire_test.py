@@ -519,10 +519,12 @@ env = dict(os.environ, SIMCORE_TIME="1700000000")
 p = subprocess.Popen([sys.argv[11]], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
 assert recv(p)["type"] == "hello"
 t, scheds = recv_tree(p)
-# Explicit TimelineView starts at t0 -> tl:0 and schedules the next entry at t1 (1000 ms) before the tree.
-assert scheds and abs(scheds[-1] - 1000.0) < 5.0, scheds
-assert "tl:0" in alltexts(t["root"]) and "ct:numeric" in alltexts(t["root"]), alltexts(t["root"])
+# One-shot keyframeAnimator(repeating: false) runs from launch (16ms schedule); Periodic/Animation/EveryMinute schedules pass.
+assert scheds and scheds[-1] <= 20.0, scheds
+assert "tl:0" in alltexts(t["root"]) and "ct:numeric" in alltexts(t["root"]) and "sched:ok" in alltexts(t["root"]), alltexts(t["root"])
 assert "phase:0" in alltexts(t["root"]) and "kf:0,0" in alltexts(t["root"]), alltexts(t["root"])
+oneshot_node = next(n for n in walk(t["root"]) if n.get("text") == "oneshot")
+assert any(m.get("offset", {}).get("x") == 0 for m in oneshot_node.get("modifiers", [])), oneshot_node
 
 # @Namespace + matchedGeometryEffect: Src and Dst share the same namespace string.
 mgs = [m["matchedGeometry"] for n in walk(t["root"]) for m in n.get("modifiers", []) if "matchedGeometry" in m]
@@ -539,10 +541,12 @@ assert len(trs) == 2, trs
 assert trs[0]["insertion"]["edge"] == "leading" and trs[0]["insertion"]["opacity"] == 0 and trs[0]["removal"]["scale"] == 0.5, trs[0]
 assert trs[1]["insertion"]["opacity"] == 0 and trs[1]["insertion"]["offset"] == [-20, 0] and trs[1]["removal"]["offset"] == [20, 0], trs[1]
 
-# Advance clock to 200 ms -> completion fires (done:1).
+# Advance clock to 200 ms -> completion fires (done:1) and one-shot keyframeAnimator finishes at offset.x == 40.
 send(p, type="tick", time=200.0)
 t, _ = recv_tree(p)
 assert any("done:1" in s for s in alltexts(t["root"])), alltexts(t["root"])
+oneshot_node = next(n for n in walk(t["root"]) if n.get("text") == "oneshot")
+assert any(m.get("offset", {}).get("x") == 40 for m in oneshot_node.get("modifiers", [])), oneshot_node
 
 # .animation(_:value:) fires ONLY when `count` changes, NOT when `other` changes; .animation(nil, value:) emits null.
 send(p, type="action", id=button(t, "Inc")["action"], version=t["version"])
@@ -552,23 +556,30 @@ assert any("animation" in m and m["animation"]["curve"] == "easeInOut" for m in 
 assert any(m.get("contentTransition") == "numericTextUp" for m in cnt_node.get("modifiers", [])), cnt_node
 sup_node = next(n for n in walk(t["root"]) if n.get("text") == "Suppressed:1")
 assert any("animation" in m and m["animation"] is None for m in sup_node.get("modifiers", [])), sup_node
+# One-shot keyframeAnimator must hold its final value (40) on subsequent re-renders instead of snapping back to 0.
+oneshot_node = next(n for n in walk(t["root"]) if n.get("text") == "oneshot")
+assert any(m.get("offset", {}).get("x") == 40 for m in oneshot_node.get("modifiers", [])), oneshot_node
 
 send(p, type="action", id=button(t, "Other")["action"], version=t["version"])
 t, _ = recv_tree(p)
 cnt_node = next(n for n in walk(t["root"]) if n.get("text") == "Count:1")
 assert not any("animation" in m for m in cnt_node.get("modifiers", [])), "unchanged value must not re-animate"
 
-# CustomAnimation + TransactionKey via withTransaction.
+# CustomAnimation + TransactionKey via withTransaction + .transaction(_:) reading the active transaction.
 send(p, type="action", id=button(t, "Tx")["action"], version=t["version"])
 t, _ = recv_tree(p)
 assert any("tx:7" in s for s in alltexts(t["root"])), alltexts(t["root"])
 root_anims = [m["animation"] for m in t["root"].get("modifiers", []) if "animation" in m]
 assert len(root_anims) == 1 and "samples" in root_anims[0]["curve"], root_anims
+txmod_node = next(n for n in walk(t["root"]) if n.get("text") == "txmod:7")
+assert any("animation" in m and m["animation"] is None for m in txmod_node.get("modifiers", [])), txmod_node
 
-# PhaseAnimator: trigger advances 0 -> 1 immediately, then 1 -> 2 at +100ms, then 2 -> 0 at +200ms and stops.
+# PhaseAnimator + .phaseAnimator modifier: trigger advances 0 -> 1 (pm opacity 0.5) immediately, then 1 -> 2 at +100ms, then 2 -> 0 at +200ms and stops.
 send(p, type="action", id=button(t, "Phase")["action"], version=t["version"])
 t, _ = recv_tree(p)
 assert "phase:1" in alltexts(t["root"]), alltexts(t["root"])
+pm_node = next(n for n in walk(t["root"]) if n.get("text") == "pm")
+assert any(m.get("opacity") == 0.5 for m in pm_node.get("modifiers", [])), pm_node
 send(p, type="tick", time=300.0)
 t, _ = recv_tree(p)
 assert "phase:2" in alltexts(t["root"]), alltexts(t["root"])
@@ -587,10 +598,10 @@ send(p, type="tick", time=600.0)
 t, _ = recv_tree(p)
 assert "kf:100,50" in alltexts(t["root"]), alltexts(t["root"])
 
-# TimelineView(.explicit): advance to 1000ms -> tl:1, advance to 2000ms -> tl:2 and schedule clears (afterMs absent).
+# TimelineView(.explicit): advance to 1000ms -> tl:1 (and kf holds 100,50!), advance to 2000ms -> tl:2 and schedule clears (afterMs absent).
 send(p, type="tick", time=1000.0)
 t, _ = recv_tree(p)
-assert "tl:1" in alltexts(t["root"]), alltexts(t["root"])
+assert "tl:1" in alltexts(t["root"]) and "kf:100,50" in alltexts(t["root"]), alltexts(t["root"])
 send(p, type="tick", time=2000.0)
 t, _ = recv_tree(p)
 assert "tl:2" in alltexts(t["root"]), alltexts(t["root"])

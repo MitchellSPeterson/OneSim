@@ -151,10 +151,11 @@ final class _Runtime {
     var anchorScroll: [String: String] = [:]
     var scrolledTo: [String: String?] = [:]
     var scrollPos: [String: (String?) -> Void] = [:]
-    // Animation & transitions (section N).
+    // Animation & transitions (section O).
     var animToken: UInt64 = 0
     var currentTransaction: Transaction? = nil
     var pendingTransaction: Transaction? = nil
+    var activeTransaction: Transaction? = nil
     var animSeen: [String: Any] = [:], animNow: [String: Any] = [:]
     var contentTransition: ContentTransition = .identity
     var contentTransitionAddsDrawingGroup = false
@@ -268,6 +269,7 @@ final class _Runtime {
     private func _submitTree(emitSchedule: Bool = true) {
         let tx = pendingTransaction
         pendingTransaction = nil
+        activeTransaction = tx
         var tree = _evaluate()
         // Lifecycle callbacks run after the pass; if they dirtied state, re-evaluate (capped against onAppear loops).
         for _ in 0..<8 {
@@ -277,6 +279,7 @@ final class _Runtime {
             guard dirty else { break }
             tree = _evaluate()
         }
+        activeTransaction = nil
         // Attach any explicit `withAnimation` / `withTransaction` animation to the root node.
         if let tx {
             if tx.disablesAnimations {

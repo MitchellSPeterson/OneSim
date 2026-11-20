@@ -1,4 +1,4 @@
-//! SwiftUI scene animation & transition engine (docs/protocol.md section N).
+//! SwiftUI scene animation & transition engine (docs/protocol.md section O).
 //!
 //! Transport-agnostic (shared by the native host, native window, and browser Wasm build).
 //! Given each newly laid-out target [`Scene`], [`Animator`] diffs animatable visual properties,
@@ -452,7 +452,6 @@ struct MatchInsertTrack {
     from: Rect,
     props: MatchedProps,
     anchor: [f64; 2],
-    fade_in: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -484,6 +483,8 @@ pub struct Animator {
     /// Last displayed scene (after applying any in-flight tracks), used as the starting snapshot
     /// for newly triggered animations and fluid retargeting.
     displayed: Option<Scene>,
+    /// Last target scene (before interpolation), so unrelated tree updates preserve in-flight tracks.
+    last_target: Option<Scene>,
     /// Last seen animation token per node key so unchanged tokens don't re-trigger.
     tokens: HashMap<NodeKey, u64>,
     props: HashMap<NodeKey, PropTrack>,
@@ -506,26 +507,24 @@ impl Animator {
             || !self.content_ghosts.is_empty()
     }
 
-    /// Clear all active animations and snap to the next scene.
-    pub fn reset(&mut self) {
-        self.displayed = None;
-        self.tokens.clear();
-        self.props.clear();
-        self.inserts.clear();
-        self.match_inserts.clear();
-        self.ghosts.clear();
-        self.content_ghosts.clear();
-    }
-
     /// Ingest a new target `Scene` laid out from a new tree. Diffs against the previously
     /// displayed scene and starts/retargets any animations, transitions, matchedGeometryEffect
     /// morphs, and contentTransitions.
     pub fn update(&mut self, target: &Scene) {
         let Some(prev) = self.displayed.clone() else {
             self.record_tokens(target);
+            self.last_target = Some(target.clone());
             self.displayed = Some(target.clone());
             return;
         };
+        let prev_target = self.last_target.as_ref();
+        let mut prev_target_map: HashMap<NodeKey, usize> = HashMap::new();
+        if let Some(pt) = prev_target {
+            prev_target_map.reserve(pt.nodes.len());
+            for (i, n) in pt.nodes.iter().enumerate() {
+                prev_target_map.entry(node_key(n)).or_insert(i);
+            }
+        }
 
         let root_anim = find_root_animation(target);
 
@@ -573,7 +572,6 @@ impl Animator {
                     from: old_rect,
                     props: m.properties,
                     anchor: m.anchor,
-                    fade_in: true,
                 },
             );
             let old_sub = extract_ghost_subtree(&prev.nodes, pi);
@@ -607,7 +605,6 @@ impl Animator {
 
             // Keep any already-running track if the target hasn't changed and token didn't bump.
             let prev_tok = self.tokens.get(&key).copied().unwrap_or(0);
-            let cur_tok = anim.map_or(0, |a| a.token);
             let should_animate = match anim {
                 Some(spec) => spec.token == 0 || spec.token != prev_tok,
                 None => false,
@@ -682,18 +679,19 @@ impl Animator {
                     },
                 );
             } else if let Some(mut existing) = self.props.remove(&key) {
-                // Keep running existing track if target hasn't snapped away with animation disabled.
-                if anim.is_some() || cur_tok == prev_tok {
-                    // Update targets if only minor layout noise happened, otherwise keep track.
-                    if !any_prop_chg {
-                        existing.bounds = existing.bounds.map(|(a, _)| (a, n.bounds));
-                        next_props.insert(key.clone(), existing);
-                    }
+                // Keep running existing track when the target itself did not snap to a new value
+                // (e.g. an unrelated TimelineView tick arrived while this track is in flight).
+                let target_unchanged = prev_target
+                    .and_then(|pt| prev_target_map.get(&key).map(|&ti| &pt.nodes[ti]))
+                    .is_some_and(|old_t| !props_differ(old_t, n));
+                if target_unchanged {
+                    existing.bounds = existing.bounds.map(|(a, _)| (a, n.bounds));
+                    next_props.insert(key.clone(), existing);
                 }
             }
 
             // Content transition for text / symbol content changes.
-            if should_animate && ct != ContentTransitionKind::Identity && ct != ContentTransitionKind::Interpolate {
+            if should_animate && ct != ContentTransitionKind::Identity {
                 let text_changed = match (&pn.text, &n.text) {
                     (Some(a), Some(b)) => a.text != b.text,
                     _ => false,
@@ -819,6 +817,7 @@ impl Animator {
         }
 
         self.record_tokens(target);
+        self.last_target = Some(target.clone());
         let applied = self.apply(target);
         self.displayed = Some(applied);
     }
@@ -913,9 +912,7 @@ impl Animator {
                 let sub = subtree_indices(&out.nodes, i);
                 let live_to = out.nodes[i].bounds;
                 apply_matched_morph(&mut out.nodes, &sub, tr.from, live_to, tr.props, tr.anchor, p);
-                if tr.fade_in {
-                    mul_opacity(&mut out.nodes, &sub, p.clamp(0.0, 1.0) as f32);
-                }
+                mul_opacity(&mut out.nodes, &sub, p.clamp(0.0, 1.0) as f32);
             }
         }
 
@@ -929,7 +926,7 @@ impl Animator {
             let mut ghost = cg.old_node.clone();
             ghost.parent = out.nodes[idx].parent;
             match cg.kind {
-                ContentTransitionKind::Opacity => {
+                ContentTransitionKind::Opacity | ContentTransitionKind::Interpolate => {
                     out.nodes[idx].opacity *= p_clamped as f32;
                     ghost.opacity *= (1.0 - p_clamped) as f32;
                 }
@@ -953,7 +950,7 @@ impl Animator {
                     ghost.bounds.y -= cg.dir * travel * p;
                     ghost.opacity *= (1.0 - p_clamped) as f32;
                 }
-                ContentTransitionKind::Identity | ContentTransitionKind::Interpolate => {}
+                ContentTransitionKind::Identity => {}
             }
             extra_ghosts.push(ghost);
         }
@@ -1093,7 +1090,23 @@ fn extract_ghost_subtree(nodes: &[Node], root: usize) -> Vec<Node> {
         .collect()
 }
 
+fn props_differ(a: &Node, b: &Node) -> bool {
+    rect_diff(a.bounds, b.bounds)
+        || (a.opacity - b.opacity).abs() > 0.002
+        || matches!((a.fill, b.fill), (Some(ca), Some(cb)) if color_diff(ca, cb))
+        || matches!((a.stroke, b.stroke), (Some((ca, wa)), Some((cb, wb))) if color_diff(ca, cb) || (wa - wb).abs() > 0.05)
+        || matches!((a.vector.as_ref().and_then(|v| v.fill), b.vector.as_ref().and_then(|v| v.fill)), (Some(fa), Some(fb)) if color_diff(fa.color, fb.color))
+        || matches!((a.vector.as_ref().and_then(|v| v.stroke.as_ref()), b.vector.as_ref().and_then(|v| v.stroke.as_ref())), (Some(sa), Some(sb)) if color_diff(sa.color, sb.color) || (sa.line_width - sb.line_width).abs() > 0.05)
+        || ((a.radius - b.radius).abs() > 0.05 && a.radius < 1e4 && b.radius < 1e4)
+        || matches!((&a.text, &b.text), (Some(ta), Some(tb)) if color_diff(ta.color, tb.color))
+        || matches!((&a.symbol, &b.symbol), (Some(sa), Some(sb)) if color_diff(sa.color, sb.color))
+        || matches!((a.glyph, b.glyph), (Some((_, ca)), Some((_, cb))) if color_diff(ca, cb))
+}
+
 fn numeric_direction(kind: ContentTransitionKind, old: Option<&str>, new: Option<&str>) -> f64 {
+    if kind == ContentTransitionKind::NumericTextDown {
+        return -1.0;
+    }
     let parsed_old = old.and_then(extract_number);
     let parsed_new = new.and_then(extract_number);
     if let (Some(a), Some(b)) = (parsed_old, parsed_new) {
@@ -1101,10 +1114,7 @@ fn numeric_direction(kind: ContentTransitionKind, old: Option<&str>, new: Option
             return if b > a { 1.0 } else { -1.0 };
         }
     }
-    match kind {
-        ContentTransitionKind::NumericTextDown => -1.0,
-        _ => 1.0,
-    }
+    1.0
 }
 
 fn extract_number(s: &str) -> Option<f64> {
@@ -1326,5 +1336,81 @@ mod tests {
         assert!(!a.tick(0.2));
         let end = a.render_scene(&s2);
         assert_eq!(end.nodes.iter().filter(|n| n.text.is_some()).count(), 1);
+    }
+
+    #[test]
+    fn unrelated_tree_update_preserves_inflight_track() {
+        let mut a = Animator::new();
+        let make = |x: f64, tok: u64, tick_txt: &str| {
+            let mut b = Node::new("box", "shape");
+            b.bounds = Rect { x, y: 40.0, w: 40.0, h: 40.0 };
+            b.anim = (tok > 0).then(|| Box::new(NodeAnim { animation: Some(linear(0.4, tok)), ..Default::default() }));
+            let mut t = Node::new("clock", "text");
+            t.bounds = Rect { x: 0.0, y: 0.0, w: 60.0, h: 20.0 };
+            t.text = Some(TextRun {
+                text: tick_txt.into(),
+                font: FontSpec::new(14.0, 16.0, 400, crate::text::TextAlign::Leading),
+                color: Color::rgba(0.0, 0.0, 0.0, 1.0),
+                strike: false,
+                offset_x: 0.0,
+                spans: vec![],
+            });
+            make_scene(vec![b, t])
+        };
+        a.update(&make(0.0, 0, "0"));
+        let s1 = make(100.0, 1, "0");
+        a.update(&s1);
+        assert!(a.tick(0.1));
+        let mid1 = a.render_scene(&s1);
+        assert!((mid1.nodes[1].bounds.x - 25.0).abs() < 0.5);
+
+        // Unrelated non-animated update (e.g. TimelineView tick changing sibling text) must NOT snap `box`.
+        let s2 = make(100.0, 0, "1");
+        a.update(&s2);
+        assert!(a.is_animating(), "in-flight PropTrack must survive unrelated tree update");
+        assert!(a.tick(0.1));
+        let mid2 = a.render_scene(&s2);
+        assert!((mid2.nodes[1].bounds.x - 50.0).abs() < 0.5, "got {}", mid2.nodes[1].bounds.x);
+    }
+
+    #[test]
+    fn content_transition_down_and_interpolate() {
+        let mut a = Animator::new();
+        let make = |txt: &str, tok: u64, ct: ContentTransitionKind| {
+            let mut n = Node::new("cnt", "text");
+            n.bounds = Rect { x: 20.0, y: 100.0, w: 40.0, h: 20.0 };
+            n.text = Some(TextRun {
+                text: txt.into(),
+                font: FontSpec::new(17.0, 20.0, 400, crate::text::TextAlign::Leading),
+                color: Color::rgba(0.0, 0.0, 0.0, 1.0),
+                strike: false,
+                offset_x: 0.0,
+                spans: vec![],
+            });
+            n.anim = Some(Box::new(NodeAnim {
+                animation: (tok > 0).then(|| linear(0.4, tok)),
+                content_transition: ct,
+                ..Default::default()
+            }));
+            make_scene(vec![n])
+        };
+        // Explicit NumericTextDown rolls downward even when the parsed number increases.
+        a.update(&make("1", 0, ContentTransitionKind::NumericTextDown));
+        let s2 = make("2", 1, ContentTransitionKind::NumericTextDown);
+        a.update(&s2);
+        assert!(a.tick(0.2));
+        let mid = a.render_scene(&s2);
+        let ys: Vec<_> = mid.nodes.iter().filter_map(|n| n.text.as_ref().map(|_| n.bounds.y)).collect();
+        assert_eq!(ys.len(), 2);
+        assert!(ys[0] < 100.0 && ys[1] > 100.0, "NumericTextDown must roll downward: {ys:?}");
+        assert!(!a.tick(0.2));
+        let _ = a.render_scene(&s2);
+
+        // ContentTransitionKind::Interpolate cross-fades old and new text.
+        let s3 = make("Hello", 2, ContentTransitionKind::Interpolate);
+        a.update(&s3);
+        assert!(a.tick(0.2));
+        let mid_i = a.render_scene(&s3);
+        assert_eq!(mid_i.nodes.iter().filter(|n| n.text.is_some()).count(), 2, "Interpolate should cross-fade");
     }
 }

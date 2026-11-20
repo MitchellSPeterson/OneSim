@@ -25,7 +25,7 @@ pub enum GuestMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         anchor: Option<[f64; 2]>,
     },
-    /// SwiftUI animation/timeline wake-up request (section N): ask host for a `tick` after `afterMs` ms,
+    /// SwiftUI animation/timeline wake-up request (section O): ask host for a `tick` after `afterMs` ms,
     /// or cancel pending guest ticks when `None`.
     Schedule {
         #[serde(default, rename = "afterMs", skip_serializing_if = "Option::is_none")]
@@ -235,7 +235,7 @@ pub enum HostMessage {
     /// SwiftUI `.scrollPosition` writeback: the id of the topmost visible anchored view, or null.
     #[serde(rename = "scroll_position")]
     ScrollPosition { scroll: String, target: Option<String> },
-    /// SwiftUI guest clock tick (section N): session animation time in ms for `TimelineView`,
+    /// SwiftUI guest clock tick (section O): session animation time in ms for `TimelineView`,
     /// `PhaseAnimator`, `KeyframeAnimator`, and animation completion callbacks.
     Tick { time: f64 },
     /// React Native: host focus moved to / away from the text input `tag`.

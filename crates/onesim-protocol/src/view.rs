@@ -264,17 +264,17 @@ pub enum Modifier {
     ScrollTargetLayout(bool),
     /// `.scrollPosition(id:)` is attached to this scroll view.
     ScrollPosition,
-    /// `.animation` / `withAnimation` (section N). `None` disables animation for this subtree.
+    /// `.animation` / `withAnimation` (section O). `None` disables animation for this subtree.
     Animation(Option<Box<AnimationSpec>>),
-    /// `.transition` (section N): insertion and removal effects.
+    /// `.transition` (section O): insertion and removal effects.
     Transition(Box<TransitionSpec>),
-    /// `.matchedGeometryEffect` (section N).
+    /// `.matchedGeometryEffect` (section O).
     MatchedGeometry(Box<MatchedGeometryMod>),
-    /// `.contentTransition` (section N), inherited by `text` and `image` descendants.
+    /// `.contentTransition` (section O), inherited by `text` and `image` descendants.
     ContentTransition(ContentTransitionKind),
 }
 
-/// Animation timing curve (section N).
+/// Animation timing curve (section O).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum AnimationCurve {
@@ -323,7 +323,7 @@ fn default_true() -> bool {
     true
 }
 
-/// Wire description of a SwiftUI `Animation` (section N).
+/// Wire description of a SwiftUI `Animation` (section O).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AnimationSpec {
     pub curve: AnimationCurve,
@@ -352,7 +352,7 @@ pub enum TransitionEdge {
     Trailing,
 }
 
-/// Visual state at the active (inserted/removed) end of a `.transition` (section N).
+/// Visual state at the active (inserted/removed) end of a `.transition` (section O).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TransitionEffect {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -367,7 +367,7 @@ pub struct TransitionEffect {
     pub edge: Option<TransitionEdge>,
 }
 
-/// `.transition(_:)` (section N).
+/// `.transition(_:)` (section O).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct TransitionSpec {
     #[serde(default)]
@@ -391,7 +391,7 @@ fn default_center_anchor() -> [f64; 2] {
     [0.5, 0.5]
 }
 
-/// `.matchedGeometryEffect(id:in:properties:anchor:isSource:)` (section N).
+/// `.matchedGeometryEffect(id:in:properties:anchor:isSource:)` (section O).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MatchedGeometryMod {
     pub id: String,
@@ -404,7 +404,7 @@ pub struct MatchedGeometryMod {
     pub is_source: bool,
 }
 
-/// `.contentTransition(_:)` (section N).
+/// `.contentTransition(_:)` (section O).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ContentTransitionKind {

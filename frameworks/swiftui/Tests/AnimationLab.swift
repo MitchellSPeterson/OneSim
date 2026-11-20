@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Wire-test app for SwiftUI animation & transitions (protocol section N).
+// Wire-test app for SwiftUI animation & transitions (protocol section O).
 
 struct SlideFadeTransition: Transition {
     func body(content: Content, phase: TransitionPhase) -> some View {
@@ -112,9 +112,48 @@ struct AnimationLab: View {
                 }
             }
 
-            TimelineView(.explicit([t0, t1, t2])) { ctx in
-                Text("tl:\(Int(ctx.date.timeIntervalSince(t0)))")
+            HStack {
+                TimelineView(.explicit([t0, t1, t2])) { ctx in
+                    Text("tl:\(Int(ctx.date.timeIntervalSince(t0)))")
+                }
+                Text("txmod:\(txVal)")
+                    .transaction { tx in
+                        if tx[CustomTxKey.self] == 7 { tx.disablesAnimations = true }
+                    }
+                Text("pm")
+                    .phaseAnimator([10, 20], trigger: phaseTrigger) { content, p in
+                        content.opacity(p == 20 ? 0.5 : 1.0)
+                    } animation: { _ in .linear(duration: 0.1) }
+                Text("oneshot")
+                    .keyframeAnimator(initialValue: 0.0, repeating: false) { content, v in
+                        content.offset(x: v, y: 0)
+                    } keyframes: { _ in
+                        KeyframeTrack {
+                            LinearKeyframe(40.0, duration: 0.1)
+                        }
+                    }
+                Text(AnimationLab.scheduleChecks(t0: t0))
             }
         }
+    }
+
+    static func scheduleChecks(t0: Date) -> String {
+        let futureStart = t0.addingTimeInterval(10)
+        let pEntries = PeriodicTimelineSchedule(from: futureStart, by: 5).entries(from: t0, mode: .normal)
+        var pIter = pEntries.makeIterator()
+        let p0 = pIter.next()!.timeIntervalSince(t0)
+        let p1 = pIter.next()!.timeIntervalSince(t0)
+
+        let aPaused = AnimationTimelineSchedule(minimumInterval: 0.1, paused: true).entries(from: t0, mode: .normal)
+        var aIter = aPaused.makeIterator()
+        let aOk = (aIter.next() != nil) && (aIter.next() == nil)
+
+        let mEntries = EveryMinuteTimelineSchedule().entries(from: t0.addingTimeInterval(25), mode: .normal)
+        var mIter = mEntries.makeIterator()
+        let m0 = mIter.next()!.timeIntervalSince1970
+        let m1 = mIter.next()!.timeIntervalSince1970
+        let mOk = (m1 - m0 == 60.0) && (Int(m0) % 60 == 0)
+
+        return (p0 == 10.0 && p1 == 15.0 && aOk && mOk) ? "sched:ok" : "sched:bad:\(p0),\(p1),\(aOk),\(mOk)"
     }
 }

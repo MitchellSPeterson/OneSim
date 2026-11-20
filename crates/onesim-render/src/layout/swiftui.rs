@@ -228,9 +228,9 @@ struct Env {
     img: ImageScale,
     /// Laid out as (part of) a list row: `Label` uses the fixed icon column and accent icon.
     in_row: bool,
-    /// Active animation index into `Ctx::anims` (section N); `None` = no animation.
+    /// Active animation index into `Ctx::anims` (section O); `None` = no animation.
     anim: Option<u32>,
-    /// Inherited `.contentTransition` (section N).
+    /// Inherited `.contentTransition` (section O).
     content_transition: ContentTransitionKind,
 }
 

@@ -74,7 +74,7 @@ struct Inner {
     /// The host is stopping the guest on purpose (its exit is not a crash).
     stopping: bool,
     stopped_emitted: bool,
-    /// SwiftUI animation wake-up (section N): `Some(Some(ms))` = request tick in `ms`; `Some(None)` = cancel.
+    /// SwiftUI animation wake-up (section O): `Some(Some(ms))` = request tick in `ms`; `Some(None)` = cancel.
     schedule_update: Option<Option<f64>>,
     /// Bumped on every `schedule` message so `send_tick_and_wait` unblocks even when no tree changes.
     schedule_gen: u64,
@@ -141,7 +141,7 @@ pub struct Session {
     pub ios: IosVersion,
     /// Scroll, focus, shift and press state (shared with the browser backend).
     pub inter: Interaction,
-    /// SwiftUI animation / transition state machine (section N).
+    /// SwiftUI animation / transition state machine (section O).
     pub anim: Animator,
     /// Monotonic animation clock in milliseconds (starts at 0).
     pub clock_ms: f64,

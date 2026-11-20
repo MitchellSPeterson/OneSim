@@ -610,12 +610,14 @@ pub extern "C" fn simcore_web_tick(dt_ms: f64) -> i32 {
             unsafe { cb(ctx as *mut c_void, msg.as_ptr()) };
         }
     }
-    let (scroll_moved, anim_moved) = with(|s| {
+    let (scroll_moved, was_animating, anim_moved) = with(|s| {
         let sm = s.scene.as_ref().is_some_and(|sc| s.inter.tick(sc, dt));
+        let was = s.anim.is_animating();
         let am = s.anim.tick(dt);
-        (sm, am)
+        (sm, was, am)
     });
-    if scroll_moved || anim_moved || tick_guest.is_some() {
+    let redrew = scroll_moved || was_animating || anim_moved || tick_guest.is_some();
+    if redrew {
         with(draw);
     }
     // A finger resting on a gesture view keeps reporting (long presses fire while held).
@@ -624,7 +626,8 @@ pub extern "C" fn simcore_web_tick(dt_ms: f64) -> i32 {
         dispatch(with(|s| s.inter.hold(dt)));
     }
     let more = with(|s| s.anim.is_animating() || s.guest_due_ms.is_some());
-    (scroll_moved || anim_moved || held || more) as i32
+    // Return 1 if we redrew (including the final settling frame) so the browser presents it; the next tick returns 0.
+    (redrew || held || more) as i32
 }
 
 /// Keyboard input for the focused field; the payload is `len` UTF-8 bytes in the scratch buffer.
@@ -1076,5 +1079,23 @@ mod tests {
         let before = with(|s| s.fb.clone());
         assert_eq!(simcore_web_scroll(200.0, 400.0, 0.0, 200.0), 1);
         assert!(with(|s| s.fb != before), "compose scroll should redraw scrolled pixels");
+    }
+
+    #[test]
+    fn web_tick_redraws_final_settling_frame() {
+        let _ = simcore_web_init(200.0, 200.0, 1.0, 0);
+        let t1 = r#"{"kind":"rectangle","id":"r","modifiers":[{"frame":{"width":40.0,"height":40.0}}]}"#;
+        let t2 = r#"{"kind":"rectangle","id":"r","modifiers":[{"frame":{"width":160.0,"height":40.0}},{"animation":{"curve":"linear","duration":0.2,"token":1}}]}"#;
+        assert_eq!(unsafe { simcore_submit_tree(t1.as_ptr(), t1.len(), 1) }, 0);
+        assert_eq!(unsafe { simcore_submit_tree(t2.as_ptr(), t2.len(), 2) }, 0);
+        // Mid-flight at 100ms: moving, returns 1.
+        assert_eq!(simcore_web_tick(100.0), 1);
+        let fb_mid = with(|s| s.fb.clone());
+        // Final settling tick at +100ms (total 200ms): animation finishes, MUST redraw settled frame and return 1.
+        assert_eq!(simcore_web_tick(100.0), 1);
+        let fb_end = with(|s| s.fb.clone());
+        assert!(fb_end != fb_mid, "final settling tick must redraw framebuffer to settled state");
+        // Next tick at rest: nothing moves, returns 0.
+        assert_eq!(simcore_web_tick(16.0), 0);
     }
 }
