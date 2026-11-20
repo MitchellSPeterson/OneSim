@@ -122,7 +122,7 @@ final class _Runtime {
     var pickerStyle = "menu"
     var tags: [String: AnyHashable] = [:]   // `.tag(_:)` values by node id, read by `Picker`
     var nav: _NavState?
-    var envObjects: [ObjectIdentifier: AnyObject] = [:]
+    var envObjects: [ObjectIdentifier: Any] = [:]   // `.environmentObject` / `.environment` objects and EnvironmentKey values
     // Presentation layer: set by .alert / .sheet while evaluating; hoisted above the tree by `_evaluate`.
     var layers: [Node] = []          // alerts, dialogs, sheets, covers, bottom to top (a sheet reserves its slot before its content)
     var autoDismiss: (() -> Void)?   // runs after any Button in an alert's actions
@@ -198,7 +198,8 @@ final class _Runtime {
         anchorScrollNow.removeAll(keepingCapacity: true)
         scrollPos.removeAll(keepingCapacity: true)
         touched.removeAll(keepingCapacity: true)
-        var tree = render()
+        // Any `@Observable` property read while evaluating dirties the tree when it next changes (one-shot; re-armed each pass).
+        var tree = withObservationTracking(render) { _Runtime.shared.dirty = true }
         if !layers.isEmpty { tree = ["kind": "presentation", "id": "presentation", "content": tree, "layers": layers] }
         slots = slots.filter { touched.contains($0.key) }
         changeSeen = changeNow

@@ -101,6 +101,24 @@ public struct Font {
         public static let bold = Weight(name: "bold"), heavy = Weight(name: "heavy"), black = Weight(name: "black")
     }
     public enum Design { case `default`, serif, rounded, monospaced }
+    public enum TextStyle: CaseIterable, Hashable, Sendable {
+        case largeTitle, title, title2, title3, headline, subheadline, body, callout, footnote, caption, caption2
+        /// Point sizes for xSmall...accessibility5 (Apple's iOS table; same as `TextStyle::size_at` in onesim-protocol).
+        var sizes: [Double] {
+            switch self {
+            case .largeTitle: return [31, 32, 33, 34, 36, 38, 40, 44, 48, 52, 56, 60]
+            case .title: return [25, 26, 27, 28, 30, 32, 34, 38, 43, 48, 53, 58]
+            case .title2: return [19, 20, 21, 22, 24, 26, 28, 34, 39, 44, 50, 56]
+            case .title3: return [17, 18, 19, 20, 22, 24, 26, 31, 37, 43, 49, 55]
+            case .headline, .body: return [14, 15, 16, 17, 19, 21, 23, 28, 33, 40, 47, 53]
+            case .callout: return [13, 14, 15, 16, 18, 20, 22, 26, 32, 38, 44, 51]
+            case .subheadline: return [12, 13, 14, 15, 17, 19, 21, 25, 30, 36, 42, 49]
+            case .footnote: return [12, 12, 12, 13, 15, 17, 19, 23, 27, 33, 38, 44]
+            case .caption: return [11, 11, 11, 12, 14, 16, 18, 22, 26, 32, 37, 43]
+            case .caption2: return [11, 11, 11, 11, 13, 15, 17, 20, 24, 29, 34, 40]
+            }
+        }
+    }
     static func style(_ s: String) -> Font { Font(json: ["style": s]) }
     public static let largeTitle = style("largeTitle"), title = style("title"), title2 = style("title2"), title3 = style("title3")
     public static let headline = style("headline"), subheadline = style("subheadline"), body = style("body"), callout = style("callout")
@@ -138,9 +156,9 @@ struct _CtxView<Content: View>: View, _Flattenable {
     let apply: (_Runtime) -> Void
     func _children(_ path: String) -> [Node] {
         let rt = _Runtime.shared
-        let saved = (rt.disabled, rt.buttonStyle, rt.pickerStyle)
+        let saved = (rt.disabled, rt.buttonStyle, rt.pickerStyle, rt.envObjects)
         apply(rt)
-        defer { (rt.disabled, rt.buttonStyle, rt.pickerStyle) = saved }
+        defer { (rt.disabled, rt.buttonStyle, rt.pickerStyle, rt.envObjects) = saved }
         return SwiftUI._children(content, path)
     }
 }

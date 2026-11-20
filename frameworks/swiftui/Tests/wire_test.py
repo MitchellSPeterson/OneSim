@@ -503,4 +503,35 @@ send(p, type="action", id=button(t, "Jump")["action"], version=t["version"])
 line = recv(p)
 assert line["type"] == "scroll_to_id" and isinstance(line.get("scroll"), str) and line["scroll"] and line["target"] == "there", line
 finish(p)
+
+# --- state and environment (#47)
+p = spawn(sys.argv[10], env={**os.environ, "SIMCORE_DYNAMIC_TYPE": "accessibility1"})
+assert recv(p)["type"] == "hello"; t = recv(p)
+tx = alltexts(t["root"])
+assert tx[:4] == ["Accent: plain enabled: true", "Accent: loud enabled: true", "Accent: outer enabled: false",
+                  "Accent: inner enabled: false"], tx  # nearest .environment wins; .disabled reaches isEnabled
+assert "Size: compact/regular" in tx, tx  # portrait iPhone
+assert "Badge: ada 0 some" in tx, tx
+# body 17 -> 28 at accessibility1, caption 12 -> 22 (Apple's Dynamic Type table)
+assert f"Metric: {10 * 28 / 17} 22.0 active" in tx, tx
+t = act(p, t, [m for m in walk(t["root"]) if m.get("kind") == "button" and "Draft: none" in alltexts(m)][0]["action"])
+assert alltexts(t["root"]).count("Draft: saved") == 2, alltexts(t["root"])  # both views share the key
+send(p, type="action", id=button(t, "Open")["action"], version=t["version"])
+ev = recv(p)  # system open: reported to the host, no state change, so no tree follows
+assert ev == {"type": "event", "name": "module.called",
+              "detail": {"module": "OpenURLAction", "method": "openURL", "args": ["https://example.com/a"]}}, ev
+t = act(p, t, button(t, "Local")["action"])  # handled in-app: no event, completion(true)
+assert "Result: true" in alltexts(t["root"]), alltexts(t["root"])
+t = act(p, t, button(t, "Like")["action"])
+assert "Badge: ada 1 some" in alltexts(t["root"]), alltexts(t["root"])  # @Observable mutation re-renders
+fld = next(m for m in walk(t["root"]) if m.get("kind") == "text_field")
+send(p, type="text_input", field=fld["field"], version=t["version"], text="grace"); t = recv(p)
+assert "Badge: grace 1 some" in alltexts(t["root"]), alltexts(t["root"])  # $bindable.name writes through
+send(p, type="environment", appearance="light", viewport={"width": 956, "height": 440}); t = recv(p)
+assert "Size: regular/compact" in alltexts(t["root"]), alltexts(t["root"])  # Pro Max landscape
+send(p, type="environment", appearance="light", viewport={"width": 874, "height": 402}); t = recv(p)
+assert "Size: compact/compact" in alltexts(t["root"]), alltexts(t["root"])  # Pro landscape
+send(p, type="environment", appearance="light", viewport={"width": 1032, "height": 1376}); t = recv(p)
+assert "Size: regular/regular" in alltexts(t["root"]), alltexts(t["root"])  # iPad
+finish(p)
 print("PASS")
