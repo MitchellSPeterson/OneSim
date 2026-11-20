@@ -12,17 +12,18 @@ const diag = document.getElementById("diag");
 const q = new URLSearchParams(location.search);
 const num = (k) => (q.has(k) && Number.isFinite(Number(q.get(k))) && Number(q.get(k)) > 0 ? Number(q.get(k)) : null);
 
-function viewportFromUrl(devices, android) {
-  const name = q.get("device") ?? devices.find((d) => d.android === android).name;
+function viewportFromUrl(devices, defaultName) {
+  const name = q.get("device") ?? defaultName;
   const dev = devices.find((d) => d.name === name);
   if (!dev) throw new Error(`unknown device ${JSON.stringify(name)} (known: ${devices.map((d) => d.name).join(", ")})`);
   return { device: name, width: num("width") ?? dev.width, height: num("height") ?? dev.height, scale: num("scale"), dev };
 }
 
 async function main() {
-  const sim = await load(await fetch("app.wasm"));
   const rn = q.has("metro") || q.has("bundle"), android = q.get("platform") === "android";
-  const vp = viewportFromUrl(sim.devices, android);
+  // React Native mode never calls the module's JS-guest imports (Compose's); the Worker is the guest.
+  const sim = await load(await fetch("app.wasm"), rn ? { guest: {} } : {});
+  const vp = viewportFromUrl(sim.devices, rn ? sim.devices.find((d) => d.android === android).name : sim.defaultDevice.name);
   const dark = q.has("dark") ? q.get("dark") !== "0" : matchMedia("(prefers-color-scheme: dark)").matches;
   const presenter = new Presenter({ sim, stage, canvas: document.getElementById("screen"), preference: preferredRenderer(q), diag });
   if (q.has("diag")) diag.hidden = false;
@@ -68,7 +69,7 @@ async function main() {
     const env = {
       SIMCORE_PLATFORM: android ? "android" : "ios", SIMCORE_DEVICE: vp.device, SIMCORE_OS_VERSION: android ? "17" : ios,
       SIMCORE_VIEWPORT: `${vp.width}x${vp.height}`, SIMCORE_SCALE: String(vp.dev.scale), SIMCORE_APPEARANCE: dark ? "dark" : "light",
-      SIMCORE_INSETS: `${vp.dev.safe_top},${vp.dev.safe_bottom}`, SIMCORE_DYNAMIC_TYPE: q.get("dynamicType") ?? "large",
+      SIMCORE_INSETS: `${vp.dev.safeTop},${vp.dev.safeBottom}`, SIMCORE_DYNAMIC_TYPE: q.get("dynamicType") ?? "large",
       ...(q.has("metro") ? { SIMCORE_METRO_URL: q.get("metro") } : { SIMCORE_BUNDLE_URL: q.get("bundle"), SIMCORE_HMR: "0" }),
     };
     const guest = startGuest({

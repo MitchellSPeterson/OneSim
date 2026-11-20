@@ -21,13 +21,13 @@ SHA=shasum; command -v shasum >/dev/null || SHA=sha256sum # minimal Linux and Gi
 KFLAGS=(-jvm-target 17 -Xplugin="$PLUGIN" -nowarn -Xsuppress-version-warnings)
 
 # 1. Framework (cached by the hash of its sources and the toolchain).
-HASH="$( (cd "$HERE/src" && find . -name '*.kt' -type f | LC_ALL=C sort | xargs $SHA; echo "$KOTLINC") | $SHA | cut -c1-16)"
+HASH="$( (cd "$HERE" && find src jvm -name '*.kt' -type f | LC_ALL=C sort | xargs $SHA; echo "$KOTLINC") | $SHA | cut -c1-16)"
 FW_DIR="$HOME_DIR/target/compose/framework-$HASH"
 if [ ! -f "$FW_DIR/onesim-compose.jar" ]; then
   echo "onesim: compiling the Compose framework" >&2
   rm -rf "$FW_DIR.tmp" && mkdir -p "$FW_DIR.tmp"
   "$KOTLINC/bin/kotlinc" "${KFLAGS[@]}" -cp "$CP" -module-name onesim-compose \
-    $(find "$HERE/src" -name '*.kt' -type f) -d "$FW_DIR.tmp/onesim-compose.jar"
+    $(find "$HERE/src" "$HERE/jvm" -name '*.kt' -type f) -d "$FW_DIR.tmp/onesim-compose.jar"
   rm -rf "$FW_DIR" && mv "$FW_DIR.tmp" "$FW_DIR"
 fi
 FW="$FW_DIR/onesim-compose.jar"
@@ -79,8 +79,8 @@ fi
 
 JAVA_ARGS="-Xshare:auto -XX:TieredStopAtLevel=1 -cp"
 if [[ "$OUT" == *.cmd ]]; then # Windows (Git Bash): a batch launcher with a native `;` classpath
-  printf '@java %s "%s" onesim.compose.Guest %s\r\n' "$JAVA_ARGS" "$(for f in "$BUILD/app.jar" "$FW" "$TC"/jars/*.jar "$STDLIB"; do cygpath -w "$f"; done | tr '\n' ';')" "$ACTIVITY" > "$OUT"
+  printf '@java %s "%s" onesim.compose.JvmGuest %s\r\n' "$JAVA_ARGS" "$(for f in "$BUILD/app.jar" "$FW" "$TC"/jars/*.jar "$STDLIB"; do cygpath -w "$f"; done | tr '\n' ';')" "$ACTIVITY" > "$OUT"
 else
-  printf '#!/bin/sh\nexec java %s "%s" onesim.compose.Guest %s\n' "$JAVA_ARGS" "$BUILD/app.jar:$FW:$CP$STDLIB" "$ACTIVITY" > "$OUT"
+  printf '#!/bin/sh\nexec java %s "%s" onesim.compose.JvmGuest %s\n' "$JAVA_ARGS" "$BUILD/app.jar:$FW:$CP$STDLIB" "$ACTIVITY" > "$OUT"
   chmod +x "$OUT"
 fi

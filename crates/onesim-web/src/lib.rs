@@ -5,7 +5,9 @@
 //! JS drives it through the `simcore_web_*` exports at the bottom; input goes through
 //! `onesim_render::Interaction` (the same state machine as the native host) and its effects
 //! call the Swift callbacks directly.
-use onesim_protocol::{Appearance, DynamicTypeSize, GuestMessage, HostMessage, IosVersion, KeyboardEvent, PointerEvent, PointerKind, TouchPhase, Viewport, ViewNode};
+use onesim_protocol::{Appearance, DynamicTypeSize, GuestMessage, HostMessage, IosVersion, KeyboardEvent, PointerEvent, PointerKind, Viewport, ViewNode};
+#[cfg(not(all(target_family = "wasm", feature = "js-guest")))]
+use onesim_protocol::TouchPhase;
 use onesim_render::rn_input::{effect_messages, Out, RnCtx, RnInput};
 use onesim_render::display::DisplayList;
 use onesim_render::{build_scene, Builder, device, look, render, resolve_label, Device, DEFAULT_DEVICE, DEVICES, DragPhase, Effect, Fonts, Interaction, Scene, SceneParams};
@@ -37,6 +39,7 @@ struct State {
     inter: Interaction,
     /// Set before a guest callback; a tree submit clears it by drawing.
     stale: bool,
+    initialized: bool,
     tree_json: String,
     fb: Vec<u8>,
     fb_size: (u32, u32),
@@ -67,7 +70,7 @@ thread_local! {
     static STATE: RefCell<State> = RefCell::new(State {
         ctx: 0, on_action: None, on_env: None, on_text: None, on_gesture: None, version: None, tree: None, scene: None,
         fonts: None, device: device(DEFAULT_DEVICE).unwrap(), viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios27, inter: Interaction::default(),
-        stale: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), output: 0, builder: Builder::new(), dl: Vec::new(), unread: None, buf: Vec::new(), rn: None,
+        stale: false, initialized: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), output: 0, builder: Builder::new(), dl: Vec::new(), unread: None, buf: Vec::new(), rn: None,
     });
     static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
 }
@@ -204,22 +207,41 @@ pub extern "C" fn simcore_last_error() -> *const c_char {
 
 // ---- JS-facing exports -------------------------------------------------------------------
 
+#[cfg(all(target_family = "wasm", not(feature = "js-guest")))]
 extern "C" {
     /// The Swift program's entry (top-level code or `@main`; clang/Swift name `main(argc, argv)` this on Wasm): registers the app, no event loop.
-    #[cfg(all(target_family = "wasm", feature = "swift"))]
     fn __main_argc_argv(argc: i32, argv: *const *const c_char) -> i32;
+}
+
+#[cfg(all(target_family = "wasm", feature = "js-guest"))]
+#[link(wasm_import_module = "onesim_guest")]
+extern "C" {
+    fn on_init(dark: i32, width: f64, height: f64, safe_top: f64, safe_bottom: f64) -> i32;
+    fn on_env(dark: i32, width: f64, height: f64, safe_top: f64, safe_bottom: f64) -> i32;
+    fn on_action(id: f64);
+    fn on_text(field: f64, ptr: *const u8, len: usize);
 }
 
 fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
     STATE.with(|s| f(&mut s.borrow_mut()))
 }
 
-/// Device list as JSON `[{name,width,height,scale,android,safe_top,safe_bottom}]` in the scratch buffer (usable before init).
+/// Device list as JSON `[{name,width,height,scale,safeTop,safeBottom,android}]` in the scratch buffer (usable before init).
 #[no_mangle]
 pub extern "C" fn simcore_web_devices() -> i32 {
     let list: Vec<_> = DEVICES
         .iter()
-        .map(|d| serde_json::json!({"name": d.name, "width": d.viewport.width, "height": d.viewport.height, "scale": d.scale, "android": d.android, "safe_top": d.safe_top, "safe_bottom": d.safe_bottom}))
+        .map(|d| {
+            serde_json::json!({
+                "name": d.name,
+                "width": d.viewport.width,
+                "height": d.viewport.height,
+                "scale": d.scale,
+                "safeTop": d.safe_top,
+                "safeBottom": d.safe_bottom,
+                "android": d.android,
+            })
+        })
         .collect();
     with(|s| s.buf = serde_json::to_vec(&list).unwrap_or_default());
     0
@@ -238,20 +260,46 @@ pub extern "C" fn simcore_web_set_device(len: usize) -> i32 {
     })
 }
 
+/// Submit a ViewNode JSON tree written into the scratch buffer (`simcore_web_buf`), for JS-hosted guests.
+/// Returns 0 on success, 1 on error.
+#[no_mangle]
+pub extern "C" fn simcore_web_submit_tree(len: usize, version: f64) -> i32 {
+    let bytes = with(|s| s.buf[..len.min(s.buf.len())].to_vec());
+    match submit(&bytes, version.max(0.0) as u64) {
+        Ok(()) => 0,
+        Err(e) => {
+            set_err(e);
+            1
+        }
+    }
+}
+
 /// Evaluate the app and render the first frame. Call once, after `_initialize`.
 /// `width` x `height` = viewport in points; `scale` = device pixels per point.
 #[no_mangle]
 pub extern "C" fn simcore_web_init(width: f64, height: f64, scale: f64, dark: i32) -> i32 {
-    with(|s| {
-        s.viewport = (width.max(1.0), height.max(1.0));
+    let (w, h, safe_top, safe_bottom) = with(|s| {
+        let w = width.max(1.0);
+        let h = height.max(1.0);
+        s.viewport = (w, h);
         s.scale = scale.clamp(1.0, 4.0);
         s.dark = dark != 0;
+        s.initialized = true;
+        (w, h, s.device.safe_top, s.device.safe_bottom)
     });
-    #[cfg(all(target_family = "wasm", feature = "swift"))]
-    unsafe {
-        __main_argc_argv(0, std::ptr::null());
+    #[cfg(all(target_family = "wasm", feature = "js-guest"))]
+    {
+        unsafe { on_init(if dark != 0 { 1 } else { 0 }, w, h, safe_top, safe_bottom) }
     }
-    push_environment()
+    #[cfg(not(all(target_family = "wasm", feature = "js-guest")))]
+    {
+        let _ = (w, h, safe_top, safe_bottom);
+        #[cfg(target_family = "wasm")]
+        unsafe {
+            __main_argc_argv(0, std::ptr::null());
+        }
+        push_environment()
+    }
 }
 
 /// Push the environment to the guest (as the native host does); the guest re-submits its tree.
@@ -270,14 +318,31 @@ fn push_environment() -> i32 {
         with(draw); // the viewport is the host's: lay out now, the guest re-renders after
         return 0;
     }
-    let (ctx, cb, dark, vp) = with(|s| (s.ctx, s.on_env, s.dark, s.viewport));
-    let Some(cb) = cb else {
-        set_err("app did not register callbacks");
-        return 1;
-    };
-    let a = CString::new(if dark { "dark" } else { "light" }).unwrap_or_default();
-    unsafe { cb(ctx as *mut c_void, a.as_ptr(), vp.0, vp.1) };
-    0
+    #[cfg(all(target_family = "wasm", feature = "js-guest"))]
+    {
+        let (dark, vp, safe_top, safe_bottom) = with(|s| {
+            s.stale = true;
+            (s.dark, s.viewport, s.device.safe_top, s.device.safe_bottom)
+        });
+        let rc = unsafe { on_env(dark as i32, vp.0, vp.1, safe_top, safe_bottom) };
+        with(|s| {
+            if s.stale {
+                draw(s);
+            }
+        });
+        rc
+    }
+    #[cfg(not(all(target_family = "wasm", feature = "js-guest")))]
+    {
+        let (ctx, cb, dark, vp) = with(|s| (s.ctx, s.on_env, s.dark, s.viewport));
+        let Some(cb) = cb else {
+            set_err("app did not register callbacks");
+            return 1;
+        };
+        let a = CString::new(if dark { "dark" } else { "light" }).unwrap_or_default();
+        unsafe { cb(ctx as *mut c_void, a.as_ptr(), vp.0, vp.1) };
+        0
+    }
 }
 
 #[no_mangle]
@@ -291,7 +356,7 @@ pub extern "C" fn simcore_web_set_dark(dark: i32) -> i32 {
 pub extern "C" fn simcore_web_set_dynamic_type(index: i32) -> i32 {
     with(|s| s.dynamic_type = DynamicTypeSize::from_index(index.max(0) as usize));
     // Before `init` there is no guest yet; the size is picked up by the first render.
-    if with(|s| s.on_env.is_some() || s.rn.is_some()) { push_environment() } else { 0 }
+    if with(|s| s.on_env.is_some() || s.initialized || s.rn.is_some()) { push_environment() } else { 0 }
 }
 
 /// Simulated iOS release by index into `IosVersion::ALL` (0 = 26.5, 1 = 27.2); out of range = newest.
@@ -325,6 +390,7 @@ pub extern "C" fn simcore_web_set_scale(scale: f64) {
 /// Apply an interaction effect: guest callbacks for actions/text, a redraw otherwise.
 /// Returns 1 if anything happened.
 fn dispatch(e: Effect) -> i32 {
+    #[cfg(not(all(target_family = "wasm", feature = "js-guest")))]
     let (ctx, on_action, on_text) = with(|s| (s.ctx, s.on_action, s.on_text));
     if !matches!(e, Effect::None | Effect::Redraw) && with(|s| s.rn.is_some()) {
         return with(|s| {
@@ -340,18 +406,29 @@ fn dispatch(e: Effect) -> i32 {
         Effect::Redraw => with(draw),
         Effect::Action { id, .. } => {
             with(|s| s.stale = true);
+            #[cfg(all(target_family = "wasm", feature = "js-guest"))]
+            unsafe {
+                on_action(id as f64);
+            }
+            #[cfg(not(all(target_family = "wasm", feature = "js-guest")))]
             if let Some(cb) = on_action {
                 unsafe { cb(ctx as *mut c_void, id) };
             }
         }
         Effect::TextInput { field, text, .. } => {
             with(|s| s.stale = true);
+            #[cfg(all(target_family = "wasm", feature = "js-guest"))]
+            unsafe {
+                on_text(field as f64, text.as_ptr(), text.len());
+            }
+            #[cfg(not(all(target_family = "wasm", feature = "js-guest")))]
             if let (Some(cb), Ok(t)) = (on_text, CString::new(text.replace('\0', ""))) {
                 unsafe { cb(ctx as *mut c_void, field, t.as_ptr()) };
             }
         }
         Effect::Gesture(touches) => {
             with(|s| s.stale = true);
+            #[cfg(not(all(target_family = "wasm", feature = "js-guest")))]
             if let Some(cb) = with(|s| s.on_gesture) {
                 for t in touches {
                     let phase = match t.phase {
@@ -367,6 +444,8 @@ fn dispatch(e: Effect) -> i32 {
                     unsafe { cb(ctx as *mut c_void, phase, t.time, pts.as_ptr(), t.points.len(), ptrs.as_ptr(), frames.as_ptr(), keys.len()) };
                 }
             }
+            #[cfg(all(target_family = "wasm", feature = "js-guest"))]
+            let _ = touches;
         }
     }
     // The callback re-submits (and draws) only if the guest state changed; focus/shift may have.
@@ -869,5 +948,38 @@ mod tests {
         assert_eq!(simcore_web_set_ios(1), 0);
         assert_eq!(rendered_ios(), IosVersion::Ios27);
         assert!(with(|s| s.fb != before), "framebuffer should redraw with the new iOS look");
+    }
+
+    #[test]
+    fn scratch_buffer_submit_and_android_device_metadata() {
+        assert_eq!(simcore_web_devices(), 0);
+        let devs: serde_json::Value = with(|s| serde_json::from_slice(&s.buf).unwrap());
+        let pixel = devs.as_array().unwrap().iter().find(|d| d["name"] == "pixel-10a").unwrap();
+        assert_eq!(pixel["android"], true);
+        assert!(pixel["safeTop"].as_f64().unwrap() > 50.0);
+        assert!(pixel["safeBottom"].as_f64().unwrap() > 20.0);
+
+        let put = |t: &str| {
+            let p = simcore_web_buf(t.len());
+            unsafe { std::slice::from_raw_parts_mut(p, t.len()) }.copy_from_slice(t.as_bytes());
+            t.len()
+        };
+        let name_len = put("pixel-10a");
+        assert_eq!(simcore_web_set_device(name_len), 0);
+        let tree = r#"{"kind":"compose","id":"root","component":"Box","props":{},"children":[{"kind":"compose","id":"root/0","component":"Text","props":{"text":"Hello Compose"}}]}"#;
+        let len = put(tree);
+        assert_eq!(simcore_web_submit_tree(len, 1.0), 0);
+        assert_eq!(simcore_web_inspect(), 0);
+        assert!(with(|s| String::from_utf8_lossy(&s.buf).contains("Hello Compose")));
+
+        // Vertical scroll on a Compose scroll container updates the framebuffer.
+        let scroll_tree = r#"{"kind":"compose","id":"root","component":"Column","props":{"modifier":[{"fillMaxWidth":1.0},{"fillMaxHeight":1.0},{"scroll":true}]},"children":[
+            {"kind":"compose","id":"root/0","component":"Box","props":{"modifier":[{"fillMaxWidth":1.0},{"height":600},{"background":{"color":[1,0,0,1]}}]}},
+            {"kind":"compose","id":"root/1","component":"Box","props":{"modifier":[{"fillMaxWidth":1.0},{"height":600},{"background":{"color":[0,0,1,1]}}]}}]}"#;
+        let slen = put(scroll_tree);
+        assert_eq!(simcore_web_submit_tree(slen, 2.0), 0);
+        let before = with(|s| s.fb.clone());
+        assert_eq!(simcore_web_scroll(200.0, 400.0, 0.0, 200.0), 1);
+        assert!(with(|s| s.fb != before), "compose scroll should redraw scrolled pixels");
     }
 }

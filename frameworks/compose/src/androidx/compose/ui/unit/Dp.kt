@@ -1,6 +1,7 @@
 package androidx.compose.ui.unit
 
 import androidx.compose.runtime.Immutable
+import kotlin.jvm.JvmInline
 
 /** Density-independent pixels; OneSim's scene points. */
 @Immutable

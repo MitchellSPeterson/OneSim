@@ -41,38 +41,84 @@ function makeWasi(getMem, log) {
 /**
  * Instantiate app.wasm. `source` is a fetch `Response` (browser, streaming compile) or bytes.
  * `log(level, text)` receives the guest's stdout/stderr.
+ * For JS-hosted guests (e.g. Kotlin/Wasm Compose), `guest` or `guestUrl` supplies the guest module
+ * (defaults to `./guest/guest.mjs` next to `app.wasm`).
  */
-export async function load(source, { log = (level, t) => console[level](t) } = {}) {
-  let mem;
+export async function load(source, { log = (level, t) => console[level](t), guest = null, guestUrl = null } = {}) {
+  const mod = typeof Response !== "undefined" && source instanceof Response
+    ? await WebAssembly.compileStreaming(source)
+    : await WebAssembly.compile(source);
+  let mem, exports;
   const imports = { wasi_snapshot_preview1: makeWasi(() => mem, log) };
-  const { instance } = typeof Response !== "undefined" && source instanceof Response
-    ? await WebAssembly.instantiateStreaming(source, imports)
-    : await WebAssembly.instantiate(source, imports);
-  mem = instance.exports.memory;
-  instance.exports._initialize?.(); // reactor (Swift build): run constructors; a pure-Rust module has none
-  return new OneSim(instance.exports);
+  if (WebAssembly.Module.imports(mod).some((i) => i.module === "onesim_guest")) {
+    if (!guest) {
+      const url = guestUrl ?? (typeof Response !== "undefined" && source instanceof Response && source.url
+        ? new URL("./guest/guest.mjs", source.url).href
+        : new URL("./guest/guest.mjs", import.meta.url).href);
+      guest = await import(url);
+    }
+    const submitTree = (tree) => {
+      if (!tree) return 0;
+      const b = enc.encode(tree);
+      const ptr = exports.simcore_web_buf(b.length);
+      new Uint8Array(exports.memory.buffer, ptr, b.length).set(b);
+      const rc = exports.simcore_web_submit_tree(b.length, guest.onesimVersion());
+      if (rc !== 0) log("error", "onesim: simcore_web_submit_tree failed");
+      return rc;
+    };
+    imports.onesim_guest = {
+      on_init(dark, _w, _h, safeTop, safeBottom) {
+        return submitTree(guest.onesimStart(dark !== 0, safeTop, safeBottom));
+      },
+      on_env(dark, _w, _h, safeTop, safeBottom) {
+        return submitTree(guest.onesimEnvironment(dark !== 0, safeTop, safeBottom));
+      },
+      on_action(id) {
+        submitTree(guest.onesimAction(id));
+      },
+      on_text(field, ptr, len) {
+        const text = dec.decode(new Uint8Array(exports.memory.buffer, ptr, len));
+        submitTree(guest.onesimTextInput(field, text));
+      },
+    };
+  }
+  const instance = await WebAssembly.instantiate(mod, imports);
+  exports = instance.exports;
+  mem = exports.memory;
+  exports._initialize?.(); // reactor: run constructors, keep the instance alive
+  return new OneSim(exports, guest);
 }
 
 export class OneSim {
-  constructor(wasm) { this.wasm = wasm; this.width = 0; this.height = 0; this.scale = 0; }
+  constructor(wasm, guest = null) { this.wasm = wasm; this.guest = guest; this.width = 0; this.height = 0; this.scale = 0; }
 
   get mem() { return this.wasm.memory.buffer; }
 
-  /** Device profiles from the Wasm build (crates/onesim-render/src/device.rs): `[{name, width, height, scale, android, safe_top, safe_bottom}]`; the first is the default. */
+  /** Platform of this build ("android" for Compose, "ios" for SwiftUI). */
+  get platform() { return this.guest?.onesimPlatform?.() ?? "ios"; }
+
+  /** Device profiles from the Wasm build (crates/onesim-render/src/device.rs). */
   get devices() {
     this.wasm.simcore_web_devices();
     return JSON.parse(dec.decode(this.#take()));
   }
 
+  /** Default device profile for this app's platform. */
+  get defaultDevice() {
+    const devs = this.devices;
+    return this.platform === "android" ? (devs.find((d) => d.android) ?? devs[0]) : devs[0];
+  }
+
   /**
-   * Start the app on `device` (a name from `devices`, default the first). Viewport in points and
+   * Start the app on `device` (a name from `devices`, default the platform's default). Viewport in points and
    * scale (device pixels per point) default to the device's own; pass them to override.
    * Renders the first frame.
    */
   init({ device, width, height, scale, dark = false, dynamicType = "large" } = {}) {
-    const devs = this.devices, dev = devs.find((d) => d.name === (device ?? devs[0].name));
+    const devs = this.devices, target = device ?? this.defaultDevice.name;
+    const dev = devs.find((d) => d.name === target);
     if (!dev) throw new Error(`unknown device ${JSON.stringify(device)} (known: ${devs.map((d) => d.name).join(", ")})`);
-    if (device !== undefined && this.wasm.simcore_web_set_device(this.#put(device)) !== 0) throw new Error(`unknown device ${JSON.stringify(device)}`);
+    if (this.wasm.simcore_web_set_device(this.#put(dev.name)) !== 0) throw new Error(`unknown device ${JSON.stringify(dev.name)}`);
     width ??= dev.width; height ??= dev.height; scale ??= dev.scale;
     Object.assign(this, { width, height, scale });
     this.setDynamicType(dynamicType);

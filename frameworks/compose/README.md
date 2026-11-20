@@ -11,17 +11,20 @@ cargo run -p onesim-cli -- run path/to/ui --root-view Greeting    # a @Composabl
 ## How it works
 
 - **Toolchain** (`scripts/toolchain.sh`): downloads the pinned Kotlin compiler (it bundles the Compose compiler
-  plugin) and the real `androidx.compose.runtime` desktop/JVM jars into `~/.cache/onesim/compose`
-  (`SIMCORE_COMPOSE_TOOLCHAIN`). Only Java 17+ is needed.
+  plugin) and the real `androidx.compose.runtime` desktop/JVM jars (or `wasmJs` klibs with `--wasm`) into
+  `~/.cache/simcore/compose` (`SIMCORE_COMPOSE_TOOLCHAIN`). Only Java 17+ is needed.
 - **Real runtime, own UI layer.** Composition, `remember`, snapshots, recomposition and effects are AndroidX's own
   code. Everything above it (`androidx.compose.ui`, `foundation`, `foundation.layout`, `material3`,
-  `activity-compose`, `android.os.Bundle`, `android.util.Log`) is reimplemented in `src/`. Material components are
-  built out of a few layout primitives (`Box`, `Column`, `Row`, `Text`) and a Modifier chain, as in AndroidX.
-- **Build** (`scripts/build-app.sh`): compiles `src/` once (cached by content hash in `target/compose/`), then the
-  app's `.kt` files, and writes a launcher that runs `onesim.compose.Guest <Activity>` on the JVM.
-- **Guest** (`src/onesim/compose/Guest.kt`): instantiates the Activity, runs `onCreate`, composes with a
-  `LayoutApplier`, and speaks protocol sections B and K over stdin/stdout: a `tree` after every change, `action`
-  for taps, `environment` for dark mode (`isSystemInDarkTheme()`).
+  `activity-compose`, `android.os.Bundle`, `android.util.Log`) is reimplemented in `src/` as common Kotlin shared
+  between the JVM and Kotlin/Wasm targets. Material components are built out of a few layout primitives
+  (`Box`, `Column`, `Row`, `Text`) and a Modifier chain, as in AndroidX.
+- **Build** (`scripts/build-app.sh` for JVM; `scripts/build-web.sh` for browser Wasm): compiles `src/` plus the
+  platform guest (`jvm/` or `wasm/`, cached by content hash), then the app's `.kt` files. On the JVM it writes a
+  launcher running `onesim.compose.JvmGuest <Activity>`. On the web it compiles with `kotlinc-wasm` and a generated
+  entry point into `target/web/guest/` paired with `onesim-web` (see [docs/web.md](../../docs/web.md)).
+- **Guest** (`src/onesim/compose/Guest.kt`, `jvm/onesim/compose/JvmGuest.kt`, `wasm/onesim/compose/WasmGuest.kt`):
+  instantiates the Activity, runs `onCreate`, composes with a `LayoutApplier`, and delivers trees/events over
+  stdin/stdout JSON lines (JVM) or JS exports (Wasm).
 - **Host** (`crates/onesim-render/src/layout/compose.rs`): Compose's constraint-based measure/place
   (padding, size, fill, wrap, weights, arrangements, alignment, `minimumInteractiveComponentSize`), drawing,
   hit testing, the Android status bar and gesture handle. Text is Roboto (bundled, OFL).

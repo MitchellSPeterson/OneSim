@@ -9,8 +9,10 @@ description = "In-process OneSim runtime for WebAssembly: the onesim-runtime C A
 crate-type = ["staticlib", "rlib"]
 
 [features]
-# Link against a Swift app: `simcore_web_init` runs its `main` (scripts/build-web.sh). Off for React Native (scripts/build-web.sh --expo).
-swift = []
+default = []
+# Standalone browser module for JS-hosted guests (Kotlin/Wasm Compose, React Native in a Worker): no linked Swift
+# main; guest callbacks are Wasm imports from `"onesim_guest"` (unused in React Native mode).
+js-guest = []
 
 [dependencies]
 onesim-protocol = { path = "../onesim-protocol" }
