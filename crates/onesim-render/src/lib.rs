@@ -31,7 +31,7 @@ pub use raster::{apply_backdrop, apply_backdrop_op, clip_chain, clip_radius, nee
 pub use symbols::{capability as symbols_capability, SymbolMask, SymbolMetrics, SymbolSpec};
 pub use chrome::{autocap, ChromeParams};
 pub use device::{device, Device, StatusBar, DEFAULT_ANDROID_DEVICE, DEFAULT_DEVICE, DEVICES};
-pub use interaction::{resolve_label, DragPhase, Effect, Interaction};
+pub use interaction::{resolve_label, scroll_anchor_offset, DragPhase, Effect, Interaction};
 pub use layout::swiftui::SceneParams;
 pub use scene::{Color, Glyph, Gradient, ImageRun, Node, Rect, Role, Scene, ScrollInfo, SheetInfo, SheetPos, Shadow, SymbolRun, TextRun};
 pub use text::{fonts_capability, inter_tracking_em, tracking_em, FontSpec, Fonts, Span, TextAlign};

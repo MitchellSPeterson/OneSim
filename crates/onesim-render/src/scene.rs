@@ -183,6 +183,10 @@ pub struct ScrollInfo {
     pub snap: Option<f64>,
     /// Real content size when the layout knows it (React Native); else viewport + `max`.
     pub content: Option<(f64, f64)>,
+    /// Page length on the main axis when `.scrollTargetBehavior(.paging)`.
+    pub page: Option<f64>,
+    /// `.scrollTargetBehavior(.viewAligned)`.
+    pub aligned: bool,
 }
 
 /// One positioned element. `bounds` are absolute, in points.
@@ -230,6 +234,14 @@ pub struct Node {
     pub sheet: Option<SheetInfo>,
     /// SwiftUI gestures on this view (protocol section L). Boxed: nodes live on the stack in deep layout recursion.
     pub gesture: Option<Box<onesim_protocol::GestureMod>>,
+    /// `.id` value, used by `scrollTo`.
+    pub anchor: Option<String>,
+    /// Size a `GeometryReader` built its child with, `[w, h]`.
+    pub proposal: Option<[f64; 2]>,
+    /// `"header"` when this view is a pinned section header.
+    pub pinned: Option<String>,
+    /// Direct child of `.scrollTargetLayout()`.
+    pub scroll_target: bool,
     /// False for layout-only helper nodes (clip/opacity layers); hidden from inspection.
     pub inspect: bool,
 }
@@ -267,6 +279,10 @@ impl Node {
             scroll: None,
             sheet: None,
             gesture: None,
+            anchor: None,
+            proposal: None,
+            pinned: None,
+            scroll_target: false,
             inspect: true,
         }
     }

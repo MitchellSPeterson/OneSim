@@ -197,7 +197,7 @@ impl Cx<'_> {
             let offset = (want.0.clamp(0.0, mx), want.1.clamp(0.0, my));
             let mut node = Node::new(&n.id, "compose_scroll");
             node.clip_radius = Some(0.0);
-            node.scroll = Some(ScrollInfo { max: (mx, my), offset, vertical, snap: None, content: Some((inner.w, inner.h)) });
+            node.scroll = Some(ScrollInfo { max: (mx, my), offset, vertical, snap: None, content: Some((inner.w, inner.h)), page: None, aligned: false });
             return Laid { id: n.id.clone(), w, h, deco: Deco::Control(Box::new(node)), kids: vec![(-offset.0, -offset.1, inner)] };
         }
         // Size modifiers: target constraints coerced into the incoming ones (`enforceIncoming`).

@@ -86,7 +86,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.containerRelativeFrame` | 17 | ⬜ |  |  |
 | `.containerShape` | 15 | ⬜ |  |  |
 | `.containerValue` | 18 | ⬜ |  |  |
-| `.contentMargins` | 13 | ⬜ |  |  |
+| `.contentMargins` | 13 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Length and edges on `ScrollView` only. Placement does not change the insets. No-op elsewhere |
 | `.contentShape` | 13 | ⬜ |  |  |
 | `.contentToolbar` | 18.4 | ⬜ |  |  |
 | `.contentTransition` | 16 | ⬜ |  |  |
@@ -169,7 +169,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.glassEffectUnion` | 26 | ⬜ |  |  |
 | `.grayscale` | 13 | ⬜ |  |  |
 | `.gridCellAnchor` | 16 | ⬜ |  |  |
-| `.gridCellColumns` | 16 | ⬜ |  |  |
+| `.gridCellColumns` | 16 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `.gridCellUnsizedAxes` | 16 | ⬜ |  |  |
 | `.gridColumnAlignment` | 16 | ⬜ |  |  |
 | `.groupBoxStyle` | 14 | ⬜ |  |  |
@@ -182,7 +182,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.hoverEffect` | 13.4 | ⬜ |  |  |
 | `.hoverEffectDisabled` | 17 | ⬜ |  |  |
 | `.hueRotation` | 13 | ⬜ |  |  |
-| `.id` | 13 | ⬜ |  |  |
+| `.id` | 13 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Names the view for `scrollTo`. Does not reset `@State` |
 | `.ignoresSafeArea` | 13 | ⬜ |  |  |
 | `.imageScale` | 13 | ✅ |  |  |
 | `.indexViewStyle` | 14 | ⬜ |  |  |
@@ -332,12 +332,12 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.scrollDismissesKeyboard` | 16 | ⬜ |  |  |
 | `.scrollEdgeEffectHidden` | 26 | ⬜ |  |  |
 | `.scrollEdgeEffectStyle` | 26 | ⬜ |  |  |
-| `.scrollIndicators` | 16 | ⬜ |  |  |
+| `.scrollIndicators` | 16 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Never drawn. `.hidden` and `showsIndicators: false` stay hidden; `.visible` does not draw them |
 | `.scrollIndicatorsFlash` | 17 | ⬜ |  |  |
 | `.scrollInputBehavior` | 18 | ⬜ |  |  |
-| `.scrollPosition` | 17 | ⬜ |  |  |
-| `.scrollTargetBehavior` | 17 | ⬜ |  |  |
-| `.scrollTargetLayout` | 17 | ⬜ |  |  |
+| `.scrollPosition` | 17 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | iOS 17 `Binding` for `String` and `Int`. Updates when scrolling settles |
+| `.scrollTargetBehavior` | 17 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | `.paging` and `.viewAligned`. A custom behavior emits nothing and `updateTarget` is not called |
+| `.scrollTargetLayout` | 17 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `.scrollTransition` | 17 | ⬜ |  |  |
 | `.searchable` | 15 | ⬜ |  |  |
 | `.searchCompletion` | 15 | ⬜ |  |  |

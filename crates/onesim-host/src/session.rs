@@ -1,7 +1,7 @@
 //! One guest OS process and everything we know about it.
 
 use onesim_protocol::{
-    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, GuestMessage, HostMessage, IosVersion, SessionError, Viewport,
+    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, GeoBox, GuestMessage, HostMessage, IosVersion, SessionError, Viewport,
     ViewNode,
 };
 pub use onesim_render::{device, Device, DEFAULT_DEVICE, DEVICES};
@@ -9,7 +9,7 @@ use crate::events::EventLog;
 use serde_json::{json, Value};
 use onesim_render::rn_input::{focus_change, Out, RnInput, Wait};
 use onesim_render::{Effect, Interaction};
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -139,6 +139,10 @@ pub struct Session {
     pub inter: Interaction,
     /// React Native: touch in progress and frames the guest already has (shared with the browser backend).
     pub rn: RnInput,
+    /// SwiftUI: last `scroll_position` target sent per scroll-node id.
+    pub sent_positions: BTreeMap<String, Option<String>>,
+    /// SwiftUI: last `geometry` box sent per reader id, so a stable frame is not sent again.
+    pub sent_geometry: BTreeMap<String, GeoBox>,
     /// React Native: `false` (live viewers, set per call by the v2 API) skips every wait for the guest:
     /// inputs return once sent and snapshots take one layout pass; later trees come as `render.updated`.
     pub settle: bool,
@@ -247,6 +251,8 @@ impl Session {
             ios: p.os_version.unwrap_or_default(),
             inter: Interaction::default(),
             rn: RnInput::default(),
+            sent_positions: BTreeMap::new(),
+            sent_geometry: BTreeMap::new(),
             settle: true,
             last_sent: Instant::now(),
             params: p,
@@ -259,6 +265,10 @@ impl Session {
 
     pub fn is_rn(&self) -> bool {
         self.params.framework == "react-native"
+    }
+
+    pub fn is_swiftui(&self) -> bool {
+        self.params.framework == "swiftui"
     }
 
     pub fn os_version(&self) -> &'static str {
@@ -466,7 +476,7 @@ impl Session {
                         }
                         sh.log.render_updated(version);
                     }
-                    Ok(m @ (GuestMessage::FocusRequest { .. } | GuestMessage::ScrollTo { .. })) => {
+                    Ok(m @ (GuestMessage::FocusRequest { .. } | GuestMessage::ScrollTo { .. } | GuestMessage::ScrollToId { .. })) => {
                         let mut g = sh.lock();
                         g.requests.push(m);
                         g.last_event = Some(Instant::now());
