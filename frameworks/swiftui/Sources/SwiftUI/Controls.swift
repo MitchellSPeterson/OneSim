@@ -434,9 +434,9 @@ public struct NavigationStack<Root: View>: View, _Primitive {
             let prefix = d == 0 ? "\(path)/0" : "\(path)/s\(d)"
             for k in rt.slots.keys where k.hasPrefix(prefix + "/") || k.hasPrefix(prefix + "#") { rt.touched.insert(k) }
         }
-        let saved = (rt.nav, rt.disabled, rt.buttonStyle)
-        rt.nav = st; rt.disabled = false; rt.buttonStyle = "automatic"
-        defer { (rt.nav, rt.disabled, rt.buttonStyle) = saved }
+        let saved = (rt.nav, rt.disabled, rt.buttonStyle, rt.envLocal)
+        rt.nav = st; rt.disabled = false; rt.buttonStyle = "automatic"; rt.envLocal = []
+        defer { (rt.nav, rt.disabled, rt.buttonStyle, rt.envLocal) = saved }
         var content = depth == 0 ? _eval(root, "\(path)/0") : st.screen(depth - 1, "\(path)/s\(depth)")
 
         var title: String?, mode = "large"
@@ -461,7 +461,7 @@ struct _DestinationView<Content: View, T: Hashable, D: View>: View, _Flattenable
     var body: Never { fatalError() }
     let content: Content, destination: (T) -> D
     func _children(_ path: String) -> [Node] {
-        let rt = _Runtime.shared, env = rt.envObjects, dest = destination
+        let rt = _Runtime.shared, env = _localEnv(), dest = destination
         rt.nav?.destinations[ObjectIdentifier(T.self)] = { v, p in _withEnv(env) { _eval(dest(v as! T), p) } }
         return SwiftUI._children(content, path)
     }
@@ -480,7 +480,7 @@ public struct NavigationLink<Label: View, Destination: View>: View, _Primitive {
         self.destination = destination(); push = nil; self.label = label()
     }
     func _emit(_ path: String) -> Node {
-        let rt = _Runtime.shared, nav = rt.nav, env = rt.envObjects
+        let rt = _Runtime.shared, nav = rt.nav, env = _localEnv()
         let action: () -> Void
         if let push { action = { if let nav { push(nav) } } }
         else { let d = destination!; action = { nav?.push(_NavScreen { p in _withEnv(env) { _eval(d, p) } }) } }

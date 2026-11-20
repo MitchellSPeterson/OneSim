@@ -26,18 +26,18 @@ are the ones that matter most.
 | Area | iOS |
 |---|---|
 | [Views](views.md) | 36% (34.5/95) |
-| [View modifiers](view-modifiers.md) | 15% (65/433) |
+| [View modifiers](view-modifiers.md) | 15% (65.5/433) |
 | [Text and Image methods](text-and-image.md) | 56% (19/34) |
 | [Shapes](shapes.md) | 85% (29/34) |
 | [Styles](styles.md) | 14% (16.5/120) |
 | [Gestures](gestures.md) | 79% (11/14) |
 | [Scenes](scenes.md) | 2% (0.5/23) |
-| [Property wrappers](property-wrappers.md) | 38% (7.5/20) |
-| [Environment values](environment-values.md) | 3% (4/118) |
-| [Protocols](protocols.md) | 20% (15.5/78) |
-| [Other types](other-types.md) | 18% (74.5/410) |
-| [Outside SwiftUI](outside-swiftui.md) | 50% (1.5/3) |
-| **Total** | **20% (278.5/1382)** |
+| [Property wrappers](property-wrappers.md) | 53% (10.5/20) |
+| [Environment values](environment-values.md) | 6% (7.5/118) |
+| [Protocols](protocols.md) | 21% (16.5/78) |
+| [Other types](other-types.md) | 19% (77/410) |
+| [Outside SwiftUI](outside-swiftui.md) | 83% (2.5/3) |
+| **Total** | **21% (290/1382)** |
 <!-- coverage:end -->
 
 Refresh with `node scripts/api-coverage.mjs`; CI runs it with `--check`.
