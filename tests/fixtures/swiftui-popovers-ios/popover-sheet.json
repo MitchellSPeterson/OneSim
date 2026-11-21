@@ -1,0 +1,106 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "type": "Other",
+        "role": "_TtC7SwiftUIP33_ACC2C5639A7D76F611E170E831FCA49118SwiftUIApplication",
+        "subrole": "UIApplication",
+        "label": "OneSimPopovers",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 0,
+        "pid": 96759,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "other"
+      },
+      {
+        "index": 1,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Popover content",
+        "rect": {
+          "x": 138.16666666666669,
+          "y": 424.6666666666667,
+          "width": 125.66666666666669,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 96759,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "text"
+      },
+      {
+        "index": 2,
+        "parentIndex": 0,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Done",
+        "rect": {
+          "x": 181,
+          "y": 457,
+          "width": 40.333333333333314,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 96759,
+        "hittable": true,
+        "ref": "e3",
+        "kind": "button"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.popovers",
+    "appBundleId": "dev.simcore.popovers",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 3,
+      "totalNodeCount": 3,
+      "reasons": []
+    },
+    "keyboard": {
+      "kind": "absent",
+      "treeBound": true
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "presented",
+    "snapshotQualityNotes": [
+      {
+        "code": "regular-geometry-clipped",
+        "clippedNodeCount": 1,
+        "droppedNodeCount": 0
+      }
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 14,
+        "p50Ms": 53,
+        "p95Ms": 2780,
+        "maxMs": 2780,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "apple-runner": 2,
+          "simulator-ax-bridge": 12
+        }
+      }
+    },
+    "refsGeneration": 969271
+  }
+}

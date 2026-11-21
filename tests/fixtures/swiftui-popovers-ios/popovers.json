@@ -1,0 +1,320 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "type": "Other",
+        "role": "_TtC7SwiftUIP33_ACC2C5639A7D76F611E170E831FCA49118SwiftUIApplication",
+        "subrole": "UIApplication",
+        "label": "OneSimPopovers",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 0,
+        "pid": 95459,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "other"
+      },
+      {
+        "index": 1,
+        "parentIndex": 0,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Popover as sheet",
+        "rect": {
+          "x": 135.33333333333331,
+          "y": 254.66666666666666,
+          "width": 131.33333333333331,
+          "height": 20.333333333333343
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 95459,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "button"
+      },
+      {
+        "index": 2,
+        "parentIndex": 0,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Popover bubble",
+        "rect": {
+          "x": 141,
+          "y": 295,
+          "width": 120,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 95459,
+        "hittable": true,
+        "ref": "e3",
+        "kind": "button"
+      },
+      {
+        "index": 3,
+        "parentIndex": 0,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Styled sheet",
+        "rect": {
+          "x": 153.66666666666666,
+          "y": 335.3333333333333,
+          "width": 95,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 95459,
+        "hittable": true,
+        "ref": "e4",
+        "kind": "button"
+      },
+      {
+        "index": 4,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Hold for menu",
+        "rect": {
+          "x": 147,
+          "y": 391.510986328125,
+          "width": 108,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 95459,
+        "hittable": true,
+        "ref": "e5",
+        "kind": "text"
+      },
+      {
+        "index": 5,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Hold for preview",
+        "rect": {
+          "x": 138.5,
+          "y": 447.8443196614583,
+          "width": 125,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 95459,
+        "hittable": true,
+        "ref": "e6",
+        "kind": "text"
+      },
+      {
+        "index": 6,
+        "parentIndex": 0,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Share…",
+        "rect": {
+          "x": 159,
+          "y": 488.3333333333333,
+          "width": 84.33333333333331,
+          "height": 22.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 95459,
+        "hittable": true,
+        "ref": "e7",
+        "kind": "button"
+      },
+      {
+        "index": 7,
+        "parentIndex": 6,
+        "type": "Image",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Share",
+        "identifier": "square.and.arrow.up",
+        "rect": {
+          "x": 161,
+          "y": 489.3333333333333,
+          "width": 15,
+          "height": 20
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 95459,
+        "hittable": true,
+        "ref": "e8",
+        "kind": "image"
+      },
+      {
+        "index": 8,
+        "parentIndex": 6,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Share…",
+        "rect": {
+          "x": 159,
+          "y": 488.3333333333333,
+          "width": 84.33333333333331,
+          "height": 22.333333333333314
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 95459,
+        "hittable": true,
+        "ref": "e9",
+        "kind": "text"
+      },
+      {
+        "index": 9,
+        "parentIndex": 0,
+        "type": "Button",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Share link",
+        "rect": {
+          "x": 150.33333333333331,
+          "y": 530.6666666666666,
+          "width": 101.33333333333331,
+          "height": 22
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 95459,
+        "hittable": true,
+        "ref": "e10",
+        "kind": "button"
+      },
+      {
+        "index": 10,
+        "parentIndex": 9,
+        "type": "Image",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Share",
+        "identifier": "square.and.arrow.up",
+        "rect": {
+          "x": 152.33333333333331,
+          "y": 531.6666666666666,
+          "width": 15,
+          "height": 20
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 95459,
+        "hittable": true,
+        "ref": "e11",
+        "kind": "image"
+      },
+      {
+        "index": 11,
+        "parentIndex": 9,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Share link",
+        "rect": {
+          "x": 150.33333333333331,
+          "y": 530.6666666666666,
+          "width": 101.33333333333331,
+          "height": 22
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 95459,
+        "hittable": true,
+        "ref": "e12",
+        "kind": "text"
+      },
+      {
+        "index": 12,
+        "parentIndex": 0,
+        "type": "Button",
+        "role": "UIPasteControl",
+        "label": "Paste",
+        "rect": {
+          "x": 157.33333333333331,
+          "y": 572.6666666666666,
+          "width": 87.33333333333331,
+          "height": 34.33333333333337
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 95459,
+        "hittable": true,
+        "ref": "e13",
+        "kind": "button"
+      },
+      {
+        "index": 13,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Nothing pasted",
+        "rect": {
+          "x": 142.5,
+          "y": 627.1556803385417,
+          "width": 117,
+          "height": 20.33333333333337
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 95459,
+        "hittable": true,
+        "ref": "e14",
+        "kind": "text"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.popovers",
+    "appBundleId": "dev.simcore.popovers",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 14,
+      "totalNodeCount": 14,
+      "reasons": []
+    },
+    "keyboard": {
+      "kind": "absent",
+      "treeBound": true
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "absent",
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 6,
+        "p50Ms": 47,
+        "p95Ms": 2780,
+        "maxMs": 2780,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "apple-runner": 2,
+          "simulator-ax-bridge": 4
+        }
+      }
+    },
+    "refsGeneration": 969267
+  }
+}

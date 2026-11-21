@@ -256,6 +256,8 @@ struct CreateP {
     /// Test hook, like v1: spawn `appPath` directly without building.
     #[serde(default)]
     prebuilt: bool,
+    #[serde(default)]
+    pasteboard: Option<String>,
 }
 
 /// `iphone-17-pro` -> `iPhone 17 Pro`.
@@ -381,6 +383,7 @@ impl Server {
             device: p.device.as_deref().map(resolve_device).transpose()?.map(String::from),
             prebuilt: p.prebuilt,
             metro_url: p.metro_url,
+            pasteboard: p.pasteboard,
         };
         let entry = {
             let mut reg = lock(&self.reg);

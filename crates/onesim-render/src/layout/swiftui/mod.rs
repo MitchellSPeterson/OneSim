@@ -29,6 +29,8 @@ mod modifiers;
 mod navigation;
 mod paint;
 mod presentation;
+mod share;
+use presentation::{lifted_copy, SheetStyle};
 mod shapes;
 
 pub use crate::layout::common::SceneParams;
@@ -283,7 +285,9 @@ fn layout_inner<'a>(root: &ViewNode, params: &'a SceneParams<'a>, fonts: &'a mut
     if layers.is_empty() {
         cx.list_cache = cache;
     }
-    cx.desat = !layers.is_empty();
+    // Prominent tints under a presented layer turn gray; a context menu leaves them alone.
+    let tints_gray = |ls: &[Layer]| ls.iter().any(|l| !matches!(l, Layer::ContextMenu { .. }));
+    cx.desat = tints_gray(layers);
     cx.sheet_up = layers.iter().any(|l| matches!(l, Layer::Sheet { .. }));
     // A right status column (iPhone Duo) narrows the content; full-width backgrounds still reach the edge.
     let wc = w - params.device.safe_right;
@@ -304,21 +308,61 @@ fn layout_inner<'a>(root: &ViewNode, params: &'a SceneParams<'a>, fonts: &'a mut
     for (i, layer) in layers.iter().enumerate() {
         let id = format!("layer{i}");
         // Whatever lies under a higher layer is desaturated; a layer's own content is not.
-        cx.desat = i + 1 < layers.len();
+        cx.desat = tints_gray(&layers[i + 1..]);
         cx.sheet_up = layers[i + 1..].iter().any(|l| matches!(l, Layer::Sheet { .. }));
         let lay = match layer {
-            Layer::Sheet { content, detents, drag_indicator, dismiss } => {
-                cx.sheet(&id, content, detents, *drag_indicator, *dismiss, params.sheets.get(&id).copied().unwrap_or_default(), layers[..i].iter().filter(|l| matches!(l, Layer::Sheet { .. })).count(), &geo)
+            Layer::Sheet { content, detents, drag_indicator, dismiss, background, corner_radius, background_interaction, content_interaction } => {
+                let depth = layers[..i].iter().filter(|l| matches!(l, Layer::Sheet { .. })).count();
+                let large = (h - safe_top - SHEET_TOP_GAP - depth as f64 * SHEET_STACK_STEP).max(1.0);
+                let style = SheetStyle {
+                    background: background.as_deref(),
+                    corner_radius: *corner_radius,
+                    interactive_up_through: match background_interaction {
+                        Some(onesim_protocol::BackgroundInteraction::Enabled { up_through }) => {
+                            Some(up_through.map_or(f64::INFINITY, |d| Ctx::detent_h(&d, h, large)))
+                        }
+                        _ => None,
+                    },
+                    scrolls_first: *content_interaction == Some(onesim_protocol::ContentInteraction::Scrolls),
+                };
+                cx.sheet(&id, content, detents, *drag_indicator, *dismiss, &style, params.sheets.get(&id).copied().unwrap_or_default(), depth, &geo)
             }
             Layer::Cover { content } => cx.cover(content, &geo),
             Layer::Alert { title, message, actions } => cx.alert(title, message.as_deref(), actions, &geo),
-            Layer::Popover { anchor, content, dismiss } => {
+            Layer::Popover { anchor, content, dismiss, arrow, attachment, arrow_edge, background } => {
                 let rect = anchor.as_ref().and_then(|a| nodes.iter().find(|n| &n.id == a)).map(|n| n.bounds);
-                cx.content_popover(&id, content, rect, *dismiss, &geo)
+                if *arrow {
+                    cx.bubble(&id, content, rect, attachment.as_ref(), arrow_edge.as_deref(), background.as_deref(), *dismiss, &geo)
+                } else {
+                    cx.content_popover(&id, content, rect, *dismiss, &geo)
+                }
             }
             Layer::Menu { anchor, items, dismiss, centered } => {
                 let rect = anchor.as_ref().and_then(|a| nodes.iter().find(|n| &n.id == a)).map(|n| n.bounds);
                 cx.menu(items, rect, *dismiss, *centered, &geo)
+            }
+            Layer::ContextMenu { anchor, items, dismiss, preview } => {
+                // The anchor's outermost node: modifiers wrap the view in `<id>#…` layers (flattened first).
+                let at = anchor.as_ref().and_then(|a| nodes.iter().position(|n| &n.id == a || n.id.strip_prefix(a.as_str()).is_some_and(|r| r.starts_with('#'))));
+                let r = at.map_or(Rect { x: geo.w / 2.0, y: h / 2.0, w: 0.0, h: 0.0 }, |i| nodes[i].bounds);
+                let (cxp, cyp) = r.center();
+                let lifted = Rect { x: cxp - r.w * CONTEXT_LIFT / 2.0, y: cyp - r.h * CONTEXT_LIFT / 2.0, w: r.w * CONTEXT_LIFT, h: r.h * CONTEXT_LIFT };
+                let (under, menu, _) = cx.context_menu(&id, items, lifted, preview.as_deref(), *dismiss, &geo);
+                flatten(under, 0.0, 0.0, Some(0), 1.0, &mut nodes);
+                if let (Some(i), None) = (at, preview) {
+                    let copy = lifted_copy(&nodes, i, CONTEXT_LIFT, &format!("{id}#lift/"));
+                    // The view leaves its place while lifted.
+                    for n in &mut nodes[i..i + copy.len()] {
+                        n.opacity = 0.0;
+                    }
+                    nodes.extend(copy);
+                }
+                menu
+            }
+            Layer::Share { items, title, dismiss, copy, .. } => {
+                // The header names the item (or the preview's title); several items are counted.
+                let t = title.clone().unwrap_or_else(|| if items.len() == 1 { items[0].clone() } else { format!("{} Items", items.len()) });
+                cx.share_sheet(&id, &t, *copy, *dismiss, &geo)
             }
             Layer::Dialog { title, title_visible, message, actions, anchor, dismiss } => {
                 // The popover points at the anchor's label (its first text), not the whole row.
@@ -1631,6 +1675,133 @@ mod tests {
         let s = show(&inter, &json(""));
         assert_eq!(swipe(&mut inter, &s, 400.0), Effect::Redraw);
         assert!((top(&show(&inter, &json(""))) - 415.0).abs() < 1.0);
+    }
+
+    #[test]
+    fn styled_sheets_drop_the_dim_and_scroll_first() {
+        use crate::{DragPhase, Effect, Interaction};
+        use onesim_protocol::{PointerEvent, PointerKind};
+        // Background interaction up through medium: no scrim at medium, so the screen below takes taps.
+        let j = r#"{"kind":"presentation","id":"p","content":{"kind":"button","id":"u","action":3,"label":{"kind":"text","id":"ul","text":"under"}},
+            "layers":[{"kind":"sheet","detents":[{"kind":"medium"},{"kind":"large"}],"dismiss":7,"cornerRadius":16,
+              "backgroundInteraction":{"kind":"enabled","upThrough":{"kind":"medium"}},"contentInteraction":"scrolls",
+              "background":{"kind":"shape","id":"bg","shape":"rectangle","fill":{"r":1,"g":0.8,"b":0,"a":1}},
+              "content":{"kind":"scroll","id":"sc","axis":"vertical","child":{"kind":"vstack","id":"c","children":[
+                {"kind":"spacer","id":"sp","minLength":2000}]}}}]}"#;
+        let show = |inter: &Interaction| scene_sheets(j, (402.0, 874.0), false, (62.0, 34.0), &HashMap::new(), None, &inter.sheets);
+        let mut inter = Interaction::default();
+        let s = show(&inter);
+        assert!(!s.nodes.iter().any(|n| n.kind == "scrim"), "no dim at medium");
+        near(by_id(&s, "layer0").radius, 16.0);
+        let bg = by_id(&s, "bg");
+        near(bg.bounds.w, by_id(&s, "layer0").bounds.w);
+        let u = by_id(&s, "u").bounds.center();
+        assert!(matches!(inter.pointer(&s, PointerEvent::new(PointerKind::Click, u.0, u.1)), Effect::Action { id: 3, .. }), "the screen below stays live");
+        // contentInteraction(.scrolls): an upward drag on scrollable content at medium scrolls it, the sheet stays.
+        inter.drag(&s, DragPhase::Begin, 200.0, 700.0, 0.0);
+        inter.drag(&s, DragPhase::Move, 200.0, 600.0, 16.0);
+        inter.drag(&s, DragPhase::End, 200.0, 600.0, 1000.0);
+        let s = show(&inter);
+        assert!((by_id(&s, "layer0").bounds.y - 415.0).abs() < 1.0, "still medium: {}", by_id(&s, "layer0").bounds.y);
+        // At large the interaction no longer reaches through: the dim and its scrim are back.
+        let mut big = Interaction::default();
+        big.sheets.insert("layer0".into(), crate::SheetPos { detent: 1, top: None });
+        assert!(show(&big).nodes.iter().any(|n| n.kind == "scrim"));
+    }
+
+    #[test]
+    fn popover_bubble_points_at_its_anchor() {
+        let s = phone(
+            r#"{"kind":"presentation","id":"p","content":{"kind":"vstack","id":"v","children":[
+                {"kind":"button","id":"b","action":1,"label":{"kind":"text","id":"bl","text":"Bubble"}}]},
+              "layers":[{"kind":"popover","anchor":"b","arrow":true,"arrowEdge":"top","dismiss":7,
+                "content":{"kind":"text","id":"t","text":"Bubble content"}}]}"#,
+        );
+        let (b, card, arrow) = (by_id(&s, "b").bounds, by_id(&s, "layer0#card").bounds, by_id(&s, "layer0#arrow"));
+        near(card.center().0, b.center().0);
+        near(card.y, b.y + b.h + BUBBLE_TIP_GAP + POPOVER_ARROW_H);
+        near(card.h, by_id(&s, "t").bounds.h + 2.0 * BUBBLE_PAD_V);
+        assert!(matches!(arrow.glyph, Some((Glyph::ArrowUp, _))));
+        assert_eq!(by_id(&s, "layer0#scrim").action, Some(7), "a tap outside dismisses");
+        // arrowEdge bottom puts it above; a unit-point attachment moves the tip.
+        let s = phone(
+            r#"{"kind":"presentation","id":"p","content":{"kind":"vstack","id":"v","children":[
+                {"kind":"button","id":"b","action":1,"label":{"kind":"text","id":"bl","text":"Bubble"}}]},
+              "layers":[{"kind":"popover","anchor":"b","arrow":true,"arrowEdge":"bottom","attachment":{"point":[0,0]},
+                "content":{"kind":"text","id":"t","text":"Up"}}]}"#,
+        );
+        let (b, card) = (by_id(&s, "b").bounds, by_id(&s, "layer0#card").bounds);
+        near(card.y + card.h + POPOVER_ARROW_H + BUBBLE_TIP_GAP, b.y);
+        assert!(matches!(by_id(&s, "layer0#arrow").glyph, Some((Glyph::ArrowDown, _))));
+        assert!(card.center().0 < b.center().0, "centred on the leading edge, kept on screen");
+    }
+
+    #[test]
+    fn context_menu_lifts_the_view_and_hangs_the_menu_under_it() {
+        let s = phone(
+            r#"{"kind":"presentation","id":"p","content":{"kind":"vstack","id":"v","children":[
+                {"kind":"text","id":"t","text":"Hold for menu","modifiers":[{"padding":{"top":16,"leading":16,"bottom":16,"trailing":16}}]}]},
+              "layers":[{"kind":"contextMenu","anchor":"t","dismiss":7,"items":[
+                {"text":"Copy","action":2,"systemImage":"doc.on.doc"},{"text":"Delete","action":3,"destructive":true,"divider":true}]}]}"#,
+        );
+        let orig = s.nodes.iter().position(|n| n.id == "t" || n.id.starts_with("t#")).unwrap();
+        let o = s.nodes[orig].bounds;
+        assert_eq!(s.nodes[orig].opacity, 0.0, "the view leaves its place");
+        let lift = s.nodes.iter().find(|n| n.id.starts_with("layer0#lift/")).unwrap();
+        near(lift.bounds.w, o.w * CONTEXT_LIFT);
+        near(lift.bounds.center().1, o.center().1);
+        assert!(lift.action.is_none() && !lift.inspect);
+        let card = by_id(&s, "menu").bounds;
+        near(card.y, lift.bounds.y + lift.bounds.h + CONTEXT_MENU_GAP);
+        near(card.center().0, o.center().0);
+        assert_eq!(by_id(&s, "menu#1").action, Some(3));
+        let scrim = by_id(&s, "layer0#scrim");
+        assert_eq!(scrim.action, Some(7));
+        assert!(scrim.fill.is_some_and(|c| c.a > 0.1), "the screen dims");
+        // A custom preview replaces the lifted copy: on a platter centred on the anchor.
+        let s = phone(
+            r#"{"kind":"presentation","id":"p","content":{"kind":"vstack","id":"v","children":[{"kind":"text","id":"t","text":"Hold"}]},
+              "layers":[{"kind":"contextMenu","anchor":"t","preview":{"kind":"text","id":"pv","text":"Preview"},"items":[{"text":"Open","action":2}]}]}"#,
+        );
+        assert!(!s.nodes.iter().any(|n| n.id.starts_with("layer0#lift/")));
+        near(by_id(&s, "layer0#preview").bounds.center().1, by_id(&s, "t").bounds.center().1);
+    }
+
+    #[test]
+    fn share_sheet_copies_and_dismisses() {
+        use crate::{DragPhase, Effect, Interaction};
+        let s = phone(
+            r#"{"kind":"presentation","id":"p","content":{"kind":"text","id":"u","text":"under"},
+              "layers":[{"kind":"share","items":["Hello"],"dismiss":7,"copy":8}]}"#,
+        );
+        let card = by_id(&s, "layer0");
+        let m = crate::look::look(IosVersion::Ios26).share;
+        near(card.bounds.y + card.bounds.h, 874.0 - m.inset.1);
+        assert_eq!(card.sheet.as_ref().map(|i| i.dismiss), Some(Some(7)));
+        let title = s.nodes.iter().find(|n| n.id == "layer0#title").unwrap();
+        assert_eq!(title.text.as_ref().map(|t| t.text.as_str()), Some("Hello"));
+        let cell = |label: &str| s.nodes.iter().find(|n| n.label.as_deref() == Some(label) && n.role == Role::Button).unwrap().action;
+        assert_eq!((cell("Copy"), cell("Save to Files"), cell("Reminders"), cell("More")), (Some(8), Some(7), Some(7), Some(7)));
+        assert_eq!(by_id(&s, "layer0#scrim").action, Some(7));
+        // A swipe down dismisses it like a sheet.
+        let mut inter = Interaction::default();
+        inter.drag(&s, DragPhase::Begin, 200.0, 560.0, 0.0);
+        inter.drag(&s, DragPhase::Move, 200.0, 800.0, 16.0);
+        assert!(matches!(inter.drag(&s, DragPhase::End, 200.0, 860.0, 100.0), Effect::Action { id: 7, .. }));
+        // Several items are counted in the header.
+        let s = phone(r#"{"kind":"presentation","id":"p","content":{"kind":"text","id":"u","text":"under"},"layers":[{"kind":"share","items":["a","b"]}]}"#);
+        assert_eq!(by_id(&s, "layer0#title").text.as_ref().map(|t| t.text.as_str()), Some("2 Items"));
+    }
+
+    #[test]
+    fn paste_button_is_an_accent_rounded_rect() {
+        let s = phone(r#"{"kind":"button","id":"pb","style":"pasteButton","action":4,"label":{"kind":"label","id":"l",
+            "title":{"kind":"text","id":"lt","text":"Paste"},"icon":{"kind":"image","id":"li","systemName":"doc.on.clipboard"}}}"#);
+        let b = by_id(&s, "pb");
+        near(b.bounds.h, PASTE_PAD.1);
+        near(b.radius, PASTE_RADIUS);
+        assert_eq!(b.action, Some(4));
+        assert!(b.fill.is_some());
     }
 
     #[test]

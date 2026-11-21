@@ -968,3 +968,53 @@ disclosure state. This section extends `list`, its sections and rows.
   - `lift`: points a row being reordered is drawn below its place, above the other rows.
 - A gesture's optional `axis` (`"horizontal"` / `"vertical"`) locks its pan to that axis: a finger that first leaves
   the touch slop mostly along the other axis is handed to the scroller under it (the gesture sees `cancel`).
+
+## U. v1 additions for SwiftUI popovers, context menus, sharing and the pasteboard
+
+Additive; `PROTOCOL_VERSION` stays 1. Extends the presentation layers of section G.
+
+- **Presentation modifiers** (`presentationDetents`, `presentationDragIndicator`, `interactiveDismissDisabled`,
+  `presentationBackground`, `presentationCornerRadius`, `presentationBackgroundInteraction`,
+  `presentationContentInteraction`, `presentationCompactAdaptation`, `presentationSizing`, `presentationPlacement`)
+  are lifted by the guest from any node of the presented content (the outermost wins, as with SwiftUI preferences)
+  and never appear as modifiers. Sizing and placement only apply in regular width, so they reach no layer.
+- `sheet` layer gains:
+
+  | field | |
+  |---|---|
+  | `"background"?: ViewNode` | `presentationBackground`: laid out at the card's size behind the content, replacing the system fill or glass (a `ShapeStyle` arrives as a filled `rectangle`) |
+  | `"cornerRadius"?: number` | `presentationCornerRadius`; absent keeps the system radius |
+  | `"backgroundInteraction"?` | `{"kind":"automatic"\|"disabled"}` or `{"kind":"enabled","upThrough"?: Detent}`: while the sheet rests at or below `upThrough` (every detent when absent) the host draws no dim and no `scrim`, so the screen below stays live |
+  | `"contentInteraction"?` | `"automatic"\|"resizes"\|"scrolls"`: `scrolls` lets a drag on scrollable content scroll it at any detent before the sheet resizes (`SheetInfo::scrolls_first`) |
+
+- `.popover` is a `sheet` layer on iPhone unless its content sets `presentationCompactAdaptation` (horizontal):
+  `.popover` / `.none` give a `popover` layer, `.fullScreenCover` a `cover`, `.sheet` a sheet. The guest evaluates
+  it under `<path>/popover`. A `.popover` `popover` layer adds `"arrow": true`, `"attachment"?:
+  {"rect":[x,y,w,h]}|{"point":[ux,uy]}` (in the anchor's space; absent = its bounds), `"arrowEdge"?: "top"|"leading"|"bottom"|"trailing"`
+  (the bubble edge with the arrow; `top` puts the bubble below) and `"background"?`. The host draws a glass bubble the
+  content's width and 7.83 pt taller above and below, radius 26, the arrow's tip 0.33 pt past the attachment, below
+  when it fits, else above; no dim; a tap outside runs `dismiss`. Without `arrow` it is the compact `DatePicker` card.
+- New layer `contextMenu`: `{"kind":"contextMenu","anchor","items":[PickerOption],"preview"?: ViewNode,"dismiss"}`.
+  `items` are menu items as for `menu` (section Q). The guest opens it on a 0.5 s long press of the view
+  (`.simultaneousGesture`, so a `Button` still taps) and closes it when an item runs or `dismiss` runs; an empty menu
+  never opens. The host dims the screen (0.20 light / 0.46 dark; prominent tints keep their color), draws a copy of the
+  anchor's laid-out nodes grown 1.15× about its centre (the original is hidden while lifted; the copy takes no taps),
+  or the `preview` on a system-background platter (radius 28) centred on the anchor, and the menu card 16 pt under
+  that, centred (above when there is no room). `contextMenu(forSelectionType:)` wraps each `ForEach` row below it
+  whose id is of the selection type: its long press opens the menu built for `[id]`, its tap runs `primaryAction`.
+- New layer `share` (`ShareLink`): `{"kind":"share","anchor","items":[String],"title"?,"subject"?,"message"?,"image"?:
+  bool,"icon"?: bool,"dismiss","copy"}`. `items` are the items' text (`URL` as its absolute string); `title` is the
+  `SharePreview` title. The host draws the Simulator's share sheet for text: a floating glass card (9 pt from the
+  sides and bottom), a header with a text tile and the title (or the single item, or "N Items"), an app row (Reminders,
+  More) and an action row (Copy, Save to Files). Copy runs `copy` (the guest puts the items on the pasteboard and
+  closes the sheet); every other cell, a tap outside and a swipe down run `dismiss`. `subject` and `message` have no
+  visible effect.
+- `button` `style` `"pasteButton"` (`PasteButton`): a white `Label("Paste", systemImage: "doc.on.clipboard")` on an
+  accent rounded rect (radius 5, 13.33 pt side padding, 34.67 tall; gray 133 / 140 under a presented layer). iOS draws
+  it enabled whatever the pasteboard holds; its action pastes the items that convert to the payload type, or does
+  nothing.
+- **Pasteboard.** The session pasteboard is a list of strings in the guest. The host seeds it at launch with
+  `SIMCORE_PASTEBOARD` (`create_session` `"pasteboard"`, CLI `--pasteboard TEXT`); host → guest
+  `{"type":"pasteboard","items":[String]}` replaces it (C ABI: the layout callback). When the app replaces it (the
+  share sheet's Copy) the guest sends the same line to the host, which emits `pasteboard.changed` `{"items"}` on the
+  client event stream. Text converts to `String` as is and to `URL` when it has a scheme and no spaces.

@@ -45,6 +45,7 @@ keypads="$guests/keypads"
 pickers="$guests/pickers"
 navigation="$guests/navigation"
 forms="$guests/forms"
+popovers="$guests/popovers"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
 fi
@@ -63,6 +64,7 @@ if want swiftui && [ -z "$smoke" ]; then
   scripts/build-swift-app.sh examples/swiftui-pickers "$pickers"
   scripts/build-swift-app.sh examples/swiftui-navigation "$navigation"
   scripts/build-swift-app.sh examples/swiftui-forms "$forms"
+  scripts/build-swift-app.sh examples/swiftui-popovers "$popovers"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
 # (docs/compatibility/versions.json): 27.2 on the iPhone 18 Pro in tests/fixtures/ios27/, 26.5 on the iPhone 17 Pro
@@ -270,6 +272,33 @@ for ios in ${SIMCORE_IOS:-27.2}; do
     nshot search-active --click Search --click 100,138
     echo "== SwiftUI navigation (iOS $ios)"
     python3 scripts/compare_ios.py "$nfx" "$nout/onesim" "$nout" || rc=1
+    # Popovers, context menus, presentation styling, ShareLink and PasteButton (tests/fixtures/ios27/swiftui-popovers-ios/README.md).
+    pvout=$out/swiftui-popovers
+    pvfx=$fx/swiftui-popovers-ios
+    mkdir -p "$pvout/onesim"
+    pvshot() {
+      local name=$1
+      shift
+      if [ ! -f "$pvfx/$name.png" ]; then
+        echo "Missing iOS $ios popovers reference: $pvfx/$name.png" >&2
+        rc=1
+        return
+      fi
+      ./target/debug/onesim run "$popovers" "${base[@]}" "$@" --screenshot "$pvout/onesim/$name.png" >/dev/null
+    }
+    pvshot popovers
+    pvshot popovers-dark       --dark
+    pvshot popover-sheet       --click "Popover as sheet"
+    pvshot popover-bubble      --click "Popover bubble"
+    pvshot popover-bubble-dark --dark --click "Popover bubble"
+    pvshot styled-sheet        --click "Styled sheet"
+    pvshot context-menu        --long-press "Hold for menu"
+    pvshot context-menu-dark   --dark --long-press "Hold for menu"
+    pvshot context-preview     --long-press "Hold for preview"
+    pvshot share               --click "Share…"
+    pvshot pasted              --pasteboard "Copied text" --click Paste
+    echo "== SwiftUI popovers (iOS $ios)"
+    python3 scripts/compare_ios.py "$pvfx" "$pvout/onesim" "$pvout" || rc=1
     # Forms and containers (tests/fixtures/ios27/swiftui-forms-ios/README.md). Screens below the fold are reached
     # after a scroll; toggles and swipes animate, so those states wait for them to settle.
     fmout=$out/swiftui-forms

@@ -131,6 +131,9 @@ struct Opts {
     /// Simulated iOS release: 26.5 or 27.2 (default).
     #[arg(long = "ios", value_name = "VERSION")]
     ios: Option<String>,
+    /// SwiftUI: text on the pasteboard at launch (what `PasteButton` pastes).
+    #[arg(long, value_name = "TEXT")]
+    pasteboard: Option<String>,
 }
 
 /// One interaction, in command-line order.
@@ -261,6 +264,7 @@ fn params(framework: &str) -> CreateSessionParams {
         os_version: None,
         prebuilt: false,
         metro_url: None,
+        pasteboard: None,
     }
 }
 
@@ -285,6 +289,7 @@ fn prepare(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: &mut
         .map(|d| DynamicTypeSize::parse(&d).with_context(|| format!("unknown --dynamic-type {d:?}")))
         .transpose()?;
     p.device = o.device.take();
+    p.pasteboard = o.pasteboard.take();
     p.os_version = o
         .ios
         .take()

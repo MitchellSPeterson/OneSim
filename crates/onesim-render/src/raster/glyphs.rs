@@ -239,7 +239,7 @@ pub(super) fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32,
         Glyph::Shift | Glyph::ShiftFilled | Glyph::Backspace | Glyph::Return | Glyph::Search | Glyph::Emoji | Glyph::Mic => {
             crate::chrome::draw_glyph(pm, g, c, b, xf, mask);
         }
-        Glyph::ArrowDown | Glyph::ArrowUp | Glyph::ArrowLeft => {
+        Glyph::ArrowDown | Glyph::ArrowUp | Glyph::ArrowLeft | Glyph::ArrowRight => {
             let mut pb = PathBuilder::new();
             match g {
                 Glyph::ArrowDown => {
@@ -253,6 +253,12 @@ pub(super) fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32,
                     pb.line_to(x + w, y + h);
                     pb.line_to(cx + 1.5, y + 1.0);
                     pb.line_to(cx - 1.5, y + 1.0);
+                }
+                Glyph::ArrowRight => {
+                    pb.move_to(x, y);
+                    pb.line_to(x, y + h);
+                    pb.line_to(x + w - 1.0, cy + 1.5);
+                    pb.line_to(x + w - 1.0, cy - 1.5);
                 }
                 _ => {
                     pb.move_to(x + w, y);

@@ -25,6 +25,8 @@ pub enum GuestMessage {
     /// React Native `scrollTo` / `scrollToEnd` commands.
     #[serde(rename = "scroll_to")]
     ScrollTo { tag: u64, x: ScrollTarget, y: ScrollTarget },
+    /// The app replaced the session pasteboard (section U: the share sheet's Copy).
+    Pasteboard { items: Vec<String> },
     /// SwiftUI `ScrollViewProxy.scrollTo` (section M). `anchor` is a unit point; absent means top-leading.
     #[serde(rename = "scroll_to_id")]
     ScrollToId {
@@ -387,6 +389,8 @@ mod tests {
         let g: GuestMessage = serde_json::from_str(r#"{"type":"scroll_to","tag":3,"x":0,"y":"end"}"#).unwrap();
         let GuestMessage::ScrollTo { tag: 3, x, y } = g else { panic!() };
         assert_eq!((x.resolve(10.0), y.resolve(10.0)), (0.0, 10.0));
+        let pb: GuestMessage = serde_json::from_str(r#"{"type":"pasteboard","items":["a"]}"#).unwrap();
+        assert_eq!(pb, GuestMessage::Pasteboard { items: vec!["a".into()] });
         let sid = GuestMessage::ScrollToId { scroll: "0".into(), target: "row".into(), anchor: Some([0.5, 0.0]) };
         let sj = serde_json::to_string(&sid).unwrap();
         assert_eq!(sj, r#"{"type":"scroll_to_id","scroll":"0","target":"row","anchor":[0.5,0.0]}"#);

@@ -20,7 +20,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `DefaultDateProgressLabel` | 16 | ⬜ |  |  |
 | `DefaultDocumentGroupLaunchActions` | 18 | ⬜ |  |  |
 | `DefaultNewDocumentButtonLabel` | 27 | ⬜ |  |  |
-| `DefaultShareLinkLabel` | 16 | ⬜ |  |  |
+| `DefaultShareLinkLabel` | 16 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | "Share…" or the given title with the share symbol |
 | `DefaultTabLabel` | 18 | ⬜ |  |  |
 | `DisclosureGroup` | 14 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `Divider` | 13 | ✅ |  |  |
@@ -66,7 +66,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `NewDocumentButton` | 18 | ⬜ |  |  |
 | `OutlineGroup` | 14 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `OutlineSubgroupChildren` | 14 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
-| `PasteButton` | 16 | ⬜ |  |  |
+| `PasteButton` | 16 | 🟠 | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Drawn as on iOS (enabled whatever the pasteboard holds). Pastes the session pasteboard (`--pasteboard`, `SIMCORE_PASTEBOARD`, or the share sheet's Copy), not the host clipboard. `payloadType:` for `String` and `URL`; the `supportedContentTypes:` forms (plain text and URLs) on Apple-platform guests only |
 | `PhaseAnimator` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `Picker` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | `.menu`, `.segmented`, `.palette` (drawn segmented), `.inline` (checkmark rows in a list, a wheel elsewhere), `.navigationLink`, `.wheel` (a tap selects a row; no spinning). No `.tabs`. Options are text only; an inline picker shows no label row |
 | `PlaceholderContentView` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
@@ -79,7 +79,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ScrollViewReader` | 14 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | `scrollTo` only. Anchor is a unit point. No animation |
 | `Section` | 13 | ✅ |  |  |
 | `SecureField` | 13 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | String binding, masked text, prompts and submit callbacks. Localization and some custom labels are gaps. The caret stays at the end. |
-| `ShareLink` | 16 | ⬜ |  |  |
+| `ShareLink` | 16 | 🟠 | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Every initializer; the share sheet shows the Simulator's activities for text (Reminders, More, Copy, Save to Files). Copy puts the items' text on the session pasteboard; the other activities only close the sheet. Items move as text (`URL` as its string); `subject`/`message` have no visible effect; the header always shows the text tile |
 | `Slider` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Moves on tap or whole drag, not live; no tint or ticks |
 | `Spacer` | 13 | ✅ |  |  |
 | `Stepper` | 13 | ✅ |  |  |

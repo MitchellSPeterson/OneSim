@@ -1423,4 +1423,115 @@ for screen in ["Grouped", "Plain", "Inset", "Sidebar", "Boxes", "Columns", "Empt
     t = back(t)
 finish(p)
 print("forms: list styles, sections, edit mode, swipe actions, disclosure, outline, custom styles, columns, table ok")
+
+# --- presentation lab: popovers, presentation modifiers, context menus, ShareLink, PasteButton (issue #45)
+def pl_spawn(**extra):
+    env = dict(os.environ); env.update(extra)
+    q = spawn(sys.argv[24], env); assert recv(q)["type"] == "hello"; return q, recv(q)
+p, t = pl_spawn()
+PL = lambda t: layers(t)
+def pbtn(t, label): return fbtn(tree(t), label)
+def ptap(t, label): return act(p, t, pbtn(t, label)["action"])
+def ptext(t, prefix): return next(x for x in ftexts(tree(t)) if x.startswith(prefix))
+def hold(t, label, at=0):
+    # A long press: the finger rests 600 ms (LongPressGesture's 0.5 s), then lifts.
+    n = next(m for m in fwalk(tree(t)) if label in ftexts(m) and any("gesture" in x for x in m.get("modifiers", [])))
+    keys = [x["gesture"]["key"] for x in n["modifiers"] if "gesture" in x]
+    for time, phase in ((at, "start"), (at + 600, "move"), (at + 650, "end")):
+        send(p, type="gesture", phase=phase, time=time, points=[[10, 10]], targets=[{"key": k, "frame": [0, 0, 100, 40]} for k in keys])
+        t = recv(p)
+    return t
+
+# A popover is a sheet on iPhone by default; its dismiss clears the binding.
+t = ptap(t, "Pop"); l = PL(t)[0]
+assert l["kind"] == "sheet" and "Pop body" in ftexts(l["content"]) and l["dismiss"], l
+t = act(p, t, l["dismiss"]); assert not PL(t)
+# presentationCompactAdaptation(.popover) on a child keeps the bubble: arrow, anchor, attachment point, arrow edge.
+t = ptap(t, "Bubble"); l = PL(t)[0]
+assert l["kind"] == "popover" and l["arrow"] is True and l["anchor"] == pbtn(t, "Bubble")["id"], l
+assert l["attachment"] == {"point": [0.5, 1.0]} and l["arrowEdge"] == "bottom", l
+assert not any("presentationCompactAdaptation" in m for n in fwalk(l["content"]) for m in n.get("modifiers", [])), "lifted, never emitted"
+t = act(p, t, l["dismiss"]); assert not PL(t)
+# fullScreenCover adaptation (horizontal applies on iPhone); .none is a popover; a rect attachment travels.
+t = ptap(t, "CoverPop"); assert PL(t)[0]["kind"] == "cover" and "Cover body" in ftexts(PL(t)[0]["content"]), PL(t)
+p.kill(); p, t = pl_spawn()
+t = ptap(t, "Bare"); l = PL(t)[0]
+assert l["kind"] == "popover" and l["attachment"] == {"rect": [1.0, 2.0, 3.0, 4.0]} and "dismiss" not in l and "arrowEdge" not in l, l
+p.kill(); p, t = pl_spawn()
+t = ptap(t, "LockedPop"); assert PL(t)[0]["kind"] == "sheet" and "dismiss" not in PL(t)[0], PL(t)
+p.kill(); p, t = pl_spawn()
+t = ptap(t, "PopItem"); assert PL(t)[0]["kind"] == "sheet" and "Item 7" in ftexts(PL(t)[0]["content"])
+t = act(p, t, PL(t)[0]["dismiss"]); assert not PL(t)
+
+# Sheet styling: background view, corner radius (0 kept, nil omitted), background and content interaction;
+# sizing and placement are lifted (no effect in compact width). Modifiers come off any node of the content.
+t = ptap(t, "Styled"); l = PL(t)[0]
+assert l["cornerRadius"] == 0 and l["backgroundInteraction"] == {"kind": "enabled", "upThrough": {"kind": "medium"}}, l
+assert l["contentInteraction"] == "scrolls" and l["background"]["kind"] == "zstack", l
+assert sorted(d["kind"] for d in l["detents"]) == ["large", "medium"], l["detents"]
+assert not any(k.startswith("presentation") for n in fwalk(l["content"]) for m in n.get("modifiers", []) for k in m), l["content"]
+t = act(p, t, l["dismiss"])
+t = ptap(t, "PlainStyled"); l = PL(t)[0]
+assert "cornerRadius" not in l and l["backgroundInteraction"] == {"kind": "disabled"} and "contentInteraction" not in l, l
+assert l["background"]["kind"] in ("shape", "rectangle") or "fill" in json.dumps(l["background"]), l["background"]
+t = act(p, t, l["dismiss"]); assert not PL(t)
+
+# Context menus: a long press opens items (icon, disabled, divider, destructive); an item runs and closes.
+t = hold(t, "Menu target"); l = PL(t)[0]
+assert l["kind"] == "contextMenu" and [i["text"] for i in l["items"]] == ["First", "Off", "Gone"], l
+assert l["items"][0]["systemImage"] == "star" and l["items"][1].get("disabled") and l["items"][2].get("divider") and l["items"][2].get("destructive"), l["items"]
+assert l["anchor"] and "preview" not in l
+t = act(p, t, l["items"][0]["action"]); assert not PL(t) and ptext(t, "log:") == "log: first", ptext(t, "log:")
+t = hold(t, "Menu target", 1000); t = act(p, t, PL(t)[0]["dismiss"]); assert not PL(t) and ptext(t, "log:") == "log: first"
+# On a Button the tap still runs the button; a long press opens its menu.
+t = ptap(t, "Tap target"); assert ptext(t, "log:") == "log: first tapped" and not PL(t)
+t = hold(t, "Tap target", 2000); assert [i["text"] for i in PL(t)[0]["items"]] == ["On button"], PL(t)
+t = act(p, t, PL(t)[0]["items"][0]["action"]); assert ptext(t, "log:") == "log: first tapped onbutton"
+t = hold(t, "Preview target", 3000); assert "Big preview" in ftexts(PL(t)[0]["preview"]), PL(t)
+t = act(p, t, PL(t)[0]["dismiss"])
+t = hold(t, "Empty target", 4000); assert not PL(t), "an empty menu does not open"
+t = hold(t, "Legacy target", 5000); assert [i["text"] for i in PL(t)[0]["items"]] == ["Legacy item"]; t = act(p, t, PL(t)[0]["dismiss"])
+dis = next(m for m in fwalk(tree(t)) if "Disabled target" in ftexts(m))
+assert ptext(t, "log:") == "log: first tapped onbutton"
+assert not any("gesture" in x for x in dis.get("modifiers", [])), "a disabled view takes no long press"
+# contextMenu(forSelectionType:): each ForEach row gets the menu for its own id; a tap runs primaryAction.
+t = hold(t, "Row 2", 6000); assert [i["text"] for i in PL(t)[0]["items"]] == ["Edit 2"], PL(t)
+t = act(p, t, PL(t)[0]["items"][0]["action"]); assert ptext(t, "log:").endswith("edit[2]"), ptext(t, "log:")
+row1 = next(m for m in fwalk(tree(t)) if "Row 1" in ftexts(m) and any("gesture" in x for x in m.get("modifiers", [])))
+keys = [x["gesture"]["key"] for x in row1["modifiers"] if "gesture" in x]
+for time, phase in ((7000, "start"), (7050, "end")):
+    send(p, type="gesture", phase=phase, time=time, points=[[10, 10]], targets=[{"key": k, "frame": [0, 0, 100, 40]} for k in keys]); t = recv(p)
+assert ptext(t, "log:").endswith("primary[1]"), ptext(t, "log:")
+
+# PasteButton: drawn enabled (as on iOS) on an empty pasteboard, but a tap pastes nothing.
+paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
+assert len(paste) == 3 and not any(b["disabled"] for b in paste) and ftexts(paste[0]) == ["Paste"], paste
+# (nothing changes, so the guest sends no tree; the exact "pasted:" text below shows onPaste never ran)
+send(p, type="action", id=paste[0]["action"], version=t["version"])
+# ShareLink: the default label, a share layer with items, subject, message; Copy fills the pasteboard and closes.
+share = pbtn(t, "Share\u2026"); t = act(p, t, share["action"]); l = PL(t)[0]
+assert l["kind"] == "share" and l["items"] == ["share me"] and l["subject"] == "Subj" and l["message"] == "Msg" and l["anchor"] == share["id"], l
+send(p, type="action", id=l["copy"], version=t["version"])
+ev = recv(p); assert ev == {"type": "pasteboard", "items": ["share me"]}, ev
+t = recv(p); assert not PL(t)
+paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
+send(p, type="action", id=paste[1]["action"], version=t["version"])  # plain text is not a URL: no change, no tree
+t = act(p, t, paste[0]["action"]); assert ptext(t, "pasted:") == "pasted: share me", ptext(t, "pasted:")
+paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
+t = act(p, t, paste[2]["action"]); assert ptext(t, "pasted:") == "pasted: share me providers1", "UTType form: one item provider"
+t = act(p, t, pbtn(t, "Many")["action"]); l = PL(t)[0]
+assert l["items"] == ["a", "b"] and l["title"] == "Preview a", l
+t = act(p, t, l["dismiss"]); assert not PL(t)
+t = act(p, t, pbtn(t, "Nothing")["action"]); assert not PL(t), "no items: no share sheet"
+# The host can replace the pasteboard; a URL pastes into the URL button.
+send(p, type="pasteboard", items=["https://example.com"]); t = recv(p)
+paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
+t = act(p, t, paste[1]["action"]); assert ptext(t, "urls:") == "urls: https://example.com", "only the URL, never the earlier text: " + ptext(t, "urls:")
+finish(p)
+# SIMCORE_PASTEBOARD seeds it at launch.
+p, t = pl_spawn(SIMCORE_PASTEBOARD="seeded")
+paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
+t = act(p, t, paste[0]["action"]); assert ptext(t, "pasted:") == "pasted: seeded"
+finish(p)
+print("presentation lab: popover adaptations, presentation modifiers, context menus, share sheet, paste button ok")
 print("PASS")

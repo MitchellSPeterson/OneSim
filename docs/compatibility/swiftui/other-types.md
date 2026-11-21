@@ -25,7 +25,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Alert` | 13 | ⬜ |  | Deprecated |
 | `Alignment` | 13 | ✅ |  |  |
 | `AlignmentKey` | 13 | ⬜ |  |  |
-| `Anchor` | 13 | ⬜ |  |  |
+| `Anchor` | 13 | 🟠 | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Only `Anchor<CGRect>.Source` `.bounds` / `.rect(_:)`, for popover attachment |
 | `Angle` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
 | `AnimatablePair` | 13 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `AnimatableValues` | 26 | ⬜ |  |  |
@@ -49,7 +49,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `AttributedTextSelection` | 26 | ⬜ |  |  |
 | `AutomaticHoverEffect` | 18 | ⬜ |  |  |
 | `AutomaticNavigationTransition` | 18 | ⬜ |  |  |
-| `AutomaticPresentationSizing` | 18 | ⬜ |  |  |
+| `AutomaticPresentationSizing` | 18 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | No effect in compact width |
 | `Axis` | 13 | ✅ |  |  |
 | `BackgroundProminence` | 17 | ⬜ |  |  |
 | `BackgroundTask` | 16 | ⬜ |  |  |
@@ -78,7 +78,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ContentSizeCategory` | 13 | ⬜ |  | Deprecated |
 | `ContentToolbarPlacement` | 18.4 | ⬜ |  |  |
 | `ContentTransition` | 16 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | `identity`, `interpolate`, `opacity`, `numericText`, `symbolEffect`; no per-glyph morphing |
-| `ContextMenu` | 13 | ⬜ |  | Deprecated |
+| `ContextMenu` | 13 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Deprecated. `contextMenu(_:)` |
 | `ControlGroupStyleConfiguration` | 15 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `ControlSize` | 15 | ⬜ |  |  |
 | `ControlWidgetConfigurationBuilder` | 18 | ⬜ |  |  |
@@ -143,14 +143,14 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `FileWrapperDocumentWriter` | 27 | ⬜ |  |  |
 | `FillShapeView` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `FindContext` | 26 | ⬜ |  |  |
-| `FittedPresentationSizing` | 18 | ⬜ |  |  |
+| `FittedPresentationSizing` | 18 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | No effect in compact width |
 | `FixedTextVariant` | 18 | ⬜ |  |  |
 | `FocusedValues` | 14 | ⬜ |  |  |
 | `FocusInteractions` | 17 | ⬜ |  |  |
 | `Font` | 13 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Text styles and `.system(size:weight:design:)`. `Font.Width` statics are -0.3, -0.2, 0, and 0.3 |
 | `ForEachSectionCollection` | 18 | ⬜ |  |  |
 | `ForEachSubviewCollection` | 18 | ⬜ |  |  |
-| `FormPresentationSizing` | 18 | ⬜ |  |  |
+| `FormPresentationSizing` | 18 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | No effect in compact width |
 | `FormStyleConfiguration` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `GaugeStyleConfiguration` | 16 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | No `markedValueLabels` |
 | `GeometryProxy` | 13 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | `size` and `safeAreaInsets` from the host frame. `frame(in: .local)` origin is zero; `.global` and a named space are the host screen frame |
@@ -222,7 +222,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `OpacityTransition` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `OpenURLAction` | 14 | 🟠 | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) | `handled`, `discarded`, `systemAction` (reported as an event); not on the web build |
 | `OpenWindowAction` | 16 | ⬜ |  |  |
-| `PagePresentationSizing` | 18 | ⬜ |  |  |
+| `PagePresentationSizing` | 18 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | No effect in compact width |
 | `PagingScrollTargetBehavior` | 17 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `PaletteSelectionEffect` | 17 | ⬜ |  |  |
 | `PencilDoubleTapGestureValue` | 17.5 | ⬜ |  |  |
@@ -232,16 +232,16 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `PencilSqueezeGestureValue` | 17.5 | ⬜ |  |  |
 | `PeriodicTimelineSchedule` | 15 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `PinnedScrollableViews` | 14 | ✅ |  |  |
-| `PopoverAttachmentAnchor` | 13 | ⬜ |  |  |
+| `PopoverAttachmentAnchor` | 13 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) |  |
 | `PreferredColorSchemeKey` | 13 | ⬜ |  |  |
-| `PresentationAdaptation` | 16.4 | ⬜ |  |  |
-| `PresentationBackgroundInteraction` | 16.4 | ⬜ |  |  |
-| `PresentationContentInteraction` | 16.4 | ⬜ |  |  |
+| `PresentationAdaptation` | 16.4 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) |  |
+| `PresentationBackgroundInteraction` | 16.4 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) |  |
+| `PresentationContentInteraction` | 16.4 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) |  |
 | `PresentationDetent` | 16 | ✅ |  |  |
 | `PresentationMode` | 13 | ⬜ |  | Deprecated |
-| `PresentationPlacement` | 13 | ⬜ |  |  |
-| `PresentationSizingContext` | 18 | ⬜ |  |  |
-| `PresentationSizingRoot` | 18 | ⬜ |  |  |
+| `PresentationPlacement` | 13 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | No effect in compact width |
+| `PresentationSizingContext` | 18 | 🟠 | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Declared for custom `PresentationSizing`; never consulted (compact width only) |
+| `PresentationSizingRoot` | 18 | 🟠 | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Declared for custom `PresentationSizing`; never consulted (compact width only) |
 | `PreviewDevice` | 13 | ⬜ |  |  |
 | `PreviewPlatform` | 13 | ⬜ |  |  |
 | `PrimitiveButtonStyleConfiguration` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
@@ -298,7 +298,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ShaderFunction` | 17 | ⬜ |  |  |
 | `ShaderLibrary` | 17 | ⬜ |  |  |
 | `ShapeRole` | 15 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
-| `SharePreview` | 16 | ⬜ |  |  |
+| `SharePreview` | 16 | 🟠 | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | The title shows in the share sheet header; `image` and `icon` are not drawn |
 | `SidebarCommands` | 14 | ⬜ |  |  |
 | `SidebarRowSize` | 16 | ⬜ |  |  |
 | `SizeDependentTextVariant` | 18 | ⬜ |  |  |

@@ -179,6 +179,40 @@ pub(super) const WHEEL_OUT_OF_RANGE_A: f32 = 0.2;
 /// Popover holding a view (compact `DatePicker`): its top this far under the anchor, at least this far from the
 /// screen's sides, corner radius (iOS 27.2, swiftui-pickers pickers-date / pickers-time).
 pub(super) const CONTENT_POPOVER_GAP: f64 = 8.67;
+/// `.popover` bubble (iOS 27.2 iPhone 18 Pro, `popover-bubble`): content plus 7.83 pt above and below, radius 26,
+/// the arrow's tip 0.33 pt past the anchor.
+pub(super) const BUBBLE_PAD_V: f64 = 7.83;
+pub(super) const BUBBLE_RADIUS: f64 = 26.0;
+pub(super) const BUBBLE_TIP_GAP: f64 = 0.33;
+/// `.contextMenu` (`context-menu`): the view lifts by 1.15 about its centre, the menu card hangs 16 pt under it,
+/// the screen dims (light / dark).
+/// Share sheet (`share`; per-release frames in `look::ShareLook`).
+pub(super) const SHARE_RADIUS: f64 = 44.0;
+pub(super) const SHARE_GLASS: ((f32, f32), (f32, f32)) = ((0.45, 0.55), (0.35, 0.118));
+pub(super) const SHARE_BLUR: f32 = 20.0;
+/// (alpha, radius, dy)
+pub(super) const SHARE_TILE_SHADOW: (f32, f64, f64) = (0.07, 8.0, 2.0);
+pub(super) const SHARE_TILE: ((u8, u8, u8), (u8, u8, u8)) = ((255, 255, 255), (58, 58, 60));
+pub(super) const SHARE_TILE_SIZE: f64 = 64.0;
+pub(super) const SHARE_TILE_RADIUS: f64 = 16.0;
+pub(super) const SHARE_TILE_GLYPH: f64 = 30.0;
+pub(super) const SHARE_TITLE_PT: f32 = 15.0;
+pub(super) const SHARE_APP_RADIUS: f64 = 15.0;
+pub(super) const SHARE_MORE_GLYPH: f64 = 32.0;
+pub(super) const SHARE_MORE_FG: ((u8, u8, u8), (u8, u8, u8)) = ((99, 99, 102), (174, 174, 178));
+pub(super) const SHARE_ACTION_FILL: ((u8, u8, u8), (u8, u8, u8)) = ((230, 230, 232), (58, 58, 60));
+pub(super) const SHARE_ACTION_GLYPH: f64 = 26.0;
+pub(super) const SHARE_LABEL_PT: f32 = 12.0;
+/// `PasteButton` (`popovers`): 13.33 pt each side of the label, 34.67 tall, radius 5.
+pub(super) const PASTE_PAD: (f64, f64) = (13.33, 34.67);
+pub(super) const PASTE_RADIUS: f64 = 5.0;
+/// Its gray under a presented layer (light, dark; `popover-bubble`).
+pub(super) const PASTE_DESAT: (u8, u8) = (133, 140);
+pub(super) const CONTEXT_LIFT: f64 = 1.15;
+pub(super) const CONTEXT_MENU_GAP: f64 = 16.0;
+pub(super) const CONTEXT_DIM: (f32, f32) = (0.20, 0.46);
+/// A custom `preview` sits on a system-background platter (`context-preview`).
+pub(super) const CONTEXT_PLATTER_RADIUS: f64 = 28.0;
 pub(super) const CONTENT_POPOVER_MARGIN: (f64, f64) = (16.0, 32.33);
 pub(super) const CONTENT_POPOVER_RADIUS: f64 = 30.0;
 /// Its glass is nearly white: (mul, add) of the backdrop.

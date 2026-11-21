@@ -25,6 +25,30 @@ pub struct Look {
     pub kb_dark_27: bool,
     /// Gap between the numeric keyboard panel and its first row.
     pub keypad_top_inset: f64,
+    /// `ShareLink`'s share sheet (`swiftui-popovers-ios/share`).
+    pub share: ShareLook,
+}
+
+/// Share sheet metrics (points, card-local). The card floats `inset` from the sides and bottom.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ShareLook {
+    pub inset: (f64, f64),
+    pub card_h: f64,
+    pub header_h: f64,
+    /// Top-leading corner of the 64 pt preview tile.
+    pub tile: (f64, f64),
+    /// Leading edge and top of the title line.
+    pub title: (f64, f64),
+    /// First cell's leading edge, cell pitch, cell width.
+    pub cell: (f64, f64, f64),
+    /// App icon size and its offset in the cell.
+    pub app_icon: (f64, f64, f64),
+    /// Label top in the cell (app row, action row).
+    pub label_y: (f64, f64),
+    /// Separator above the action row (y), and both separators' leading inset.
+    pub sep: (f64, f64),
+    /// Action circle top in its cell.
+    pub action_y: f64,
 }
 
 const IOS26: Look = Look {
@@ -36,6 +60,18 @@ const IOS26: Look = Look {
     always_suggestions: false,
     kb_dark_27: false,
     keypad_top_inset: 23.0,
+    share: ShareLook {
+        inset: (9.0, 9.33),
+        card_h: 366.67,
+        header_h: 104.33,
+        tile: (24.33, 24.33),
+        title: (103.33, 46.33),
+        cell: (18.33, 88.33, 82.0),
+        app_icon: (68.0, 7.0, 16.0),
+        label_y: (92.0, 92.0),
+        sep: (227.33, 24.33),
+        action_y: 17.0,
+    },
 };
 
 const IOS27: Look = Look {
@@ -47,6 +83,18 @@ const IOS27: Look = Look {
     always_suggestions: true,
     kb_dark_27: true,
     keypad_top_inset: 24.0,
+    share: ShareLook {
+        inset: (9.0, 9.0),
+        card_h: 364.0,
+        header_h: 107.67,
+        tile: (27.67, 28.0),
+        title: (106.67, 50.67),
+        cell: (19.67, 87.67, 82.0),
+        app_icon: (66.0, 8.0, 16.0),
+        label_y: (90.0, 88.0),
+        sep: (228.67, 27.67),
+        action_y: 16.0,
+    },
 };
 
 pub fn look(v: IosVersion) -> &'static Look {
