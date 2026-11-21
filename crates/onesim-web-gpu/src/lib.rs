@@ -11,11 +11,31 @@
 
 use std::fmt::Display;
 
-use onesim_render::display::DisplayList;
-use onesim_render::RenderError;
+use onesim_display::{DisplayList, RenderError};
 use onesim_render_gpu::{target_usage, wgpu, Executor};
 use wasm_bindgen::prelude::*;
 use web_sys::HtmlCanvasElement;
+
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\x08' => out.push_str("\\b"),
+            '\x0c' => out.push_str("\\f"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => {
+                use std::fmt::Write;
+                let _ = write!(out, "\\u{:04x}", c as u32);
+            }
+            c => out.push(c),
+        }
+    }
+    out
+}
 
 const BLIT: &str = r"
 @group(0) @binding(0) var src: texture_2d<f32>;
@@ -52,6 +72,7 @@ pub struct Gpu {
     lost: Option<String>,
     last_error: Option<String>,
     frames: u64,
+    dl_buf: Vec<u8>,
 }
 
 /// Acquire a WebGPU adapter and device, configure `canvas` and compile the pipelines.
@@ -124,17 +145,42 @@ pub async fn init(canvas: HtmlCanvasElement) -> Result<Gpu, JsValue> {
     });
 
     let exec = Executor::new_async(device, queue).await.map_err(|e| err(format!("GPU renderer init: {e}")))?;
-    let info = serde_json::json!({
-        "adapter": ai.name, "backend": format!("{:?}", ai.backend), "vendor": ai.vendor, "deviceType": format!("{:?}", ai.device_type),
-        "driver": ai.driver, "format": format!("{format:?}"), "maxTextureDimension2d": limits.max_texture_dimension_2d,
-        "glassOnGpu": exec.glass_on_gpu(), "limitations": exec.glass_note(),
-    })
-    .to_string();
-    Ok(Gpu { exec, surface, config, pipeline, layout, target: None, info, lost: None, last_error: None, frames: 0 })
+    let info = format!(
+        r#"{{"adapter":"{}","backend":"{}","vendor":{},"deviceType":"{}","driver":"{}","format":"{}","maxTextureDimension2d":{},"glassOnGpu":{},"limitations":"{}"}}"#,
+        json_escape(&ai.name),
+        json_escape(&format!("{:?}", ai.backend)),
+        ai.vendor,
+        json_escape(&format!("{:?}", ai.device_type)),
+        json_escape(&ai.driver),
+        json_escape(&format!("{format:?}")),
+        limits.max_texture_dimension_2d,
+        exec.glass_on_gpu(),
+        json_escape(exec.glass_note()),
+    );
+    Ok(Gpu { exec, surface, config, pipeline, layout, target: None, info, lost: None, last_error: None, frames: 0, dl_buf: Vec::new() })
 }
 
 #[wasm_bindgen]
 impl Gpu {
+    /// Ensure the reusable display-list buffer has length `len` and return a pointer into Wasm
+    /// linear memory so JS can write a frame directly without an extra copy.
+    pub fn alloc_dl(&mut self, len: usize) -> *mut u8 {
+        self.dl_buf.resize(len, 0);
+        self.dl_buf.as_mut_ptr()
+    }
+
+    /// Decode and present the first `len` bytes previously written into [`Self::alloc_dl`].
+    pub fn render_dl(&mut self, len: usize) -> Result<(), JsValue> {
+        if let Some(m) = &self.lost {
+            return Err(err(format!("device lost: {m}")));
+        }
+        if len > self.dl_buf.len() {
+            return Err(err(format!("display list length {len} exceeds buffer {}", self.dl_buf.len())));
+        }
+        let dl = DisplayList::decode(&self.dl_buf[..len]).map_err(|e| err(format!("display list: {e}")))?;
+        self.finish_render(dl)
+    }
+
     /// Decode `bytes` (a `DisplayList::encode` frame) and present it. Throws on decode failure, device loss or
     /// any GPU error; after a throw the caller should treat this presenter as unusable (see `lost`).
     pub fn render(&mut self, bytes: &[u8]) -> Result<(), JsValue> {
@@ -142,22 +188,7 @@ impl Gpu {
             return Err(err(format!("device lost: {m}")));
         }
         let dl = DisplayList::decode(bytes).map_err(|e| err(format!("display list: {e}")))?;
-        let r = self.present(dl);
-        match r {
-            Ok(()) => {
-                self.frames += 1;
-                Ok(())
-            }
-            Err(e) => {
-                if let RenderError::DeviceLost(m) = &e {
-                    self.lost = Some(m.clone());
-                }
-                // A failed frame may have applied only part of its resource changes: restart the table.
-                self.exec.clear_resources();
-                self.last_error = Some(e.to_string());
-                Err(err(e))
-            }
-        }
+        self.finish_render(dl)
     }
 
     /// Match the canvas backing store to `w` x `h` device pixels (frames of another size also do this on their own).
@@ -199,6 +230,24 @@ impl Gpu {
 }
 
 impl Gpu {
+    fn finish_render(&mut self, dl: DisplayList) -> Result<(), JsValue> {
+        match self.present(dl) {
+            Ok(()) => {
+                self.frames += 1;
+                Ok(())
+            }
+            Err(e) => {
+                if let RenderError::DeviceLost(m) = &e {
+                    self.lost = Some(m.clone());
+                }
+                // A failed frame may have applied only part of its resource changes: restart the table.
+                self.exec.clear_resources();
+                self.last_error = Some(e.to_string());
+                Err(err(e))
+            }
+        }
+    }
+
     fn present(&mut self, dl: DisplayList) -> Result<(), RenderError> {
         let (w, h) = (dl.width, dl.height);
         let max = self.exec.device().limits().max_texture_dimension_2d;
@@ -237,7 +286,7 @@ impl Gpu {
         {
             let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("onesim-blit"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &view, depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store } })],
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &view, depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Load, store: wgpu::StoreOp::Store } })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,

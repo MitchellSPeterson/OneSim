@@ -63,16 +63,44 @@ PY
 }
 
 # 1. SwiftUI & Jetpack Compose builds
+# Warm the first SwiftUI and first Compose build sequentially so shared caches
+# (libonesim_web.a, SwiftUI.o, onesim-compose.klib, gpu/) are populated without races,
+# then build the remaining native examples in parallel.
+WARMED_SWIFTUI=0; WARMED_COMPOSE=0
+NATIVE_PIDS=(); NATIVE_NAMES=()
 while IFS='|' read -r ex platform view title tag desc; do
   [ -n "$ex" ] || continue
   if [ "$NO_BUILD" -eq 1 ] && [ -f "$SITE/$ex/app.wasm" ]; then
     cp "$ROOT/web/index.html" "$ROOT/web/main.js" "$ROOT/web/onesim.js" "$ROOT/web/renderer.js" "$SITE/$ex/"
-  else
-    echo "== $ex"
-    [ "$view" = - ] && view=""
-    SIMCORE_WEB_OUT="$SITE/$ex" "$ROOT/scripts/build-web.sh" "$ROOT/examples/$ex" $view
+    continue
   fi
+  [ "$view" = - ] && view=""
+  fw="${ex%%-*}"
+  if [ "$fw" = "compose" ] && [ "$WARMED_COMPOSE" -eq 0 ]; then
+    echo "== $ex (warm)"
+    SIMCORE_WEB_OUT="$SITE/$ex" "$ROOT/scripts/build-web.sh" "$ROOT/examples/$ex" $view
+    WARMED_COMPOSE=1
+  elif [ "$fw" != "compose" ] && [ "$WARMED_SWIFTUI" -eq 0 ]; then
+    echo "== $ex (warm)"
+    SIMCORE_WEB_OUT="$SITE/$ex" "$ROOT/scripts/build-web.sh" "$ROOT/examples/$ex" $view
+    WARMED_SWIFTUI=1
+  else
+    echo "== $ex (parallel)"
+    (SIMCORE_WEB_OUT="$SITE/$ex" "$ROOT/scripts/build-web.sh" "$ROOT/examples/$ex" $view) &
+    NATIVE_PIDS+=($!)
+    NATIVE_NAMES+=("$ex")
+  fi
+done <<< "$NATIVE_BUILDS"
 
+for i in "${!NATIVE_PIDS[@]}"; do
+  if ! wait "${NATIVE_PIDS[$i]}"; then
+    echo "error: build failed for ${NATIVE_NAMES[$i]}" >&2
+    exit 1
+  fi
+done
+
+while IFS='|' read -r ex platform view title tag desc; do
+  [ -n "$ex" ] || continue
   fw="${ex%%-*}"
   if [ "$fw" = "compose" ]; then fw_label="Compose"; else fw_label="SwiftUI"; fi
   patch_index "$SITE/$ex/index.html" "../" "$title" "$fw_label"
@@ -100,20 +128,37 @@ else
 fi
 patch_index "$SITE/expo/index.html" "../"
 
+EXPO_PIDS=(); EXPO_NAMES=()
 while IFS='|' read -r ex platforms title tag ios_desc android_desc; do
   [ -n "$ex" ] || continue
   bundle_dir="$SITE/expo/bundles/$ex"
   if [ "$NO_BUILD" -eq 0 ] || [ ! -f "$bundle_dir/metadata.json" ]; then
-    echo "== $ex ($platforms)"
-    if [ ! -d "$ROOT/examples/$ex/node_modules" ]; then
-      npm ci --prefix "$ROOT/examples/$ex" --prefer-offline --no-audit --no-fund --loglevel=error
-    fi
-    plat_args=()
-    [[ ",$platforms," == *,ios,* ]] && plat_args+=(--platform ios)
-    [[ ",$platforms," == *,android,* ]] && plat_args+=(--platform android)
-    rm -rf "$bundle_dir"
-    (cd "$ROOT/examples/$ex" && CI=1 EXPO_OFFLINE=1 EXPO_NO_TELEMETRY=1 npx expo export "${plat_args[@]}" --no-bytecode --no-minify --output-dir "$bundle_dir" >/dev/null)
+    echo "== $ex ($platforms, parallel)"
+    (
+      if [ ! -d "$ROOT/examples/$ex/node_modules" ]; then
+        npm ci --prefix "$ROOT/examples/$ex" --prefer-offline --no-audit --no-fund --loglevel=error
+      fi
+      plat_args=()
+      [[ ",$platforms," == *,ios,* ]] && plat_args+=(--platform ios)
+      [[ ",$platforms," == *,android,* ]] && plat_args+=(--platform android)
+      rm -rf "$bundle_dir"
+      cd "$ROOT/examples/$ex" && CI=1 EXPO_OFFLINE=1 EXPO_NO_TELEMETRY=1 npx expo export "${plat_args[@]}" --no-bytecode --output-dir "$bundle_dir" >/dev/null
+    ) &
+    EXPO_PIDS+=($!)
+    EXPO_NAMES+=("$ex")
   fi
+done <<< "$EXPO_BUILDS"
+
+for i in "${!EXPO_PIDS[@]}"; do
+  if ! wait "${EXPO_PIDS[$i]}"; then
+    echo "error: expo export failed for ${EXPO_NAMES[$i]}" >&2
+    exit 1
+  fi
+done
+
+while IFS='|' read -r ex platforms title tag ios_desc android_desc; do
+  [ -n "$ex" ] || continue
+  bundle_dir="$SITE/expo/bundles/$ex"
   if [ -d "$bundle_dir/assets" ]; then
     cp -f "$bundle_dir/assets/"* "$SITE/assets/" 2>/dev/null || true
   fi

@@ -14,9 +14,9 @@
 //!
 //! Finally the touched region is copied from the target back into `acc`.
 
-use onesim_render::display::{DisplayList, RRect};
-use onesim_render::glass::{self as g, GlassSpec, GlassVariant, ScrollEdge};
-use onesim_render::Color;
+use onesim_display::display::{DisplayList, RRect};
+use onesim_display::glass::{self as g, GlassSpec, GlassVariant, ScrollEdge};
+use onesim_display::Color;
 use std::num::NonZeroU64;
 use vello::wgpu;
 

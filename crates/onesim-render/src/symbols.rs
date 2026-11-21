@@ -259,11 +259,17 @@ mod sys {
     }
 }
 
-/// Phosphor Icons fallback: SVG -> alpha mask via resvg, sized to approximate AppKit's layout box.
+/// Phosphor Icons fallback: pre-parsed paths -> alpha mask via tiny-skia, sized to approximate AppKit's layout box.
 mod bundled {
     use super::*;
-    use crate::symbols_map::MAP;
-    use resvg::{tiny_skia, usvg};
+
+    include!(concat!(env!("OUT_DIR"), "/symbols_table.rs"));
+
+    const CMD_MOVE: u8 = 0;
+    const CMD_LINE: u8 = 1;
+    const CMD_QUAD: u8 = 2;
+    const CMD_CUBIC: u8 = 3;
+    const CMD_CLOSE: u8 = 4;
 
     /// Phosphor icons are 256-unit squares. AppKit boxes are the glyph's ink plus a margin, and ink
     /// scales with the point size: ink = svg_units * K * pt / 256 * (imageScale factor); box = ink + PAD_* * pt.
@@ -274,7 +280,7 @@ mod bundled {
     const SCALE: [f64; 3] = [0.78, 1.0, 1.29];
 
     struct Icon {
-        tree: usvg::Tree,
+        path: tiny_skia::Path,
         /// Tight ink bounds in SVG units.
         ink: (f32, f32, f32, f32),
     }
@@ -289,16 +295,47 @@ mod bundled {
         Some((row, if fill { 2 } else if spec.weight >= 600 { 1 } else { 0 }))
     }
 
+    fn decode_path(bytes: &[u8]) -> Option<tiny_skia::Path> {
+        let mut pb = tiny_skia::PathBuilder::new();
+        let mut i = 0;
+        let read_f32 = |i: &mut usize| -> Option<f32> {
+            let chunk: [u8; 4] = bytes.get(*i..*i + 4)?.try_into().ok()?;
+            *i += 4;
+            Some(f32::from_le_bytes(chunk))
+        };
+        while i < bytes.len() {
+            let cmd = bytes[i];
+            i += 1;
+            match cmd {
+                CMD_MOVE => pb.move_to(read_f32(&mut i)?, read_f32(&mut i)?),
+                CMD_LINE => pb.line_to(read_f32(&mut i)?, read_f32(&mut i)?),
+                CMD_QUAD => pb.quad_to(read_f32(&mut i)?, read_f32(&mut i)?, read_f32(&mut i)?, read_f32(&mut i)?),
+                CMD_CUBIC => pb.cubic_to(
+                    read_f32(&mut i)?,
+                    read_f32(&mut i)?,
+                    read_f32(&mut i)?,
+                    read_f32(&mut i)?,
+                    read_f32(&mut i)?,
+                    read_f32(&mut i)?,
+                ),
+                CMD_CLOSE => pb.close(),
+                _ => return None,
+            }
+        }
+        pb.finish()
+    }
+
     fn icon(spec: &SymbolSpec) -> Option<Arc<Icon>> {
         let k = lookup(spec)?;
         let mut g = ICONS.lock().unwrap_or_else(|e| e.into_inner());
         g.get_or_insert_with(HashMap::new)
             .entry(k)
             .or_insert_with(|| {
-                let svg = MAP[k.0].1[k.1].replace("currentColor", "#000");
-                let tree = usvg::Tree::from_str(&svg, &usvg::Options::default()).ok()?;
-                let b = tree.root().abs_bounding_box();
-                (b.width() > 0.0 && b.height() > 0.0).then(|| Arc::new(Icon { ink: (b.x(), b.y(), b.width(), b.height()), tree }))
+                let (off, len) = MAP[k.0].1[k.1];
+                let slice = SYMBOLS_BIN.get(off as usize..(off + len) as usize)?;
+                let path = decode_path(slice)?;
+                let b = path.compute_tight_bounds()?;
+                (b.width() > 0.0 && b.height() > 0.0).then(|| Arc::new(Icon { ink: (b.x(), b.y(), b.width(), b.height()), path }))
             })
             .clone()
     }
@@ -326,7 +363,10 @@ mod bundled {
         let (sx, sy) = (w * fw / i.ink.2, h * fh / i.ink.3);
         let tf = tiny_skia::Transform::from_translate((w - w * fw) / 2.0, (h - h * fh) / 2.0).pre_scale(sx, sy).pre_translate(-i.ink.0, -i.ink.1);
         let mut pm = tiny_skia::Pixmap::new(w_px, h_px)?;
-        resvg::render(&i.tree, tf, &mut pm.as_mut());
+        let mut paint = tiny_skia::Paint::default();
+        paint.set_color_rgba8(0, 0, 0, 255);
+        paint.anti_alias = true;
+        pm.fill_path(&i.path, &paint, tiny_skia::FillRule::Winding, tf, None);
         let alpha: Vec<u8> = pm.pixels().iter().map(|p| p.alpha()).collect();
         alpha.iter().any(|&a| a > 0).then_some(SymbolMask { w: w_px, h: h_px, alpha, rgba: Vec::new() })
     }
@@ -384,5 +424,24 @@ mod tests {
         assert_eq!(stabilize(&heart, SymbolMetrics { w: 23.0, h: 18.0 }).w, 23.0);
         let large = spec("star.fill", 17.0, ImageScale::Large);
         assert_eq!(stabilize(&large, SymbolMetrics { w: 29.0, h: 27.0 }).w, 29.0);
+    }
+
+    #[test]
+    fn bundled_phosphor_paths_measure_and_rasterize() {
+        for name in ["star", "star.fill", "heart", "heart.circle", "rectangle.stack.fill", "gear", "gearshape"] {
+            let s = spec(name, 17.0, ImageScale::Medium);
+            let m = bundled::metrics(&s).unwrap_or_else(|| panic!("missing bundled metrics for {name}"));
+            assert!(m.w > 5.0 && m.h > 5.0, "{name}: {m:?}");
+            let px = bundled::mask(&s, 51, 51).unwrap_or_else(|| panic!("missing bundled mask for {name}"));
+            assert!(px.alpha.iter().filter(|&&a| a > 128).count() > 50, "{name}: too few opaque pixels");
+        }
+        // Bold weight selects the bold variant.
+        let mut bold = spec("star", 17.0, ImageScale::Medium);
+        bold.weight = 700;
+        assert!(bundled::mask(&bold, 51, 51).is_some());
+        // Tight curve bounds exclude Bézier control points outside the visible circle (24..232, width 208 -> ~20.67pt).
+        let pc = bundled::metrics(&spec("pencil.circle", 17.0, ImageScale::Medium)).expect("pencil.circle");
+        assert!((pc.w - 20.67).abs() < 0.2 && (pc.h - 19.82).abs() < 0.2, "expected tight-bound metrics ~20.67x19.82, got {pc:?}");
+        assert!(bundled::metrics(&spec("definitely.not.a.symbol", 17.0, ImageScale::Medium)).is_none());
     }
 }

@@ -10,11 +10,12 @@ repository.workspace = true
 default = ["native"]
 # Headless `GpuRenderer` (Builder + Executor + readback), adapter probing and the CPU backdrop fallback; they
 # block on the GPU, so they are not available on wasm32-unknown-unknown (use `Executor` there).
-native = ["dep:pollster"]
+native = ["dep:pollster", "dep:onesim-render", "dep:tiny-skia"]
 
 [dependencies]
-onesim-render = { path = "../onesim-render" }
-tiny-skia = "0.11"
+onesim-display = { path = "../onesim-display" }
+onesim-render = { path = "../onesim-render", optional = true }
+tiny-skia = { version = "0.11", optional = true }
 vello = "=0.12.0"
 pollster = { version = "0.4", optional = true }
 log = "0.4"

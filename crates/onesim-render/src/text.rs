@@ -28,9 +28,11 @@ fn shape_limit(width: Option<f32>, width_code: i8) -> Option<f32> {
     width.map(|w| if (k - 1.0).abs() >= 0.001 && k > 0.0 { w / k } else { w })
 }
 /// Open-licensed fallback (Inter, SIL OFL 1.1; variable `wght` axis), embedded for determinism.
+#[cfg(feature = "font-inter")]
 const INTER: &[u8] = include_bytes!("../../../assets/fonts/InterVariable.ttf");
 const INTER_FAMILY: &str = "Inter Variable";
 /// Android's default sans-serif (Roboto, SIL OFL 1.1; variable `wdth`/`wght`), embedded: used for `FontSpec::android` text.
+#[cfg(feature = "font-roboto")]
 const ROBOTO: &[u8] = include_bytes!("../../../assets/fonts/RobotoVariable.ttf");
 const ROBOTO_FAMILY: &str = "Roboto";
 
@@ -301,6 +303,8 @@ pub struct Fonts {
     cache: SwashCache,
     sf: bool,
     inter: bool,
+    #[cfg(feature = "font-roboto")]
+    roboto_loaded: bool,
     has_mono: bool,
     rounded: Option<&'static str>,
     serif: Option<&'static str>,
@@ -364,6 +368,7 @@ impl Fonts {
 
     pub fn with_fallback(force_inter: bool) -> Self {
         let mut db = fontdb::Database::new();
+        #[cfg(not(target_arch = "wasm32"))]
         db.load_system_fonts();
         let has = |db: &fontdb::Database| db.faces().any(|f| f.families.iter().any(|(n, _)| n == SF_FAMILY));
         if !force_inter && !has(&db) {
@@ -371,10 +376,10 @@ impl Fonts {
         }
         let sf = !force_inter && has(&db);
         let inter = !sf;
+        #[cfg(feature = "font-inter")]
         if inter {
-            db.load_font_data(INTER.to_vec());
+            db.load_font_source(fontdb::Source::Binary(std::sync::Arc::new(INTER)));
         }
-        db.load_font_data(ROBOTO.to_vec());
         let sys = FontSystem::new_with_locale_and_db("en-US".into(), db);
         let has_mono = sys.db().faces().any(|f| f.families.iter().any(|(n, _)| n == MONO_FAMILY));
         let named = |names: &'static [&'static str]| {
@@ -382,7 +387,27 @@ impl Fonts {
         };
         let rounded = named(ROUNDED_NAMES);
         let serif = named(SERIF_NAMES);
-        Self { sys, cache: SwashCache::new(), sf, inter, has_mono, rounded, serif, measured: HashMap::new(), measured_text_bytes: 0 }
+        Self {
+            sys,
+            cache: SwashCache::new(),
+            sf,
+            inter,
+            #[cfg(feature = "font-roboto")]
+            roboto_loaded: false,
+            has_mono,
+            rounded,
+            serif,
+            measured: HashMap::new(),
+            measured_text_bytes: 0,
+        }
+    }
+
+    fn ensure_roboto(&mut self) {
+        #[cfg(feature = "font-roboto")]
+        if !self.roboto_loaded {
+            self.sys.db_mut().load_font_source(fontdb::Source::Binary(std::sync::Arc::new(ROBOTO)));
+            self.roboto_loaded = true;
+        }
     }
 
     /// True when Apple's SF Pro is in use.
@@ -603,6 +628,9 @@ impl Fonts {
     }
 
     fn build(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span]) -> Buffer {
+        if f.android {
+            self.ensure_roboto();
+        }
         // Inter's glyphs are ~8% larger than SF's at the same size; at accessibility sizes that is a lot
         // of ink, so the fallback draws them slightly smaller (tracking is fitted for it).
         let big = !self.sf && !f.android && f.pt > 40.0;

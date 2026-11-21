@@ -6,16 +6,19 @@ license.workspace = true
 description = "OneSim framework-neutral scene, SwiftUI-semantics layout, rasterizer and hit testing"
 
 [features]
+default = ["font-inter", "font-roboto"]
+font-inter = []
+font-roboto = []
 # Native window for the `counter` example (winit + softbuffer).
 window = ["dep:winit", "dep:softbuffer"]
 
 [dependencies]
 serde_json.workspace = true
+onesim-display = { path = "../onesim-display" }
 onesim-protocol = { path = "../onesim-protocol" }
 tiny-skia = "0.11"
 cosmic-text = "0.19"
 taffy = "0.15"
-resvg = { version = "0.45", default-features = false }
 winit = { version = "0.30", optional = true }
 softbuffer = { version = "0.4", optional = true }
 zune-jpeg = "0.5.15"

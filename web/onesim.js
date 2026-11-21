@@ -90,6 +90,7 @@ export async function load(source, { log = (level, t) => console[level](t), gues
 }
 
 export class OneSim {
+  #devices = null;
   constructor(wasm, guest = null) { this.wasm = wasm; this.guest = guest; this.width = 0; this.height = 0; this.scale = 0; }
 
   get mem() { return this.wasm.memory.buffer; }
@@ -99,8 +100,11 @@ export class OneSim {
 
   /** Device profiles from the Wasm build (crates/onesim-render/src/device.rs). */
   get devices() {
-    this.wasm.simcore_web_devices();
-    return JSON.parse(dec.decode(this.#take()));
+    if (!this.#devices) {
+      this.wasm.simcore_web_devices();
+      this.#devices = JSON.parse(dec.decode(this.#take()));
+    }
+    return this.#devices;
   }
 
   /** Default device profile for this app's platform. */
@@ -184,6 +188,8 @@ export class OneSim {
     if (p === undefined) throw new Error(`drag phase must be begin/move/end, got ${phase}`);
     return this.wasm.simcore_web_drag(p, x, y, t) === 1;
   }
+  /** Coalesced finger-drag sample: updates drag state without rebuilding the scene. */
+  dragCoalesced(x, y, t) { return this.wasm.simcore_web_drag(3, x, y, t) === 1; }
   /** Advance momentum/bounce by `ms`. True while moving: call again next frame. */
   tick(ms) { return this.wasm.simcore_web_tick(ms) === 1; }
   /** Text typed into the focused field. Throws if none is focused. */

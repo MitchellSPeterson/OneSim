@@ -25,7 +25,6 @@ mod paint;
 pub mod rn_input;
 mod scene;
 mod symbols;
-mod symbols_map;
 mod text;
 
 pub use animation::Animator;
