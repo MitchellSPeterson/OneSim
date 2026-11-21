@@ -55,11 +55,11 @@ struct Img {
 struct Scratch {
     gen: u64,
     a: Img,
-    _b: Img,
+    b: Img,
     h0: Img,
-    _h1: Img,
+    h1: Img,
     o0: Img,
-    _o1: Img,
+    o1: Img,
     params: wgpu::Buffer,
     params_cap: u64,
     acc_a: wgpu::BindGroup,
@@ -108,11 +108,13 @@ pub(crate) struct GlassGpu {
     pipes: Pipes,
     bgl_pass: wgpu::BindGroupLayout,
     bgl_comp: wgpu::BindGroupLayout,
+    linear_sampler: wgpu::Sampler,
     stride: u64,
     uniform: wgpu::Buffer,
     comp: wgpu::Buffer,
     slots: Vec<u8>,
     params_cpu: Vec<u8>,
+    jobs: Vec<(Job, u32, (u32, u32))>,
     scratch: Option<Scratch>,
 }
 
@@ -170,6 +172,20 @@ fn put_f(out: &mut Vec<u8>, v: &[[f32; 4]]) {
     v.iter().flatten().for_each(|x| out.extend_from_slice(&x.to_le_bytes()));
 }
 
+fn put_i_slice(out: &mut [u8], pos: &mut usize, v: &[[i32; 4]]) {
+    for x in v.iter().flatten() {
+        out[*pos..*pos + 4].copy_from_slice(&x.to_le_bytes());
+        *pos += 4;
+    }
+}
+
+fn put_f_slice(out: &mut [u8], pos: &mut usize, v: &[[f32; 4]]) {
+    for x in v.iter().flatten() {
+        out[*pos..*pos + 4].copy_from_slice(&x.to_le_bytes());
+        *pos += 4;
+    }
+}
+
 fn groups(n: u32) -> u32 {
     n.div_ceil(8)
 }
@@ -178,8 +194,8 @@ fn pass_entry(binding: u32, ty: wgpu::BindingType) -> wgpu::BindGroupLayoutEntry
     wgpu::BindGroupLayoutEntry { binding, visibility: wgpu::ShaderStages::COMPUTE, ty, count: None }
 }
 
-fn tex_ty() -> wgpu::BindingType {
-    wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: false }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }
+fn tex_ty(filterable: bool) -> wgpu::BindingType {
+    wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }
 }
 
 fn storage_ty(format: wgpu::TextureFormat) -> wgpu::BindingType {
@@ -212,18 +228,19 @@ impl GlassGpu {
         };
         let bgl_pass = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("onesim-glass-pass"),
-            entries: &[pass_entry(0, uniform_ty(true, P_SIZE)), pass_entry(1, tex_ty()), pass_entry(2, storage_ty(SCRATCH))],
+            entries: &[pass_entry(0, uniform_ty(true, P_SIZE)), pass_entry(1, tex_ty(false)), pass_entry(2, storage_ty(SCRATCH))],
         });
         let bgl_comp = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("onesim-glass-composite"),
             entries: &[
                 pass_entry(0, uniform_ty(false, C_SIZE)),
-                pass_entry(1, tex_ty()),
-                pass_entry(2, tex_ty()),
-                pass_entry(3, tex_ty()),
-                pass_entry(4, tex_ty()),
+                pass_entry(1, tex_ty(false)),
+                pass_entry(2, tex_ty(true)),
+                pass_entry(3, tex_ty(true)),
+                pass_entry(4, tex_ty(true)),
                 pass_entry(5, wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }),
                 pass_entry(6, storage_ty(wgpu::TextureFormat::Rgba8Unorm)),
+                pass_entry(7, wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering)),
             ],
         });
         let layout = |bgl: &wgpu::BindGroupLayout| {
@@ -262,13 +279,34 @@ impl GlassGpu {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let linear_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("onesim-glass-linear"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
         let comp = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("onesim-glass-composite"),
             size: C_SIZE,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        Ok(Self { pipes, bgl_pass, bgl_comp, stride, uniform, comp, slots: Vec::new(), params_cpu: Vec::new(), scratch: None })
+        Ok(Self {
+            pipes,
+            bgl_pass,
+            bgl_comp,
+            linear_sampler,
+            stride,
+            uniform,
+            comp,
+            slots: Vec::new(),
+            params_cpu: Vec::new(),
+            jobs: Vec::new(),
+            scratch: None,
+        })
     }
 
     fn pass_bg(&self, device: &wgpu::Device, src: &wgpu::TextureView, dst: &wgpu::TextureView) -> wgpu::BindGroup {
@@ -286,36 +324,15 @@ impl GlassGpu {
         })
     }
 
-    /// Make the scratch textures at least `need` = [(w, h) of A/B, of H0/H1, of O0/O1] and bind them to this frame.
-    fn ensure(&mut self, f: &Surfaces, need: [(u32, u32); 3], params_need: u64) -> Result<(), String> {
-        let max = f.device.limits().max_texture_dimension_2d;
-        let up = |v: u32| if v == 0 { 0 } else { v.div_ceil(64) * 64 };
-        let cur = self.scratch.as_ref().filter(|s| s.gen == f.gen);
-        let have = [cur.map_or((0, 0), |s| (s.a.w, s.a.h)), cur.map_or((0, 0), |s| (s.h0.w, s.h0.h)), cur.map_or((0, 0), |s| (s.o0.w, s.o0.h))];
-        let dims: Vec<(u32, u32)> = (0..3).map(|i| (have[i].0.max(up(need[i].0)), have[i].1.max(up(need[i].1)))).collect();
-        if dims.iter().any(|&(w, h)| w > max || h > max) {
-            return Err(format!("glass scratch {dims:?} exceeds the texture limit {max}"));
-        }
-        let max_params = f.device.limits().max_storage_buffer_binding_size;
-        if params_need > max_params {
-            return Err(format!("glass composite data needs {params_need} bytes, device limit is {max_params}"));
-        }
-        if cur.is_some_and(|s| s.params_cap >= params_need) && (0..3).all(|i| have[i] == dims[i]) {
-            return Ok(());
-        }
-        // Unused pairs stay 1x1.
-        let d = |i: usize| (dims[i].0.max(1), dims[i].1.max(1));
-        let (a, b) = (make_img(f.device, d(0).0, d(0).1), make_img(f.device, d(0).0, d(0).1));
-        let (h0, h1) = (make_img(f.device, d(1).0, d(1).1), make_img(f.device, d(1).0, d(1).1));
-        let (o0, o1) = (make_img(f.device, d(2).0, d(2).1), make_img(f.device, d(2).0, d(2).1));
-        let params_cap = params_need.max(cur.map_or(0, |s| s.params_cap)).next_power_of_two().min(max_params);
-        let params = f.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("onesim-glass-params"),
-            size: params_cap,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let comp = f.device.create_bind_group(&wgpu::BindGroupDescriptor {
+    fn comp_bg(
+        &self,
+        f: &Surfaces,
+        a: &wgpu::TextureView,
+        h0: &wgpu::TextureView,
+        o0: &wgpu::TextureView,
+        params: &wgpu::Buffer,
+    ) -> wgpu::BindGroup {
+        f.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("onesim-glass-composite"),
             layout: &self.bgl_comp,
             entries: &[
@@ -324,13 +341,104 @@ impl GlassGpu {
                     resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: &self.comp, offset: 0, size: NonZeroU64::new(C_SIZE) }),
                 },
                 wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(f.acc_view) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(&a.view) },
-                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(&h0.view) },
-                wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(&o0.view) },
+                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::TextureView(a) },
+                wgpu::BindGroupEntry { binding: 3, resource: wgpu::BindingResource::TextureView(h0) },
+                wgpu::BindGroupEntry { binding: 4, resource: wgpu::BindingResource::TextureView(o0) },
                 wgpu::BindGroupEntry { binding: 5, resource: params.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::TextureView(f.target_view) },
+                wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::Sampler(&self.linear_sampler) },
             ],
+        })
+    }
+
+    /// Make the scratch textures at least `need` = [(w, h) of A/B, of H0/H1, of O0/O1] and bind them to this frame.
+    fn ensure(&mut self, f: &Surfaces, need: [(u32, u32); 3], params_need: u64) -> Result<(), String> {
+        let max = f.device.limits().max_texture_dimension_2d;
+        let up = |v: u32| if v == 0 { 0 } else { v.div_ceil(64) * 64 };
+        let have = self
+            .scratch
+            .as_ref()
+            .map_or([(0, 0); 3], |s| [(s.a.w, s.a.h), (s.h0.w, s.h0.h), (s.o0.w, s.o0.h)]);
+        let dims = [
+            (have[0].0.max(up(need[0].0)), have[0].1.max(up(need[0].1))),
+            (have[1].0.max(up(need[1].0)), have[1].1.max(up(need[1].1))),
+            (have[2].0.max(up(need[2].0)), have[2].1.max(up(need[2].1))),
+        ];
+        if dims.iter().any(|&(w, h)| w > max || h > max) {
+            return Err(format!("glass scratch {dims:?} exceeds the texture limit {max}"));
+        }
+        let max_params = f.device.limits().max_storage_buffer_binding_size;
+        if params_need > max_params {
+            return Err(format!("glass composite data needs {params_need} bytes, device limit is {max_params}"));
+        }
+        if let Some(mut s) = self.scratch.take() {
+            let gen_changed = s.gen != f.gen;
+            let a_grew = dims[0] != have[0];
+            let h_grew = dims[1] != have[1];
+            let o_grew = dims[2] != have[2];
+            let params_grew = params_need > s.params_cap;
+            if !gen_changed && !a_grew && !h_grew && !o_grew && !params_grew {
+                self.scratch = Some(s);
+                return Ok(());
+            }
+            if a_grew {
+                let (w, h) = (dims[0].0.max(1), dims[0].1.max(1));
+                s.a = make_img(f.device, w, h);
+                s.b = make_img(f.device, w, h);
+                s.a_b = self.pass_bg(f.device, &s.a.view, &s.b.view);
+                s.b_a = self.pass_bg(f.device, &s.b.view, &s.a.view);
+            }
+            if h_grew {
+                let (w, h) = (dims[1].0.max(1), dims[1].1.max(1));
+                s.h0 = make_img(f.device, w, h);
+                s.h1 = make_img(f.device, w, h);
+                s.h0_h1 = self.pass_bg(f.device, &s.h0.view, &s.h1.view);
+                s.h1_h0 = self.pass_bg(f.device, &s.h1.view, &s.h0.view);
+            }
+            if o_grew {
+                let (w, h) = (dims[2].0.max(1), dims[2].1.max(1));
+                s.o0 = make_img(f.device, w, h);
+                s.o1 = make_img(f.device, w, h);
+                s.o0_o1 = self.pass_bg(f.device, &s.o0.view, &s.o1.view);
+                s.o1_o0 = self.pass_bg(f.device, &s.o1.view, &s.o0.view);
+            }
+            if gen_changed || a_grew {
+                s.acc_a = self.pass_bg(f.device, f.acc_view, &s.a.view);
+            }
+            if a_grew || h_grew {
+                s.a_h0 = self.pass_bg(f.device, &s.a.view, &s.h0.view);
+            }
+            if a_grew || o_grew {
+                s.a_o0 = self.pass_bg(f.device, &s.a.view, &s.o0.view);
+            }
+            if params_grew {
+                let params_cap = params_need.max(s.params_cap).next_power_of_two().min(max_params);
+                s.params = f.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("onesim-glass-params"),
+                    size: params_cap,
+                    usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+                s.params_cap = params_cap;
+            }
+            s.comp = self.comp_bg(f, &s.a.view, &s.h0.view, &s.o0.view, &s.params);
+            s.gen = f.gen;
+            self.scratch = Some(s);
+            return Ok(());
+        }
+        // Unused pairs stay 1x1.
+        let d = |i: usize| (dims[i].0.max(1), dims[i].1.max(1));
+        let (a, b) = (make_img(f.device, d(0).0, d(0).1), make_img(f.device, d(0).0, d(0).1));
+        let (h0, h1) = (make_img(f.device, d(1).0, d(1).1), make_img(f.device, d(1).0, d(1).1));
+        let (o0, o1) = (make_img(f.device, d(2).0, d(2).1), make_img(f.device, d(2).0, d(2).1));
+        let params_cap = params_need.next_power_of_two().min(max_params);
+        let params = f.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("onesim-glass-params"),
+            size: params_cap,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
+        let comp = self.comp_bg(f, &a.view, &h0.view, &o0.view, &params);
         let bg = |s: &wgpu::TextureView, d: &wgpu::TextureView| self.pass_bg(f.device, s, d);
         let s = Scratch {
             gen: f.gen,
@@ -347,11 +455,11 @@ impl GlassGpu {
             params_cap,
             params,
             a,
-            _b: b,
+            b,
             h0,
-            _h1: h1,
+            h1,
             o0,
-            _o1: o1,
+            o1,
         };
         self.scratch = Some(s);
         Ok(())
@@ -366,9 +474,10 @@ impl GlassGpu {
         off as u32
     }
 
-    /// Composite one backdrop op onto the frame: reads `acc`, writes `target` (and, with `copy_back`, copies the
-    /// result back to `acc` for whatever reads it next). `clips` are the open ancestor clips (device px).
-    pub fn encode(&mut self, fr: &Surfaces, bd: &Backdrop, clips: &[RRect], dl: &DisplayList, copy_back: bool) -> Result<(), String> {
+    /// Composite one backdrop op onto the frame: optionally copies `target` to `acc` first (`copy_to_acc`), reads
+    /// `acc`, writes `target` (and, with `copy_back`, copies the touched result back to `acc` for whatever reads it
+    /// next). `clips` are the open ancestor clips (device px).
+    pub fn encode(&mut self, fr: &Surfaces, bd: &Backdrop, clips: &[RRect], dl: &DisplayList, copy_to_acc: bool, copy_back: bool) -> Result<(), String> {
         let (s, dark, ios) = (dl.scale, dl.dark, dl.ios);
         let (pw, ph) = fr.size;
         let opacity = bd.opacity;
@@ -422,18 +531,27 @@ impl GlassGpu {
         }
         let (rx0, ry0, rx1, ry1) = (rect.0.max(0), rect.1.max(0), rect.2.min(pw as i32), rect.3.min(ph as i32));
         if rx1 <= rx0 || ry1 <= ry0 {
+            if copy_to_acc && copy_back {
+                let mut enc = fr.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("onesim-accumulate") });
+                enc.copy_texture_to_texture(
+                    fr.target.as_image_copy(),
+                    fr.acc.as_image_copy(),
+                    wgpu::Extent3d { width: pw, height: ph, depth_or_array_layers: 1 },
+                );
+                fr.queue.submit([enc.finish()]);
+            }
             return Ok(());
         }
 
         self.slots.clear();
-        let mut jobs: Vec<(Job, u32, (u32, u32))> = vec![];
-        let radii_job = |this: &mut Self, jobs: &mut Vec<(Job, u32, (u32, u32))>, radii: [usize; 3], w: u32, h: u32| {
+        self.jobs.clear();
+        let radii_job = |this: &mut Self, radii: [usize; 3], w: u32, h: u32| {
             for r in radii {
                 let i = [[w as i32, h as i32, r as i32, 0], [0; 4], [0; 4], [0; 4]];
                 let o = this.slot(i, [[0.0; 4]; 4]);
-                jobs.push((Job::BlurH, o, (w, h)));
+                this.jobs.push((Job::BlurH, o, (w, h)));
                 let o = this.slot(i, [[0.0; 4]; 4]);
-                jobs.push((Job::BlurV, o, (w, h)));
+                this.jobs.push((Job::BlurV, o, (w, h)));
             }
         };
 
@@ -445,13 +563,13 @@ impl GlassGpu {
             let hi = |v: f32, lo: i32| (v.round() as i32).max(lo + 1);
             let i = [[x0, y0, w as i32, h as i32], [lo_x, hi(shape.x + shape.w, lo_x), lo_y, hi(shape.y + shape.h, lo_y)], [p.mirror as i32, 0, 0, 0], [0; 4]];
             let o = self.slot(i, [[0.0; 4]; 4]);
-            jobs.push((Job::Snapshot, o, (w, h)));
-            radii_job(self, &mut jobs, g::box_radii(p.sigma * s), w, h);
+            self.jobs.push((Job::Snapshot, o, (w, h)));
+            radii_job(self, g::box_radii(p.sigma * s), w, h);
         } else if let Some(e) = edge {
             let i = [[ebw as i32, ebh as i32, edge_f as i32, edge_rows as i32], [pw as i32, ph as i32, 0, 0], [0; 4], [0; 4]];
             let o = self.slot(i, [[0.0; 4]; 4]);
-            jobs.push((Job::EdgeDown, o, (ebw, ebh)));
-            radii_job(self, &mut jobs, g::box_radii(g::EDGE_SIGMA * s / edge_f as f32), ebw, ebh);
+            self.jobs.push((Job::EdgeDown, o, (ebw, ebh)));
+            radii_job(self, g::box_radii(g::EDGE_SIGMA * s / edge_f as f32), ebw, ebh);
             let _ = e;
         }
         for (plan, which) in [(&halo, Which::H), (&own, Which::O)] {
@@ -460,14 +578,22 @@ impl GlassGpu {
             let i = [[sp.gw as i32, sp.gh as i32, sp.f, k], [0; 4], [0; 4], [0; 4]];
             let f = [[sp.gx0 as f32, sp.gy0 as f32, sp.shape[0], sp.shape[1]], [sp.shape[2], sp.shape[3], sp.r, 0.0], [0.0; 4], [0.0; 4]];
             let o = self.slot(i, f);
-            jobs.push((Job::ShadowCov(which), o, (sp.gw, sp.gh)));
+            self.jobs.push((Job::ShadowCov(which), o, (sp.gw, sp.gh)));
             let r = (sp.sigma_cells * 3.0).ceil() as i32;
+            let inv_2s2 = 1.0 / (2.0 * sp.sigma_cells * sp.sigma_cells);
+            let a = (-inv_2s2).exp();
+            let a2 = a * a;
+            let mut sum = 1.0_f64;
+            for k in 1..=r {
+                sum += 2.0 * (-f64::from(k * k) * f64::from(inv_2s2)).exp();
+            }
+            let inv_sum = (1.0 / sum) as f32;
             let i = [[sp.gw as i32, sp.gh as i32, r, 0], [0; 4], [0; 4], [0; 4]];
-            let f = [[sp.sigma_cells, 0.0, 0.0, 0.0], [0.0; 4], [0.0; 4], [0.0; 4]];
+            let f = [[sp.sigma_cells, a, a2, inv_sum], [0.0; 4], [0.0; 4], [0.0; 4]];
             let o = self.slot(i, f);
-            jobs.push((Job::GaussH(which), o, (sp.gw, sp.gh)));
+            self.jobs.push((Job::GaussH(which), o, (sp.gw, sp.gh)));
             let o = self.slot(i, f);
-            jobs.push((Job::GaussV(which), o, (sp.gw, sp.gh)));
+            self.jobs.push((Job::GaussV(which), o, (sp.gw, sp.gh)));
         }
 
         // Composite uniform.
@@ -487,9 +613,11 @@ impl GlassGpu {
         let hp = halo.as_ref();
         let op = own.as_ref();
         let (ep, ec) = (edge_f as i32, edge.map_or([0.0; 3], |e| [e.color.r * 255.0, e.color.g * 255.0, e.color.b * 255.0]));
-        let mut c = Vec::with_capacity(C_SIZE as usize);
-        put_i(
+        let mut c = [0u8; C_SIZE as usize];
+        let mut c_pos = 0;
+        put_i_slice(
             &mut c,
+            &mut c_pos,
             &[
                 [rx0, ry0, rx1 - rx0, ry1 - ry0],
                 [flags, clips.len() as i32, snap.2 as i32, snap.3 as i32],
@@ -500,8 +628,9 @@ impl GlassGpu {
             ],
         );
         let sh4 = |h: Option<&ShadowPlan>| h.map_or([0.0; 4], |h| [h.rgb[0], h.rgb[1], h.rgb[2], h.alpha]);
-        put_f(
+        put_f_slice(
             &mut c,
+            &mut c_pos,
             &[
                 [shape[0], shape[1], shape[2], shape[3]],
                 [shape[4], pr.lens_d * s, (pr.lens_w * s).max(0.5), (pr.rim_w * s).max(1.0)],
@@ -513,7 +642,7 @@ impl GlassGpu {
                 [ec[0], ec[1], ec[2], pr.outline_w * s],
             ],
         );
-        debug_assert_eq!(c.len() as u64, C_SIZE);
+        debug_assert_eq!(c_pos as u64, C_SIZE);
         fr.queue.write_buffer(&self.comp, 0, &c);
         fr.queue.write_buffer(&self.uniform, 0, &self.slots);
         self.params_cpu.clear();
@@ -530,9 +659,16 @@ impl GlassGpu {
             fr.queue.write_buffer(&sc.params, 0, &self.params_cpu);
         }
         let mut enc = fr.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("onesim-glass") });
+        if copy_to_acc {
+            enc.copy_texture_to_texture(
+                fr.target.as_image_copy(),
+                fr.acc.as_image_copy(),
+                wgpu::Extent3d { width: pw, height: ph, depth_or_array_layers: 1 },
+            );
+        }
         {
             let mut cp = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("onesim-glass"), timestamp_writes: None });
-            for (job, off, (w, h)) in &jobs {
+            for (job, off, (w, h)) in &self.jobs {
                 let (pipe, bg) = match job {
                     Job::Snapshot => (&self.pipes.snapshot, &sc.acc_a),
                     Job::EdgeDown => (&self.pipes.edge_down, &sc.acc_a),

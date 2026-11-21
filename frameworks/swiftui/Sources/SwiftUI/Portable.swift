@@ -218,7 +218,10 @@ func _json(_ v: Any, _ out: inout String) {
     }
 }
 
+private let _hexDigits: [UnicodeScalar] = Array("0123456789abcdef".unicodeScalars)
+
 private func _jsonString(_ s: String, _ out: inout String) {
+    out.reserveCapacity(out.utf8.count + s.utf8.count + 2)
     out += "\""
     for u in s.unicodeScalars {
         switch u {
@@ -229,8 +232,9 @@ private func _jsonString(_ s: String, _ out: inout String) {
         case "\t": out += "\\t"
         default:
             if u.value < 0x20 {
-                let h = String(u.value, radix: 16)
-                out += "\\u" + String(repeating: "0", count: 4 - h.count) + h
+                out += "\\u00"
+                out.unicodeScalars.append(_hexDigits[Int((u.value >> 4) & 0xf)])
+                out.unicodeScalars.append(_hexDigits[Int(u.value & 0xf)])
             } else { out.unicodeScalars.append(u) }
         }
     }

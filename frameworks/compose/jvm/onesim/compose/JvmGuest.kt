@@ -20,6 +20,14 @@ import kotlin.system.exitProcess
  * with a [LayoutApplier], sends trees as JSON lines on the original stdout, and applies host messages from stdin.
  */
 object JvmGuest {
+    private val TYPE_RE = Regex(""""type"\s*:\s*"(\w+)"""")
+    private val VERSION_RE = Regex(""""version"\s*:\s*(\d+)""")
+    private val ID_RE = Regex(""""id"\s*:\s*(\d+)""")
+    private val FIELD_RE = Regex(""""field"\s*:\s*(\d+)""")
+    private val APPEARANCE_RE = Regex(""""appearance"\s*:\s*"(\w+)"""")
+    private val TEXT_RE = Regex(""""text"\s*:\s*"((?:[^"\\]|\\.)*)"""")
+    private val ESCAPE_RE = Regex("""\\(u[0-9a-fA-F]{4}|["\\/bfnrt])""")
+
     private lateinit var wire: PrintStream
 
     private fun send(line: String) {
@@ -114,16 +122,15 @@ object JvmGuest {
 
             while (true) {
                 val line = withContext(Dispatchers.IO) { messages.receiveCatching().getOrNull() } ?: break
-                val type = Regex(""""type"\s*:\s*"(\w+)"""").find(line)?.groupValues?.get(1)
-                fun num(key: String) = Regex(""""$key"\s*:\s*(\d+)""").find(line)?.groupValues?.get(1)?.toLong()
+                val type = TYPE_RE.find(line)?.groupValues?.get(1)
                 when (type) {
                     "action", "text_input" -> {
-                        val v = num("version")
+                        val v = VERSION_RE.find(line)?.groupValues?.get(1)?.toLong()
                         val before = Guest.version
                         try {
                             if (v == Guest.version) {
-                                if (type == "action") num("id")?.let { Guest.dispatchAction(it) }
-                                else textInput(line)?.let { text -> num("field")?.let { Guest.dispatchTextInput(it, text) } }
+                                if (type == "action") ID_RE.find(line)?.groupValues?.get(1)?.toLong()?.let { Guest.dispatchAction(it) }
+                                else textInput(line)?.let { text -> FIELD_RE.find(line)?.groupValues?.get(1)?.toLong()?.let { Guest.dispatchTextInput(it, text) } }
                             }
                         } catch (t: Throwable) {
                             error("Input callback threw: ${t.stackTraceToString()}")
@@ -133,7 +140,7 @@ object JvmGuest {
                         emit(force = Guest.version == before)
                     }
                     "environment" -> {
-                        Regex(""""appearance"\s*:\s*"(\w+)"""").find(line)?.groupValues?.get(1)?.let { Guest.dark.value = it == "dark" }
+                        APPEARANCE_RE.find(line)?.groupValues?.get(1)?.let { Guest.dark.value = it == "dark" }
                         pump()
                         emit(force = true)
                     }
@@ -148,8 +155,8 @@ object JvmGuest {
     }
 
     private fun textInput(line: String): String? {
-        val text = Regex("""\"text"\s*:\s*"((?:[^"\\]|\\.)*)"""").find(line)?.groupValues?.get(1) ?: return null
-        return Regex("""\\(u[0-9a-fA-F]{4}|["\\/bfnrt])""").replace(text) { match ->
+        val text = TEXT_RE.find(line)?.groupValues?.get(1) ?: return null
+        return ESCAPE_RE.replace(text) { match ->
             when (val escape = match.groupValues[1]) {
                 "b" -> "\b"
                 "f" -> "\u000c"

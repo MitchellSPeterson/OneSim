@@ -47,23 +47,134 @@ public struct ViewBuilder {
     public static func buildEither<T: View, F: View>(first: T) -> _ConditionalContent<T, F> { .init(.first(first)) }
     public static func buildEither<T: View, F: View>(second: F) -> _ConditionalContent<T, F> { .init(.second(second)) }
     public static func buildLimitedAvailability<C: View>(_ c: C) -> C { c }
-    public static func buildBlock<A: View, B: View>(_ a: A, _ b: B) -> TupleView<(A, B)> { .init((a, b)) }
-    public static func buildBlock<A: View, B: View, C: View>(_ a: A, _ b: B, _ c: C) -> TupleView<(A, B, C)> { .init((a, b, c)) }
-    public static func buildBlock<A: View, B: View, C: View, D: View>(_ a: A, _ b: B, _ c: C, _ d: D) -> TupleView<(A, B, C, D)> { .init((a, b, c, d)) }
-    public static func buildBlock<A: View, B: View, C: View, D: View, E: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E) -> TupleView<(A, B, C, D, E)> { .init((a, b, c, d, e)) }
-    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F) -> TupleView<(A, B, C, D, E, F)> { .init((a, b, c, d, e, f)) }
-    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View, G: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F, _ g: G) -> TupleView<(A, B, C, D, E, F, G)> { .init((a, b, c, d, e, f, g)) }
-    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View, G: View, H: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F, _ g: G, _ h: H) -> TupleView<(A, B, C, D, E, F, G, H)> { .init((a, b, c, d, e, f, g, h)) }
-    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View, G: View, H: View, I: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F, _ g: G, _ h: H, _ i: I) -> TupleView<(A, B, C, D, E, F, G, H, I)> { .init((a, b, c, d, e, f, g, h, i)) }
-    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View, G: View, H: View, I: View, J: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F, _ g: G, _ h: H, _ i: I, _ j: J) -> TupleView<(A, B, C, D, E, F, G, H, I, J)> { .init((a, b, c, d, e, f, g, h, i, j)) }
+    public static func buildBlock<A: View, B: View>(_ a: A, _ b: B) -> TupleView<(A, B)> {
+        .init((a, b)) { path in
+            var out: [Node] = []
+            out.reserveCapacity(2)
+            out += SwiftUI._children(a, "\(path)/0")
+            out += SwiftUI._children(b, "\(path)/1")
+            return out
+        }
+    }
+    public static func buildBlock<A: View, B: View, C: View>(_ a: A, _ b: B, _ c: C) -> TupleView<(A, B, C)> {
+        .init((a, b, c)) { path in
+            var out: [Node] = []
+            out.reserveCapacity(3)
+            out += SwiftUI._children(a, "\(path)/0")
+            out += SwiftUI._children(b, "\(path)/1")
+            out += SwiftUI._children(c, "\(path)/2")
+            return out
+        }
+    }
+    public static func buildBlock<A: View, B: View, C: View, D: View>(_ a: A, _ b: B, _ c: C, _ d: D) -> TupleView<(A, B, C, D)> {
+        .init((a, b, c, d)) { path in
+            var out: [Node] = []
+            out.reserveCapacity(4)
+            out += SwiftUI._children(a, "\(path)/0")
+            out += SwiftUI._children(b, "\(path)/1")
+            out += SwiftUI._children(c, "\(path)/2")
+            out += SwiftUI._children(d, "\(path)/3")
+            return out
+        }
+    }
+    public static func buildBlock<A: View, B: View, C: View, D: View, E: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E) -> TupleView<(A, B, C, D, E)> {
+        .init((a, b, c, d, e)) { path in
+            var out: [Node] = []
+            out.reserveCapacity(5)
+            out += SwiftUI._children(a, "\(path)/0")
+            out += SwiftUI._children(b, "\(path)/1")
+            out += SwiftUI._children(c, "\(path)/2")
+            out += SwiftUI._children(d, "\(path)/3")
+            out += SwiftUI._children(e, "\(path)/4")
+            return out
+        }
+    }
+    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F) -> TupleView<(A, B, C, D, E, F)> {
+        .init((a, b, c, d, e, f)) { path in
+            var out: [Node] = []
+            out.reserveCapacity(6)
+            out += SwiftUI._children(a, "\(path)/0")
+            out += SwiftUI._children(b, "\(path)/1")
+            out += SwiftUI._children(c, "\(path)/2")
+            out += SwiftUI._children(d, "\(path)/3")
+            out += SwiftUI._children(e, "\(path)/4")
+            out += SwiftUI._children(f, "\(path)/5")
+            return out
+        }
+    }
+    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View, G: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F, _ g: G) -> TupleView<(A, B, C, D, E, F, G)> {
+        .init((a, b, c, d, e, f, g)) { path in
+            var out: [Node] = []
+            out.reserveCapacity(7)
+            out += SwiftUI._children(a, "\(path)/0")
+            out += SwiftUI._children(b, "\(path)/1")
+            out += SwiftUI._children(c, "\(path)/2")
+            out += SwiftUI._children(d, "\(path)/3")
+            out += SwiftUI._children(e, "\(path)/4")
+            out += SwiftUI._children(f, "\(path)/5")
+            out += SwiftUI._children(g, "\(path)/6")
+            return out
+        }
+    }
+    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View, G: View, H: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F, _ g: G, _ h: H) -> TupleView<(A, B, C, D, E, F, G, H)> {
+        .init((a, b, c, d, e, f, g, h)) { path in
+            var out: [Node] = []
+            out.reserveCapacity(8)
+            out += SwiftUI._children(a, "\(path)/0")
+            out += SwiftUI._children(b, "\(path)/1")
+            out += SwiftUI._children(c, "\(path)/2")
+            out += SwiftUI._children(d, "\(path)/3")
+            out += SwiftUI._children(e, "\(path)/4")
+            out += SwiftUI._children(f, "\(path)/5")
+            out += SwiftUI._children(g, "\(path)/6")
+            out += SwiftUI._children(h, "\(path)/7")
+            return out
+        }
+    }
+    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View, G: View, H: View, I: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F, _ g: G, _ h: H, _ i: I) -> TupleView<(A, B, C, D, E, F, G, H, I)> {
+        .init((a, b, c, d, e, f, g, h, i)) { path in
+            var out: [Node] = []
+            out.reserveCapacity(9)
+            out += SwiftUI._children(a, "\(path)/0")
+            out += SwiftUI._children(b, "\(path)/1")
+            out += SwiftUI._children(c, "\(path)/2")
+            out += SwiftUI._children(d, "\(path)/3")
+            out += SwiftUI._children(e, "\(path)/4")
+            out += SwiftUI._children(f, "\(path)/5")
+            out += SwiftUI._children(g, "\(path)/6")
+            out += SwiftUI._children(h, "\(path)/7")
+            out += SwiftUI._children(i, "\(path)/8")
+            return out
+        }
+    }
+    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View, G: View, H: View, I: View, J: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F, _ g: G, _ h: H, _ i: I, _ j: J) -> TupleView<(A, B, C, D, E, F, G, H, I, J)> {
+        .init((a, b, c, d, e, f, g, h, i, j)) { path in
+            var out: [Node] = []
+            out.reserveCapacity(10)
+            out += SwiftUI._children(a, "\(path)/0")
+            out += SwiftUI._children(b, "\(path)/1")
+            out += SwiftUI._children(c, "\(path)/2")
+            out += SwiftUI._children(d, "\(path)/3")
+            out += SwiftUI._children(e, "\(path)/4")
+            out += SwiftUI._children(f, "\(path)/5")
+            out += SwiftUI._children(g, "\(path)/6")
+            out += SwiftUI._children(h, "\(path)/7")
+            out += SwiftUI._children(i, "\(path)/8")
+            out += SwiftUI._children(j, "\(path)/9")
+            return out
+        }
+    }
 }
 
 public struct TupleView<T>: View, _Flattenable {
     public typealias Body = Never
     public var body: Never { fatalError() }
     let value: T
-    init(_ v: T) { value = v }
+    let emit: ((String) -> [Node])?
+    init(_ v: T) { value = v; emit = nil }
+    init(_ v: T, _ emit: @escaping (String) -> [Node]) { value = v; self.emit = emit }
     func _children(_ path: String) -> [Node] {
+        if let emit { return emit(path) }
         var out: [Node] = []
         for (i, ch) in Mirror(reflecting: value).children.enumerated() {
             if let v = ch.value as? any View { out += SwiftUI._children(v, "\(path)/\(i)") }
@@ -355,6 +466,7 @@ final class _Runtime {
         version += 1
         #if os(WASI)
         var json = ""
+        json.reserveCapacity(4096)
         _json(tree, &json)
         let rc = json.withCString { p in
             p.withMemoryRebound(to: UInt8.self, capacity: json.utf8.count) { simcore_submit_tree($0, json.utf8.count, version) }

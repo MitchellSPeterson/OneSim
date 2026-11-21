@@ -119,23 +119,30 @@ fn shadow_cov(@builtin(global_invocation_id) g: vec3<u32>) {
     textureStore(dst, vec2<i32>(g.xy), vec4<f32>(acc / f32(k * k), 0.0, 0.0, 1.0));
 }
 
-// i[0] = (w, h, r, 0), f[0].x = sigma: exact gaussian, taps outside count as zero, kernel normalised whole.
+// i[0] = (w, h, r, 0), f[0] = (sigma, a, a2, inv_sum): exact gaussian via recurrence, taps outside count as zero.
 @compute @workgroup_size(8, 8)
 fn gauss_h(@builtin(global_invocation_id) g: vec3<u32>) {
     let w = p.i[0].x;
     let h = p.i[0].y;
     if (i32(g.x) >= w || i32(g.y) >= h) { return; }
     let r = p.i[0].z;
-    let s = p.f[0].x;
-    var acc = 0.0;
-    var sum = 0.0;
-    for (var k = -r; k <= r; k++) {
-        let wt = exp(-f32(k * k) / (2.0 * s * s));
-        sum += wt;
-        let xx = i32(g.x) + k;
-        if (xx >= 0 && xx < w) { acc += wt * textureLoad(src, vec2<i32>(xx, i32(g.y)), 0).r; }
+    let a = p.f[0].y;
+    let a2 = p.f[0].z;
+    let inv_sum = p.f[0].w;
+    let gx = i32(g.x);
+    let gy = i32(g.y);
+    var acc = textureLoad(src, vec2<i32>(gx, gy), 0).r;
+    var wt = 1.0;
+    var step = a;
+    for (var k = 1; k <= r; k++) {
+        wt *= step;
+        step *= a2;
+        let xl = gx - k;
+        let xr = gx + k;
+        if (xl >= 0) { acc += wt * textureLoad(src, vec2<i32>(xl, gy), 0).r; }
+        if (xr < w) { acc += wt * textureLoad(src, vec2<i32>(xr, gy), 0).r; }
     }
-    textureStore(dst, vec2<i32>(g.xy), vec4<f32>(acc / sum, 0.0, 0.0, 1.0));
+    textureStore(dst, vec2<i32>(g.xy), vec4<f32>(acc * inv_sum, 0.0, 0.0, 1.0));
 }
 
 @compute @workgroup_size(8, 8)
@@ -144,14 +151,21 @@ fn gauss_v(@builtin(global_invocation_id) g: vec3<u32>) {
     let h = p.i[0].y;
     if (i32(g.x) >= w || i32(g.y) >= h) { return; }
     let r = p.i[0].z;
-    let s = p.f[0].x;
-    var acc = 0.0;
-    var sum = 0.0;
-    for (var k = -r; k <= r; k++) {
-        let wt = exp(-f32(k * k) / (2.0 * s * s));
-        sum += wt;
-        let yy = i32(g.y) + k;
-        if (yy >= 0 && yy < h) { acc += wt * textureLoad(src, vec2<i32>(i32(g.x), yy), 0).r; }
+    let a = p.f[0].y;
+    let a2 = p.f[0].z;
+    let inv_sum = p.f[0].w;
+    let gx = i32(g.x);
+    let gy = i32(g.y);
+    var acc = textureLoad(src, vec2<i32>(gx, gy), 0).r;
+    var wt = 1.0;
+    var step = a;
+    for (var k = 1; k <= r; k++) {
+        wt *= step;
+        step *= a2;
+        let yt = gy - k;
+        let yb = gy + k;
+        if (yt >= 0) { acc += wt * textureLoad(src, vec2<i32>(gx, yt), 0).r; }
+        if (yb < h) { acc += wt * textureLoad(src, vec2<i32>(gx, yb), 0).r; }
     }
-    textureStore(dst, vec2<i32>(g.xy), vec4<f32>(acc / sum, 0.0, 0.0, 1.0));
+    textureStore(dst, vec2<i32>(g.xy), vec4<f32>(acc * inv_sum, 0.0, 0.0, 1.0));
 }

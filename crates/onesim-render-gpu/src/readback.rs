@@ -54,30 +54,31 @@ impl Readback {
             Some(Err(e)) => return Err(format!("readback map: {e}")),
             None => return Err("readback never completed".into()),
         }
-        let mut out = Vec::with_capacity((w * h * 4) as usize);
+        let mut out = vec![0u8; (w * h * 4) as usize];
         {
             let view = buf.slice(..).get_mapped_range().map_err(|e| format!("readback range: {e}"))?;
             let row = w as usize * 4;
-            for src in view.chunks_exact(bpr as usize) {
+            for (src, dst) in view.chunks_exact(bpr as usize).zip(out.chunks_exact_mut(row)) {
                 let src = &src[..row];
                 let (src4, _) = src.as_chunks::<4>();
                 // Opaque rows (nearly all of a full-screen frame) are a plain copy.
                 // A reduction lets the compiler check multiple alpha bytes per instruction.
                 if !premultiply || src4.iter().fold(255, |alpha, p| alpha & p[3]) == 255 {
-                    out.extend_from_slice(src);
+                    dst.copy_from_slice(src);
                     continue;
                 }
-                for s in src4 {
+                let (dst4, _) = dst.as_chunks_mut::<4>();
+                for (s, d) in src4.iter().zip(dst4.iter_mut()) {
                     let a = s[3] as u32;
                     if a == 255 {
-                        out.extend_from_slice(s);
+                        *d = *s;
                     } else {
                         // Vello writes straight alpha; the capture convention is premultiplied.
                         let pm = |c: u8| {
                             let p = c as u32 * a + 128;
                             ((p + (p >> 8)) >> 8) as u8
                         };
-                        out.extend_from_slice(&[pm(s[0]), pm(s[1]), pm(s[2]), s[3]]);
+                        *d = [pm(s[0]), pm(s[1]), pm(s[2]), s[3]];
                     }
                 }
             }

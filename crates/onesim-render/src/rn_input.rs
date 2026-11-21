@@ -75,9 +75,7 @@ pub struct RnInput {
     sent_frames: BTreeMap<String, [f64; 4]>,
 }
 
-fn now_ms() -> f64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64() * 1000.0)
-}
+use crate::interaction::now_ms;
 
 fn touch_message(phase: TouchPhase, n: &Node, x: f64, y: f64, timestamp: f64) -> HostMessage {
     HostMessage::Touch { phase, tag: n.tag.unwrap_or(0), x, y, lx: x - n.bounds.x, ly: y - n.bounds.y, timestamp }
@@ -401,6 +399,9 @@ impl RnInput {
     /// `scroll` events for the React Native scrollers the host moved since `scene` was built (by a drag or
     /// `Interaction::tick`), which window lists and fire RefreshControl, and `momentum_end` once a fling stopped.
     pub fn scrolled(&mut self, inter: &Interaction, scene: &Scene) -> Vec<Out> {
+        if inter.scroll.is_empty() && self.fling.is_none() {
+            return vec![];
+        }
         let mut out = vec![];
         for n in scene.nodes.iter().filter(|n| n.tag.is_some()) {
             if let (Some(info), Some(&new)) = (n.scroll, inter.scroll.get(&n.id)) {
@@ -465,7 +466,8 @@ impl RnInput {
                     out.extend(self.decide(inter, scene, captured));
                 }
                 GuestMessage::ScrollTo { tag, x, y } => {
-                    let Some(n) = scene.nodes.iter().find(|n| n.id == tag.to_string() && n.scroll.is_some()) else { continue };
+                    let tag_str = tag.to_string();
+                    let Some(n) = scene.nodes.iter().find(|n| n.id == tag_str && n.scroll.is_some()) else { continue };
                     let max = n.scroll.map_or((0.0, 0.0), |i| i.max);
                     let off = (x.resolve(max.0).clamp(0.0, max.0), y.resolve(max.1).clamp(0.0, max.1));
                     inter.scroll.insert(n.id.clone(), off);
@@ -480,17 +482,21 @@ impl RnInput {
 
     /// A `layout` message with the frames that changed since the last one (none if nothing did).
     pub fn layout(&mut self, scene: &Scene) -> Option<HostMessage> {
-        let frames: BTreeMap<String, [f64; 4]> = scene
-            .nodes
-            .iter()
-            .filter(|n| n.tag.is_some() || n.kind == "expo_ui_content")
-            .map(|n| (n.id.clone(), [n.bounds.x, n.bounds.y, n.bounds.w, n.bounds.h]))
-            .collect();
-        let changed: BTreeMap<_, _> = frames.iter().filter(|(k, v)| self.sent_frames.get(*k) != Some(*v)).map(|(k, v)| (k.clone(), *v)).collect();
+        let mut changed = BTreeMap::new();
+        for n in &scene.nodes {
+            if n.tag.is_some() || n.kind == "expo_ui_content" {
+                let rect = [n.bounds.x, n.bounds.y, n.bounds.w, n.bounds.h];
+                if self.sent_frames.get(&n.id) != Some(&rect) {
+                    changed.insert(n.id.clone(), rect);
+                }
+            }
+        }
         if changed.is_empty() {
             return None;
         }
-        self.sent_frames = frames;
+        for (k, &v) in &changed {
+            self.sent_frames.insert(k.clone(), v);
+        }
         Some(HostMessage::Layout { frames: changed })
     }
 }

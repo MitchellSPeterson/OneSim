@@ -111,7 +111,7 @@ const LIVE_HOLD_MS: f64 = 50.0;
 const FINGER_GAP: f64 = 100.0;
 
 /// Wall-clock milliseconds. ponytail: 0 on wasm32-unknown-unknown (no clock); only the GPU presenter builds there and it sends no input.
-fn now_ms() -> f64 {
+pub(crate) fn now_ms() -> f64 {
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     return 0.0;
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -204,10 +204,11 @@ fn unshown(o: f64, max: f64, d: f64) -> f64 {
 pub fn step(mut o: f64, mut v: f64, max: f64, dt: f64, to: Option<f64>) -> (f64, f64) {
     // 1 ms sub-steps: exact enough, and momentum hands over to the spring the moment it crosses an edge.
     let h = 0.001;
+    let decay = (-DECEL * h).exp();
     for _ in 0..(dt / h).round().max(1.0) as usize {
         let edge = to.unwrap_or(o.clamp(0.0, max));
         if to.is_none() && o == edge {
-            v *= (-DECEL * h).exp();
+            v *= decay;
             if v.abs() < MIN_V {
                 return (o, 0.0);
             }
@@ -455,17 +456,26 @@ impl Interaction {
     /// screen pushed at the same depth reuses them; like the guest's `@State`, a popped screen's
     /// offsets must not carry over (iOS starts every pushed view at the top).
     fn forget_gone(&mut self, scene: &Scene) {
-        let live: std::collections::HashSet<&str> = scene.nodes.iter().filter(|n| n.scroll.is_some()).map(|n| n.id.as_str()).collect();
-        self.scroll.retain(|id, _| live.contains(id.as_str()));
-        self.motion.retain(|id, _| live.contains(id.as_str()));
-        let sheets: std::collections::HashSet<&str> = scene.nodes.iter().filter(|n| n.sheet.is_some()).map(|n| n.id.as_str()).collect();
-        self.sheets.retain(|id, _| sheets.contains(id.as_str()));
-        if self.pending.as_ref().or(self.sheet_drag.as_ref()).is_some_and(|d| !sheets.contains(d.id.as_str())) {
-            self.pending = None;
-            self.sheet_drag = None;
+        let has_scroll = !self.scroll.is_empty() || !self.motion.is_empty() || self.drag.is_some();
+        let has_sheet = !self.sheets.is_empty() || self.pending.is_some() || self.sheet_drag.is_some();
+        if !has_scroll && !has_sheet {
+            return;
         }
-        if self.drag.as_ref().is_some_and(|d| !live.contains(d.id.as_str())) {
-            self.drag = None;
+        if has_scroll {
+            let live: std::collections::HashSet<&str> = scene.nodes.iter().filter(|n| n.scroll.is_some()).map(|n| n.id.as_str()).collect();
+            self.scroll.retain(|id, _| live.contains(id.as_str()));
+            self.motion.retain(|id, _| live.contains(id.as_str()));
+            if self.drag.as_ref().is_some_and(|d| !live.contains(d.id.as_str())) {
+                self.drag = None;
+            }
+        }
+        if has_sheet {
+            let sheets: std::collections::HashSet<&str> = scene.nodes.iter().filter(|n| n.sheet.is_some()).map(|n| n.id.as_str()).collect();
+            self.sheets.retain(|id, _| sheets.contains(id.as_str()));
+            if self.pending.as_ref().or(self.sheet_drag.as_ref()).is_some_and(|d| !sheets.contains(d.id.as_str())) {
+                self.pending = None;
+                self.sheet_drag = None;
+            }
         }
     }
 
@@ -947,6 +957,9 @@ impl Interaction {
     /// Advance scroll momentum and bounces by `dt` seconds. Returns true while anything is moving
     /// (keep calling every frame), after updating `scroll`: re-layout when it returns true.
     pub fn tick(&mut self, scene: &Scene, dt: f64) -> bool {
+        if self.motion.is_empty() && self.scroll.is_empty() {
+            return false;
+        }
         self.forget_gone(scene);
         let held = self.drag.as_ref().map(|d| d.id.clone());
         let mut moving = false;
