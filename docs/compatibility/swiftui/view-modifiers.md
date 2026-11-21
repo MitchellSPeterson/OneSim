@@ -98,7 +98,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.copyable` | 27 | ⬜ |  |  |
 | `.cornerRadius` | 13 | ✅ |  | Deprecated |
 | `.cuttable` | 27 | ⬜ |  |  |
-| `.datePickerStyle` | 13 | ⬜ |  |  |
+| `.datePickerStyle` | 13 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Supports built-in and custom styles. Native wheel momentum is incomplete. |
 | `.defaultAdaptableTabBarPlacement` | 18 | ⬜ |  |  |
 | `.defaultAppStorage` | 14 | ⬜ |  |  |
 | `.defaultFocus` | 17 | ⬜ |  |  |

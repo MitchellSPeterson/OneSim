@@ -42,6 +42,7 @@ struct _Styles {
     var progress: _NamedOr<ProgressViewStyleConfiguration>?
     var gauge: _NamedOr<GaugeStyleConfiguration>?
     var menu: _StyleBody<MenuStyleConfiguration>?
+    var datePicker: _NamedOr<DatePickerStyleConfiguration>?
     var labelsHidden = false
     /// Inside a `List` / `Form`: inline pickers become rows.
     var inList = false

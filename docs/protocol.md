@@ -917,3 +917,20 @@ mask's alpha or its complement. Canvas source-domain blend modes use the clip an
 coverage when compositing, including when the drawing paint is transparent.
 Effects preserve layout size. The host resolves these
 layers with the CPU rasterizer and submits the resulting RGBA frame to GPU clients.
+
+## S. v1 additions for SwiftUI date and color pickers
+
+The guest owns date selection, calendar navigation, formatting and color bindings. It emits standard buttons,
+text, shapes and sheets for most of the interface. This section adds three wire elements.
+
+- `wheel` draws multiple drums in one selection band. Optional `width` and `height` default to the proposed
+  width and 216 pt. `columns` is an array of objects with `options` (picker options in display order), `selected`
+  (zero-based index), `width` (points), and optional `align` (`leading`, `center`, or `trailing`, default `center`).
+  Optional `inset` and `selectedInset` set the regular and selected text offsets for edge-aligned columns.
+  The host draws the selected row and its nearest neighbours. A tap on an enabled, unselected row runs its
+  action. `disabled` disables the wheel. `popover` chooses the band fill for a wheel over glass.
+- A root presentation layer with `kind: "popover"` contains `content`, optional `anchor` (view id), and
+  optional `dismiss` (guest action). The host positions the card beside the anchor and sends `dismiss` for a
+  tap outside. The underlying view stays visible.
+- A `rowMinHeight` modifier holds a number in points. A list or form uses it as the minimum height of that
+  row alongside its content height and padding. Color picker rows use 58 pt.
