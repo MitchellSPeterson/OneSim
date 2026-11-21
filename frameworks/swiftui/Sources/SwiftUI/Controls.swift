@@ -39,16 +39,27 @@ public struct Divider: View, _Primitive {
 
 // MARK: - Lists
 
-public struct ForEach<Data: RandomAccessCollection, ID: Hashable, Content: View>: View, _Flattenable {
+public struct ForEach<Data: RandomAccessCollection, ID: Hashable, Content: View>: DynamicViewContent, _Flattenable {
     public typealias Body = Never
     public var body: Never { fatalError() }
-    let data: Data, id: KeyPath<Data.Element, ID>, content: (Data.Element) -> Content
+    public let data: Data
+    let id: KeyPath<Data.Element, ID>, content: (Data.Element) -> Content
     public init(_ data: Data, id: KeyPath<Data.Element, ID>, @ViewBuilder content: @escaping (Data.Element) -> Content) {
         self.data = data; self.id = id; self.content = content
     }
     // Element id goes into the structural path so @State follows items, not positions.
     func _children(_ path: String) -> [Node] {
-        data.flatMap { SwiftUI._children(content($0), "\(path)/\($0[keyPath: id])") }
+        let rt = _Runtime.shared, actions = rt.rowActions, count = data.count
+        // Delete and move handlers belong to this ForEach's rows, not to a nested ForEach's.
+        rt.rowActions = _RowActions()
+        defer { rt.rowActions = actions }
+        return data.enumerated().flatMap { i, e -> [Node] in
+            let nodes = SwiftUI._children(content(e), "\(path)/\(e[keyPath: id])")
+            rt.rowActions = actions
+            _registerElementRows(nodes, index: i, count: count)
+            rt.rowActions = _RowActions()
+            return nodes
+        }
     }
 }
 extension ForEach where ID == Data.Element.ID, Data.Element: Identifiable {
@@ -66,84 +77,7 @@ public struct Group<Content: View>: View, _Flattenable, _ModifierTransparent {
     func _children(_ path: String) -> [Node] { SwiftUI._children(content, path) }
 }
 
-public struct Section<Content: View>: View, _Flattenable {
-    public typealias Body = Never
-    public var body: Never { fatalError() }
-    let header: String?, content: Content
-    public init(@ViewBuilder content: () -> Content) { header = nil; self.content = content() }
-    public init(_ header: String, @ViewBuilder content: () -> Content) { self.header = header; self.content = content() }
-    func _children(_ path: String) -> [Node] {
-        var n: Node = ["kind": "_section", "rows": SwiftUI._children(content, path)]
-        if let header { n["header"] = header }
-        return [n]
-    }
-}
-
-public struct List<Content: View>: View, _Primitive {
-    public typealias Body = Never
-    public var body: Never { fatalError() }
-    let content: Content
-    public init(@ViewBuilder content: () -> Content) { self.content = content() }
-    func _emit(_ path: String) -> Node {
-        var sections: [Node] = [], loose: [Node] = []
-        let rows = _without({ $0.inList = true }) { _children(content, path) }
-        for n in rows {
-            if n["kind"] as? String == "_section" {
-                if !loose.isEmpty { sections.append(["rows": loose]); loose = [] }
-                var s = n; s["kind"] = nil; sections.append(s)
-            } else { loose.append(n) }
-        }
-        if !loose.isEmpty { sections.append(["rows": loose]) }
-        return ["kind": "list", "id": path, "style": "insetGrouped", "sections": sections]
-    }
-}
-
-extension List {
-    public init<Data: RandomAccessCollection, ID: Hashable, RowContent: View>(
-        _ data: Data, id: KeyPath<Data.Element, ID>, @ViewBuilder rowContent: @escaping (Data.Element) -> RowContent
-    ) where Content == ForEach<Data, ID, RowContent> {
-        self.init { ForEach(data, id: id, content: rowContent) }
-    }
-    public init<Data: RandomAccessCollection, RowContent: View>(
-        _ data: Data, @ViewBuilder rowContent: @escaping (Data.Element) -> RowContent
-    ) where Content == ForEach<Data, Data.Element.ID, RowContent>, Data.Element: Identifiable {
-        self.init { ForEach(data, content: rowContent) }
-    }
-    public init<RowContent: View>(_ data: Range<Int>, @ViewBuilder rowContent: @escaping (Int) -> RowContent)
-    where Content == ForEach<Range<Int>, Int, RowContent> {
-        self.init { ForEach(data, content: rowContent) }
-    }
-}
-
 // MARK: - Controls
-
-/// `Form` is an inset-grouped `List` on iOS.
-public struct Form<Content: View>: View, _Primitive {
-    public typealias Body = Never
-    public var body: Never { fatalError() }
-    let content: Content
-    public init(@ViewBuilder content: () -> Content) { self.content = content() }
-    func _emit(_ path: String) -> Node { List { content }._emit(path) }
-}
-
-/// Label leading, content trailing in the secondary style (a list row's trailing value).
-public struct LabeledContent<Label: View, Content: View>: View {
-    let label: Label, content: Content
-    public init(@ViewBuilder content: () -> Content, @ViewBuilder label: () -> Label) { self.content = content(); self.label = label() }
-    public var body: some View {
-        HStack {
-            label
-            Spacer()
-            content.foregroundStyle(.secondary)
-        }
-    }
-}
-extension LabeledContent where Label == Text {
-    public init(_ title: String, @ViewBuilder content: () -> Content) { self.init(content: content) { Text(title) } }
-}
-extension LabeledContent where Label == Text, Content == Text {
-    public init(_ title: String, value: String) { self.init(title) { Text(value) } }
-}
 
 /// `Slider`: the host sets the value through the `field` id (a `text_input` carrying the number). Value labels
 /// sit beside it in an `hstack`; `onEditingChanged` brackets each change (true, set, false).
@@ -543,7 +477,12 @@ public struct NavigationStack<Root: View>: View, _Primitive {
         let saved = (rt.nav, rt.disabled, rt.buttonStyle, rt.envLocal, rt.styles.inList)
         rt.nav = st; rt.disabled = false; rt.buttonStyle = "automatic"; rt.envLocal = []; rt.styles.inList = false
         defer { (rt.nav, rt.disabled, rt.buttonStyle, rt.envLocal, rt.styles.inList) = saved }
-        var content = depth == 0 ? _eval(root, "\(path)/0") : st.screen(depth - 1, "\(path)/s\(depth)")
+        // Each screen has its own edit mode (EditButton, List editing).
+        let screen = depth == 0 ? "\(path)/0" : "\(path)/s\(depth)"
+        let k = ObjectIdentifier(_EditModeKey.self), outer = rt.envObjects[k]
+        rt.envObjects[k] = nil
+        var content = _withEditMode(screen) { depth == 0 ? _eval(root, screen) : st.screen(depth - 1, screen) }
+        rt.envObjects[k] = outer
 
         var title: String?, mode = "large"
         let mods = (content["modifiers"] as? [Node]) ?? []

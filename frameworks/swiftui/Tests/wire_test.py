@@ -1093,4 +1093,204 @@ assert picker_button(layers(t)[0]["content"], "21")["disabled"]
 t = act(p, t, picker_button(layers(t)[0]["content"], "20")["action"])
 assert "Jan 20, 2020" in alltexts(tree(t))
 finish(p)
+# --- forms and containers (section T)
+p = spawn(sys.argv[20])
+assert recv(p)["type"] == "hello"
+recv(p)
+send(p, type="environment", appearance="light", viewport={"width": 402, "height": 874})
+t = recv(p)
+
+def fwalk(n):
+    yield n
+    subs = list(n.get("children", []))
+    for k in ("label", "child", "content", "title", "icon", "prompt"):
+        if isinstance(n.get(k), dict): subs.append(n[k])
+    for sec in n.get("sections", []):
+        subs += sec["rows"]
+        for k in ("headerView", "footerView"):
+            if k in sec: subs.append(sec[k])
+    for row in n.get("rows", []) or []:
+        if isinstance(row, dict): subs += row.get("cells", [])
+    for m in n.get("modifiers", []) or []:
+        for a in (m.get("listRow", {}).get("swipe") or {}).get("leading", []) + (m.get("listRow", {}).get("swipe") or {}).get("trailing", []):
+            subs.append(a["label"])
+    for c in subs: yield from fwalk(c)
+def ftexts(n): return [m["text"] for m in fwalk(n) if m.get("kind") == "text"]
+def fbtn(root, label): return next(m for m in fwalk(root) if m.get("kind") == "button" and label in ftexts(m))
+def lists(t): return [m for m in fwalk(tree(t)) if m.get("kind") == "list"]
+def lrow(n): return next((m["listRow"] for m in n.get("modifiers", []) if "listRow" in m), {})
+def go(t, label):
+    return act(p, t, fbtn(tree(t), label)["action"])
+def back(t): return act(p, t, tree(t)["back"]["action"])
+def gesture(t, key, frame, *steps):
+    for time, phase, pt in steps:
+        send(p, type="gesture", phase=phase, time=time, points=[list(pt)], targets=[{"key": key, "frame": frame}])
+        t = recv(p)
+    return t
+def row_with(t, text):
+    return next(r for l in lists(t) for s in l["sections"] for r in s["rows"] if text in ftexts(r))
+
+# List and Form styles: `.automatic` and Form are inset grouped; each built-in style has its wire name.
+t = go(t, "Styles")
+styles = [l["style"] for l in lists(t)]
+assert styles == ["insetGrouped", "grouped", "plain", "inset", "sidebar", "insetGrouped", "insetGrouped", "insetGrouped"], styles
+t = back(t)
+
+# Sections: a view header, a text footer, a collapsible section whose toggle hides its rows, loose rows in their own section.
+t = go(t, "Sections")
+secs = lists(t)[0]["sections"]
+assert "headerView" in secs[0] and "header" not in secs[0] and secs[0]["footer"] == "Plain footer", secs[0].keys()
+assert secs[1]["header"] == "Folding" and secs[1]["expanded"] is True and ftexts(secs[1]["rows"][0]) == ["hidden when folded"]
+assert len(secs) == 3 and ftexts(secs[2]["rows"][0]) == ["loose row"]
+t = act(p, t, secs[1]["toggle"])
+secs = lists(t)[0]["sections"]
+assert secs[1]["expanded"] is False and secs[1]["rows"] == [], secs[1]
+t = act(p, t, secs[1]["toggle"])
+assert lists(t)[0]["sections"][1]["expanded"] is True
+t = back(t)
+
+# Edit mode: EditButton toggles it; ForEach rows with onDelete/onMove get a delete control and a reorder strip.
+t = go(t, "Editing")
+assert "Edit" in ftexts(tree(t)) and not any(m.get("id", "").endswith("#minus") for m in fwalk(tree(t)))
+a_row = row_with(t, "A")
+assert [x["label"]["kind"] for x in lrow(a_row)["swipe"]["trailing"]] == ["label"], "onDelete alone offers swipe-to-delete"
+t = act(p, t, fbtn(tree(t), "Edit")["action"])
+assert "Done" in ftexts(tree(t))
+rows = lists(t)[0]["sections"][0]["rows"]
+assert [r["kind"] for r in rows] == ["hstack"] * 4 and all(lrow(r)["reorder"]["axis"] == "vertical" for r in rows)
+assert "gesture" not in lrow(rows[0]), "no swipes while editing"
+static = row_with(t, "static x")
+assert static["kind"] == "text" and not lrow(static), "a ForEach without handlers is untouched"
+# The delete control opens the row's Delete action; Delete runs onDelete with that element's offset.
+t = act(p, t, next(m for m in fwalk(rows[1]) if m.get("id", "").endswith("#minus"))["action"])
+sw = lrow(row_with(t, "B"))["swipe"]
+assert sw["open"] == "trailing" and "Delete" in ftexts(sw["trailing"][0]["label"])
+t = act(p, t, sw["trailing"][0]["action"])
+assert "order ACD" in ftexts(tree(t)) and "log del " in ftexts(tree(t))
+# Dragging a handle down by two of its row's heights moves the element after the one two rows down.
+r = lrow(row_with(t, "A"))["reorder"]
+t = gesture(t, r["key"], [330, 150, 56, 52], (0, "start", (350, 170)), (16, "move", (350, 230)))
+assert lrow(row_with(t, "A")).get("lift") == 60, lrow(row_with(t, "A"))
+t = gesture(t, r["key"], [330, 150, 56, 52], (32, "move", (350, 274)), (48, "end", (350, 274)))
+assert "order CDA" in ftexts(tree(t)) and "log del move " in ftexts(tree(t)), ftexts(tree(t))
+assert not lrow(row_with(t, "A")).get("lift")
+# Up past the first row clamps to the top.
+r = lrow(row_with(t, "A"))["reorder"]
+t = gesture(t, r["key"], [330, 250, 56, 52], (100, "start", (350, 270)), (116, "move", (350, -400)), (132, "end", (350, -400)))
+assert "order ACD" in ftexts(tree(t))
+# Leaving edit mode closes a row its delete control opened.
+t = act(p, t, next(m for m in fwalk(row_with(t, "C")) if m.get("id", "").endswith("#minus"))["action"])
+assert lrow(row_with(t, "C"))["swipe"]["open"] == "trailing"
+t = act(p, t, fbtn(tree(t), "Done")["action"])
+assert "Edit" in ftexts(tree(t)) and row_with(t, "A")["kind"] == "text"
+assert "open" not in lrow(row_with(t, "C"))["swipe"]
+t = back(t)
+
+# Swipe actions: horizontal pans open an edge, an action runs and closes, a full swipe runs the outermost action.
+t = go(t, "Swipes")
+m1 = row_with(t, "Mail 1")
+lr = lrow(m1)
+assert lr["gesture"]["axis"] == "horizontal" and lr["gesture"]["pans"]
+assert [ftexts(a["label"]) for a in lr["swipe"]["trailing"]] == [["Delete"], ["Flag"]]
+assert lr["swipe"]["trailing"][0]["role"] == "destructive" and "tint" in lr["swipe"]["trailing"][1]
+assert [ftexts(a["label"]) for a in lr["swipe"]["leading"]] == [["Read"]] and "open" not in lr["swipe"]
+key, F = lr["gesture"]["key"], [16, 100, 370, 52]
+t = gesture(t, key, F, (0, "start", (300, 120)), (16, "move", (250, 121)))
+assert lrow(row_with(t, "Mail 1"))["swipe"]["offset"] == -50, "the row follows the finger"
+t = gesture(t, key, F, (32, "move", (220, 121)), (48, "end", (220, 121)))
+sw = lrow(row_with(t, "Mail 1"))["swipe"]
+assert sw["open"] == "trailing" and "offset" not in sw
+t = act(p, t, sw["trailing"][1]["action"])
+assert "log flag(Mail 1) " in ftexts(tree(t)) and "open" not in lrow(row_with(t, "Mail 1"))["swipe"], "an action closes the row"
+# A short drag springs back; a tap on an open row closes it.
+t = gesture(t, key, F, (100, "start", (300, 120)), (116, "move", (285, 120)), (132, "end", (285, 120)))
+assert "open" not in lrow(row_with(t, "Mail 1"))["swipe"]
+t = gesture(t, key, F, (200, "start", (100, 120)), (216, "move", (180, 120)), (232, "end", (180, 120)))
+assert lrow(row_with(t, "Mail 1"))["swipe"]["open"] == "leading"
+t = gesture(t, key, F, (300, "start", (300, 120)), (316, "end", (300, 120)))
+assert "open" not in lrow(row_with(t, "Mail 1"))["swipe"]
+# Opening another row closes the first.
+t = gesture(t, key, F, (400, "start", (300, 120)), (416, "move", (220, 120)), (432, "end", (220, 120)))
+k2 = lrow(row_with(t, "Mail 2"))["gesture"]["key"]
+t = gesture(t, k2, F, (500, "start", (300, 172)), (516, "move", (220, 172)), (532, "end", (220, 172)))
+assert "open" not in lrow(row_with(t, "Mail 1"))["swipe"] and lrow(row_with(t, "Mail 2"))["swipe"]["open"] == "trailing"
+t = gesture(t, k2, F, (550, "start", (300, 172)), (566, "end", (300, 172)))
+# Full swipe trailing runs the outermost action; leading does not allow it.
+t = gesture(t, key, F, (600, "start", (360, 120)), (616, "move", (100, 120)))
+assert lrow(row_with(t, "Mail 1"))["swipe"]["full"] is True
+t = gesture(t, key, F, (632, "move", (40, 120)), (648, "end", (40, 120)))
+assert "delete(Mail 1) " in ftexts(tree(t))[0] and "open" not in lrow(row_with(t, "Mail 1"))["swipe"]
+t = gesture(t, key, F, (700, "start", (30, 120)), (716, "move", (380, 120)), (732, "end", (380, 120)))
+sw = lrow(row_with(t, "Mail 1"))["swipe"]
+assert "read" not in ftexts(tree(t))[0] and sw["open"] == "leading" and not sw.get("full")
+# onDelete alone: a trailing Delete that runs it.
+od = lrow(row_with(t, "Only delete"))["swipe"]["trailing"]
+assert len(od) == 1 and od[0]["role"] == "destructive"
+t = act(p, t, od[0]["action"])
+assert "ondelete" in ftexts(tree(t))[0]
+t = back(t)
+
+# Disclosure groups: rows in a list (children indented), a button outside; an outline expands level by level.
+t = go(t, "Disclosure")
+lst = lists(t)[0]
+assert [r["id"].split("/")[-1] for r in lst["sections"][0]["rows"]] and len(lst["sections"][0]["rows"]) == 2
+t = act(p, t, fbtn(lists(t)[0], "Internal")["action"])
+rows = lists(t)[0]["sections"][0]["rows"]
+assert ftexts(rows[1]) == ["internal child"] and any("padding" in m for m in rows[1]["modifiers"])
+assert fbtn(rows[0], "Internal")["value"] == "expanded"
+t = act(p, t, fbtn(lists(t)[0], "Bound")["action"])
+assert "bound open" in ftexts(tree(t)) and len(lists(t)[0]["sections"][0]["rows"]) == 5
+outside = fbtn(tree(t), "Outside")
+assert outside["style"] == "automatic" and outside["value"] == "collapsed"
+t = act(p, t, outside["action"])
+assert "outside child" in ftexts(tree(t))
+outline = lists(t)[1]
+assert [ftexts(r)[0] for r in outline["sections"][0]["rows"]] == ["root", "solo"]
+t = act(p, t, fbtn(lists(t)[1], "root")["action"])
+assert [ftexts(r)[0] for r in lists(t)[1]["sections"][0]["rows"]] == ["root", "leaf", "branch", "solo"]
+t = act(p, t, fbtn(lists(t)[1], "branch")["action"])
+assert [ftexts(r)[0] for r in lists(t)[1]["sections"][0]["rows"]] == ["root", "leaf", "branch", "deep", "solo"]
+t = back(t)
+
+# Custom styles get their configurations (label, content, isExpanded); wrappers draw the default look.
+t = go(t, "Custom")
+x = ftexts(tree(t))
+for s_ in ["custom box", "Box label", "box content", "Key", "Value", "stacked", "Wrapped", "Default", "[", "One", "Two", "]", "framed form", "in framed"]:
+    assert s_ in x, (s_, x)
+assert "styled child" not in x
+t = act(p, t, fbtn(tree(t), "expand")["action"])
+assert "styled child" in ftexts(tree(t)) and "collapse" in ftexts(tree(t))
+menu = fbtn(tree(t), "Actions")
+t = act(p, t, menu["action"])
+assert any(i["text"] == "Menu item" for l in layers(t) if l["kind"] == "menu" for i in l["items"])
+t = back(t)
+
+# Columns forms, tables, empty states, nested boxes.
+t = go(t, "Misc")
+vtf = next(m for m in fwalk(tree(t)) if m.get("kind") == "viewThatFits")
+grid = vtf["children"][0]
+cells = [[c for c in r["cells"]] for r in grid["rows"]]
+assert ftexts(cells[0][1]) == ["Net"] and cells[0][0]["kind"] == "empty"
+assert ftexts(cells[1][0]) == ["Wi-Fi"] and cells[1][1]["kind"] == "toggle" and cells[1][1]["label"]["kind"] == "empty"
+assert ftexts(cells[2][0]) == ["Count"] and ftexts(cells[2][1]) == ["1,234.5"], cells[2]
+assert vtf["children"][1]["kind"] == "scroll", "falls back to scrolling when it does not fit"
+table = next(l for l in lists(t) if l["style"] == "plain")
+assert [ftexts(r) for r in table["sections"][0]["rows"]] == [["Ann"], ["Bo"]], "compact tables show the first column"
+x = ftexts(tree(t))
+assert "No Results" in x and "Gone" in x and "Nothing here" in x
+boxes = [m for m in fwalk(tree(t)) if m.get("kind") == "vstack" and any("cornerRadius" in q for q in m.get("modifiers", []))]
+fills = [next(q["background"]["color"]["r"] for q in b["modifiers"] if "background" in q) for b in boxes]
+assert len(fills) == 2 and fills[0] != fills[1], "nested group boxes alternate backgrounds"
+finish(p)
+
+# The forms example runs and pushes every screen.
+p = spawn(sys.argv[21])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+for screen in ["Grouped", "Plain", "Inset", "Sidebar", "Boxes", "Columns", "Empty", "Outline", "Edit", "Swipe", "Table"]:
+    t = act(p, t, fbtn(tree(t), screen)["action"])
+    assert title(t) == screen, title(t)
+    t = back(t)
+finish(p)
+print("forms: list styles, sections, edit mode, swipe actions, disclosure, outline, custom styles, columns, table ok")
 print("PASS")

@@ -12,8 +12,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Canvas` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Paths, strokes, text, images, tagged symbols, layers and clips. Color mode, asynchronous delivery, tiled images, shaders and Core Graphics access are gaps. |
 | `Color` | 13 | 🟠 |  | `opacity` ignored on semantic colors |
 | `ColorPicker` | 14 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Grid, spectrum, RGB sliders, and opacity selection. Localized titles, eyedropper, persistent favorites and native tab appearance are incomplete. CGColor bindings require CoreGraphics. |
-| `ContentUnavailableView` | 17 | ⬜ |  |  |
-| `ControlGroup` | 15 | ⬜ |  |  |
+| `ContentUnavailableView` | 17 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
+| `ControlGroup` | 15 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `DatePicker` | 13 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Compact, graphical and wheel styles. Gregorian dates and tap or drag selection. Localized title-key and title-resource overloads, narrow parent layouts and wheel momentum are incomplete. |
 | `DebugReplaceableView` | 26 | ⬜ |  |  |
 | `DefaultButtonLabel` | 26 | ⬜ |  |  |
@@ -22,31 +22,31 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `DefaultNewDocumentButtonLabel` | 27 | ⬜ |  |  |
 | `DefaultShareLinkLabel` | 16 | ⬜ |  |  |
 | `DefaultTabLabel` | 18 | ⬜ |  |  |
-| `DisclosureGroup` | 14 | ⬜ |  |  |
+| `DisclosureGroup` | 14 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `Divider` | 13 | ✅ |  |  |
 | `DocumentLaunchView` | 18 | ⬜ |  |  |
 | `EditableCollectionContent` | 16 | ⬜ |  |  |
-| `EditButton` | 13 | ⬜ |  |  |
+| `EditButton` | 13 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | Toggles the screen's edit mode; label Edit / Done. |
 | `EllipticalGradient` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Relative radii and center. Degenerate radii and interpolation color spaces are approximated. |
 | `EmptyView` | 13 | ✅ |  |  |
 | `EquatableView` | 13 | ⬜ |  |  |
 | `ForEach` | 13 | ✅ |  |  |
-| `Form` | 13 | 🟠 |  | No `formStyle` |
+| `Form` | 13 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `Gauge` | 16 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | No `markedValueLabels`; accessory styles draw in the primary color (no `tint`) |
 | `GeometryReader` | 13 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | One correction pass. `safeAreaInsets` are the device insets. `frame(in: .local)` origin is zero; `.global` and a named space are the host screen frame |
 | `GlassEffectContainer` | 26 | 🟠 |  | Pass-through: no merge/morph |
 | `Grid` | 16 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `GridRow` | 16 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `Group` | 13 | ✅ |  |  |
-| `GroupBox` | 14 | ⬜ |  |  |
+| `GroupBox` | 14 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `GroupElementsOfContent` | 18 | ⬜ |  |  |
 | `GroupSectionsOfContent` | 18 | ⬜ |  |  |
 | `HStack` | 13 | ✅ |  |  |
 | `Image` | 13 | 🟠 |  | SF Symbols only (`systemName:`), monochrome; no asset or `uiImage:` images |
 | `KeyframeAnimator` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `Label` | 14 | ✅ |  |  |
-| `LabeledContent` | 16 | 🟠 |  | Content always `.secondary`; no `labeledContentStyle` |
-| `LabeledControlGroupContent` | 16 | ⬜ |  |  |
+| `LabeledContent` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
+| `LabeledControlGroupContent` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `LabeledToolbarItemGroupContent` | 16 | ⬜ |  |  |
 | `LazyHGrid` | 14 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Eager. `pinnedViews` is ignored |
 | `LazyHStack` | 14 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Eager. Section headers pin; footers do not |
@@ -64,8 +64,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `NavigationStack` | 16 | ✅ |  |  |
 | `NavigationView` | 13 | ⬜ |  | Deprecated |
 | `NewDocumentButton` | 18 | ⬜ |  |  |
-| `OutlineGroup` | 14 | ⬜ |  |  |
-| `OutlineSubgroupChildren` | 14 | ⬜ |  |  |
+| `OutlineGroup` | 14 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
+| `OutlineSubgroupChildren` | 14 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `PasteButton` | 16 | ⬜ |  |  |
 | `PhaseAnimator` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `Picker` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | `.menu`, `.segmented`, `.palette` (drawn segmented), `.inline` (checkmark rows in a list, a wheel elsewhere), `.navigationLink`, `.wheel` (a tap selects a row; no spinning). No `.tabs`. Options are text only; an inline picker shows no label row |
@@ -87,7 +87,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Subview` | 18 | ⬜ |  |  |
 | `SubviewsCollection` | 18 | ⬜ |  |  |
 | `SubviewsCollectionSlice` | 18 | ⬜ |  |  |
-| `Table` | 16 | ⬜ |  |  |
+| `Table` | 16 | 🟠 | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | Compact width (every iPhone): the first column as a plain list. Column headers, sorting, selection, row builders and regular-width columns are unsupported. |
 | `TabView` | 13 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | iPhone tab bar and pager. Sidebar, `TabSection` and stack reset on reselect are unsupported. |
 | `Text` | 13 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | `String` only (no `LocalizedStringKey`, date or format interpolation). Runs carry kerning, tracking, baseline, design, width, and underline or strikethrough pattern and color |
 | `TextEditor` | 14 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Multiline editing with a String binding. Selection bindings, caret placement and attributed text are gaps. |

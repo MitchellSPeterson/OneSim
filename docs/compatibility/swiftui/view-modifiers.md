@@ -92,7 +92,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.contentTransition` | 16 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | `identity`, `interpolate`, `opacity`, `numericText`, `symbolEffect`; no per-glyph morphing |
 | `.contextMenu` | 13 | ⬜ |  |  |
 | `.contrast` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Contrast around mid-gray in device color space. |
-| `.controlGroupStyle` | 15 | ⬜ |  |  |
+| `.controlGroupStyle` | 15 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `.controlSize` | 15 | ⬜ |  |  |
 | `.coordinateSpace` | 13 | ⬜ |  |  |
 | `.copyable` | 27 | ⬜ |  |  |
@@ -111,7 +111,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.dialogSuppressionToggle` | 17 | ⬜ |  |  |
 | `.disableAutocorrection` | 13 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Deprecated. Same behavior as `.autocorrectionDisabled`. |
 | `.disabled` | 13 | ✅ |  |  |
-| `.disclosureGroupStyle` | 16 | ⬜ |  |  |
+| `.disclosureGroupStyle` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `.dismissalConfirmationDialog` | 27 | ⬜ |  |  |
 | `.distortionEffect` | 17 | ⬜ |  |  |
 | `.documentBrowserContextMenu` | 18.1 | ⬜ |  |  |
@@ -157,7 +157,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.fontWidth` | 16 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | The `wdth` axis is not driven. Condensed is 0.80 of the standard face. Compressed is 0.70. Expanded stays standard |
 | `.foregroundColor` | 13 | ✅ |  | Deprecated |
 | `.foregroundStyle` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Solid paints for views and gradient paints for shapes and text. Multi-style symbol palettes and independent gradient text runs are gaps. |
-| `.formStyle` | 16 | ⬜ |  |  |
+| `.formStyle` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `.frame` | 13 | ✅ |  |  |
 | `.fullScreenCover` | 14 | ✅ |  | Settled states only (no animation) |
 | `.gaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
@@ -172,7 +172,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.gridCellColumns` | 16 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `.gridCellUnsizedAxes` | 16 | ⬜ |  |  |
 | `.gridColumnAlignment` | 16 | ⬜ |  |  |
-| `.groupBoxStyle` | 14 | ⬜ |  |  |
+| `.groupBoxStyle` | 14 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `.handGestureShortcut` | 18 | ⬜ |  |  |
 | `.handlesExternalEvents` | 14 | ⬜ |  |  |
 | `.headerProminence` | 15 | ⬜ |  |  |
@@ -197,7 +197,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.keyboardShortcut` | 14 | ⬜ |  |  |
 | `.keyboardType` | 13 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Number, ASCII number, decimal and phone pads. Pad chrome and alternate keys approximate iOS. Other types use the default keyboard. |
 | `.keyframeAnimator` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `.labeledContentStyle` | 16 | ⬜ |  |  |
+| `.labeledContentStyle` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `.labelIconToTitleSpacing` | 26 | ⬜ |  |  |
 | `.labelReservedIconWidth` | 26 | ⬜ |  |  |
 | `.labelsHidden` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Pickers and toggles |
@@ -221,7 +221,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.listSectionSeparator` | 15 | ⬜ |  |  |
 | `.listSectionSeparatorTint` | 15 | ⬜ |  |  |
 | `.listSectionSpacing` | 17 | ⬜ |  |  |
-| `.listStyle` | 13 | ⬜ |  |  |
+| `.listStyle` | 13 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `.luminanceToAlpha` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Converts device-space luminance to alpha. |
 | `.mask` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Both view and builder overloads, alignment and nested alpha masks. Hit testing uses the original layout. |
 | `.matchedGeometryEffect` | 14 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
@@ -369,7 +369,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.strikethrough` | 16 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Pattern and color use `strikethroughStyle`. The bool overload is unchanged |
 | `.submitLabel` | 15 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | English return-key labels. Localized labels and native glyphs are gaps. |
 | `.submitScope` | 15 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Blocks ancestor submit handlers. |
-| `.swipeActions` | 15 | ⬜ |  |  |
+| `.swipeActions` | 15 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | Icons show only as a `Label`'s symbol beside its title. |
 | `.swipeActionsContainer` | 27 | ⬜ |  |  |
 | `.symbolColorRenderingMode` | 26 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Gradient is an AppKit bitmap. The Phosphor fallback stays a mask |
 | `.symbolEffect` | 17 | ⬜ |  |  |

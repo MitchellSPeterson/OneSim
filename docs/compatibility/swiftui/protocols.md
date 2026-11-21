@@ -30,7 +30,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `DropDelegate` | 13.4 | ⬜ |  |  |
 | `DynamicProperty` | 13 | ⬜ |  |  |
 | `DynamicTableRowContent` | 16 | ⬜ |  |  |
-| `DynamicViewContent` | 13 | ⬜ |  |  |
+| `DynamicViewContent` | 13 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | `ForEach`: `onDelete`, `onMove`. |
 | `EnvironmentalModifier` | 13 | ⬜ |  |  |
 | `EnvironmentKey` | 13 | ✅ | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) |  |
 | `FileDocument` | 14 | ⬜ |  | Deprecated |
@@ -60,7 +60,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ShapeView` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) | Supports chained `.fill` / `.stroke` / `.strokeBorder` |
 | `SliderTickContent` | 26 | ⬜ |  |  |
 | `TabContent` | 18 | ⬜ |  |  |
-| `TableColumnContent` | 16 | ⬜ |  |  |
+| `TableColumnContent` | 16 | 🟠 | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | Conformed by `TableColumn`; no custom conformances. |
 | `TableRowContent` | 16 | ⬜ |  |  |
 | `TextAttribute` | 17 | ⬜ |  |  |
 | `TextRenderer` | 17 | ⬜ |  |  |
