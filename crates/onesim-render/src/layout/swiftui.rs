@@ -223,8 +223,10 @@ const FOOTER_TOP: f64 = 8.0;
 const FOOTER_BOTTOM: f64 = 6.0;
 /// Plain and inset lists: gap above each section (and below the last) (iOS 27.2, swiftui-forms plain / inset).
 const PLAIN_SECTION_GAP: f64 = 22.0;
-/// Sidebar section header chevron: inset from the row padding's edge.
-const SIDEBAR_CHEVRON_INSET: f64 = 0.0;
+/// Collapsible (sidebar) section header chevron: point size and weight (iOS 27.2, swiftui-forms sidebar).
+const SECTION_CHEVRON: (f64, u16) = (15.0, 600);
+/// Section footer text size.
+const FOOTER_PT: f32 = 13.0;
 /// Edit mode: width of the reorder strip at a row's trailing edge (over the handle).
 const REORDER_STRIP: f64 = 56.0;
 /// Swipe actions (iOS 27.2, swiftui-forms swipe-trailing / swipe-leading): pills inset 4.33pt from the row's top and
@@ -238,6 +240,9 @@ const SWIPE_PILL_PAD: f64 = 13.17;
 const SWIPE_PILL_RADIUS: f64 = 16.0;
 /// Gap between a swipe action's symbol and its title.
 const SWIPE_ICON_GAP: f64 = 5.0;
+/// Swipe action fills without a `.tint` (light, dark): `Color.red` for a destructive role, else `Color.gray`.
+const SWIPE_DESTRUCTIVE: ((u8, u8, u8), (u8, u8, u8)) = ((255, 56, 60), (255, 66, 69));
+const SWIPE_DEFAULT: ((u8, u8, u8), (u8, u8, u8)) = ((142, 142, 147), (142, 142, 147));
 /// A swiped row's highlight (light, dark).
 const SWIPED_ROW: ((u8, u8, u8), (u8, u8, u8)) = ((229, 229, 234), (44, 44, 46));
 const NAV_INLINE_H: f64 = 54.0;
@@ -396,7 +401,7 @@ struct ListLayoutKey {
     dynamic_type: DynamicTypeSize,
     ios: IosVersion,
     system_fonts: bool,
-    under_large_title: bool,
+    under_inline_bar: bool,
 }
 
 #[derive(Clone)]
@@ -557,9 +562,9 @@ struct Ctx<'a> {
     elevated: bool,
     /// Inside a floating (non-large) sheet: lists are transparent over its glass.
     floating: bool,
-    /// Laying out a list right under a large title: a header-less first section starts flush (the title's band
-    /// holds the gap that an inline title leaves above it).
-    under_large_title: bool,
+    /// Laying out a list right under an inline navigation bar: a header-less first section starts 35pt down. Under a
+    /// large title (its band holds that gap), in a sheet or on its own it starts flush.
+    under_inline_bar: bool,
     /// An alert is up: prominent tints in the presenter turn gray.
     desat: bool,
     /// A sheet is up over this screen: its back button loses the glass circle (alerts keep it).
@@ -636,7 +641,7 @@ fn ctx<'a>(params: &'a SceneParams, fonts: &'a mut Fonts) -> Ctx<'a> {
         unsupported: BTreeSet::new(),
         elevated: false,
         floating: false,
-        under_large_title: false,
+        under_inline_bar: false,
         desat: false,
         sheet_up: false,
         anims: Vec::new(),
@@ -1385,7 +1390,12 @@ fn has_bordered(v: &ViewNode) -> bool {
 
 /// Lists drawn on the grouped background (the navigation bar matches it).
 fn is_list(v: &ViewNode) -> bool {
-    matches!(v.kind, ViewKind::List { style: ListStyle::InsetGrouped | ListStyle::Grouped | ListStyle::Sidebar, .. })
+    matches!(v.kind, ViewKind::List { style, .. } if on_grouped_background(style))
+}
+
+/// List styles drawn on the grouped background (the others on the plain one).
+fn on_grouped_background(style: ListStyle) -> bool {
+    matches!(style, ListStyle::InsetGrouped | ListStyle::Grouped | ListStyle::Sidebar)
 }
 
 /// First SF Symbol name inside a view (a swipe action's `Label` icon).
@@ -3801,7 +3811,7 @@ impl Ctx<'_> {
             dynamic_type: self.dts,
             ios: self.ios,
             system_fonts: self.fonts.is_sf(),
-            under_large_title: self.under_large_title,
+            under_inline_bar: self.under_inline_bar,
         });
         let cached = key.as_ref().and_then(|key| self.list_cache.as_deref()?.list.as_ref().filter(|(cached_key, _)| cached_key == key));
         let mut content = if let Some((_, content)) = cached {
@@ -3821,7 +3831,7 @@ impl Ctx<'_> {
         let max = (0.0, (ch - h).max(0.0));
         let off = self.clamp_offset(self.scroll.get(&v.id).map_or(0.0, |o| o.1), max.1, h);
         let mut n = Node::new(&v.id, "list");
-        n.fill = (!self.floating).then(|| self.semantic(if matches!(style, ListStyle::InsetGrouped | ListStyle::Grouped | ListStyle::Sidebar) { Semantic::GroupedBackground } else { Semantic::Background }));
+        n.fill = (!self.floating).then(|| self.semantic(if on_grouped_background(style) { Semantic::GroupedBackground } else { Semantic::Background }));
         n.clip_radius = Some(0.0);
         n.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, off), max, snap: None, content: None, page: None, aligned: false });
         for (_, y, _) in &mut content.kids {
@@ -3834,16 +3844,16 @@ impl Ctx<'_> {
         // Inset grouped and sidebar: rounded cards with a margin. Grouped: full-width white sections with hairlines.
         // Plain and inset: rows on the background, separators under every row, sections a gap apart.
         // Only this list sits under the title; lists nested in its rows do not.
-        let flush = std::mem::take(&mut self.under_large_title);
-        let content = self.list_sections(v, style, sections, w, env, flush);
-        self.under_large_title = flush;
+        let under_bar = std::mem::take(&mut self.under_inline_bar);
+        let content = self.list_sections(v, style, sections, w, env, under_bar);
+        self.under_inline_bar = under_bar;
         content
     }
 
-    fn list_sections(&mut self, v: &ViewNode, style: ListStyle, sections: &[Section], w: f64, env: Env, flush: bool) -> ListContent {
+    fn list_sections(&mut self, v: &ViewNode, style: ListStyle, sections: &[Section], w: f64, env: Env, under_bar: bool) -> ListContent {
         let card = matches!(style, ListStyle::InsetGrouped | ListStyle::Sidebar);
         let grouped = style == ListStyle::Grouped;
-        let open = matches!(style, ListStyle::Plain | ListStyle::Inset);
+        let plain_like = matches!(style, ListStyle::Plain | ListStyle::Inset);
         let margin = if card { self.margin } else { 0.0 };
         let row_pad = if card { self.row_pad } else { self.margin };
         let gw = w - 2.0 * margin;
@@ -3862,18 +3872,17 @@ impl Ctx<'_> {
         };
         for (si, sec) in sections.iter().enumerate() {
             let sid = format!("{}#s{si}", v.id);
-            if open {
+            if plain_like {
                 y += PLAIN_SECTION_GAP;
             }
             let has_header = sec.header.is_some() || sec.header_view.is_some();
             if has_header {
+                let hs = onesim_protocol::TextStyle::Headline.size_at(self.dts) as f32;
                 let mut t = if let Some(h) = &sec.header {
-                    let hs = onesim_protocol::TextStyle::Headline.size_at(self.dts) as f32;
                     let spec = FontSpec::new(hs, self.line_h(hs), 600, TextAlign::Leading);
                     self.text_lay(&format!("{sid}#header"), h, spec, secondary, Some(inner_w as f32))
                 } else {
                     let hv = sec.header_view.as_deref().expect("header view");
-                    let hs = onesim_protocol::TextStyle::Headline.size_at(self.dts) as f32;
                     let henv = Env { fg: Some(secondary), size: hs, base_weight: 600, in_row: false, ..row_env };
                     self.view(hv, Prop { w: Some(inner_w), h: None }, henv)
                 };
@@ -3886,25 +3895,25 @@ impl Ctx<'_> {
                 let ty = y + (hh - t.size.h) / 2.0;
                 if let Some(expanded) = sec.expanded {
                     // A collapsible (sidebar) header: the whole header toggles; a chevron at the trailing edge.
-                    let (name, size) = if expanded { ("chevron.down", 15.0) } else { ("chevron.right", 15.0) };
-                    let c = self.symbol_lay(format!("{sid}#chevron"), name, size, 600, self.semantic(Semantic::Accent));
+                    let name = if expanded { "chevron.down" } else { "chevron.right" };
+                    let c = self.symbol_lay(format!("{sid}#chevron"), name, SECTION_CHEVRON.0, SECTION_CHEVRON.1, self.semantic(Semantic::Accent));
                     let (cw, ch) = (c.size.w, c.size.h);
                     let mut b = Node::new(format!("{sid}#toggle"), "button");
                     b.role = Role::Button;
                     b.action = sec.toggle;
                     b.label = sec.header.clone();
                     b.value = Some(if expanded { "expanded" } else { "collapsed" }.into());
-                    let bl = Lay::new(Size { w: gw, h: hh }, Some(b), vec![(gw - row_pad - cw - SIDEBAR_CHEVRON_INSET, (hh - ch) / 2.0, c)]);
+                    let bl = Lay::new(Size { w: gw, h: hh }, Some(b), vec![(gw - row_pad - cw, (hh - ch) / 2.0, c)]);
                     kids.push((margin, y, bl));
                 }
                 kids.push((margin + row_pad, ty, t));
                 y += hh;
-            } else if !open {
+            } else if !plain_like {
                 // A header-less section has an empty 17.3pt header: 35pt below a card, 47pt below a footer, and
                 // 35pt below the top of the list.
                 y += match si {
-                    0 if flush => 0.0,
-                    0 => SECTION_GAP + HEADERLESS_EXTRA_GAP,
+                    0 if under_bar => SECTION_GAP + HEADERLESS_EXTRA_GAP,
+                    0 => 0.0,
                     _ => HEADERLESS_EXTRA_GAP,
                 };
             }
@@ -3933,7 +3942,7 @@ impl Ctx<'_> {
                 let mut rkids = vec![];
                 let swipe = lr.and_then(|l| l.swipe.as_ref());
                 let shift = match swipe {
-                    Some(sw) => self.swipe_actions(&format!("{sid}#r{ri}"), sw, gw, rh, ri == 0, last && !grouped && !open, &mut rkids),
+                    Some(sw) => self.swipe_actions(&format!("{sid}#r{ri}"), sw, gw, rh, ri == 0, last && !grouped && !plain_like, &mut rkids),
                     None => 0.0,
                 };
                 if shift != 0.0 {
@@ -3941,7 +3950,7 @@ impl Ctx<'_> {
                 } else {
                     rkids.push((row_pad, yo, c));
                 }
-                let sep_below = if open { style == ListStyle::Plain || !last || (sec.footer.is_none() && sec.footer_view.is_none()) } else { !last };
+                let sep_below = if plain_like { style == ListStyle::Plain || !last || (sec.footer.is_none() && sec.footer_view.is_none()) } else { !last };
                 if sep_below && shift == 0.0 {
                     let x0 = row_pad + tx;
                     let x1 = gw - row_pad;
@@ -3993,10 +4002,10 @@ impl Ctx<'_> {
                 y += rh;
             } else if has_footer {
                 let ft = if let Some(f) = &sec.footer {
-                    let spec = FontSpec::new(13.0, self.line_h(13.0), 400, TextAlign::Leading);
+                    let spec = FontSpec::new(FOOTER_PT, self.line_h(FOOTER_PT), 400, TextAlign::Leading);
                     self.text_lay(&format!("{sid}#footer"), f, spec, secondary, Some(inner_w as f32))
                 } else {
-                    let fenv = Env { fg: Some(secondary), size: 13.0, base_weight: 400, in_row: false, ..row_env };
+                    let fenv = Env { fg: Some(secondary), size: FOOTER_PT, base_weight: 400, in_row: false, ..row_env };
                     self.view(sec.footer_view.as_deref().expect("footer view"), Prop { w: Some(inner_w), h: None }, fenv)
                 };
                 y += FOOTER_TOP;
@@ -4004,7 +4013,7 @@ impl Ctx<'_> {
                 kids.push((margin + row_pad, y, ft));
                 y += th + FOOTER_BOTTOM;
             }
-            if open {
+            if plain_like {
                 continue;
             }
             // Between sections 17.7 (a footer takes its place); after the last one the list ends 20pt above the
@@ -4017,7 +4026,7 @@ impl Ctx<'_> {
                 y += SECTION_GAP;
             }
         }
-        if open {
+        if plain_like {
             y += PLAIN_SECTION_GAP;
         }
         ListContent { bottom: y, kids }
@@ -4047,8 +4056,8 @@ impl Ctx<'_> {
                     let pw = cw + 2.0 * SWIPE_PILL_PAD;
                     let fill = match (&a.tint, a.role) {
                         (Some(c), _) => self.color(c),
-                        (None, Some(onesim_protocol::ButtonRole::Destructive)) => if self.dark { rgba(255, 66, 69, 1.0) } else { rgba(255, 56, 60, 1.0) },
-                        _ => rgba(142, 142, 147, 1.0),
+                        (None, Some(onesim_protocol::ButtonRole::Destructive)) => self.pick(SWIPE_DESTRUCTIVE),
+                        _ => self.pick(SWIPE_DEFAULT),
                     };
                     let mut n = Node::new(format!("{id}#{side}{i}"), "button");
                     n.role = Role::Button;
@@ -4097,16 +4106,21 @@ impl Ctx<'_> {
         under.fill = Some(self.semantic(Semantic::GroupedBackground));
         under.inspect = false;
         kids.push((0.0, 0.0, Lay::new(Size { w: gw, h: rh }, Some(under), vec![])));
+        // A full swipe's action fills the revealed span, its label centred.
+        let stretch = |l: &mut Lay, span: f64, pw: f64| {
+            let w = (span - SWIPE_EDGE - SWIPE_GAP).max(pw);
+            l.size.w = w;
+            if let Some(k) = l.kids.first_mut() {
+                k.0 = (w - k.2.size.w) / 2.0;
+            }
+            w
+        };
         // Outermost first: trailing pills run right to left from the edge, leading ones left to right.
         if shift < 0.0 {
             let mut x = gw - SWIPE_EDGE;
             for (i, (pw, mut l)) in trailing.into_iter().enumerate() {
                 if sw.full && i == 0 {
-                    let w = (-shift - SWIPE_EDGE - SWIPE_GAP).max(pw);
-                    l.size.w = w;
-                    if let Some(k) = l.kids.first_mut() {
-                        k.0 = (w - k.2.size.w) / 2.0;
-                    }
+                    let w = stretch(&mut l, -shift, pw);
                     kids.push((gw - SWIPE_EDGE - w, SWIPE_PILL_INSET, l));
                     break;
                 }
@@ -4118,11 +4132,7 @@ impl Ctx<'_> {
             let mut x = SWIPE_EDGE;
             for (i, (pw, mut l)) in leading.into_iter().enumerate() {
                 if sw.full && i == 0 {
-                    let w = (shift - SWIPE_EDGE - SWIPE_GAP).max(pw);
-                    l.size.w = w;
-                    if let Some(k) = l.kids.first_mut() {
-                        k.0 = (w - k.2.size.w) / 2.0;
-                    }
+                    stretch(&mut l, shift, pw);
                     kids.push((SWIPE_EDGE, SWIPE_PILL_INSET, l));
                     break;
                 }
@@ -4193,9 +4203,9 @@ impl Ctx<'_> {
         let mut offset = 0.0;
         if scroller {
             // Content scrolls under the bar: the scroller spans the screen with the bar as a top inset.
-            let saved = std::mem::replace(&mut self.under_large_title, large);
+            let saved = std::mem::replace(&mut self.under_inline_bar, !large && bar_h > 0.0);
             let mut c = self.view(content, Prop { w: Some(w), h: Some(h) }, Env { safe_top: ctop, ..cenv });
-            self.under_large_title = saved;
+            self.under_inline_bar = saved;
             if let Some(s) = c.node.as_mut().and_then(|n| n.scroll.as_mut()).filter(|_| large) {
                 s.snap = Some(band);
             }
@@ -5262,13 +5272,14 @@ mod tests {
 
     #[test]
     fn inset_grouped_spacing_follows_empty_headers_and_footers() {
-        // Footer cell 29.67pt, then a header-less section's empty 17.3pt header.
-        let s = scene(r#"{"kind":"list","id":"l","sections":[
+        // Footer cell 29.67pt, then a header-less section's empty 17.3pt header; 35pt above the first under an inline
+        // bar.
+        let s = scene(r#"{"kind":"navigation","id":"n","title":"T","displayMode":"inline","content":{"kind":"list","id":"l","sections":[
             {"rows":[{"kind":"text","id":"a","text":"A"}],"footer":"Note"},
             {"rows":[{"kind":"text","id":"b","text":"B"}]},
-            {"rows":[{"kind":"text","id":"c","text":"C"}]}]}"#, (402.0, 600.0));
+            {"rows":[{"kind":"text","id":"c","text":"C"}]}]}}"#, (402.0, 600.0));
         let (s0, s1, s2) = (by_id(&s, "l#s0").bounds, by_id(&s, "l#s1").bounds, by_id(&s, "l#s2").bounds);
-        near(s0.y, SECTION_GAP + HEADERLESS_EXTRA_GAP);
+        near(s0.y, NAV_INLINE_H + SECTION_GAP + HEADERLESS_EXTRA_GAP);
         let fh = by_id(&s, "l#s0#footer").bounds.h;
         near(s1.y - (s0.y + s0.h), FOOTER_TOP + fh + FOOTER_BOTTOM + HEADERLESS_EXTRA_GAP);
         near(s2.y - (s1.y + s1.h), SECTION_GAP + HEADERLESS_EXTRA_GAP);

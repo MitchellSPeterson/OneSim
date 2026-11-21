@@ -692,7 +692,8 @@ public struct LabeledContent<Label: View, Content: View>: View, _Primitive {
         }
         let l = _group(makeLabel(path + "/l"), path + "/l")
         var c = _group(_without({ $0.columnsForm = false }) { makeContent(path + "/c") }, path + "/c")
-        c["modifiers"] = [["foregroundColor": ["semantic": "secondary"]] as Node] + ((c["modifiers"] as? [Node]) ?? [])
+        // `.foregroundStyle(.secondary)` around the content: its own styles still win.
+        c["modifiers"] = ((c["modifiers"] as? [Node]) ?? []) + [["foregroundColor": ["semantic": "secondary", "hierarchical": true]] as Node]
         if rt.styles.columnsForm {
             // Hand the columns form its two cells.
             return ["kind": "hstack", "id": path, "spacing": 8.0, "alignment": "center", "children": [l, c], "_columns": [l, c]]
@@ -1113,7 +1114,7 @@ public struct ContentUnavailableView<Label: View, Description: View, Actions: Vi
             if n["kind"] as? String == "label", let icon = n["icon"] as? Node, let title = n["title"] as? Node {
                 var i = icon
                 i["modifiers"] = ((i["modifiers"] as? [Node]) ?? []) + [["font": ["size": _unavailable.symbol, "weight": "regular"]] as Node,
-                                                                        ["foregroundColor": ["semantic": "secondary"]] as Node]
+                                                                        ["foregroundColor": ["semantic": "secondary", "hierarchical": true]] as Node]
                 kids.append(i)
                 kids.append(_titled(title))
             } else { kids.append(_titled(n)) }
@@ -1122,7 +1123,7 @@ public struct ContentUnavailableView<Label: View, Description: View, Actions: Vi
         if !d.isEmpty {
             var dn = _group(d, path + "/d")
             dn["modifiers"] = ((dn["modifiers"] as? [Node]) ?? []) + [["font": ["style": "title3"]] as Node,
-                                                                      ["foregroundColor": ["semantic": "secondary"]] as Node,
+                                                                      ["foregroundColor": ["semantic": "secondary", "hierarchical": true]] as Node,
                                                                       ["multilineTextAlignment": "center"] as Node,
                                                                       ["padding": ["top": _unavailable.descriptionGap, "leading": 0.0, "bottom": 0.0, "trailing": 0.0]] as Node]
             kids.append(dn)
@@ -1194,9 +1195,9 @@ extension TableColumn where Label == Text, Sort == Never, Content == Text {
     public init(_ title: String, value: KeyPath<RowValue, String>) { self.title = title; cell = { Text($0[keyPath: value]) } }
 }
 extension TableColumn where Label == Text, Content == Text {
+    /// Sorting needs column headers, which compact tables do not show: the comparator is kept for API parity only.
     public init(_ title: String, value: KeyPath<RowValue, String>, comparator: Sort) { self.title = title; cell = { Text($0[keyPath: value]) } }
 }
-
 public protocol TableColumnContent {
     associatedtype TableRowValue
 }

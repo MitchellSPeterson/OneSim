@@ -479,8 +479,9 @@ public struct NavigationStack<Root: View>: View, _Primitive {
         defer { (rt.nav, rt.disabled, rt.buttonStyle, rt.envLocal, rt.styles.inList) = saved }
         // Each screen has its own edit mode (EditButton, List editing).
         let screen = depth == 0 ? "\(path)/0" : "\(path)/s\(depth)"
+        // An `\.editMode` set with `.environment` around the stack reaches every screen.
         let k = ObjectIdentifier(_EditModeKey.self), outer = rt.envObjects[k]
-        rt.envObjects[k] = nil
+        if !saved.3.contains(k) { rt.envObjects[k] = nil }
         var content = _withEditMode(screen) { depth == 0 ? _eval(root, screen) : st.screen(depth - 1, screen) }
         rt.envObjects[k] = outer
 

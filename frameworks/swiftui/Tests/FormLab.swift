@@ -14,6 +14,7 @@ struct FormLab: View {
                 NavigationLink("Disclosure") { DisclosureLab() }
                 NavigationLink("Custom") { CustomStylesLab() }
                 NavigationLink("Misc") { MiscLab() }
+                NavigationLink("Override") { OverrideLab() }
             }
             .navigationTitle("Lab")
         }
@@ -194,5 +195,18 @@ struct MiscLab: View {
             ContentUnavailableView("Gone", systemImage: "xmark", description: Text("Nothing here"))
             GroupBox { GroupBox("Inner") { Text("nested") } }
         }
+    }
+}
+
+/// `\.editMode` set around a NavigationStack reaches its screens.
+struct OverrideLab: View {
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(["p", "q"], id: \.self) { Text($0) }
+                    .onDelete { _ in }
+            }
+        }
+        .environment(\.editMode, .constant(.active))
     }
 }

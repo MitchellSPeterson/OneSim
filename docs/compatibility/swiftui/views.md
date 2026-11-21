@@ -12,8 +12,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Canvas` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Paths, strokes, text, images, tagged symbols, layers and clips. Color mode, asynchronous delivery, tiled images, shaders and Core Graphics access are gaps. |
 | `Color` | 13 | 🟠 |  | `opacity` ignored on semantic colors |
 | `ColorPicker` | 14 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Grid, spectrum, RGB sliders, and opacity selection. Localized titles, eyedropper, persistent favorites and native tab appearance are incomplete. CGColor bindings require CoreGraphics. |
-| `ContentUnavailableView` | 17 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
-| `ControlGroup` | 15 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
+| `ContentUnavailableView` | 17 | 🟠 | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | No asset-image `init(_:image:description:)` (asset images are unsupported, see `Image`); `.search` returns a `Label`/`Text` view type, not `SearchUnavailableContent`. |
+| `ControlGroup` | 15 | 🟠 | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | A row of equal-width buttons, or a menu (`.menu`, `.compactMenu`). Inside a `Menu` its buttons become ordinary items (no compact row); toolbar placement waits on `.toolbar` (#43); no asset-image `init(_:image:content:)`. |
 | `DatePicker` | 13 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Compact, graphical and wheel styles. Gregorian dates and tap or drag selection. Localized title-key and title-resource overloads, narrow parent layouts and wheel momentum are incomplete. |
 | `DebugReplaceableView` | 26 | ⬜ |  |  |
 | `DefaultButtonLabel` | 26 | ⬜ |  |  |
@@ -54,7 +54,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `LazyVStack` | 14 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Eager. Section headers pin; footers do not |
 | `LinearGradient` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Colors, stops and gradient initializers. Degenerate endpoints and interpolation color spaces are approximated. |
 | `Link` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | No browser: `\.openURL` handlers run and the system action is reported as a `module.called` event; does nothing on the web build |
-| `List` | 13 | ✅ |  |  |
+| `List` | 13 | 🟠 | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | Styles, sections, edit mode and swipe actions. No `List(selection:)`; a reorder drag lands on whole rows without shuffling the others live. |
 | `Menu` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | A tap opens it; with `primaryAction` a tap runs that and the menu needs a long press, which OneSim does not offer. A nested `Menu` opens its own card. No section headers, `menuOrder` or `menuIndicator` |
 | `MeshGradient` | 18 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Point and Bézier grids, both color forms, optional smoothing and background. Folded patches and Apple's interpolation are approximated. |
 | `ModifiedContent` | 13 | ⬜ |  |  |

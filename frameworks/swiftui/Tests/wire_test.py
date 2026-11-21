@@ -1281,6 +1281,11 @@ assert "No Results" in x and "Gone" in x and "Nothing here" in x
 boxes = [m for m in fwalk(tree(t)) if m.get("kind") == "vstack" and any("cornerRadius" in q for q in m.get("modifiers", []))]
 fills = [next(q["background"]["color"]["r"] for q in b["modifiers"] if "background" in q) for b in boxes]
 assert len(fills) == 2 and fills[0] != fills[1], "nested group boxes alternate backgrounds"
+t = back(t)
+
+# An `.environment(\.editMode, _)` around a NavigationStack puts its lists in edit mode.
+t = go(t, "Override")
+assert any(m.get("id", "").endswith("#minus") for m in fwalk(row_with(t, "p")))
 finish(p)
 
 # The forms example runs and pushes every screen.

@@ -1211,11 +1211,13 @@ pub struct Section {
     /// Any other header or footer view (section T). Takes the place of `header` / `footer`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub header_view: Option<Box<ViewNode>>,
+    /// Any other footer view, in place of `footer`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub footer_view: Option<Box<ViewNode>>,
     /// `Section(isExpanded:)`: collapsible. `false` hides the rows; the header shows a chevron and runs `toggle`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expanded: Option<bool>,
+    /// Guest action the collapsible header runs (flips `expanded`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub toggle: Option<u64>,
     #[serde(default)]
@@ -1225,6 +1227,7 @@ pub struct Section {
 /// `listRow` modifier on a list row (section T).
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ListRowMod {
+    /// Swipe actions and where the row rests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub swipe: Option<RowSwipe>,
     /// Gesture on the whole row (its frame is the row's, padding included): the swipe pan.
@@ -1257,6 +1260,7 @@ pub struct RowSwipe {
     pub full: bool,
 }
 
+/// `HorizontalEdge`: a row's leading or trailing side.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum HEdge {
@@ -1267,10 +1271,14 @@ pub enum HEdge {
 /// One swipe action button: its label (text and/or symbol), tint (`role: destructive` is red, otherwise gray when unset).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SwipeAction {
+    /// The button's label: its text, and a `label`'s symbol drawn before it.
     pub label: Box<ViewNode>,
+    /// Runs the button (the guest also closes the row).
     pub action: u64,
+    /// `.tint` on the button: the pill's fill.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tint: Option<Color>,
+    /// `destructive` fills the pill red when there is no tint.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<ButtonRole>,
 }
