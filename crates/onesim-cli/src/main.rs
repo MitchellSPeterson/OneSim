@@ -403,8 +403,7 @@ fn drive(host: &mut Host, id: &str, shot: Option<String>, steps: &[Step], inspec
                 }
             }
             Step::ScenePhase(s) => {
-                let phase: onesim_protocol::ScenePhase = serde_json::from_value(serde_json::Value::from(s.as_str()))
-                    .map_err(|_| anyhow::anyhow!("--scene-phase wants active, inactive or background, got {s:?}"))?;
+                let phase: onesim_protocol::ScenePhase = s.parse().map_err(anyhow::Error::msg)?;
                 host.set_scene_phase(id, phase).context("--scene-phase")?;
             }
             Step::OpenUrl(u) => host.open_url(id, u).context("--open-url")?,

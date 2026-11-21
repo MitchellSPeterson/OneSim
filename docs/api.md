@@ -119,7 +119,7 @@ All input params also carry `"sessionId"`.
 | method | params | result |
 |---|---|---|
 | `app.setScenePhase` | `{"sessionId","phase":"active"\|"inactive"\|"background"}` | `{"phase"}` once the app is there: `active` and `background` pass through `inactive`, one tree per step, as on iOS |
-| `app.openURL` | `{"sessionId","url"}` | `{}` after every `onOpenURL` ran; an app not in front comes forward first (it gets the URL while `inactive`, then becomes `active`) |
+| `app.openURL` | `{"sessionId","url"}` | `{"phase"}` after every `onOpenURL` ran; an app not in front comes forward first (it gets the URL while `inactive`, then becomes `active`) |
 
 A URL needs a scheme (`app:...`, `https://...`), else `bad_request`. While the app is not `active`, `input.*`
 calls fail with `invalid_state`, as a backgrounded app gets no touches. Other frameworks answer `unsupported`.

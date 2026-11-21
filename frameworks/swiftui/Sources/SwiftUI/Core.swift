@@ -382,6 +382,16 @@ final class _Runtime {
         return nextAction
     }
 
+    /// Launch: the scene's first body runs while the app is still inactive (state, `onChange(initial:)`), so the
+    /// change to active is seen by `onChange(of: scenePhase)` in the first submitted pass, as on iOS.
+    func primeEvaluation() {
+        _pool {
+            _ = _evaluate()
+            let fire = changePending; changePending = []
+            fire.forEach { $0() }
+        }
+    }
+
     /// Re-evaluate the whole root, drop stale actions/state, and submit.
     func submitTree(emitSchedule: Bool = true) { _pool { _submitTree(emitSchedule: emitSchedule) } }
 
@@ -543,7 +553,8 @@ func _onesimStart(_ render: @escaping () -> Node) -> Never {
     rt.render = render
     _onesimRegisterCallbacks()
     _installImageWake()
-    _sceneDidBecomeActive()   // the scene connects and becomes active before the first frame
+    if rt.scenePhase != .active { rt.primeEvaluation() }   // an `App`: its scene connects inactive
+    _sceneDidBecomeActive()
     rt.submitTree()
     let rc = simcore_runtime_run()
     _appWillTerminate()

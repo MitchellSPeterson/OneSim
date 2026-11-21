@@ -399,7 +399,7 @@ export class Session {
   /** SwiftUI: move the app to a scene phase (through `inactive`, as on iOS). */
   async setScenePhase(phase: ScenePhase): Promise<ScenePhase> { return (await this.call("app.setScenePhase", { phase })).phase; }
   /** SwiftUI: open a URL in the app; a backgrounded app comes to the front first. */
-  async openURL(url: string): Promise<void> { await this.call("app.openURL", { url }); }
+  async openURL(url: string): Promise<ScenePhase> { return (await this.call("app.openURL", { url })).phase; }
   async modules(): Promise<ModuleInfo[]> { return (await this.call("modules.list")).modules; }
   async simulate(module: string, state: Record<string, unknown>): Promise<void> { await this.call("modules.simulate", { module, state }); }
 

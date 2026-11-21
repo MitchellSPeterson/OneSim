@@ -54,9 +54,9 @@ struct LabScene: Scene {
     @State var sceneLog: [String] = []
 
     var body: some Scene {
-        WindowGroup("Lab", id: "main") {
+        WindowGroup("Lab", id: "main", makeContent: {
             LabRoot(appTaps: $appTaps, sceneLog: sceneLog)
-        }
+        })
         .transformEnvironment(\.labTheme) { $0 += "!" }   // inner: runs on the value set outside it
         .environment(\.labTheme, "night")
         .environment(model)
@@ -140,7 +140,7 @@ struct LabRoot: View {
             Text("Theme: \(theme)")
             Text("Legacy: \(legacy.n)")
             Text("Delegate: \(delegate.log.joined(separator: ","))")
-            Text("Same delegate: \(UIApplication.shared.delegate === delegate)")
+            Text("App delegate is SwiftUI's: \(UIApplication.shared.delegate != nil && !(UIApplication.shared.delegate is LabDelegate))")
             Text("Opened: \(model.opened.joined(separator: ","))")
           }
           VStack {

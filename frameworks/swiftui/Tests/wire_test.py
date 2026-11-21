@@ -1431,21 +1431,21 @@ def has(t, s): return any(s in x for x in alltexts(t["root"]))
 def line(t, prefix): return next(x for x in alltexts(t["root"]) if x.startswith(prefix))
 # Launch: the delegate ran before the first body (inactive), got no launch options, and is in the environment.
 assert line(t, "Delegate:") == "Delegate: will:inactive,did:nil,active", line(t, "Delegate:")
-assert line(t, "Same delegate:") == "Same delegate: true"
+assert line(t, "App delegate is SwiftUI's:") == "App delegate is SwiftUI's: true"
 assert line(t, "Phase:") == "Phase: active" and line(t, "UIKit:") == "UIKit: active"
 assert line(t, "Theme:") == "Theme: night!", line(t, "Theme:")   # environment, then transformEnvironment
 assert line(t, "Inner:").endswith("theme:NIGHT!"), line(t, "Inner:")   # View.transformEnvironment below it
 assert line(t, "Legacy:") == "Legacy: 1"
-assert line(t, "Scene log:") == "Scene log: taps", line(t, "Scene log:")   # onChange(initial: true) fired once
+assert line(t, "Scene log:") == "Scene log: taps,inactive>active", line(t, "Scene log:")   # initial: true once; launch activates
 # App-level @State re-renders the window; the scene's onChange sees it.
 t = act(p, t, button(t, "Tap app")["action"])
-assert line(t, "App taps:") == "App taps: 1" and line(t, "Scene log:") == "Scene log: taps,taps", alltexts(t["root"])
+assert line(t, "App taps:") == "App taps: 1" and line(t, "Scene log:") == "Scene log: taps,inactive>active,taps", alltexts(t["root"])
 # Scene phase: each step re-renders; onChange on the scene and the App see it; notifications post; the
 # UIApplicationDelegate's scene-era callbacks stay silent.
-for phase, log, uikit in [("inactive", "taps,taps,active>inactive", "inactive"),
-                          ("background", "taps,taps,active>inactive,inactive>background", "background"),
-                          ("inactive", "taps,taps,active>inactive,inactive>background,background>inactive", "inactive"),
-                          ("active", "taps,taps,active>inactive,inactive>background,background>inactive,inactive>active", "active")]:
+for phase, log, uikit in [("inactive", "taps,inactive>active,taps,active>inactive", "inactive"),
+                          ("background", "taps,inactive>active,taps,active>inactive,inactive>background", "background"),
+                          ("inactive", "taps,inactive>active,taps,active>inactive,inactive>background,background>inactive", "inactive"),
+                          ("active", "taps,inactive>active,taps,active>inactive,inactive>background,background>inactive,inactive>active", "active")]:
     send(p, type="scene_phase", phase=phase); t = recv(p)
     assert t["type"] == "tree", t
     assert line(t, "Phase:") == f"Phase: {phase}" and line(t, "UIKit:") == f"UIKit: {uikit}", alltexts(t["root"])
@@ -1504,7 +1504,7 @@ finish(p)
 p = spawn(sys.argv[26])
 assert recv(p)["type"] == "hello"
 t = recv(p); assert has(t, "Value none"), alltexts(t["root"])
-assert has(t, "Delegate true true"), alltexts(t["root"])
+assert has(t, "Delegate true false") and not has(t, "Second in the group: never shown"), alltexts(t["root"])
 t = act(p, t, button(t, "Set")["action"]); assert has(t, "Value set")
 t = act(p, t, button(t, "Clear")["action"]); assert has(t, "Value none")
 finish(p)

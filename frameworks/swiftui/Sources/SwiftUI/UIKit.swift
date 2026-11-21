@@ -44,8 +44,9 @@ open class UIApplication {
         case .background: .background
         }
     }
-    /// The `@UIApplicationDelegateAdaptor` instance, if the app declares one.
-    open var delegate: UIApplicationDelegate? { _appDelegate }
+    /// SwiftUI's own app delegate, as on iOS: it forwards to the `@UIApplicationDelegateAdaptor` instance, so
+    /// `delegate as? MyDelegate` is nil there too. Use the adaptor's property to reach your delegate.
+    open var delegate: UIApplicationDelegate? { _SwiftUIAppDelegate.shared }
 
     public static let didFinishLaunchingNotification = Notification.Name("UIApplicationDidFinishLaunchingNotification")
     public static let didBecomeActiveNotification = Notification.Name("UIApplicationDidBecomeActiveNotification")
@@ -83,6 +84,19 @@ extension UIApplicationDelegate {
 }
 
 nonisolated(unsafe) var _appDelegate: UIApplicationDelegate?
+
+/// Stands in for SwiftUI's internal `AppDelegate`: forwards to the adaptor's delegate.
+final class _SwiftUIAppDelegate: NSObject, UIApplicationDelegate {
+    nonisolated(unsafe) static let shared = _SwiftUIAppDelegate()
+    func application(_ application: UIApplication, willFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        _appDelegate?.application(application, willFinishLaunchingWithOptions: launchOptions) ?? true
+    }
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        _appDelegate?.application(application, didFinishLaunchingWithOptions: launchOptions) ?? true
+    }
+    func applicationWillTerminate(_ application: UIApplication) { _appDelegate?.applicationWillTerminate(application) }
+    func applicationDidReceiveMemoryWarning(_ application: UIApplication) { _appDelegate?.applicationDidReceiveMemoryWarning(application) }
+}
 /// Puts the delegate in the environment each pass: as an `ObservableObject` and/or an `@Observable` object.
 nonisolated(unsafe) var _appDelegateInject: ((_Runtime) -> Void)?
 

@@ -793,7 +793,11 @@ fn session_call(srv: &Server, method: &str, p: &Value) -> R {
             let a: OpenUrlP = args(p)?;
             let en = srv.entry(&a.session_id)?;
             let url = a.url.ok_or_else(|| bad("url required"))?;
-            en.with(|h| h.open_url(&en.id, &url)).map(|_| json!({}))
+            en.with(|h| {
+                h.open_url(&en.id, &url)?;
+                h.scene_phase(&en.id)
+            })
+            .map(|ph| json!({"phase": ph.as_str()}))
         }
         "modules.list" => {
             let en = srv.entry(&args::<SessionIdP>(p)?.session_id)?;

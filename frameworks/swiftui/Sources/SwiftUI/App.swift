@@ -109,15 +109,21 @@ func _launchApp<A: App>(_ app: A) -> _Done {
     }
 }
 
+extension Group: Scene, _PrimitiveScene where Content: Scene {
+    @_disfavoredOverload
+    public init(@SceneBuilder content: () -> Content) { self.content = content() }
+    func _window(_ path: String) -> Node? { _sceneWindow(content, path) }
+}
+
 // MARK: - WindowGroup
 
 public struct WindowGroup<Content: View>: Scene, _PrimitiveScene {
     public typealias Body = Never
     public var body: Never { fatalError() }
-    let content: Content
+    let content: Content?, make: (() -> Content)?
     /// Title and id name the window on iPad and Mac; an iPhone shows neither.
     let title: Text?, id: String?
-    init(content: Content, title: Text?, id: String?) { self.content = content; self.title = title; self.id = id }
+    init(content: Content, title: Text?, id: String?) { self.content = content; make = nil; self.title = title; self.id = id }
 
     public init(@ViewBuilder content: () -> Content) { self.init(content: content(), title: nil, id: nil) }
     public init(id: String, @ViewBuilder content: () -> Content) { self.init(content: content(), title: nil, id: id) }
@@ -132,7 +138,26 @@ public struct WindowGroup<Content: View>: Scene, _PrimitiveScene {
         self.init(content: content(), title: Text(String(title)), id: id)
     }
 
-    func _window(_ path: String) -> Node? { _withEditMode("0") { _eval(content, "0") } }
+    func _window(_ path: String) -> Node? { _withEditMode("0") { _eval(make?() ?? content!, "0") } }
+}
+
+extension WindowGroup {
+    /// `makeContent` runs each time the window's content is built (the App re-renders), not once at init.
+    init(make: @escaping () -> Content, title: Text?, id: String?) { self.content = nil; self.make = make; self.title = title; self.id = id }
+    public init(@ViewBuilder makeContent: @escaping () -> Content) { self.init(make: makeContent, title: nil, id: nil) }
+    public init(id: String, @ViewBuilder makeContent: @escaping () -> Content) { self.init(make: makeContent, title: nil, id: id) }
+    @_disfavoredOverload
+    public init(_ title: Text, @ViewBuilder makeContent: @escaping () -> Content) { self.init(make: makeContent, title: title, id: nil) }
+    @_disfavoredOverload
+    public init(_ title: Text, id: String, @ViewBuilder makeContent: @escaping () -> Content) { self.init(make: makeContent, title: title, id: id) }
+    @_disfavoredOverload
+    public init<S: StringProtocol>(_ title: S, @ViewBuilder makeContent: @escaping () -> Content) {
+        self.init(make: makeContent, title: Text(String(title)), id: nil)
+    }
+    @_disfavoredOverload
+    public init<S: StringProtocol>(_ title: S, id: String, @ViewBuilder makeContent: @escaping () -> Content) {
+        self.init(make: makeContent, title: Text(String(title)), id: id)
+    }
 }
 
 /// The window value of a data-presenting `WindowGroup`. On iPhone the one window opens without a presented value

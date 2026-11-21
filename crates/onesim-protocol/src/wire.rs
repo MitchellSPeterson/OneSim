@@ -312,6 +312,8 @@ impl ScenePhase {
         }
     }
 
+    pub const ALL: [ScenePhase; 3] = [ScenePhase::Active, ScenePhase::Inactive, ScenePhase::Background];
+
     /// The phases an app passes through from `self` to `to`, ending at `to` (empty when equal): iOS always goes
     /// through `inactive` between `active` and `background`.
     pub fn steps_to(self, to: ScenePhase) -> Vec<ScenePhase> {
@@ -321,6 +323,13 @@ impl ScenePhase {
             (Active, Background) | (Background, Active) => vec![Inactive, to],
             _ => vec![to],
         }
+    }
+}
+
+impl std::str::FromStr for ScenePhase {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String> {
+        ScenePhase::ALL.into_iter().find(|p| p.as_str() == s).ok_or_else(|| format!("unknown scene phase {s:?} (active, inactive, background)"))
     }
 }
 
@@ -485,5 +494,10 @@ mod tests {
         }
         assert_eq!(ScenePhase::default(), Active);
         assert_eq!(Background.as_str(), "background");
+        for p in ScenePhase::ALL {
+            assert_eq!(p.as_str().parse::<ScenePhase>(), Ok(p));
+            assert_eq!(serde_json::to_string(&p).unwrap(), format!("\"{}\"", p.as_str()));
+        }
+        assert!("Active".parse::<ScenePhase>().is_err() && "".parse::<ScenePhase>().is_err());
     }
 }

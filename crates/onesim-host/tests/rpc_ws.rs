@@ -211,7 +211,7 @@ fn scene_phase_and_open_url_over_websocket() {
     assert_eq!(c.ok("app.setScenePhase", json!({"sessionId": sid, "phase": "background"}))["phase"], "background");
     assert_eq!(c.ok("session.get", json!({"sessionId": sid}))["scenePhase"], "background");
     assert_eq!(c.code("input.tap", json!({"sessionId": sid, "label": "Increment"})), "invalid_state");
-    c.ok("app.openURL", json!({"sessionId": sid, "url": "app://warm"}));
+    assert_eq!(c.ok("app.openURL", json!({"sessionId": sid, "url": "app://warm"}))["phase"], "active");
     let tree = c.ok("render.tree", json!({"sessionId": sid}));
     assert!(find(&tree["root"], "Lifecycle: url:app://cold,inactive,background,inactive,url:app://warm,active"), "{tree}");
     assert_eq!(c.ok("session.get", json!({"sessionId": sid}))["scenePhase"], "active");

@@ -300,9 +300,9 @@ fn main() {
                 send(json!({"type": "tree", "version": version, "root": tree(count, &lifecycle)}));
             }
             Some("scene_phase") | Some("open_url") => {
-                lifecycle.push(match msg["phase"].as_str() {
-                    Some(phase) => phase.to_string(),
-                    None => format!("url:{}", msg["url"].as_str().unwrap_or("")),
+                lifecycle.push(match msg["type"].as_str() {
+                    Some("open_url") => format!("url:{}", msg["url"].as_str().unwrap_or("")),
+                    _ => msg["phase"].as_str().unwrap_or("").to_string(),
                 });
                 version += 1;
                 send(json!({"type": "tree", "version": version, "root": tree(count, &lifecycle)}));

@@ -69,10 +69,13 @@ extension ForEach where Data == Range<Int>, ID == Int {
     public init(_ data: Range<Int>, @ViewBuilder content: @escaping (Int) -> Content) { self.init(data, id: \.self, content: content) }
 }
 
-public struct Group<Content: View>: View, _Flattenable, _ModifierTransparent {
+/// Groups views, or scenes (`Group { WindowGroup ... }`), with no effect on layout.
+public struct Group<Content> {
     public typealias Body = Never
     public var body: Never { fatalError() }
     let content: Content
+}
+extension Group: View, _Flattenable, _ModifierTransparent where Content: View {
     public init(@ViewBuilder content: () -> Content) { self.content = content() }
     func _children(_ path: String) -> [Node] { SwiftUI._children(content, path) }
 }
@@ -605,7 +608,7 @@ extension _ConditionalContent: _TabSource {
     }
 }
 
-extension Group: _TabSource {
+extension Group: _TabSource where Content: View {
     func _tabs(_ path: String) -> [_TabEntry] { _tabEntries(content, path) }
 }
 

@@ -991,7 +991,10 @@ label style) build and change nothing on iPhone.
 - C ABI: both lines reach the guest through `simcore_runtime_set_layout_callback`, like `tick`.
 - Launch: `App.main` makes the app (and its `@UIApplicationDelegateAdaptor` delegate), calls the delegate's
   `application(_:willFinishLaunchingWithOptions:)` and `application(_:didFinishLaunchingWithOptions:)` (no launch
-  options) while `inactive`, posts `didFinishLaunching` then `didBecomeActive`, and sends the first tree `active`.
+  options) while `inactive`, evaluates the window once while still `inactive` (state, `onChange(initial: true)`), then
+  becomes `active` (posting `didFinishLaunching` then `didBecomeActive`) and sends the first tree, in which
+  `onChange(of: scenePhase)` sees `inactive -> active`. `UIApplication.shared.delegate` is a SwiftUI-owned delegate
+  that forwards to the adaptor's instance, as on iOS.
   On `shutdown` or stdin EOF it calls `applicationWillTerminate(_:)` and posts `willTerminate`, unless the app is in
   the `background` (iOS suspends a backgrounded app without telling it).
 - Host: the session keeps the phase (`active` from launch; `get_session_status` `scene_phase`, v2 `scenePhase`).
