@@ -1,5 +1,6 @@
 // OneSim driver shared by the browser (main.js) and Node (test/run.mjs): a minimal WASI shim and a
 // typed wrapper over the `simcore_web_*` exports of app.wasm. No DOM, no Node APIs.
+const SCENE_PHASES = ["active", "inactive", "background"];
 const DYNAMIC_TYPE = ["xSmall", "small", "medium", "large", "xLarge", "xxLarge", "xxxLarge", "accessibility1", "accessibility2", "accessibility3", "accessibility4", "accessibility5"];
 
 const ENOSYS = 52, EBADF = 8;
@@ -257,6 +258,14 @@ export class OneSim {
     if (mode !== "dark" && mode !== "light") throw new Error("appearance must be 'dark' or 'light'");
     return this.wasm.simcore_web_set_dark(mode === "dark" ? 1 : 0) === 0;
   }
+  /** SwiftUI scene phase: "active", "inactive" or "background" (steps through inactive, as iOS does). */
+  setScenePhase(phase) {
+    const i = SCENE_PHASES.indexOf(phase);
+    if (i < 0) throw new Error("scene phase must be 'active', 'inactive' or 'background'");
+    if (typeof this.wasm.simcore_web_set_scene_phase !== "function") return false;   // older app.wasm
+    return this.wasm.simcore_web_set_scene_phase(i) === 0;
+  }
+  get scenePhase() { return SCENE_PHASES[this.wasm.simcore_web_scene_phase?.() ?? 0]; }
   /** Whether this build of app.wasm can emit display lists for the GPU presenter. */
   get supportsDisplayList() { return typeof this.wasm.simcore_web_set_output === "function"; }
   /** Current frame version, when supported by the runtime. Reading it does not render. */

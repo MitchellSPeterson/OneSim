@@ -753,6 +753,26 @@ impl Interaction {
         Effect::Gesture(vec![Self::touch_event(touch, TouchPhase::Move)])
     }
 
+    /// The app left the foreground (iOS cancels its touches): a gesture touch ends in `cancel`, a press, slider drag or
+    /// armed pan is dropped, and a scroll or sheet drag settles as if the finger lifted at rest.
+    pub fn cancel_touches(&mut self, scene: &Scene) -> Effect {
+        self.armed = None;
+        self.pressed = None;
+        self.slider_drag = None;
+        self.pending = None;
+        if let Some(touch) = self.touch.take() {
+            return Effect::Gesture(vec![Self::touch_event(&touch, TouchPhase::Cancel)]);
+        }
+        // Past the velocity window of the last sample, so the release carries no speed.
+        let last = |s: &[(f64, f64)]| s.last().map_or(0.0, |p| p.0);
+        let t = match (&self.drag, &self.sheet_drag) {
+            (Some(d), _) => last(&d.samples),
+            (None, Some(d)) => last(&d.samples),
+            (None, None) => return Effect::None,
+        } + VELOCITY_WINDOW + 1.0;
+        self.drag(scene, DragPhase::End, 0.0, 0.0, t)
+    }
+
     /// Whether a finger is down on a gesture view (call `hold` every frame meanwhile).
     pub fn holding(&self) -> bool {
         self.touch.is_some()
@@ -1268,6 +1288,46 @@ mod tests {
         let onesim_protocol::ViewKind::TextField { text: value, .. } = &mut input.kind else { unreachable!() };
         *value = text;
         assert!(caret_visible(&layout(&input, &interaction)));
+    }
+
+    #[test]
+    fn leaving_the_foreground_cancels_touches() {
+        use crate::scene::{Node, Rect, ScrollInfo};
+        let mut list = Node::new("list", "list");
+        list.bounds = Rect { x: 0.0, y: 0.0, w: 400.0, h: 800.0 };
+        list.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, 0.0), max: (0.0, 500.0), snap: None, content: None, page: None, aligned: false });
+        let mut held = Node::new("held", "held");
+        held.parent = Some(0);
+        held.bounds = Rect { x: 16.0, y: 100.0, w: 370.0, h: 52.0 };
+        held.gesture = Some(Box::new(onesim_protocol::GestureMod { key: "held#press".into(), pans: false, axis: None }));
+        let scene = Scene { size: (400.0, 800.0), appearance: onesim_protocol::Appearance::Light, ios: Default::default(),
+            nodes: vec![list, held], unsupported_symbols: vec![], notes: vec![] };
+
+        // A finger resting on a long-press view: the gesture gets `cancel`, and holding reports nothing after.
+        let mut it = Interaction::default();
+        it.drag(&scene, DragPhase::Begin, 200.0, 126.0, 0.0);
+        assert!(it.holding());
+        match it.cancel_touches(&scene) {
+            Effect::Gesture(g) => assert_eq!(g.iter().map(|t| t.phase).collect::<Vec<_>>(), vec![TouchPhase::Cancel]),
+            other => panic!("{other:?}"),
+        }
+        assert!(!it.holding());
+        assert!(matches!(it.hold(1.0), Effect::None));
+        assert!(matches!(it.cancel_touches(&scene), Effect::None), "nothing left to cancel");
+
+        // A scroll drag past the top edge settles at rest instead of staying stranded under a lifted finger.
+        let mut it = Interaction::default();
+        it.drag(&scene, DragPhase::Begin, 200.0, 400.0, 0.0);
+        it.drag(&scene, DragPhase::Move, 200.0, 500.0, 16.0);
+        it.drag(&scene, DragPhase::Move, 200.0, 600.0, 32.0);
+        assert!(it.has_drag_target());
+        let pulled = it.scroll["list"].1;
+        assert!(pulled < -50.0, "pulled past the top: {pulled}");
+        let mut laid_out = scene.clone();
+        laid_out.nodes[0].scroll.as_mut().unwrap().offset = (0.0, pulled);   // the host lays out the drag
+        it.cancel_touches(&laid_out);
+        assert!(!it.has_drag_target());
+        assert!(it.moving("list"), "a settle back to the edge is queued");
     }
 
     #[test]

@@ -44,12 +44,13 @@ stream. Ids are strings (`"s1"`).
 
 | method | params | result |
 |---|---|---|
-| `session.create` | `{"framework":"expo"\|"react-native"\|"swiftui"\|"compose","platform"?:"ios"\|"android","device"?,"osVersion"?:"27.2"\|"26.5","appearance"?,"dynamicTypeSize"?,"metroUrl"?,"appPath"?,"rootView"?,"viewport"?:{width,height},"scale"?,"load"?:false}` | `{"sessionId","status":"created"}`; with `"load": true` it also loads (like `runtime.load`) and returns `"status":"running"` |
+| `session.create` | `{"framework":"expo"\|"react-native"\|"swiftui"\|"compose","platform"?:"ios"\|"android","device"?,"osVersion"?:"27.2"\|"26.5","appearance"?,"dynamicTypeSize"?,"metroUrl"?,"appPath"?,"rootView"?,"viewport"?:{width,height},"scale"?,"launchURL"?,"load"?:false}` | `{"sessionId","status":"created"}`; with `"load": true` it also loads (like `runtime.load`) and returns `"status":"running"` |
 | `session.list` | – | `{"sessions":[SessionInfo]}` |
 | `session.get` | `{"sessionId"}` | `SessionInfo` |
 | `session.destroy` | `{"sessionId"}` | `{}` (stops if running, frees the id) |
 
-`SessionInfo`: `{"sessionId","framework","platform","device","viewport":{width,height},"scale","appearance","status","treeVersion","metroUrl"?,"appPath"?}`.
+`SessionInfo`: `{"sessionId","framework","platform","device","viewport":{width,height},"scale","appearance","status","treeVersion","metroUrl"?,"appPath"?,"scenePhase"?}` (`scenePhase` for SwiftUI).
+`launchURL` (SwiftUI only) launches the app to open that URL: `onOpenURL` gets it after the first frame.
 Expo uses iOS by default. Pass `"platform": "android"` for Expo on Android. SwiftUI targets iOS and Compose targets Android.
 Device names accept a display name or profile slug. The defaults are `iphone-18-pro` on iOS and `pixel-10a` on Android.
 `osVersion` selects iOS `"27.2"` or `"26.5"`, with `"27.2"` as the default. For Android, `session.get` reports `"17"`.
@@ -113,6 +114,18 @@ All input params also carry `"sessionId"`.
 | `device.appearance` | `{"sessionId","mode":"light"\|"dark"}` | `{}` |
 | `device.pasteboard` | `{"sessionId","items":["text"]}` | `{}` (SwiftUI: replaces the app's pasteboard, what `PasteButton` pastes; also seeds relaunches; `unsupported` for other frameworks) |
 | `device.keyboard` | `{"sessionId","visible":false}` | `{}` (hide = blur the focused field; `true` without a focused field → `invalid_state`) |
+
+## App lifecycle (SwiftUI)
+
+| method | params | result |
+|---|---|---|
+| `app.setScenePhase` | `{"sessionId","phase":"active"\|"inactive"\|"background"}` | `{"phase"}` once the app is there: `active` and `background` pass through `inactive`, one tree per step, as on iOS |
+| `app.openURL` | `{"sessionId","url"}` | `{"phase"}` after every `onOpenURL` ran; an app not in front comes forward first (it gets the URL while `inactive`, then becomes `active`) |
+
+A URL needs a scheme (`app:...`, `https://...`), else `bad_request`. While the app is not `active`, `input.*`
+calls fail with `invalid_state`, as a backgrounded app gets no touches. Other frameworks answer `unsupported`.
+The guest side (scenePhase, `UIApplication` notifications, the delegate adaptor) is in
+[protocol.md section V](protocol.md#v-v1-additions-for-swiftui-scenes-and-the-app-lifecycle).
 
 ## Native modules (React Native)
 

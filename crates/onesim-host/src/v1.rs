@@ -17,6 +17,8 @@ pub const COMMANDS: &[&str] = &[
     "get_session_status",
     "set_viewport",
     "set_appearance",
+    "set_scene_phase",
+    "open_url",
     "send_pointer_event",
     "send_keyboard_event",
     "capture_screenshot",
@@ -95,6 +97,16 @@ impl Host {
                 let a: SetAppearanceParams = p(params)?;
                 self.set_appearance(&a.session_id, a.mode)?;
                 ok(json!({}))
+            }
+            "set_scene_phase" => {
+                let a: SetScenePhaseParams = p(params)?;
+                self.set_scene_phase(&a.session_id, a.phase)?;
+                ok(json!({"scene_phase": self.scene_phase(&a.session_id)?.as_str()}))
+            }
+            "open_url" => {
+                let a: OpenUrlParams = p(params)?;
+                self.open_url(&a.session_id, &a.url)?;
+                ok(json!({"scene_phase": self.scene_phase(&a.session_id)?.as_str()}))
             }
             "send_pointer_event" => {
                 let a: PointerParams = p(params)?;

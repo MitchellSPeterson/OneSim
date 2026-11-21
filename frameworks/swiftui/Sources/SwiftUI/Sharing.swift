@@ -1,7 +1,7 @@
 #if !os(WASI)
 import Foundation
 #endif
-// ShareLink (the system share sheet) and PasteButton, over the session pasteboard (docs/protocol.md section V).
+// ShareLink (the system share sheet) and PasteButton, over the session pasteboard (docs/protocol.md section W).
 
 /// `scheme:` per RFC 3986 (a letter, then letters, digits, `+`, `-`, `.`).
 func _hasScheme(_ s: String) -> Bool {
@@ -68,7 +68,7 @@ where Data.Element: Transferable {
         guard st.open, rt.pageIsActive, !rt.disabled, !items.isEmpty else { st.open = false; return out }
         let texts = st.texts
         let close = { st.open = false; rt.dirty = true }
-        // Other activities hand the items to the system, as `openURL` does (section V): reported, then closed.
+        // Other activities hand the items to the system, as `openURL` does (section W): reported, then closed.
         var activities: Node = [:]
         for name in ["Reminders", "Safari", "More", "Save to Files", "Open in Safari", "Add to Reading List"] {
             activities[name] = rt.registerAction {

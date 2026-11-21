@@ -65,10 +65,10 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ColorRenderingMode` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Cases are available. Canvas and drawingGroup use an 8-bit device-color backing. |
 | `ColorScheme` | 13 | ✅ |  |  |
 | `ColorSchemeContrast` | 13 | ⬜ |  |  |
-| `CommandGroup` | 14 | ⬜ |  |  |
-| `CommandGroupPlacement` | 14 | ⬜ |  |  |
-| `CommandMenu` | 14 | ⬜ |  |  |
-| `CommandsBuilder` | 14 | ⬜ |  |  |
+| `CommandGroup` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
+| `CommandGroupPlacement` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
+| `CommandMenu` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
+| `CommandsBuilder` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
 | `ContainerBackgroundPlacement` | 17 | ⬜ |  |  |
 | `ContainerValues` | 18 | ⬜ |  |  |
 | `ContentMarginGuide` | 13 | ⬜ |  |  |
@@ -119,7 +119,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `EditActions` | 16 | ⬜ |  |  |
 | `EditMode` | 13 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `EmptyAnimatableData` | 13 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `EmptyCommands` | 14 | ⬜ |  |  |
+| `EmptyCommands` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
 | `EmptyControlWidgetConfiguration` | 18 | ⬜ |  |  |
 | `EmptyControlWidgetTemplate` | 18 | ⬜ |  |  |
 | `EmptyHoverEffect` | 18 | ⬜ |  |  |
@@ -177,7 +177,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ImagePaint` | 13 | ⬜ |  |  |
 | `ImageRenderer` | 16 | ⬜ |  |  |
 | `IndexedIdentifierCollection` | 16 | ⬜ |  |  |
-| `InspectorCommands` | 17 | ⬜ |  |  |
+| `InspectorCommands` | 17 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
 | `InterfaceOrientation` | 15 | ⬜ |  |  |
 | `ItemProviderTableRowModifier` | 16 | ⬜ |  |  |
 | `KeyboardShortcut` | 14 | ⬜ |  |  |
@@ -262,10 +262,10 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `RoundedRectangularShapeCorners` | 26 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `SafeAreaRegions` | 14 | ⬜ |  |  |
 | `ScaleTransition` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `SceneBuilder` | 14 | 🟠 |  | Single scene only |
+| `SceneBuilder` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Any number of scenes, `if #available` |
 | `ScenePadding` | 16 | ⬜ |  |  |
 | `ScenePhase` | 14 | ✅ | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) |  |
-| `SceneRestorationBehavior` | 18 | ⬜ |  |  |
+| `SceneRestorationBehavior` | 18 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) |  |
 | `ScrollAnchorRole` | 18 | ⬜ |  |  |
 | `ScrollBounceBehavior` | 16.4 | ⬜ |  |  |
 | `ScrollContentOffsetAdjustmentBehavior` | 18 | ⬜ |  |  |
@@ -299,7 +299,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ShaderLibrary` | 17 | ⬜ |  |  |
 | `ShapeRole` | 15 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `SharePreview` | 16 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Title in the share sheet header; a bitmap image or icon fills the header tile, a symbol image leaves it blank (as on device) |
-| `SidebarCommands` | 14 | ⬜ |  |  |
+| `SidebarCommands` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
 | `SidebarRowSize` | 16 | ⬜ |  |  |
 | `SizeDependentTextVariant` | 18 | ⬜ |  |  |
 | `SliderTick` | 26 | ⬜ |  |  |
@@ -345,9 +345,9 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `TabViewBottomAccessoryPlacement` | 26 | ⬜ |  |  |
 | `TabViewCustomization` | 18 | ⬜ |  |  |
 | `TextAlignment` | 13 | ✅ |  |  |
-| `TextEditingCommands` | 14 | ⬜ |  |  |
+| `TextEditingCommands` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
 | `TextEditorStyleConfiguration` | 17 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) |  |
-| `TextFormattingCommands` | 14 | ⬜ |  |  |
+| `TextFormattingCommands` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
 | `TextInputAutocapitalization` | 15 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) |  |
 | `TextInputDictationActivation` | 17 | ⬜ |  |  |
 | `TextInputDictationBehavior` | 17 | ⬜ |  |  |
@@ -358,7 +358,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `TimeDataSource` | 18 | ⬜ |  |  |
 | `TimelineScheduleMode` | 15 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `ToggleStyleConfiguration` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | `isMixed` is always false |
-| `ToolbarCommands` | 14 | ⬜ |  |  |
+| `ToolbarCommands` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
 | `ToolbarContentBuilder` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Builds empty, conditional, loop, and multiple toolbar entries. Apple’s concrete builder result types differ. |
 | `ToolbarCustomizationBehavior` | 16 | ⬜ |  |  |
 | `ToolbarCustomizationOptions` | 16 | ⬜ |  |  |
@@ -408,8 +408,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Visibility` | 15 | ✅ |  |  |
 | `VStackLayout` | 16 | ⬜ |  |  |
 | `WidgetBundleBuilder` | 14 | ⬜ |  |  |
-| `WindowManagerRole` | 18 | ⬜ |  |  |
-| `WindowResizability` | 17 | ⬜ |  |  |
+| `WindowManagerRole` | 18 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) |  |
+| `WindowResizability` | 17 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) |  |
 | `WindowToolbarFullScreenVisibility` | 18 | ⬜ |  |  |
 | `WritingToolsBehavior` | 18 | ⬜ |  |  |
 | `ZoomNavigationTransition` | 18 | ⬜ |  |  |

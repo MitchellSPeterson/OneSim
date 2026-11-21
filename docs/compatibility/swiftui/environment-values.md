@@ -94,7 +94,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.redactionReasons` | 14 | ⬜ |  |  |
 | `\.refresh` | 15 | ⬜ |  |  |
 | `\.rename` | 16 | ⬜ |  |  |
-| `\.scenePhase` | 14 | 🟠 | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) | Always `.active` |
+| `\.scenePhase` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Follows the host scene phase (`app.setScenePhase`, `open_url`, a hidden web page) |
 | `\.scrollDismissesKeyboardMode` | 16 | ⬜ |  |  |
 | `\.searchSuggestionsPlacement` | 16 | ⬜ |  |  |
 | `\.sidebarRowSize` | 16 | ⬜ |  |  |

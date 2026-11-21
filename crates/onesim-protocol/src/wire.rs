@@ -25,7 +25,7 @@ pub enum GuestMessage {
     /// React Native `scrollTo` / `scrollToEnd` commands.
     #[serde(rename = "scroll_to")]
     ScrollTo { tag: u64, x: ScrollTarget, y: ScrollTarget },
-    /// The app replaced the session pasteboard (section V: the share sheet's Copy).
+    /// The app replaced the session pasteboard (section W: the share sheet's Copy).
     Pasteboard { items: Vec<String> },
     /// SwiftUI `ScrollViewProxy.scrollTo` (section M). `anchor` is a unit point; absent means top-leading.
     #[serde(rename = "scroll_to_id")]
@@ -238,7 +238,7 @@ pub enum HostMessage {
         #[serde(default, rename = "dynamicTypeSize", skip_serializing_if = "Option::is_none")]
         dynamic_type_size: Option<DynamicTypeSize>,
     },
-    /// SwiftUI: replace the app's pasteboard (section V).
+    /// SwiftUI: replace the app's pasteboard (section W).
     Pasteboard { items: Vec<String> },
     /// React Native touch: `x`/`y` page points, `lx`/`ly` relative to the target node (`tag`).
     Touch { phase: TouchPhase, tag: u64, x: f64, y: f64, lx: f64, ly: f64, timestamp: f64 },
@@ -286,8 +286,55 @@ pub enum HostMessage {
     /// React Native: native header back button tapped (`RNSScreenStack` tag).
     #[serde(rename = "native_back")]
     NativeBack { tag: u64 },
+    /// SwiftUI scene phase (`ScenePhase`): the app moved to this phase. The host steps through `inactive` between
+    /// `active` and `background`, one message per step, as iOS does; the guest answers each with a tree.
+    #[serde(rename = "scene_phase")]
+    ScenePhase { phase: ScenePhase },
+    /// SwiftUI: the system opened this URL in the app (`onOpenURL`). The guest answers with a tree.
+    #[serde(rename = "open_url")]
+    OpenUrl { url: String },
     Reload,
     Shutdown,
+}
+
+/// An app's scene phase (SwiftUI `ScenePhase`, UIKit `UIApplication.State`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScenePhase {
+    #[default]
+    Active,
+    Inactive,
+    Background,
+}
+
+impl ScenePhase {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ScenePhase::Active => "active",
+            ScenePhase::Inactive => "inactive",
+            ScenePhase::Background => "background",
+        }
+    }
+
+    pub const ALL: [ScenePhase; 3] = [ScenePhase::Active, ScenePhase::Inactive, ScenePhase::Background];
+
+    /// The phases an app passes through from `self` to `to`, ending at `to` (empty when equal): iOS always goes
+    /// through `inactive` between `active` and `background`.
+    pub fn steps_to(self, to: ScenePhase) -> Vec<ScenePhase> {
+        use ScenePhase::*;
+        match (self, to) {
+            (a, b) if a == b => vec![],
+            (Active, Background) | (Background, Active) => vec![Inactive, to],
+            _ => vec![to],
+        }
+    }
+}
+
+impl std::str::FromStr for ScenePhase {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String> {
+        ScenePhase::ALL.into_iter().find(|p| p.as_str() == s).ok_or_else(|| format!("unknown scene phase {s:?} (active, inactive, background)"))
+    }
 }
 
 #[cfg(test)]
@@ -425,5 +472,39 @@ mod tests {
         let tkj = serde_json::to_string(&tk).unwrap();
         assert_eq!(tkj, r#"{"type":"tick","time":250.5}"#);
         assert_eq!(serde_json::from_str::<HostMessage>(&tkj).unwrap(), tk);
+    }
+
+    #[test]
+    fn scene_phase_and_open_url_messages() {
+        let m = HostMessage::ScenePhase { phase: ScenePhase::Background };
+        let j = serde_json::to_string(&m).unwrap();
+        assert_eq!(j, r#"{"type":"scene_phase","phase":"background"}"#);
+        assert_eq!(serde_json::from_str::<HostMessage>(&j).unwrap(), m);
+        let u = HostMessage::OpenUrl { url: "app://item/7?q=ü".into() };
+        let uj = serde_json::to_string(&u).unwrap();
+        assert_eq!(uj, r#"{"type":"open_url","url":"app://item/7?q=ü"}"#);
+        assert_eq!(serde_json::from_str::<HostMessage>(&uj).unwrap(), u);
+        assert!(serde_json::from_str::<HostMessage>(r#"{"type":"scene_phase","phase":"asleep"}"#).is_err());
+    }
+
+    #[test]
+    fn scene_phase_steps_pass_through_inactive() {
+        use ScenePhase::*;
+        assert_eq!(Active.steps_to(Background), vec![Inactive, Background]);
+        assert_eq!(Background.steps_to(Active), vec![Inactive, Active]);
+        assert_eq!(Active.steps_to(Inactive), vec![Inactive]);
+        assert_eq!(Inactive.steps_to(Background), vec![Background]);
+        assert_eq!(Inactive.steps_to(Active), vec![Active]);
+        assert_eq!(Background.steps_to(Inactive), vec![Inactive]);
+        for p in [Active, Inactive, Background] {
+            assert!(p.steps_to(p).is_empty());
+        }
+        assert_eq!(ScenePhase::default(), Active);
+        assert_eq!(Background.as_str(), "background");
+        for p in ScenePhase::ALL {
+            assert_eq!(p.as_str().parse::<ScenePhase>(), Ok(p));
+            assert_eq!(serde_json::to_string(&p).unwrap(), format!("\"{}\"", p.as_str()));
+        }
+        assert!("Active".parse::<ScenePhase>().is_err() && "".parse::<ScenePhase>().is_err());
     }
 }

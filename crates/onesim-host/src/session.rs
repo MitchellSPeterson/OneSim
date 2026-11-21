@@ -3,7 +3,7 @@
 use crate::events::EventLog;
 use crate::process::{build_app, is_prebuilt, onesim_home, signal, SIGCONT, SIGSTOP};
 use onesim_protocol::{
-    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, GeoBox, GuestMessage, HostMessage, IosVersion, SessionError, Viewport,
+    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, GeoBox, GuestMessage, HostMessage, IosVersion, ScenePhase, SessionError, Viewport,
     ViewNode,
 };
 use onesim_render::rn_input::{focus_change, Out, RnInput, Wait};
@@ -170,6 +170,8 @@ pub struct Session {
     pub scale: f64,
     pub appearance: Appearance,
     pub dynamic_type: DynamicTypeSize,
+    /// SwiftUI scene phase (`Host::set_scene_phase`); `active` from launch.
+    pub scene_phase: ScenePhase,
     /// Simulated iOS release (look + reported OS version).
     pub ios: IosVersion,
     /// Scroll, focus, shift and press state (shared with the browser backend).
@@ -232,6 +234,7 @@ impl Session {
             scale: p.scale.unwrap_or(dev.scale),
             appearance: p.appearance.unwrap_or(Appearance::Light),
             dynamic_type: p.dynamic_type_size.unwrap_or_default(),
+            scene_phase: ScenePhase::Active,
             ios: p.os_version.unwrap_or_default(),
             inter: Interaction::default(),
             anim: Animator::new(),
@@ -331,6 +334,15 @@ impl Session {
         }
     }
 
+    /// Touches and keys reach only an app in front: running and, for SwiftUI, in the `active` scene phase.
+    pub fn require_input(&self) -> Result<(), ApiError> {
+        self.require_running()?;
+        if self.scene_phase != ScenePhase::Active {
+            return Err(err(ErrorCode::InvalidState, format!("the app is {} and gets no input; set the scene phase to active first", self.scene_phase.as_str())));
+        }
+        Ok(())
+    }
+
     fn fail(&mut self, e: ApiError) -> ApiError {
         self.shared.push_error("host", e.message.clone());
         self.shared.lock().state = State::Failed;
@@ -358,6 +370,7 @@ impl Session {
             }
             g.state = State::Starting;
         }
+        self.scene_phase = ScenePhase::Active;
         let cmd = if self.is_rn() && !self.params.prebuilt {
             // No build step: node runs the Expo/Metro bundle (frameworks/react-native/guest/host.js).
             let mut c = Command::new("node");

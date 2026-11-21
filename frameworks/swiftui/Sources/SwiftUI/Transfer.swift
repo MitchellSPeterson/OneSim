@@ -5,7 +5,7 @@ import Foundation
 import UniformTypeIdentifiers
 #endif
 // CoreTransferable, declared in OneSim's SwiftUI module so `import SwiftUI` apps get it (docs/protocol.md
-// section V). OneSim's pasteboard and share sheet carry text: every representation converts an item to text
+// section W). OneSim's pasteboard and share sheet carry text: every representation converts an item to text
 // (export) and back (import). `String` is itself, `URL` its absolute string, `Data` its UTF-8, a Codable item
 // its JSON; `ProxyRepresentation` goes through its proxy.
 

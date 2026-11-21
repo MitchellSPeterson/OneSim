@@ -120,7 +120,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `TitleAndIconLabelStyle` | 14.5 | ⬜ |  |  |
 | `TitleOnlyLabelStyle` | 14 | ⬜ |  |  |
 | `ToggleStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
-| `ToolbarLabelStyle` | 18 | ⬜ |  |  |
+| `ToolbarLabelStyle` | 18 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | For `windowToolbarLabelStyle` (no effect on iPhone) |
 | `WheelDatePickerStyle` | 13 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | iOS 26.5 appearance and native wheel momentum are incomplete. |
 | `WheelPickerStyle` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | A tap on a row selects it (three rows each side are shown); no spinning or momentum |
 | `WindowBackgroundShapeStyle` | 17 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Uses the simulated window background color. |

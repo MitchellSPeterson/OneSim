@@ -11,7 +11,8 @@ use crate::settle::STARTUP_MAX;
 use crate::{Host, DEVICES};
 use base64::Engine;
 use onesim_protocol::{
-    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, IosVersion, KeyboardEvent, PointerEvent, PointerKind, UiNode, Viewport,
+    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, IosVersion, KeyboardEvent, PointerEvent, PointerKind, ScenePhase, UiNode,
+    Viewport,
 };
 use onesim_render::Fonts;
 use serde::Deserialize;
@@ -31,6 +32,7 @@ pub const METHODS: &[&str] = &[
     "input.tap", "input.press", "input.type", "input.key", "input.scroll", "input.swipe",
     "render.screenshot", "render.frame", "render.backend", "render.tree", "render.inspect",
     "device.list", "device.set", "device.rotate", "device.appearance", "device.keyboard", "device.pasteboard",
+    "app.setScenePhase", "app.openURL",
     "modules.list", "modules.simulate", "events.subscribe", "events.unsubscribe",
 ];
 
@@ -214,6 +216,22 @@ struct DeviceRotateP {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct ScenePhaseP {
+    #[serde(default)]
+    session_id: String,
+    phase: Option<ScenePhase>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenUrlP {
+    #[serde(default)]
+    session_id: String,
+    url: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct AppearanceP {
     #[serde(default)]
     session_id: String,
@@ -255,6 +273,8 @@ struct CreateP {
     dynamic_type_size: Option<DynamicTypeSize>,
     os_version: Option<IosVersion>,
     metro_url: Option<String>,
+    #[serde(alias = "launchURL")]
+    launch_url: Option<String>,
     app_path: Option<String>,
     root_view: Option<String>,
     viewport: Option<Viewport>,
@@ -306,6 +326,7 @@ impl Entry {
             "device": display_name(s.device.name), "osVersion": s.os_version(), "viewport": s.viewport, "scale": s.scale,
             "appearance": s.appearance, "status": s.state().as_str(), "treeVersion": s.tree_version().unwrap_or(0),
             "metroUrl": s.params.metro_url, "appPath": (!s.params.app_path.is_empty()).then_some(&s.params.app_path),
+            "scenePhase": s.is_swiftui().then_some(s.scene_phase.as_str()),
         });
         let v = Value::Object(v.as_object().expect("object").iter().filter(|(_, v)| !v.is_null()).map(|(k, v)| (k.clone(), v.clone())).collect());
         *lock(&self.info) = v.clone();
@@ -392,6 +413,7 @@ impl Server {
             prebuilt: p.prebuilt,
             metro_url: p.metro_url,
             pasteboard: p.pasteboard,
+            launch_url: p.launch_url,
         };
         let entry = {
             let mut reg = lock(&self.reg);
@@ -774,6 +796,26 @@ fn session_call(srv: &Server, method: &str, p: &Value) -> R {
                 h.hide_keyboard(&en.id)
             })
             .map(|_| json!({}))
+        }
+        "app.setScenePhase" => {
+            let a: ScenePhaseP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
+            let phase = a.phase.ok_or_else(|| bad("phase must be \"active\", \"inactive\" or \"background\""))?;
+            en.with(|h| {
+                h.set_scene_phase(&en.id, phase)?;
+                h.scene_phase(&en.id)
+            })
+            .map(|ph| json!({"phase": ph.as_str()}))
+        }
+        "app.openURL" => {
+            let a: OpenUrlP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
+            let url = a.url.ok_or_else(|| bad("url required"))?;
+            en.with(|h| {
+                h.open_url(&en.id, &url)?;
+                h.scene_phase(&en.id)
+            })
+            .map(|ph| json!({"phase": ph.as_str()}))
         }
         "modules.list" => {
             let en = srv.entry(&args::<SessionIdP>(p)?.session_id)?;
