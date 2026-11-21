@@ -1178,6 +1178,33 @@ t = act(p, t, tree(t)["back"]["action"])
 assert title(t) == "Sidebar" and "back" not in tree(t)
 t = act(p, t, button(t, "Open content")["action"])
 assert title(t) == "Content"
+t = act(p, t, tree(t)["back"]["action"])
+t = act(p, t, button(t, "Test toolbars")["action"])
+
+def toolbar_action(nav, label):
+    return next(item["content"]["action"] for item in nav["chrome"]["items"]
+                if label in alltexts(item["content"]))
+
+assert title(t) == "Outer"
+t = act(p, t, toolbar_action(tree(t), "Toolbar count: 0"))
+t = act(p, t, toolbar_action(tree(t), "Toolbar count: 1"))
+assert toolbar_action(tree(t), "Toolbar count: 2")
+# Queue the count action too, so an inert navigation action produces a
+# mismatched tree instead of waiting forever for the guest to respond.
+send(p, type="action", id=toolbar_action(tree(t), "Open inner"), version=t["version"])
+send(p, type="action", id=toolbar_action(tree(t), "Toolbar count: 2"), version=t["version"])
+t = recv(p)
+inner = tree(t)["content"]
+assert inner["title"] == "Inner"
+send(p, type="action", id=toolbar_action(inner, "Open inner detail"), version=t["version"])
+send(p, type="action", id=toolbar_action(tree(t), "Toolbar count: 2"), version=t["version"])
+t = recv(p)
+inner = tree(t)["content"]
+assert inner["title"] == "Inner detail" and "Inner destination 42" in alltexts(inner)
+t = act(p, t, inner["back"]["action"])
+assert tree(t)["content"]["title"] == "Inner"
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Outer" and toolbar_action(tree(t), "Toolbar count: 2")
 finish(p)
 print("navigation lab: inactive dismissal, search submission, and three compact columns ok")
 print("PASS")

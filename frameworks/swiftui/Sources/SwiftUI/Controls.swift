@@ -574,6 +574,7 @@ func _navigation(_ path: String, columnPath: String? = nil, externalPath: _NavPa
     if depth == 0, rootBack != nil {
         nav["back"] = ["action": rt.registerAction { st.pop() }, "label": backLabel] as Node
     }
+    rt.emittedNavigationStates[path] = st
     return _applyNavigationPreferences(rt.navigationPreferences ?? [:], to: nav)
 }
 

@@ -36,6 +36,7 @@ protocol _ToolbarSource {
 
 func _toolbarItems<T: ToolbarContent>(_ value: T, at path: String) -> [Node] {
     if let source = value as? _ToolbarSource { return source.items(path) }
+    _bindState(value, path)
     return _toolbarItems(value.body, at: path)
 }
 
@@ -157,9 +158,15 @@ private struct _NavigationPreference<Content: View>: View, _Flattenable {
 
     func _children(_ path: String) -> [Node] {
         let children = SwiftUI._children(content, path + "/content")
-        if _Runtime.shared.navigationPreferences == nil && children.first?["kind"] as? String != "navigation" {
-            return children
+        let rt = _Runtime.shared
+        if children.count == 1, children[0]["kind"] as? String == "navigation",
+           let id = children[0]["id"] as? String, let target = rt.emittedNavigationStates[id] {
+            let enclosing = rt.nav
+            rt.nav = target
+            defer { rt.nav = enclosing }
+            return [_applyNavigationPreferences(preferences(path + "/toolbar"), to: children[0])]
         }
+        guard rt.navigationPreferences != nil else { return children }
         return _collectNavigationPreferences(preferences(path + "/toolbar"), from: children)
     }
 }

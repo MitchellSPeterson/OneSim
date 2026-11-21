@@ -128,6 +128,8 @@ final class _Runtime {
     var pageIsActive = true   // adjacent pages are laid out for swiping but do not appear or present yet
     var tags: [String: AnyHashable] = [:]   // `.tag(_:)` values by node id, read by `Picker`
     var nav: _NavState?
+    // Container modifiers finish after their navigation node has been emitted.
+    var emittedNavigationStates: [String: _NavState] = [:]
     var navigationPreferences: Node?
     var envObjects: [ObjectIdentifier: Any] = [:]   // `.environmentObject` / `.environment` objects and EnvironmentKey values
     var envLocal = Set<ObjectIdentifier>()   // envObjects keys set inside the enclosing NavigationStack (pushed screens re-apply only these)
@@ -287,6 +289,7 @@ final class _Runtime {
         touched.removeAll(keepingCapacity: true)
         // Any `@Observable` property read while evaluating dirties the tree when it next changes (one-shot; re-armed each pass).
         var tree = withObservationTracking(render) { _Runtime.shared.dirty = true }
+        emittedNavigationStates.removeAll(keepingCapacity: true)
         if !layers.isEmpty { tree = ["kind": "presentation", "id": "presentation", "content": tree, "layers": layers] }
         slots = slots.filter { touched.contains($0.key) }
         visualEffectFrames = visualEffectFrames.filter { visualEffectIDs.contains($0.key) }
