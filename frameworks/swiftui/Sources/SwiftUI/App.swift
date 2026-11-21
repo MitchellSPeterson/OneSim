@@ -239,6 +239,34 @@ extension WindowGroup {
     }
 }
 
+/// Localized titles (string literals pick these, as with Apple's). OneSim has no bundle lookup: the key is the title.
+extension WindowGroup {
+    public init(_ titleKey: LocalizedStringKey, @ViewBuilder content: () -> Content) { self.init(content: content(), title: Text(titleKey.key), id: nil) }
+    public init(_ titleKey: LocalizedStringKey, id: String, @ViewBuilder content: () -> Content) { self.init(content: content(), title: Text(titleKey.key), id: id) }
+    public init(_ titleKey: LocalizedStringKey, @ViewBuilder makeContent: @escaping () -> Content) {
+        self.init(make: makeContent, title: Text(titleKey.key), id: nil)
+    }
+    public init(_ titleKey: LocalizedStringKey, id: String, @ViewBuilder makeContent: @escaping () -> Content) {
+        self.init(make: makeContent, title: Text(titleKey.key), id: id)
+    }
+    public init<D, C>(_ titleKey: LocalizedStringKey, for type: D.Type, @ViewBuilder content: @escaping (Binding<D?>) -> C)
+    where Content == PresentedWindowContent<D, C> {
+        self.init(Text(titleKey.key), nil, nil, content)
+    }
+    public init<D, C>(_ titleKey: LocalizedStringKey, id: String, for type: D.Type, @ViewBuilder content: @escaping (Binding<D?>) -> C)
+    where Content == PresentedWindowContent<D, C> {
+        self.init(Text(titleKey.key), id, nil, content)
+    }
+    public init<D, C>(_ titleKey: LocalizedStringKey, for type: D.Type = D.self, @ViewBuilder content: @escaping (Binding<D>) -> C,
+                      defaultValue: @escaping () -> D) where Content == PresentedWindowContent<D, C> {
+        self.init(Text(titleKey.key), nil, defaultValue, Self._required(content))
+    }
+    public init<D, C>(_ titleKey: LocalizedStringKey, id: String, for type: D.Type = D.self, @ViewBuilder content: @escaping (Binding<D>) -> C,
+                      defaultValue: @escaping () -> D) where Content == PresentedWindowContent<D, C> {
+        self.init(Text(titleKey.key), id, defaultValue, Self._required(content))
+    }
+}
+
 // MARK: - Scene modifiers
 
 /// A scene modifier: `around` runs the inner scene's evaluation (possibly inside a changed context).
@@ -385,6 +413,7 @@ public struct CommandMenu<Content: View>: Commands {
     public var body: Never { fatalError() }
     let name: Text, content: Content
     public init(_ name: Text, @ViewBuilder content: () -> Content) { self.name = name; self.content = content() }
+    public init(_ nameKey: LocalizedStringKey, @ViewBuilder content: () -> Content) { self.init(Text(nameKey.key), content: content) }
     @_disfavoredOverload
     public init<S: StringProtocol>(_ name: S, @ViewBuilder content: () -> Content) { self.init(Text(String(name)), content: content) }
 }

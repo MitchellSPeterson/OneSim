@@ -4,7 +4,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 
 | API | Since | iOS | Issue | Notes |
 |---|---|---|---|---|
-| `AccessibilityRotorContent` | 15 | ⬜ |  |  |
+| `AccessibilityRotorContent` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | `body` supplies the entries. No `ForEach` |
 | `AlignmentID` | 13 | ⬜ |  |  |
 | `Animatable` | 13 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Used by `KeyframeTimeline` and `KeyframeAnimator`; custom `Animatable` views do not interpolate per frame on `withAnimation` |
 | `AnimatableModifier` | 13 | ⬜ |  | Deprecated |
@@ -12,7 +12,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `App` | 14 | 🟠 | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | `@main` must start its line (the build looks for it) |
 | `AttributedTextFormattingDefinition` | 26 | ⬜ |  |  |
 | `AttributedTextValueConstraint` | 26 | ⬜ |  |  |
-| `AXChartDescriptorRepresentable` | 15 | ⬜ |  |  |
+| `AXChartDescriptorRepresentable` | 15 | 🟠 | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | `makeChartDescriptor` supplies a title and summary. `updateChartDescriptor` is a no-op |
 | `Commands` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
 | `ContainerValueKey` | 18 | ⬜ |  |  |
 | `ControlWidget` | 18 | ⬜ |  |  |

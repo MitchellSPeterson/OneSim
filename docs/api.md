@@ -101,7 +101,7 @@ All input params also carry `"sessionId"`.
 | `render.tree` | `{"sessionId"}` | `{"treeVersion","root": UiNode}` |
 | `render.inspect` | `{"sessionId"}` + `{"element"}` or `{"x","y"}` | `{"node": UiNode (with children), "path":[ids root→node]}` |
 
-`UiNode`: `{"id","kind","role","label"?,"text"?,"value"?,"frame":{x,y,width,height},"action"?,"focused"?,"disabled"?,"children":[...]}`.
+`UiNode`: `{"id","kind","role","label"?,"text"?,"value"?,"frame":{x,y,width,height},"action"?,"focused"?,"disabled"?,"accessibility"?,"children":[...]}`. `accessibility` is the extra semantics from [protocol section U](protocol.md).
 `id` is stable for the life of the element (React Native: the reactTag; SwiftUI: the structural path).
 
 ## Device
@@ -124,7 +124,7 @@ All input params also carry `"sessionId"`.
 A URL needs a scheme (`app:...`, `https://...`), else `bad_request`. While the app is not `active`, `input.*`
 calls fail with `invalid_state`, as a backgrounded app gets no touches. Other frameworks answer `unsupported`.
 The guest side (scenePhase, `UIApplication` notifications, the delegate adaptor) is in
-[protocol.md section U](protocol.md#u-v1-additions-for-swiftui-scenes-and-the-app-lifecycle).
+[protocol.md section V](protocol.md#v-v1-additions-for-swiftui-scenes-and-the-app-lifecycle).
 
 ## Native modules (React Native)
 

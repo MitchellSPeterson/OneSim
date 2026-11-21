@@ -45,6 +45,50 @@ export interface SessionInfo {
   scenePhase?: ScenePhase;
 }
 
+export interface A11yPoint {
+  x: number;
+  y: number;
+  unit?: boolean;
+  description?: string;
+}
+
+export interface UiAccessibility {
+  hint?: string;
+  identifier?: string;
+  hidden?: boolean;
+  suppressed?: boolean;
+  traits?: string[];
+  sortPriority?: number;
+  heading?: number;
+  inputLabels?: string[];
+  children?: string;
+  actions?: { name: string; action: number; category?: string }[];
+  custom?: { key: string; id?: string; value?: string; importance?: string }[];
+  elements?: string[];
+  focused?: boolean;
+  textContentType?: string;
+  scrollStatus?: string;
+  rotors?: { name: string; entries?: { label: string; id?: string }[] }[];
+  chart?: boolean;
+  ignoresInvertColors?: boolean;
+  responds?: boolean;
+  directTouch?: boolean;
+  directTouchOptions?: string[];
+  linked?: string;
+  pair?: { role: string; id: string };
+  largeContent?: boolean;
+  largeLabel?: string;
+  activation?: A11yPoint;
+  adjustable?: { increment: number; decrement: number };
+  scroll?: { top?: number; bottom?: number; leading?: number; trailing?: number };
+  zoom?: { in?: number; out?: number };
+  rotorEntry?: string;
+  technologies?: string[];
+  drag?: A11yPoint;
+  drop?: A11yPoint;
+  defaultFocus?: boolean;
+}
+
 export interface UiNode {
   id: string;
   kind: string;
@@ -56,6 +100,7 @@ export interface UiNode {
   action?: string;
   focused?: boolean;
   disabled?: boolean;
+  accessibility?: UiAccessibility;
   children: UiNode[];
 }
 

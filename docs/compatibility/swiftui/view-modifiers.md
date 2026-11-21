@@ -5,42 +5,42 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | API | Since | iOS | Issue | Notes |
 |---|---|---|---|---|
 | `.accentColor` | 13 | ⬜ |  | Deprecated |
-| `.accessibility` | 13 | ⬜ |  |  |
-| `.accessibilityAction` | 13 | ⬜ |  |  |
-| `.accessibilityActions` | 16 | ⬜ |  |  |
-| `.accessibilityActivationPoint` | 14 | ⬜ |  |  |
-| `.accessibilityAddTraits` | 14 | ⬜ |  |  |
-| `.accessibilityAdjustableAction` | 13 | ⬜ |  |  |
-| `.accessibilityChartDescriptor` | 15 | ⬜ |  |  |
-| `.accessibilityChildren` | 15 | ⬜ |  |  |
-| `.accessibilityCustomContent` | 15 | ⬜ |  |  |
-| `.accessibilityDefaultFocus` | 26 | ⬜ |  |  |
-| `.accessibilityDirectTouch` | 17 | ⬜ |  |  |
-| `.accessibilityDragPoint` | 16 | ⬜ |  |  |
-| `.accessibilityDropPoint` | 16 | ⬜ |  |  |
-| `.accessibilityElement` | 13 | ⬜ |  |  |
-| `.accessibilityFocused` | 15 | ⬜ |  |  |
-| `.accessibilityHeading` | 15 | ⬜ |  |  |
-| `.accessibilityHidden` | 14 | ⬜ |  |  |
-| `.accessibilityHint` | 14 | ⬜ |  |  |
-| `.accessibilityIdentifier` | 14 | ⬜ |  |  |
-| `.accessibilityIgnoresInvertColors` | 14 | ⬜ |  |  |
-| `.accessibilityInputLabels` | 14 | ⬜ |  |  |
-| `.accessibilityLabel` | 14 | ⬜ |  |  |
-| `.accessibilityLabeledPair` | 14 | ⬜ |  |  |
-| `.accessibilityLinkedGroup` | 14 | ⬜ |  |  |
-| `.accessibilityRemoveTraits` | 14 | ⬜ |  |  |
-| `.accessibilityRepresentation` | 15 | ⬜ |  |  |
-| `.accessibilityRespondsToUserInteraction` | 15 | ⬜ |  |  |
-| `.accessibilityRotor` | 15 | ⬜ |  |  |
-| `.accessibilityRotorEntry` | 15 | ⬜ |  |  |
-| `.accessibilityScrollAction` | 13 | ⬜ |  |  |
-| `.accessibilityScrollStatus` | 26 | ⬜ |  |  |
-| `.accessibilityShowsLargeContentViewer` | 15 | ⬜ |  |  |
-| `.accessibilitySortPriority` | 14 | ⬜ |  |  |
-| `.accessibilityTextContentType` | 15 | ⬜ |  |  |
-| `.accessibilityValue` | 14 | ⬜ |  |  |
-| `.accessibilityZoomAction` | 13 | ⬜ |  |  |
+| `.accessibility` | 13 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Deprecated overloads forward to the current modifiers |
+| `.accessibilityAction` | 13 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Named, default, escape, magic tap, delete and show menu |
+| `.accessibilityActions` | 16 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Buttons in the closure become actions. A category is stored on each |
+| `.accessibilityActivationPoint` | 14 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | `resolve_label` uses this point. A finger tap still hits the view |
+| `.accessibilityAddTraits` | 14 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `.accessibilityAdjustableAction` | 13 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Increment and decrement are two actions |
+| `.accessibilityChartDescriptor` | 15 | 🟠 | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Title or summary is stored as the label. No chart series |
+| `.accessibilityChildren` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Child texts become elements. The children view is not drawn |
+| `.accessibilityCustomContent` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `.accessibilityDefaultFocus` | 26 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Sets the binding on appear while it is still the reset value |
+| `.accessibilityDirectTouch` | 17 | 🟠 | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Flag and options are stored. Touches are unchanged |
+| `.accessibilityDragPoint` | 16 | 🟠 | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Point is stored. No assistive drag |
+| `.accessibilityDropPoint` | 16 | 🟠 | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Point is stored. No assistive drop |
+| `.accessibilityElement` | 13 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | `ignore` and `combine` hide descendants. `combine` joins labels with ", " |
+| `.accessibilityFocused` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `.accessibilityHeading` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `.accessibilityHidden` | 14 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Hidden nodes and their descendants are skipped by `resolve_label` |
+| `.accessibilityHint` | 14 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `.accessibilityIdentifier` | 14 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `.accessibilityIgnoresInvertColors` | 14 | 🟠 | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Flag is stored. Invert colors is not simulated |
+| `.accessibilityInputLabels` | 14 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `.accessibilityLabel` | 14 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Outer label wins. A view-builder label that contains the modified view registers that view's actions again |
+| `.accessibilityLabeledPair` | 14 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Content is spoken as "label, content". The label node is suppressed |
+| `.accessibilityLinkedGroup` | 14 | 🟠 | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Id is exposed. The group is not one element |
+| `.accessibilityRemoveTraits` | 14 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `.accessibilityRepresentation` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Representation texts replace children for accessibility. The view is not drawn |
+| `.accessibilityRespondsToUserInteraction` | 15 | 🟠 | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Flag is stored. A finger still hits the view |
+| `.accessibilityRotor` | 15 | 🟠 | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Entries are on the inspection node. No rotor UI. A text-range label is the range description. No `ForEach`. `prepare` is not called |
+| `.accessibilityRotorEntry` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Id is exposed on the node |
+| `.accessibilityScrollAction` | 13 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Top, bottom, leading and trailing are four actions |
+| `.accessibilityScrollStatus` | 26 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `.accessibilityShowsLargeContentViewer` | 15 | 🟠 | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Flag and replacement label are stored. No popup |
+| `.accessibilitySortPriority` | 14 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Inspection order only, highest first. Paint order is unchanged |
+| `.accessibilityTextContentType` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `.accessibilityValue` | 14 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `.accessibilityZoomAction` | 13 | 🟠 | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Separate in and out actions. The handler receives a synthetic action at `.center` and `.zero` |
 | `.actionSheet` | 13 | ⬜ |  | Deprecated |
 | `.alert` | 13 | 🟠 |  | No text fields, `Text` titles or `dialogSeverity` |
 | `.alignmentGuide` | 13 | ⬜ |  |  |

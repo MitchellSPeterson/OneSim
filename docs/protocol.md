@@ -32,14 +32,14 @@ Mismatched major version → `protocol_version` error.
 | method | params | result |
 |---|---|---|
 | `get_capabilities` | – | `{"frameworks":["swiftui"],"platforms":["ios"],"commands":[...],"headless":true}` |
-| `create_session` | `{"framework":"swiftui","platform":"ios","app_path":"<file or dir>","root_view":"CounterView"?,"viewport":{"width":393,"height":852}?,"scale":2.0?,"appearance":"light"\|"dark"?,"dynamic_type_size":"large"?,"device":"iphone-18-pro"?,"os_version":"27.2"?,"launch_url":"app://x"?}` | `{"session_id":"s1"}` (`launch_url`: SwiftUI only, see section U) |
+| `create_session` | `{"framework":"swiftui","platform":"ios","app_path":"<file or dir>","root_view":"CounterView"?,"viewport":{"width":393,"height":852}?,"scale":2.0?,"appearance":"light"\|"dark"?,"dynamic_type_size":"large"?,"device":"iphone-18-pro"?,"os_version":"27.2"?,"launch_url":"app://x"?}` | `{"session_id":"s1"}` (`launch_url`: SwiftUI only, see section V) |
 | `start_session` | `{"session_id"}` | `{"state":"running"}` (blocks until first tree or failure) |
 | `stop_session` | `{"session_id"}` | `{"state":"stopped"}` |
 | `get_session_status` | `{"session_id"}` | `{"session_id","state","framework","platform","app_path","viewport","scale","appearance","tree_version","scene_phase"}` |
 | `set_viewport` | `{"session_id","width","height"}` | `{}` |
 | `set_appearance` | `{"session_id","mode":"light"\|"dark"}` | `{}` |
-| `set_scene_phase` | `{"session_id","phase":"active"\|"inactive"\|"background"}` | `{"scene_phase"}` (SwiftUI; section U) |
-| `open_url` | `{"session_id","url"}` | `{"scene_phase"}` (SwiftUI; section U) |
+| `set_scene_phase` | `{"session_id","phase":"active"\|"inactive"\|"background"}` | `{"scene_phase"}` (SwiftUI; section V) |
+| `open_url` | `{"session_id","url"}` | `{"scene_phase"}` (SwiftUI; section V) |
 | `send_pointer_event` | `{"session_id","event":{"kind":"down"\|"up"\|"click","x","y"}}` | `{"hit": <node id or null>, "action": <bool>}` |
 | `send_keyboard_event` | `{"session_id","event":{...}}` | `unsupported` error in v1 |
 | `capture_screenshot` | `{"session_id","path":"out.png"?}` | `{"width","height","path"}` or `{"width","height","png_base64"}` |
@@ -55,8 +55,8 @@ Session states: `created → starting → running → stopping → stopped`, plu
 returns only once the guest has submitted the next tree (or 2 s timeout), so
 a following `capture_screenshot` reflects the update.
 
-`UiNode`: `{"id","kind","frame":{"x","y","width","height"},"text"?,"role"?,"label"?,"action"?,"children":[...]}`
-(`role`: `"button"`, `"text"`, `"image"`, `"none"`).
+`UiNode`: `{"id","kind","frame":{"x","y","width","height"},"text"?,"role"?,"label"?,"action"?,"accessibility"?,"children":[...]}`
+(`role`: `"button"`, `"text"`, `"image"`, `"none"`). `accessibility` is section U.
 
 ---
 
@@ -81,7 +81,7 @@ Host → guest (guest stdin):
   action id came from. Guest ignores actions whose version is not current.
 - `{"type":"environment","appearance":"light"|"dark","viewport":{"width","height"},"dynamicTypeSize"?:"large"}` — guest re-evaluates and sends a new tree. `dynamicTypeSize` is omitted at the default (`large`); the guest also gets `SIMCORE_DYNAMIC_TYPE` at launch. The host does the text sizing (below); the guest may later expose it as `@Environment(\.dynamicTypeSize)`.
 - `{"type":"scene_phase","phase":"active"|"inactive"|"background"}` and `{"type":"open_url","url"}` — SwiftUI app
-  lifecycle (section U); the guest answers each with a tree.
+  lifecycle (section V); the guest answers each with a tree.
 - `{"type":"shutdown"}` — guest exits 0.
 
 ### ViewNode (normalized view tree, produced by Swift, consumed by Rust)
@@ -973,7 +973,40 @@ disclosure state. This section extends `list`, its sections and rows.
 - A gesture's optional `axis` (`"horizontal"` / `"vertical"`) locks its pan to that axis: a finger that first leaves
   the touch slop mostly along the other axis is handed to the scroller under it (the gesture sees `cancel`).
 
-## U. v1 additions for SwiftUI scenes and the app lifecycle
+## U. v1 additions for SwiftUI accessibility
+
+`PROTOCOL_VERSION` stays 1. Each `.accessibility*` call adds one `accessibility` modifier. The fields are partial.
+The host merges them outermost-last: a later label, value, hint, identifier, trait edit or flag replaces the earlier
+one; actions, custom content and rotors append. `isEnabled: false` emits no modifier.
+
+The spoken label overwrites `UiNode.label`. The spoken value overwrites `UiNode.value` and leaves the scene node's
+editable text alone, so a later keystroke still appends to the control. Visible `text` stays the drawn string.
+A modifier after a layout-only wrapper (opacity, clip, shadow, gesture, transition) or a background, overlay, or
+mask attaches to the inspectable content. Any other semantics are an `accessibility` object on the inspection node.
+That object is omitted when label and value are the only semantics. Inspect children are sorted by `sortPriority`
+descending (default 0, stable). Paint order is unchanged.
+
+`accessibility` fields: `hint`, `identifier`, `hidden`, `suppressed`, `traits`, `sortPriority`, `heading`,
+`inputLabels`, `children` (`ignore`, `contain`, `combine`), `actions` (`{name, action, category?}`),
+`custom` (`{key, value?, id?, importance?}`),
+`elements`, `focused`, `textContentType`, `scrollStatus`, `rotors` (`{name, entries: [{label, id?}]}`), `chart`, `ignoresInvertColors`, `responds`,
+`directTouch`, `directTouchOptions`, `linked`, `pair` (`{role, id}`), `largeContent`, `largeLabel`, `activation`
+(`{x, y, unit?, description?}`), `adjustable` (`{increment, decrement}`), `scroll` (`top`, `bottom`, `leading`,
+`trailing`), `zoom` (`in`, `out`), `rotorEntry`, `technologies`, `drag`, `drop`, `defaultFocus`.
+
+`ignore` and `combine`, and a node with `elements`, suppress strict descendants. `combine` without an explicit label
+joins descendant labels with `", "`. A labeled pair speaks the content as `"label, content"` and suppresses the
+label node. Hidden propagates to descendants. `resolve_label` skips hidden and suppressed nodes, then matches an
+accessibility label or identifier, and returns the activation point when one is set (unit point or absolute offset
+from the frame origin). A finger tap does not run the default accessibility action.
+
+These fields are stored and do not change hit testing or pixels: direct touch, drag and drop points, invert colors,
+large content, chart, linked group, rotor entries, and `responds`. Zoom is two actions. The guest calls the handler
+with a synthetic `AccessibilityZoomGestureAction` at location `.center` and point `.zero`. Rotor `prepare` is not
+called. A text-range rotor entry with no text uses `String(describing:)` of the range as its label. Text, when the entry has it, stays the label. `AccessibilityFocusState` technologies
+are stored and not filtered.
+
+## V. v1 additions for SwiftUI scenes and the app lifecycle
 
 The guest evaluates the `App` every pass: its `@State`, `@StateObject` and `@Environment` live under `app`, scene
 state under `app/body/...`, and the first scene with a window (`WindowGroup`) is the root, its views at `0` as
