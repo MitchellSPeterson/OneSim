@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum GuestMessage {
     Hello { protocol: u32 },
-    Tree { version: u64, root: ViewNode },
+    Tree { version: u64, root: Box<ViewNode> },
     Error { message: String },
     /// React Native `focus`/`blur` commands: focus the field with this tag (`null` = blur).
     #[serde(rename = "focus_request")]
@@ -346,7 +346,7 @@ mod tests {
         let GuestMessage::Tree { root, .. } = rn else { panic!() };
         let ViewKind::Rn { component, props, children } = &root.kind else { panic!() };
         assert_eq!((component.as_str(), props["flex"].as_i64(), children.len()), ("RootView", Some(1), 1));
-        assert_eq!(serde_json::from_str::<ViewNode>(&serde_json::to_string(&root).unwrap()).unwrap(), root);
+        assert_eq!(serde_json::from_str::<ViewNode>(&serde_json::to_string(&root).unwrap()).unwrap(), *root);
         assert_eq!(serde_json::to_string(&HostMessage::Shutdown).unwrap(), r#"{"type":"shutdown"}"#);
         for (m, j) in [
             (

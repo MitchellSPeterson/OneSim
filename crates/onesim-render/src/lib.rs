@@ -3,11 +3,7 @@
 //! `layout::swiftui::layout` turns a protocol `ViewNode` into a framework-neutral
 //! [`Scene`]; everything else works on the scene only.
 
-pub mod layout {
-    pub mod compose;
-    pub mod rn;
-    pub mod swiftui;
-}
+pub mod layout;
 pub mod animation;
 pub mod backend;
 mod chrome;

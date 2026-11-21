@@ -144,8 +144,8 @@ impl Builder {
         let (pw, ph) = ((scene.size.0 * scale).round().max(1.0) as u32, (scene.size.1 * scale).round().max(1.0) as u32);
         let mut dl = DisplayList { width: pw, height: ph, scale: s, dark: scene.appearance == onesim_protocol::Appearance::Dark, ios: scene.ios, ..Default::default() };
         dl.dropped.extend(self.composed_frame.take());
-        if scene.nodes.iter().any(|n| n.composite.is_some() || n.fill_paint.is_some() || n.stroke_paint.is_some() || n.content_paint.is_some()) {
-            // The shared rasterizer resolves isolated layers and shape shaders before handing
+        if scene.nodes.iter().any(|n| n.composite.is_some()) {
+            // The shared rasterizer resolves isolated composite layers before handing
             // the result to the executor. A replaced frame resource can be released immediately.
             let rgba = crate::render(scene, fonts, scale).take();
             let id = BITMAP_ID_BIT | self.next_bitmap;
@@ -276,6 +276,9 @@ impl Builder {
 
     /// Use shared glyph-mask resources for short, opaque, undecorated grayscale labels.
     fn glyph_sprites(&mut self, n: &Node, fonts: &mut Fonts, scale: f32, clip: PaintClip, dl: &mut DisplayList) -> bool {
+        if n.content_paint.is_some() {
+            return false;
+        }
         let Some(t) = n.text.as_ref() else { return false };
         let c = t.color;
         if n.opacity != 1.0 || c.a != 1.0 || c.r != c.g || c.g != c.b || t.strike || !t.spans.is_empty() || t.font.size > 40.0 || t.text.len() > 256 {

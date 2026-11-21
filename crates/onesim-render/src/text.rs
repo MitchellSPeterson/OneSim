@@ -292,8 +292,71 @@ pub fn fonts_capability() -> &'static str {
     }
 }
 
-/// Text, size bits, weight, wrap width bits, Android tracking bits.
-type MeasureKey = (String, u32, u16, u32, u32);
+use std::borrow::Borrow;
+use std::hash::{Hash, Hasher};
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct MeasureMeta {
+    size: u32,
+    pt: u32,
+    line_height: u32,
+    pitch: u32,
+    weight: u16,
+    width: u32,
+    tracking: u32,
+    extra: u32,
+    lines: usize,
+    design: u8,
+    width_code: i8,
+    trunc: u8,
+    case_fold: u8,
+    flags: u8,
+}
+
+#[derive(PartialEq, Eq, Hash)]
+struct MeasureKey {
+    text: String,
+    meta: MeasureMeta,
+}
+
+trait MeasureLookup {
+    fn key(&self) -> (&str, MeasureMeta);
+}
+
+impl MeasureLookup for MeasureKey {
+    fn key(&self) -> (&str, MeasureMeta) {
+        (&self.text, self.meta)
+    }
+}
+
+impl MeasureLookup for (&str, MeasureMeta) {
+    fn key(&self) -> (&str, MeasureMeta) {
+        *self
+    }
+}
+
+impl<'a> Borrow<dyn MeasureLookup + 'a> for MeasureKey {
+    fn borrow(&self) -> &(dyn MeasureLookup + 'a) {
+        self
+    }
+}
+
+impl PartialEq for dyn MeasureLookup + '_ {
+    fn eq(&self, other: &Self) -> bool {
+        self.key() == other.key()
+    }
+}
+
+impl Eq for dyn MeasureLookup + '_ {}
+
+impl Hash for dyn MeasureLookup + '_ {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let (text, meta) = self.key();
+        text.hash(state);
+        meta.hash(state);
+    }
+}
+
 const MEASURE_MAX_ENTRIES: usize = 4096;
 const MEASURE_MAX_TEXT_BYTES: usize = 1024 * 1024;
 
@@ -308,7 +371,8 @@ pub struct Fonts {
     has_mono: bool,
     rounded: Option<&'static str>,
     serif: Option<&'static str>,
-    measured: HashMap<MeasureKey, (f64, f64)>,
+    measured: HashMap<MeasureKey, (u64, (f64, f64))>,
+    measured_tick: u64,
     measured_text_bytes: usize,
 }
 
@@ -398,6 +462,7 @@ impl Fonts {
             rounded,
             serif,
             measured: HashMap::new(),
+            measured_tick: 0,
             measured_text_bytes: 0,
         }
     }
@@ -410,15 +475,15 @@ impl Fonts {
         }
     }
 
-    /// True when Apple's SF Pro is in use.
+    /// True when Apple's SF Pro is in use (false: the bundled Inter fallback).
     pub fn has_sf(&self) -> bool {
         self.sf
     }
 
-    /// True when the bundled Inter fallback is in use.
-    /// True when drawing with Apple's SF Pro (false: the bundled Inter fallback).
+    /// Alias for [`Self::has_sf`].
+    #[inline]
     pub fn is_sf(&self) -> bool {
-        self.sf
+        self.has_sf()
     }
 
     pub fn has_inter(&self) -> bool {
@@ -431,9 +496,8 @@ impl Fonts {
 
     /// Family, tracking (em), weight and stretch. `sf_tracking` is SF's tracking for the default face.
     /// A design that switches family drops that optical fit (it was measured for SF Pro).
-    /// `width` is a horizontal scale in measure and draw, not a face: cosmic-text never sets `wdth`.
     #[allow(clippy::too_many_arguments)]
-    fn face(&self, mono: bool, android: bool, pt: f32, inter_size: f32, weight: u16, sf_tracking: f32, big: bool, design: u8, _width: i8) -> (Family<'static>, f32, u16, Stretch) {
+    fn face(&self, mono: bool, android: bool, pt: f32, inter_size: f32, weight: u16, sf_tracking: f32, big: bool, design: u8) -> (Family<'static>, f32, u16, Stretch) {
         let wght = if big { (weight as i32 + INTER_BIG_WEIGHT).clamp(100, 900) as u16 } else { weight };
         if mono || design == 3 {
             return (self.mono_family(), 0.0, wght, Stretch::Normal);
@@ -460,9 +524,13 @@ impl Fonts {
     /// Shaped text. A line cap cuts the last allowed line with `…`: tail (the default), head, or middle.
     fn buffer(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span]) -> Buffer {
         let folded = fold_case(text, f.case_fold);
-        let folded_spans: Vec<Span> = spans.iter().map(|s| Span { text: fold_case(&s.text, f.case_fold).into_owned(), ..s.clone() }).collect();
+        let folded_spans: Vec<Span> = if f.case_fold == 0 || spans.is_empty() {
+            Vec::new()
+        } else {
+            spans.iter().map(|s| Span { text: fold_case(&s.text, f.case_fold).into_owned(), ..s.clone() }).collect()
+        };
         let text = folded.as_ref();
-        let spans = if spans.is_empty() { spans } else { folded_spans.as_slice() };
+        let spans = if folded_spans.is_empty() { spans } else { folded_spans.as_slice() };
         let b = self.build(text, f, width, spans);
         let (Some(n), Some(limit)) = (f.lines, width) else { return b };
         if b.layout_runs().count() <= n {
@@ -475,7 +543,7 @@ impl Fonts {
 
     fn clip_text(&mut self, text: &str, f: &FontSpec, b: &Buffer, limit: f32, n: usize) -> String {
         match f.trunc {
-            1 => self.trunc_end(text, f, limit, n, true),
+            1 => self.trunc_head(text, f, limit, n),
             2 => self.trunc_middle(text, f, limit, n),
             _ => self.trunc_tail(text, f, b, limit, n),
         }
@@ -522,8 +590,8 @@ impl Fonts {
         format!("{head}\u{2026}")
     }
 
-    /// Head (`leading` ellipsis) or the shared suffix search. `head` true keeps the end of `text`.
-    fn trunc_end(&mut self, text: &str, f: &FontSpec, limit: f32, n: usize, _head: bool) -> String {
+    /// Head (`leading` ellipsis) truncation: keeps the end of `text`.
+    fn trunc_head(&mut self, text: &str, f: &FontSpec, limit: f32, n: usize) -> String {
         let one = FontSpec { align: TextAlign::Leading, lines: None, trunc: 0, ..*f };
         let bounds: Vec<usize> = text.char_indices().map(|(i, _)| i).chain([text.len()]).collect();
         let (mut lo, mut hi) = (0, bounds.len() - 1);
@@ -552,41 +620,91 @@ impl Fonts {
         if nchars == 0 {
             return format!("{text}\u{2026}");
         }
-        let mut cands: Vec<(f64, f64, usize, String)> = Vec::new();
-        for head in 0..=nchars {
-            let pre_end = idx[head];
-            let mut lo = 0;
-            let mut hi = nchars - head;
-            while lo < hi {
-                let mid = (lo + hi).div_ceil(2);
-                let suf_at = idx[nchars - mid];
+        // Bound the longest fitting prefix in O(log N) so multiline/explicit-newline text stays in range.
+        let (mut p_lo, mut p_hi) = (0, nchars);
+        while p_lo < p_hi {
+            let mid = (p_lo + p_hi).div_ceil(2);
+            let probe = format!("{}\u{2026}", text[..idx[mid]].trim_end());
+            if self.fits(&probe, &one, limit, n) {
+                p_lo = mid;
+            } else {
+                p_hi = mid - 1;
+            }
+        }
+        let head_max = p_lo;
+
+        // Single-shape estimate of cumulative width at each character boundary.
+        let head_est = if text.contains('\n') {
+            head_max / 2
+        } else {
+            let scale = f64::from(width_scale(one.width));
+            let shaped = self.build(text, &one, None, &[]);
+            let mut char_end_x = vec![0.0_f64; nchars + 1];
+            for run in shaped.layout_runs() {
+                for g in run.glyphs {
+                    let end_x = f64::from(g.x + g.w) * scale;
+                    if let Ok(ci) = idx.binary_search(&g.end) {
+                        char_end_x[ci] = char_end_x[ci].max(end_x);
+                    }
+                }
+            }
+            let mut running = 0.0_f64;
+            for x in &mut char_end_x {
+                if *x < running {
+                    *x = running;
+                } else {
+                    running = *x;
+                }
+            }
+            let ell_w = self.measure("\u{2026}", &one, None, &[]).0;
+            let budget = (f64::from(limit) * n as f64 - ell_w).max(0.0);
+            let half = budget * 0.5;
+            char_end_x.partition_point(|&x| x <= half).min(head_max)
+        };
+        let h_lo = head_est.saturating_sub(6);
+        let h_hi = (head_est + 6).min(head_max);
+
+        let mut cands: Vec<(f64, f64, usize, String)> = Vec::with_capacity(h_hi - h_lo + 1);
+        let mut collect = |range: std::ops::RangeInclusive<usize>, cands: &mut Vec<(f64, f64, usize, String)>| {
+            for head in range {
+                let pre_end = idx[head];
+                let mut lo = 0;
+                let mut hi = nchars - head;
+                while lo < hi {
+                    let mid = (lo + hi).div_ceil(2);
+                    let suf_at = idx[nchars - mid];
+                    if pre_end > suf_at {
+                        hi = mid - 1;
+                        continue;
+                    }
+                    let pre = text[..pre_end].trim_end();
+                    let suf = text[suf_at..].trim_start();
+                    if self.fits(&format!("{pre}\u{2026}{suf}"), &one, limit, n) {
+                        lo = mid;
+                    } else {
+                        hi = mid - 1;
+                    }
+                }
+                let suf_at = idx[nchars - lo];
                 if pre_end > suf_at {
-                    hi = mid - 1;
                     continue;
                 }
                 let pre = text[..pre_end].trim_end();
                 let suf = text[suf_at..].trim_start();
-                if self.fits(&format!("{pre}\u{2026}{suf}"), &one, limit, n) {
-                    lo = mid;
-                } else {
-                    hi = mid - 1;
+                let shown = format!("{pre}\u{2026}{suf}");
+                if !self.fits(&shown, &one, limit, n) {
+                    continue;
                 }
+                let kept = pre.chars().count() + suf.chars().count();
+                let hw = self.measure(pre, &one, None, &[]).0;
+                let tw = self.measure(suf, &one, None, &[]).0;
+                let width = self.measure(&shown, &one, None, &[]).0;
+                cands.push((width, (hw - tw).abs(), kept, shown));
             }
-            let suf_at = idx[nchars - lo];
-            if pre_end > suf_at {
-                continue;
-            }
-            let pre = text[..pre_end].trim_end();
-            let suf = text[suf_at..].trim_start();
-            let shown = format!("{pre}\u{2026}{suf}");
-            if !self.fits(&shown, &one, limit, n) {
-                continue;
-            }
-            let kept = pre.chars().count() + suf.chars().count();
-            let hw = self.measure(pre, &one, None, &[]).0;
-            let tw = self.measure(suf, &one, None, &[]).0;
-            let width = self.measure(&shown, &one, None, &[]).0;
-            cands.push((width, (hw - tw).abs(), kept, shown));
+        };
+        collect(h_lo..=h_hi, &mut cands);
+        if cands.is_empty() && (h_lo > 0 || h_hi < head_max) {
+            collect(0..=head_max, &mut cands);
         }
         // Among cuts that fill the line, put the ellipsis at the center.
         let max_w = cands.iter().map(|c| c.0).fold(0.0, f64::max);
@@ -638,7 +756,7 @@ impl Fonts {
         let mut b = Buffer::new(&mut self.sys, Metrics::new(size, f.pitch));
         b.set_size(shape_limit(width, f.width), None);
         let inter_size = if f.inter_point_tracking { f.pt } else { f.size };
-        let (family, tracking, wght, stretch) = self.face(f.mono || f.design == 3, f.android, f.pt, inter_size, f.weight, f.tracking, big, f.design, f.width);
+        let (family, tracking, wght, stretch) = self.face(f.mono || f.design == 3, f.android, f.pt, inter_size, f.weight, f.tracking, big, f.design);
         let tracking = tracking + extra_em(f.extra, f.pt);
         let mut attrs = Attrs::new().family(family).weight(Weight(wght)).stretch(stretch).letter_spacing(tracking);
         if f.italic {
@@ -654,7 +772,7 @@ impl Fonts {
                 let size_px = f.size * k;
                 let big = !sf && !f.android && s.pt > 40.0;
                 let sf_tracking = if f.android { f.tracking } else { tracking_em(s.pt, s.weight) };
-                let (fam, tracking, wght, stretch) = self.face(f.mono || s.mono || s.design == 3, f.android, s.pt, inter_size * k, s.weight, sf_tracking, big, s.design, s.width);
+                let (fam, tracking, wght, stretch) = self.face(f.mono || s.mono || s.design == 3, f.android, s.pt, inter_size * k, s.weight, sf_tracking, big, s.design);
                 let tracking = tracking + extra_em(s.extra, s.pt);
                 let m = Metrics::new(if big { size_px * INTER_BIG_SCALE } else { size_px }, if f.fixed_pitch { f.pitch } else { f.pitch * k });
                 let c = Color::rgba((s.color.r * 255.0).round() as u8, (s.color.g * 255.0).round() as u8, (s.color.b * 255.0).round() as u8, (s.color.a * 255.0).round() as u8);
@@ -693,16 +811,35 @@ impl Fonts {
 
     /// Size of `text`, wrapping at `width` when given.
     pub fn measure(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span]) -> (f64, f64) {
-        // Styled advances vary independently of the default cache key.
-        let styled = f.extra != 0.0 || f.design != 0 || f.width != 0 || f.digits || f.trunc != 0 || f.case_fold != 0 || f.italic || f.mono;
-        let key = (spans.is_empty() && f.lines.is_none() && !styled && text.len() <= MEASURE_MAX_TEXT_BYTES).then(|| {
-            // Android text carries its own tracking (Compose letterSpacing) and face; iOS tracking follows size and weight.
-            let tracking = if f.android { f.tracking.to_bits() ^ 0x8000_0000 } else { 0 };
-            (text.to_string(), f.size.to_bits(), f.weight, width.map_or(u32::MAX, f32::to_bits), tracking)
+        let meta = (spans.is_empty() && text.len() <= MEASURE_MAX_TEXT_BYTES).then(|| {
+            let flags = (u8::from(f.android))
+                | (u8::from(f.mono) << 1)
+                | (u8::from(f.digits) << 2)
+                | (u8::from(f.italic) << 3)
+                | (u8::from(f.inter_point_tracking) << 4);
+            MeasureMeta {
+                size: f.size.to_bits(),
+                pt: f.pt.to_bits(),
+                line_height: f.line_height.to_bits(),
+                pitch: f.pitch.to_bits(),
+                weight: f.weight,
+                width: width.map_or(u32::MAX, f32::to_bits),
+                tracking: f.tracking.to_bits(),
+                extra: f.extra.to_bits(),
+                lines: f.lines.unwrap_or(usize::MAX),
+                design: f.design,
+                width_code: f.width,
+                trunc: f.trunc,
+                case_fold: f.case_fold,
+                flags,
+            }
         });
-        if let Some(key) = &key {
-            if let Some(r) = self.measured.get(key) {
-                return *r;
+        if let Some(meta) = meta {
+            let lookup: (&str, MeasureMeta) = (text, meta);
+            if let Some(entry) = self.measured.get_mut(&lookup as &dyn MeasureLookup) {
+                self.measured_tick += 1;
+                entry.0 = self.measured_tick;
+                return entry.1;
             }
         }
         let b = self.buffer(text, &FontSpec { align: TextAlign::Leading, ..*f }, width, spans);
@@ -712,13 +849,25 @@ impl Fonts {
             lines += 1;
         }
         let r = (w as f64 * f64::from(width_scale(f.width)), (f.line_height + (lines.max(1) - 1) as f32 * f.pitch) as f64);
-        if let Some(key) = key {
+        if let Some(meta) = meta {
             if self.measured.len() >= MEASURE_MAX_ENTRIES || self.measured_text_bytes + text.len() > MEASURE_MAX_TEXT_BYTES {
-                self.measured.clear();
-                self.measured_text_bytes = 0;
+                let mut ticks: Vec<u64> = self.measured.values().map(|(t, _)| *t).collect();
+                if !ticks.is_empty() {
+                    let mid = ticks.len() / 2;
+                    let (_, &mut cutoff, _) = ticks.select_nth_unstable(mid);
+                    let bytes = &mut self.measured_text_bytes;
+                    self.measured.retain(|k, (t, _)| {
+                        let keep = *t > cutoff;
+                        if !keep {
+                            *bytes = bytes.saturating_sub(k.text.len());
+                        }
+                        keep
+                    });
+                }
             }
+            self.measured_tick += 1;
             self.measured_text_bytes += text.len();
-            self.measured.insert(key, r);
+            self.measured.insert(MeasureKey { text: text.to_string(), meta }, (self.measured_tick, r));
         }
         r
     }
@@ -790,8 +939,7 @@ impl Fonts {
         clip: Option<crate::raster::PaintClip>,
         mut f: impl FnMut(i32, i32, u32, u32, [u8; 4]),
     ) -> Result<Vec<LineSpan>, crate::raster::PaintClip> {
-        let mut b = self.buffer(text, spec, Some(width), spans);
-        b.shape_until_scroll(&mut self.sys, false);
+        let b = self.buffer(text, spec, Some(width), spans);
         // Body-size text snaps like UIKit (whole-pixel baseline and origin); accessibility sizes keep
         // the sub-pixel phase, which iOS does at large sizes (measured on the scrolled fixtures).
         let positioned = glyph_positioning(origin, spec.pt > 40.0);
@@ -1193,5 +1341,17 @@ mod span_tests {
         assert!((ratio - 0.80).abs() < 0.001, "condensed ratio {ratio} ({cond} vs {plain})");
         let compressed = fonts.measure("Condensed", &FontSpec { width: -2, ..spec }, None, &[]).0;
         assert!((compressed / plain - 0.70).abs() < 0.02, "compressed ratio {}", compressed / plain);
+    }
+
+    #[test]
+    fn middle_truncation_preserves_multiline_explicit_newlines() {
+        let mut fonts = Fonts::new();
+        let text = std::iter::repeat_n("hello", 10).collect::<Vec<_>>().join("\n");
+        let mid = FontSpec { lines: Some(2), trunc: 2, ..FontSpec::new(17.0, 22.0, 400, TextAlign::Leading) };
+        let shown = fonts.truncated_string(&text, &mid, 200.0);
+        assert!(shown.contains('\u{2026}'), "expected ellipsis in {shown:?}");
+        assert!(shown.starts_with("hello"), "expected head preserved in {shown:?}");
+        assert!(shown.ends_with("hello"), "expected tail preserved in {shown:?}");
+        assert!(shown.contains('\n'), "expected two-line result in {shown:?}");
     }
 }

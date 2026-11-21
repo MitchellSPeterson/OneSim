@@ -14,7 +14,7 @@ use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
-use onesim_host::Host;
+use onesim_host::{Host, HostEvent};
 use onesim_protocol::{Appearance, KeyboardEvent, PointerEvent, PointerKind};
 use onesim_render::{BackendPref, DragPhase, RenderError};
 use winit::application::ApplicationHandler;
@@ -73,16 +73,14 @@ pub fn run(mut host: Host, id: String, cfg: Config) -> Result<()> {
 
 /// Wake the event loop when the guest commits a tree or stops.
 fn forward_events(host: &mut Host, id: &str, proxy: EventLoopProxy<UserEvent>) -> Result<()> {
-    let (tx, rx) = std::sync::mpsc::channel::<String>();
-    host.events(id)?.subscribe(u64::MAX, tx, Some(vec!["render.updated".into(), "runtime.stopped".into()]), None);
+    let (tx, rx) = std::sync::mpsc::channel::<HostEvent>();
+    host.events(id)?.subscribe_typed(tx);
     std::thread::spawn(move || {
-        for line in rx {
-            let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
-            let p = &v["params"];
-            let ev = match p["name"].as_str() {
-                Some("render.updated") => UserEvent::Tree(p["data"]["treeVersion"].as_u64().unwrap_or(u64::MAX)),
-                Some("runtime.stopped") => UserEvent::Stopped(p["data"]["reason"].as_str().unwrap_or("stopped").to_string()),
-                _ => continue,
+        for ev in rx {
+            let ev = match ev {
+                HostEvent::RenderUpdated { tree_version } => UserEvent::Tree(tree_version),
+                HostEvent::RuntimeStopped { reason } => UserEvent::Stopped(reason),
+                HostEvent::Other { .. } => continue,
             };
             if proxy.send_event(ev).is_err() {
                 break;
@@ -311,9 +309,8 @@ impl App {
                 self.gesture.press(p);
                 if !self.cfg.rn {
                     // SwiftUI: the finger is down now (gesture views see it, a long press can fire while held).
+                    // `self.pointer` enables animation only when `host.is_animating(&self.id)` is true.
                     self.pointer(PointerEvent::new(PointerKind::Down, p.0, p.1));
-                    self.sched.set_animating(true);
-                    self.last_tick = Instant::now();
                 }
             }
             ElementState::Released => {
@@ -497,7 +494,7 @@ impl App {
             Err(e) => {
                 // No tree (the guest died, or has not drawn yet): nothing to show; wait for the next one.
                 log::debug!("frame: {e}");
-                self.sched.drawn(Instant::now(), 0);
+                self.sched.drawn(started, 0);
                 return;
             }
         };
@@ -507,7 +504,7 @@ impl App {
                 self.drew = true;
                 if d.shown {
                     self.hidden = None;
-                    self.sched.drawn(Instant::now(), version);
+                    self.sched.drawn(started, version);
                     if !self.cfg.rn && !self.sched.animating() && self.host.is_animating(&self.id) {
                         self.sched.set_animating(true);
                         self.last_tick = Instant::now();
@@ -518,7 +515,7 @@ impl App {
                     // Nothing was shown. Hidden window (minimized, covered, screen locked): poll slowly, never
                     // per frame. A transient acquire timeout: try again at the next interval.
                     self.stats.skip();
-                    self.sched.drawn(Instant::now(), 0);
+                    self.sched.drawn(started, 0);
                     if d.occluded {
                         self.hidden = Some(Instant::now() + HIDDEN_POLL);
                     } else {
@@ -536,7 +533,7 @@ impl App {
             }
             Err(e) if presenter_is_gpu(&self.presenter) => self.fall_back(e.to_string()),
             Err(e) => {
-                self.sched.drawn(Instant::now(), version);
+                self.sched.drawn(started, version);
                 eprintln!("render error: {e}");
             }
         }

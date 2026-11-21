@@ -3,7 +3,8 @@
 //! Node ids in the scene are the reactTags; every RN box has `tag = Some(tag)` so the scene's
 //! hit test returns the deepest tag under a point (`action` stays for real native actions: nav back, tabs). Content starts at y=0 (RN handles safe areas).
 
-use super::swiftui::{add_chrome, rn_nav_bar, rn_nav_height, rn_tab_bar, switch_style, NavBack, SceneParams, TabBar, TabBarItem, KNOB, SWITCH, TAB_BAR_INSET};
+use crate::layout::common::{switch_style, tinted, Embedded, ModalLayers, NavBack, Placement, SceneParams, TabBar, TabBarItem, KNOB, SWITCH, TAB_BAR_INSET};
+use crate::layout::swiftui::{add_chrome, rn_nav_bar, rn_nav_height, rn_tab_bar};
 use crate::scene::{Color, Glyph, ImageRun, Node, Rect, Role, Scene, ScrollInfo, TextRun};
 use crate::text::{FontSpec, Fonts, Span, TextAlign};
 use serde_json::Value;
@@ -127,7 +128,7 @@ fn rn_component(n: &ViewNode) -> &str {
 fn screen_header(screen: &ViewNode) -> Option<&Value> {
     let ViewKind::Rn { children, .. } = &screen.kind else { return None };
     children.iter().find(|c| rn_component(c) == "RNSScreenStackHeaderConfig").and_then(|c| match &c.kind {
-        ViewKind::Rn { props, .. } => Some(props),
+        ViewKind::Rn { props, .. } => Some(props.as_ref()),
         _ => None,
     })
 }
@@ -156,44 +157,11 @@ fn viewport_insets(params: &SceneParams) -> (f64, f64) {
 }
 
 /// CSS color strings (`#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()`, a few names).
-fn css_color(s: &str) -> Option<Color> {
-    let s = s.trim();
-    let c = |r: f32, g: f32, b: f32, a: f32| Some(Color::rgba(r / 255.0, g / 255.0, b / 255.0, a));
-    if let Some(h) = s.strip_prefix('#') {
-        let v = u32::from_str_radix(h, 16).ok()?;
-        return match h.len() {
-            3 => c(((v >> 8) & 0xf) as f32 * 17.0, ((v >> 4) & 0xf) as f32 * 17.0, (v & 0xf) as f32 * 17.0, 1.0),
-            6 => c((v >> 16 & 0xff) as f32, (v >> 8 & 0xff) as f32, (v & 0xff) as f32, 1.0),
-            8 => c((v >> 24 & 0xff) as f32, (v >> 16 & 0xff) as f32, (v >> 8 & 0xff) as f32, (v & 0xff) as f32 / 255.0),
-            _ => None,
-        };
-    }
-    if let Some(args) = s.strip_prefix("rgba(").or_else(|| s.strip_prefix("rgb(")).and_then(|r| r.strip_suffix(')')) {
-        let v: Vec<f32> = args.split(',').filter_map(|x| x.trim().parse().ok()).collect();
-        return c(*v.first()?, *v.get(1)?, *v.get(2)?, v.get(3).copied().unwrap_or(1.0));
-    }
-    match s {
-        "black" => c(0.0, 0.0, 0.0, 1.0),
-        "white" => c(255.0, 255.0, 255.0, 1.0),
-        "red" => c(255.0, 59.0, 48.0, 1.0),
-        "blue" => c(0.0, 122.0, 255.0, 1.0),
-        "gray" | "grey" => c(142.0, 142.0, 147.0, 1.0),
-        "transparent" => c(0.0, 0.0, 0.0, 0.0),
-        _ => None,
-    }
-}
+mod controls;
+mod style;
 
-/// Template rendering: `pm`'s alpha mask filled with `c`.
-pub(crate) fn tinted(pm: &tiny_skia::Pixmap, c: Color) -> Option<std::sync::Arc<tiny_skia::Pixmap>> {
-    let mut out = tiny_skia::Pixmap::new(pm.width(), pm.height())?;
-    for (o, i) in out.pixels_mut().iter_mut().zip(pm.pixels()) {
-        let a = i.alpha() as f32 / 255.0 * c.a;
-        let ch = |v: f32| ((v * a * 255.0).round() as u8).min((a * 255.0).round() as u8);
-        *o = tiny_skia::PremultipliedColorU8::from_rgba(ch(c.r), ch(c.g), ch(c.b), (a * 255.0).round() as u8)?;
-    }
-    Some(std::sync::Arc::new(out))
-}
-
+use controls::{android_blur_tint, android_switch, blur_spec, image_dest, text_field, ANDROID_ACCENT, REFRESH_H, REFRESH_SPINNER, REFRESH_TINT};
+use style::{corner_radius, css_color, num, style, weight, BORDER_COLOR_KEYS};
 struct Cx<'a, 'f> {
     tree: TaffyTree<Leaf<'a>>,
     notes: BTreeSet<String>,
@@ -219,162 +187,6 @@ struct Cx<'a, 'f> {
     span_lh: f32,
     /// Core `SafeAreaView`s: padded by the part of the safe-area insets they overlap (after a first layout pass).
     safe: Vec<NodeId>,
-}
-
-#[derive(Clone, Copy)]
-enum V {
-    Auto,
-    Pt(f32),
-    Pct(f32),
-}
-
-fn val(v: Option<&Value>) -> V {
-    match v {
-        Some(Value::Number(n)) => V::Pt(n.as_f64().unwrap_or(0.0) as f32),
-        Some(Value::String(s)) => match s.strip_suffix('%').and_then(|p| p.trim().parse::<f32>().ok()) {
-            Some(p) => V::Pct(p / 100.0),
-            None => s.parse().map_or(V::Auto, V::Pt),
-        },
-        _ => V::Auto,
-    }
-}
-
-impl V {
-    fn dim(self) -> Dimension {
-        match self {
-            V::Auto => auto(),
-            V::Pt(x) => length(x),
-            V::Pct(x) => percent(x),
-        }
-    }
-    fn lpa(self) -> LengthPercentageAuto {
-        match self {
-            V::Auto => auto(),
-            V::Pt(x) => length(x),
-            V::Pct(x) => percent(x),
-        }
-    }
-    fn lp(self) -> LengthPercentage {
-        match self {
-            V::Auto => zero(),
-            V::Pt(x) => length(x),
-            V::Pct(x) => percent(x),
-        }
-    }
-}
-
-fn num(p: &Value, k: &str) -> Option<f64> {
-    p.get(k).and_then(Value::as_f64)
-}
-
-/// Yoga edge precedence: edge > start/end > horizontal/vertical > all. Order: top, right, bottom, left.
-fn edges<'a>(p: &'a Value, b: &str, sfx: &str) -> [Option<&'a Value>; 4] {
-    let g = |side: &str| p.get(format!("{b}{side}{sfx}")).filter(|v| !v.is_null());
-    let (h, v) = (g("Horizontal").or(g("")), g("Vertical").or(g("")));
-    [g("Top").or(v), g("Right").or(g("End")).or(h), g("Bottom").or(v), g("Left").or(g("Start")).or(h)]
-}
-
-fn rect<T>(e: [Option<&Value>; 4], f: impl Fn(V) -> T) -> taffy::Rect<T> {
-    // Unset margin/padding/border is 0, only an explicit "auto" is auto.
-    let [top, right, bottom, left] = e.map(|v| f(v.map_or(V::Pt(0.0), |v| val(Some(v)))));
-    taffy::Rect { top, right, bottom, left }
-}
-
-fn align(s: Option<&str>, default: AlignItems) -> AlignItems {
-    match s {
-        Some("flex-start") => AlignItems::FLEX_START,
-        Some("flex-end") => AlignItems::FLEX_END,
-        Some("center") => AlignItems::CENTER,
-        Some("baseline") => AlignItems::BASELINE,
-        Some("stretch") => AlignItems::STRETCH,
-        _ => default,
-    }
-}
-
-fn justify(s: Option<&str>, default: AlignContent) -> AlignContent {
-    match s {
-        Some("flex-start") => AlignContent::FLEX_START,
-        Some("flex-end") => AlignContent::FLEX_END,
-        Some("center") => AlignContent::CENTER,
-        Some("stretch") => AlignContent::STRETCH,
-        Some("space-between") => AlignContent::SPACE_BETWEEN,
-        Some("space-around") => AlignContent::SPACE_AROUND,
-        Some("space-evenly") => AlignContent::SPACE_EVENLY,
-        _ => default,
-    }
-}
-
-fn style(p: &Value) -> Style {
-    let s = |k: &str| p.get(k).and_then(Value::as_str);
-    let wrap = matches!(s("flexWrap"), Some("wrap" | "wrap-reverse"));
-    let horizontal = p.get("horizontal").and_then(Value::as_bool) == Some(true);
-    let flex = num(p, "flex");
-    // Yoga: flexGrow/flexShrink/flexBasis override `flex`; positive flex = grow n, basis 0; negative = shrink.
-    let grow = num(p, "flexGrow").or(flex.filter(|f| *f > 0.0)).unwrap_or(0.0);
-    let shrink = num(p, "flexShrink").or(flex.filter(|f| *f < 0.0).map(|f| -f)).unwrap_or(0.0);
-    let basis = match p.get("flexBasis") {
-        Some(b) if !b.is_null() => val(Some(b)).dim(),
-        _ if flex.is_some_and(|f| f > 0.0) => length(0.0),
-        _ => auto(),
-    };
-    let gap = |k: &str| val(p.get(k).filter(|v| !v.is_null()).or(p.get("gap"))).lp();
-    let zero_min = |k: &str| match val(p.get(k)) {
-        V::Auto => length(0.0),
-        v => v.lpa(),
-    };
-    Style {
-        display: if s("display") == Some("none") { Display::None } else { Display::Flex },
-        position: if s("position") == Some("absolute") { Position::Absolute } else { Position::Relative },
-        flex_direction: match s("flexDirection") {
-            Some("row") => FlexDirection::Row,
-            Some("row-reverse") => FlexDirection::RowReverse,
-            Some("column-reverse") => FlexDirection::ColumnReverse,
-            None if horizontal => FlexDirection::Row,
-            _ => FlexDirection::Column,
-        },
-        flex_wrap: match s("flexWrap") {
-            Some("wrap") => FlexWrap::Wrap,
-            Some("wrap-reverse") => FlexWrap::WrapReverse,
-            _ => FlexWrap::NoWrap,
-        },
-        align_items: align(s("alignItems"), AlignItems::STRETCH),
-        align_self: s("alignSelf").filter(|a| *a != "auto").map(|a| align(Some(a), AlignItems::STRETCH)),
-        // Yoga applies alignContent to wrapped containers only (RN default flex-start); taffy would shrink the single line.
-        align_content: if wrap { justify(s("alignContent"), AlignContent::FLEX_START) } else { AlignContent::STRETCH },
-        justify_content: justify(s("justifyContent"), AlignContent::FLEX_START),
-        gap: taffy::Size { width: gap("columnGap"), height: gap("rowGap") },
-        margin: rect(edges(p, "margin", ""), V::lpa),
-        padding: rect(edges(p, "padding", ""), V::lp),
-        border: rect(edges(p, "border", "Width"), V::lp),
-        inset: taffy::Rect {
-            top: val(p.get("top")).lpa(),
-            right: val(p.get("right")).lpa(),
-            bottom: val(p.get("bottom")).lpa(),
-            left: val(p.get("left")).lpa(),
-        },
-        size: taffy::Size { width: val(p.get("width")).dim(), height: val(p.get("height")).dim() },
-        // Yoga has no CSS "automatic minimum size": unset min is 0.
-        min_size: taffy::Size { width: zero_min("minWidth"), height: zero_min("minHeight") },
-        max_size: taffy::Size { width: val(p.get("maxWidth")).lpa(), height: val(p.get("maxHeight")).lpa() },
-        flex_grow: grow as f32,
-        flex_shrink: shrink as f32,
-        flex_basis: basis,
-        aspect_ratio: num(p, "aspectRatio").map(|a| a as f32),
-        box_sizing: BoxSizing::BorderBox,
-        ..Style::default()
-    }
-}
-
-fn weight(p: &Value) -> u16 {
-    match p.get("fontWeight") {
-        Some(Value::String(s)) => match s.as_str() {
-            "bold" => 700,
-            "normal" => 400,
-            n => n.parse().unwrap_or(400),
-        },
-        Some(Value::Number(n)) => n.as_u64().unwrap_or(400) as u16,
-        _ => 400,
-    }
 }
 
 impl<'a, 'f> Cx<'a, 'f> {
@@ -752,52 +564,6 @@ impl<'a, 'f> Cx<'a, 'f> {
 }
 
 /// Modal layers use viewport coordinates and a virtual screen parent at index 0.
-#[derive(Default)]
-pub(super) struct ModalLayers(Vec<Vec<Node>>);
-
-impl ModalLayers {
-    pub fn paint(&mut self, out: &mut Vec<Node>) {
-        for layer in self.0.drain(..) {
-            place_nodes(layer, (0.0, 0.0), Some(0), 1.0, out);
-        }
-    }
-}
-
-fn place_nodes(nodes: impl IntoIterator<Item = Node>, origin: (f64, f64), parent: Option<usize>, opacity: f32, out: &mut Vec<Node>) {
-    let base = out.len();
-    out.extend(nodes.into_iter().map(|mut node| {
-        node.parent = node.parent.and_then(|p| p.checked_sub(1)).map(|p| p + base).or(parent);
-        node.bounds.x += origin.0;
-        node.bounds.y += origin.1;
-        node.opacity *= opacity;
-        node
-    }));
-}
-
-#[derive(Debug, Clone)]
-pub(super) struct Embedded {
-    pub size: (f64, f64),
-    nodes: Vec<Node>,
-    modals: Vec<Node>,
-}
-
-impl Embedded {
-    pub fn place(&self, origin: (f64, f64), parent: Option<usize>, opacity: f32, out: &mut Vec<Node>, modals: &mut ModalLayers) {
-        place_nodes(self.nodes.iter().cloned(), origin, parent, opacity, out);
-        if !self.modals.is_empty() {
-            modals.0.push(self.modals.clone());
-        }
-    }
-}
-
-pub(super) struct Placement<'a> {
-    pub bounds: Rect,
-    pub parent: usize,
-    pub opacity: f32,
-    pub nodes: &'a mut Vec<Node>,
-    pub modals: &'a mut ModalLayers,
-}
-
 pub(super) fn embedded(
     root: &ViewNode,
     available: (Option<f64>, Option<f64>),
@@ -840,8 +606,8 @@ fn expo_embed(
     place: Option<Placement<'_>>,
 ) -> (f64, f64) {
     match content.kind {
-        ViewKind::Compose { .. } => super::compose::embedded(content, available, params, fonts, place),
-        _ => super::swiftui::embedded(content, available, params, fonts, place),
+        ViewKind::Compose { .. } => crate::layout::compose::embedded(content, available, params, fonts, place),
+        _ => crate::layout::swiftui::embedded(content, available, params, fonts, place),
     }
 }
 
@@ -869,7 +635,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         paint(&mut cx, &item, (0.0, 0.0), 0, 1.0, params, &mut nodes);
     }
     cx.paint_modals(params, &mut nodes);
-    super::swiftui::rn_alerts(params, cx.fonts, layers, &mut nodes);
+    crate::layout::swiftui::rn_alerts(params, cx.fonts, layers, &mut nodes);
     if android {
         if let ViewKind::Rn { props, .. } = &root.kind {
             if params.status_bar && props.get("__simcoreStatusBarHidden").and_then(Value::as_bool) != Some(true) {
@@ -913,16 +679,6 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     }
 }
 
-fn corner_radius(p: &Value) -> f64 {
-    num(p, "borderRadius").unwrap_or_else(|| {
-        // ponytail: per-corner radii collapse to the largest, per-corner paths need a custom clip/fill.
-        ["TopLeft", "TopRight", "BottomLeft", "BottomRight"]
-            .iter()
-            .filter_map(|c| num(p, &format!("border{c}Radius")))
-            .fold(0.0, f64::max)
-    })
-}
-
 /// `origin`: page position of the parent's content origin (scroll offset already subtracted).
 fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opacity: f32, params: &SceneParams, out: &mut Vec<Node>) {
     let Ok(&l) = cx.tree.layout(it.id) else { return };
@@ -952,7 +708,7 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
     n.fill = cx.color(p.get("backgroundColor"));
     let black = Color::rgba(0.0, 0.0, 0.0, 1.0);
     let all = cx.color(p.get("borderColor")).unwrap_or(black);
-    let side = ["Top", "Right", "Bottom", "Left"].map(|e| cx.color(p.get(format!("border{e}Color"))).unwrap_or(all));
+    let side = BORDER_COLOR_KEYS.map(|k| cx.color(p.get(k)).unwrap_or(all));
     n.radius = corner_radius(p);
     let scroll_view = matches!(component.as_str(), "RCTScrollView" | "AndroidHorizontalScrollView");
     if matches!(p.get("overflow").and_then(Value::as_str), Some("hidden" | "scroll")) || scroll_view {
@@ -994,156 +750,160 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
         _ => None,
     });
     let a11y = p.get("accessibilityLabel").and_then(Value::as_str).map(str::to_owned);
-    if component == "ViewManagerAdapter_SymbolModule" {
-        n.kind = "image";
-        n.role = Role::Image;
-        let mut name = prop_str(p, "name").unwrap_or_default();
-        // ponytail: only quarter turns of chevrons are supported (the symbol renderer has no rotation).
-        let turn = p.get("transform").and_then(Value::as_array).into_iter().flatten().find_map(|t| t.get("rotate").and_then(Value::as_str)).and_then(|d| d.strip_suffix("deg").and_then(|v| v.parse::<f32>().ok())).unwrap_or(0.0);
-        if let (Some(dir), true) = (name.strip_prefix("chevron."), turn != 0.0) {
-            let dirs = ["up", "right", "down", "left"];
-            if let Some(i) = dirs.iter().position(|d| *d == dir) {
-                name = format!("chevron.{}", dirs[(i as i32 + (turn / 90.0).round() as i32).rem_euclid(4) as usize]);
-            }
-        }
-        let weight = match p.get("weight").and_then(Value::as_str) {
-            Some("ultraLight") => 100,
-            Some("thin") => 200,
-            Some("light") => 300,
-            Some("medium") => 500,
-            Some("semibold") => 600,
-            Some("bold") => 700,
-            Some("heavy") => 800,
-            Some("black") => 900,
-            _ => 400,
-        };
-        let color = p.get("tintColor").and_then(Value::as_str).and_then(css_color).unwrap_or(Color::rgba(0.0, 0.0, 0.0, 1.0));
-        let scale = match p.get("scale").and_then(Value::as_str) {
-            Some("small") => onesim_protocol::ImageScale::Small,
-            Some("large") => onesim_protocol::ImageScale::Large,
-            _ => onesim_protocol::ImageScale::Medium,
-        };
-        // Point size such that the symbol's natural box fits the view.
-        let unit = crate::SymbolSpec { name: name.clone(), point_size: 100.0, weight, scale, ..Default::default() };
-        if let Some(m) = crate::symbols::metrics(&unit) {
-            let k = (w / m.w).min(h / m.h) * 100.0 / 100.0;
-            let spec = crate::SymbolSpec { point_size: k * 100.0, ..unit };
-            n.symbol = Some(crate::SymbolRun { spec, color, size: (m.w * k, m.h * k) });
-        } else {
-            cx.note(format!("unsupported_symbol: {name}"));
-        }
-        n.label = Some(name);
-    }
-    if component.starts_with("ViewManagerAdapter_ExpoGlassEffect_GlassView") {
-        let variant = if p.get("glassEffectStyle").and_then(Value::as_str) == Some("clear") { onesim_protocol::GlassVariant::Clear } else { onesim_protocol::GlassVariant::Regular };
-        let tint = p.get("tintColor").and_then(|t| t.as_str().and_then(css_color).or_else(|| cx.color(Some(t))));
-        n.glass = Some(crate::glass::GlassSpec { variant, tint, interactive: p.get("isInteractive").and_then(Value::as_bool) == Some(true), blur: None, mix: None, shadow: None, flat: None });
-        if n.radius == 0.0 {
-            n.radius = h.min(w) / 2.0;
-        }
-    }
-    if component == "AndroidProgressBar" {
-        if p.get("animating").and_then(Value::as_bool) != Some(false) {
-            n.glyph = Some((Glyph::AndroidSpinner, cx.color(p.get("color")).unwrap_or(ANDROID_ACCENT)));
-        }
-        n.kind = "spinner";
-    }
-    if component == "ActivityIndicatorView" {
-        // `hidesWhenStopped` (default on): a stopped indicator draws nothing. ponytail: a static frame (spokes at rest).
-        let stopped = p.get("animating").and_then(Value::as_bool) == Some(false);
-        if !(stopped && p.get("hidesWhenStopped").and_then(Value::as_bool) != Some(false)) {
-            let c = cx.color(p.get("color")).unwrap_or(Color::rgba(0.6, 0.6, 0.6, 1.0));
-            n.glyph = Some((Glyph::Spinner, c));
-            if prop_str(p, "size").as_deref() == Some("large") {
-                // UIKit's large indicator is 33 pt, pinned to the top-left of RN's 36 pt frame (measured on iOS 26.5).
-                n.glyph = Some((Glyph::SpinnerLarge, c));
-                n.bounds = Rect { x, y, w: 33.0, h: 33.0 };
-            }
-        }
-        n.kind = "spinner";
-    }
-    if component == "PullToRefreshView" {
-        // The spinner sits centred in the open band above the content (`origin` is the content's, shifted by the band).
-        if p.get("refreshing").and_then(Value::as_bool) == Some(true) {
-            let c = cx.color(p.get("tintColor")).unwrap_or(if cx.dark { REFRESH_TINT.1 } else { REFRESH_TINT.0 });
-            n.bounds = Rect { x: x + (w - REFRESH_SPINNER) / 2.0, y: y - (REFRESH_H + REFRESH_SPINNER) / 2.0, w: REFRESH_SPINNER, h: REFRESH_SPINNER };
-            n.glyph = Some((Glyph::SpinnerLarge, c));
-        }
-        n.kind = "refresh";
-    }
-    if component == "ViewManagerAdapter_ExpoLinearGradient" {
-        if let Some(radii) = p.get("borderRadii").and_then(Value::as_array).filter(|_| cx.android) {
-            n.radius = radii.iter().filter_map(Value::as_f64).fold(n.radius, f64::max);
-        }
-        let stops: Vec<Color> = p.get("colors").and_then(Value::as_array).into_iter().flatten().filter_map(|c| cx.color(Some(c))).collect();
-        let pt = |k: &str, d: [f32; 2]| p.get(k).and_then(Value::as_array).filter(|a| a.len() == 2).map_or(d, |a| [a[0].as_f64().unwrap_or(0.0) as f32, a[1].as_f64().unwrap_or(0.0) as f32]);
-        let (a, b) = (pt("startPoint", [0.5, 0.0]), pt("endPoint", [0.5, 1.0]));
-        let locations = p.get("locations").and_then(Value::as_array).map(|l| l.iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect::<Vec<_>>()).filter(|l| l.len() == stops.len());
-        if !stops.is_empty() {
-            n.gradient = Some(crate::scene::Gradient { angle: 0.0, stops, points: Some([a[0], a[1], b[0], b[1]]), locations });
-        }
-    }
-    if component == "ViewManagerAdapter_ExpoBlur_ExpoBlurView" {
-        let tint = p.get("tint").and_then(Value::as_str).unwrap_or("default");
-        let intensity = num(p, "intensity").unwrap_or(50.0);
-        if cx.android {
-            n.fill = Some(android_blur_tint(tint, intensity));
-        } else {
-            n.glass = Some(blur_spec(tint, intensity, cx.dark));
-        }
-    }
-    if matches!(component.as_str(), "RCTImageView" | "ViewManagerAdapter_ExpoImage") {
-        n.kind = "image";
-        n.role = Role::Image;
-        n.label = a11y.clone();
-        if let Some(img) = p.get("__simcoreImage") {
-            let path = img.get("path").and_then(Value::as_str).unwrap_or("");
-            match crate::image::load(path) {
-                Some(pixmap) => {
-                    let dest = image_dest(p, (w, h), (pixmap.width() as f64, pixmap.height() as f64), params.scale);
-                    // Template images (`tintColor`) draw their alpha in the tint color.
-                    let tint = p.get("tintColor").and_then(|t| t.as_str().and_then(css_color).or_else(|| cx.color(Some(t))));
-                    let pixmap = tint.and_then(|c| tinted(&pixmap, c)).unwrap_or(pixmap);
-                    n.image = Some(ImageRun { pixmap, dest: Rect { x: x + dest.x, y: y + dest.y, ..dest }, rotation: cx.rot + spin, filter: 2 });
+    match component.as_str() {
+        "ViewManagerAdapter_SymbolModule" => {
+            n.kind = "image";
+            n.role = Role::Image;
+            let mut name = prop_str(p, "name").unwrap_or_default();
+            // ponytail: only quarter turns of chevrons are supported (the symbol renderer has no rotation).
+            let turn = p.get("transform").and_then(Value::as_array).into_iter().flatten().find_map(|t| t.get("rotate").and_then(Value::as_str)).and_then(|d| d.strip_suffix("deg").and_then(|v| v.parse::<f32>().ok())).unwrap_or(0.0);
+            if let (Some(dir), true) = (name.strip_prefix("chevron."), turn != 0.0) {
+                let dirs = ["up", "right", "down", "left"];
+                if let Some(i) = dirs.iter().position(|d| *d == dir) {
+                    name = format!("chevron.{}", dirs[(i as i32 + (turn / 90.0).round() as i32).rem_euclid(4) as usize]);
                 }
-                None => cx.note(format!("image_decode_failed: {path}")),
+            }
+            let weight = match p.get("weight").and_then(Value::as_str) {
+                Some("ultraLight") => 100,
+                Some("thin") => 200,
+                Some("light") => 300,
+                Some("medium") => 500,
+                Some("semibold") => 600,
+                Some("bold") => 700,
+                Some("heavy") => 800,
+                Some("black") => 900,
+                _ => 400,
+            };
+            let color = p.get("tintColor").and_then(Value::as_str).and_then(css_color).unwrap_or(Color::rgba(0.0, 0.0, 0.0, 1.0));
+            let scale = match p.get("scale").and_then(Value::as_str) {
+                Some("small") => onesim_protocol::ImageScale::Small,
+                Some("large") => onesim_protocol::ImageScale::Large,
+                _ => onesim_protocol::ImageScale::Medium,
+            };
+            // Point size such that the symbol's natural box fits the view.
+            let unit = crate::SymbolSpec { name: name.clone(), point_size: 100.0, weight, scale, ..Default::default() };
+            if let Some(m) = crate::symbols::metrics(&unit) {
+                let k = (w / m.w).min(h / m.h) * 100.0 / 100.0;
+                let spec = crate::SymbolSpec { point_size: k * 100.0, ..unit };
+                n.symbol = Some(crate::SymbolRun { spec, color, size: (m.w * k, m.h * k) });
+            } else {
+                cx.note(format!("unsupported_symbol: {name}"));
+            }
+            n.label = Some(name);
+        }
+        c if c.starts_with("ViewManagerAdapter_ExpoGlassEffect_GlassView") => {
+            let variant = if p.get("glassEffectStyle").and_then(Value::as_str) == Some("clear") { onesim_protocol::GlassVariant::Clear } else { onesim_protocol::GlassVariant::Regular };
+            let tint = p.get("tintColor").and_then(|t| t.as_str().and_then(css_color).or_else(|| cx.color(Some(t))));
+            n.glass = Some(crate::glass::GlassSpec { variant, tint, interactive: p.get("isInteractive").and_then(Value::as_bool) == Some(true), blur: None, mix: None, shadow: None, flat: None });
+            if n.radius == 0.0 {
+                n.radius = h.min(w) / 2.0;
             }
         }
-    }
-    if component == "RCTSwitch" {
-        let on = p.get("value").and_then(Value::as_bool) == Some(true);
-        let disabled = p.get("disabled").and_then(Value::as_bool) == Some(true);
-        // RN's off track is `tintColor`; unset it is a darker gray than SwiftUI's (measured on iOS 26.5).
-        let fill = if on {
-            cx.color(p.get("onTintColor"))
-        } else {
-            cx.color(p.get("tintColor")).or(Some(Color::rgba(120.0 / 255.0, 120.0 / 255.0, 128.0 / 255.0, if cx.dark { 0.36 } else { 0.43 })))
-        };
-        let thumb = cx.color(p.get("thumbTintColor"));
-        let base = n.opacity;
-        let mut knob = switch_style(&mut n, &it.node.id, cx.dark, on, disabled, fill, thumb);
-        n.kind = "switch";
-        n.label = a11y;
-        n.bounds = Rect { x, y, w: SWITCH.0, h: SWITCH.1 };
-        n.opacity = base * if disabled { 0.5 } else { 1.0 };
-        knob.bounds = Rect { x: x + if on { SWITCH.0 - 2.0 - KNOB.0 } else { 2.0 }, y: y + (SWITCH.1 - KNOB.1) / 2.0, w: KNOB.0, h: KNOB.1 };
-        knob.parent = Some(me);
-        knob.opacity = n.opacity;
-        extras.push(knob);
-    } else if component == "AndroidSwitch" {
-        extras = android_switch(cx, &mut n, p, a11y, me);
-    }
-    if is_text_input(component) {
-        extras = text_field(cx, &mut n, it, me, &l, params);
-        if component == "AndroidTextInput" && p.get("underlineColorAndroid").and_then(Value::as_i64) != Some(0) {
-            let mut line = Node::new(format!("{}#underline", it.node.id), "border");
-            line.bounds = Rect { x, y: y + h - 3.0, w, h: if n.focused { 2.0 } else { 1.0 } };
-            line.fill = cx.color(p.get("underlineColorAndroid")).or(Some(if n.focused { ANDROID_ACCENT } else { Color::rgba(0.5, 0.5, 0.5, 1.0) }));
-            line.parent = Some(me);
-            line.inspect = false;
-            line.opacity = n.opacity;
-            extras.push(line);
+        "AndroidProgressBar" => {
+            if p.get("animating").and_then(Value::as_bool) != Some(false) {
+                n.glyph = Some((Glyph::AndroidSpinner, cx.color(p.get("color")).unwrap_or(ANDROID_ACCENT)));
+            }
+            n.kind = "spinner";
         }
+        "ActivityIndicatorView" => {
+            // `hidesWhenStopped` (default on): a stopped indicator draws nothing. ponytail: a static frame (spokes at rest).
+            let stopped = p.get("animating").and_then(Value::as_bool) == Some(false);
+            if !(stopped && p.get("hidesWhenStopped").and_then(Value::as_bool) != Some(false)) {
+                let c = cx.color(p.get("color")).unwrap_or(Color::rgba(0.6, 0.6, 0.6, 1.0));
+                n.glyph = Some((Glyph::Spinner, c));
+                if prop_str(p, "size").as_deref() == Some("large") {
+                    // UIKit's large indicator is 33 pt, pinned to the top-left of RN's 36 pt frame (measured on iOS 26.5).
+                    n.glyph = Some((Glyph::SpinnerLarge, c));
+                    n.bounds = Rect { x, y, w: 33.0, h: 33.0 };
+                }
+            }
+            n.kind = "spinner";
+        }
+        "PullToRefreshView" => {
+            // The spinner sits centred in the open band above the content (`origin` is the content's, shifted by the band).
+            if p.get("refreshing").and_then(Value::as_bool) == Some(true) {
+                let c = cx.color(p.get("tintColor")).unwrap_or(if cx.dark { REFRESH_TINT.1 } else { REFRESH_TINT.0 });
+                n.bounds = Rect { x: x + (w - REFRESH_SPINNER) / 2.0, y: y - (REFRESH_H + REFRESH_SPINNER) / 2.0, w: REFRESH_SPINNER, h: REFRESH_SPINNER };
+                n.glyph = Some((Glyph::SpinnerLarge, c));
+            }
+            n.kind = "refresh";
+        }
+        "ViewManagerAdapter_ExpoLinearGradient" => {
+            if let Some(radii) = p.get("borderRadii").and_then(Value::as_array).filter(|_| cx.android) {
+                n.radius = radii.iter().filter_map(Value::as_f64).fold(n.radius, f64::max);
+            }
+            let stops: Vec<Color> = p.get("colors").and_then(Value::as_array).into_iter().flatten().filter_map(|c| cx.color(Some(c))).collect();
+            let pt = |k: &str, d: [f32; 2]| p.get(k).and_then(Value::as_array).filter(|a| a.len() == 2).map_or(d, |a| [a[0].as_f64().unwrap_or(0.0) as f32, a[1].as_f64().unwrap_or(0.0) as f32]);
+            let (a, b) = (pt("startPoint", [0.5, 0.0]), pt("endPoint", [0.5, 1.0]));
+            let locations = p.get("locations").and_then(Value::as_array).map(|l| l.iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect::<Vec<_>>()).filter(|l| l.len() == stops.len());
+            if !stops.is_empty() {
+                n.gradient = Some(crate::scene::Gradient { angle: 0.0, stops, points: Some([a[0], a[1], b[0], b[1]]), locations });
+            }
+        }
+        "ViewManagerAdapter_ExpoBlur_ExpoBlurView" => {
+            let tint = p.get("tint").and_then(Value::as_str).unwrap_or("default");
+            let intensity = num(p, "intensity").unwrap_or(50.0);
+            if cx.android {
+                n.fill = Some(android_blur_tint(tint, intensity));
+            } else {
+                n.glass = Some(blur_spec(tint, intensity, cx.dark));
+            }
+        }
+        "RCTImageView" | "ViewManagerAdapter_ExpoImage" => {
+            n.kind = "image";
+            n.role = Role::Image;
+            n.label = a11y.clone();
+            if let Some(img) = p.get("__simcoreImage") {
+                let path = img.get("path").and_then(Value::as_str).unwrap_or("");
+                match crate::image::load(path) {
+                    Some(pixmap) => {
+                        let dest = image_dest(p, (w, h), (pixmap.width() as f64, pixmap.height() as f64), params.scale);
+                        // Template images (`tintColor`) draw their alpha in the tint color.
+                        let tint = p.get("tintColor").and_then(|t| t.as_str().and_then(css_color).or_else(|| cx.color(Some(t))));
+                        let pixmap = tint.and_then(|c| tinted(&pixmap, c)).unwrap_or(pixmap);
+                        n.image = Some(ImageRun { pixmap, dest: Rect { x: x + dest.x, y: y + dest.y, ..dest }, rotation: cx.rot + spin, filter: 2 });
+                    }
+                    None => cx.note(format!("image_decode_failed: {path}")),
+                }
+            }
+        }
+        "RCTSwitch" => {
+            let on = p.get("value").and_then(Value::as_bool) == Some(true);
+            let disabled = p.get("disabled").and_then(Value::as_bool) == Some(true);
+            // RN's off track is `tintColor`; unset it is a darker gray than SwiftUI's (measured on iOS 26.5).
+            let fill = if on {
+                cx.color(p.get("onTintColor"))
+            } else {
+                cx.color(p.get("tintColor")).or(Some(Color::rgba(120.0 / 255.0, 120.0 / 255.0, 128.0 / 255.0, if cx.dark { 0.36 } else { 0.43 })))
+            };
+            let thumb = cx.color(p.get("thumbTintColor"));
+            let base = n.opacity;
+            let mut knob = switch_style(&mut n, &it.node.id, cx.dark, on, disabled, fill, thumb);
+            n.kind = "switch";
+            n.label = a11y;
+            n.bounds = Rect { x, y, w: SWITCH.0, h: SWITCH.1 };
+            n.opacity = base * if disabled { 0.5 } else { 1.0 };
+            knob.bounds = Rect { x: x + if on { SWITCH.0 - 2.0 - KNOB.0 } else { 2.0 }, y: y + (SWITCH.1 - KNOB.1) / 2.0, w: KNOB.0, h: KNOB.1 };
+            knob.parent = Some(me);
+            knob.opacity = n.opacity;
+            extras.push(knob);
+        }
+        "AndroidSwitch" => {
+            extras = android_switch(cx, &mut n, p, a11y, me);
+        }
+        c if is_text_input(c) => {
+            extras = text_field(cx, &mut n, it, me, &l, params);
+            if c == "AndroidTextInput" && p.get("underlineColorAndroid").and_then(Value::as_i64) != Some(0) {
+                let mut line = Node::new(format!("{}#underline", it.node.id), "border");
+                line.bounds = Rect { x, y: y + h - 3.0, w, h: if n.focused { 2.0 } else { 1.0 } };
+                line.fill = cx.color(p.get("underlineColorAndroid")).or(Some(if n.focused { ANDROID_ACCENT } else { Color::rgba(0.5, 0.5, 0.5, 1.0) }));
+                line.parent = Some(me);
+                line.inspect = false;
+                line.opacity = n.opacity;
+                extras.push(line);
+            }
+        }
+        _ => {}
     }
     if let Some(t) = ctx.filter(|_| component == "RCTText") {
         n.kind = "text";
@@ -1276,183 +1036,6 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
             (!t.is_empty()).then(|| t.join(" "))
         });
     }
-}
-
-/// Height of a refreshing `RefreshControl`'s band above the content, its spinner box and default tint (iOS 26.5).
-const REFRESH_H: f64 = 181.0 / 3.0;
-const ANDROID_ACCENT: Color = Color::rgba(0.0, 0.59, 0.53, 1.0);
-const REFRESH_SPINNER: f64 = 28.0;
-/// (light, dark): the leading spoke's colour.
-const REFRESH_TINT: (Color, Color) = (Color { r: 174.0 / 255.0, g: 174.0 / 255.0, b: 175.0 / 255.0, a: 1.0 }, Color { r: 73.0 / 255.0, g: 73.0 / 255.0, b: 79.0 / 255.0, a: 1.0 });
-
-/// expo-blur `BlurView`: a `UIBlurEffect` style (by `tint`) faded in by `intensity` (0...100, the effect animator's
-/// fraction, taken as linear), drawn as a flat glass: backdrop blur sigma (pt), saturation, then `c * mul + add`.
-/// Fitted on iOS 26.5 per style at full intensity (`default` from its 50% capture).
-// ponytail: all `system*Material` thicknesses share systemMaterial's fit, `extraLight` is `light`, `prominent` is `regular`.
-/// Expo Blur's Android overlay for the default blur method or a missing blur target.
-fn android_blur_tint(tint: &str, intensity: f64) -> Color {
-    let (gray, opacity) = match tint {
-        "dark" | "systemMaterialDark" => (25, 0.69),
-        "light" | "extraLight" | "systemMaterialLight" | "systemUltraThinMaterialLight" | "systemThickMaterialLight" => (249, 0.78),
-        "regular" => (179, 0.82),
-        "systemUltraThinMaterial" => (191, 0.44),
-        "systemThinMaterial" => (199, 0.97),
-        "systemThinMaterialLight" => (199, 0.78),
-        "systemThickMaterial" => (153, 0.97),
-        "systemChromeMaterial" => (255, 0.75),
-        "systemChromeMaterialLight" => (255, 0.97),
-        "systemUltraThinMaterialDark" => (37, 0.55),
-        "systemThinMaterialDark" => (37, 0.70),
-        "systemThickMaterialDark" => (37, 0.90),
-        "systemChromeMaterialDark" => (0, 0.75),
-        _ => (255, 0.44),
-    };
-    let g = gray as f32 / 255.0;
-    let a = (255.0 * intensity.clamp(0.0, 100.0) / 100.0 * opacity).floor() as f32 / 255.0;
-    Color::rgba(g, g, g, a)
-}
-
-fn blur_spec(tint: &str, intensity: f64, dark: bool) -> crate::glass::GlassSpec {
-    // (sigma, mul, sat, add rgb 0...255)
-    const LIGHT: (f32, f32, f32, [f32; 3]) = (28.0, 0.72, 1.67, [76.0, 78.0, 64.0]);
-    const DARK: (f32, f32, f32, [f32; 3]) = (16.0, 0.328, 0.88, [13.0, 11.0, 1.0]);
-    const REGULAR: [(f32, f32, f32, [f32; 3]); 2] = [(26.0, 0.632, 1.36, [74.0, 98.0, 62.0]), (18.0, 0.308, 1.24, [2.0, 20.0, 6.0])];
-    const MATERIAL: [(f32, f32, f32, [f32; 3]); 2] = [(26.0, 0.143, 1.58, [208.0, 205.0, 202.0]), (26.0, 0.083, 3.32, [58.0, 52.0, 54.0])];
-    let dark = if tint.ends_with("Dark") { true } else if tint.ends_with("Light") { false } else { dark };
-    let (sigma, mul, sat, add) = match tint {
-        "light" | "extraLight" => LIGHT,
-        "dark" => DARK,
-        t if t.starts_with("system") => MATERIAL[dark as usize],
-        _ => REGULAR[dark as usize],
-    };
-    let k = (intensity / 100.0).clamp(0.01, 1.0) as f32;
-    let (mul, sat, add) = (1.0 + (mul - 1.0) * k, 1.0 + (sat - 1.0) * k, add.map(|a| a * k));
-    // `add` becomes a tint mixed in at `ta` (glass tints mix after the transform): c' = c (1 - ta) + t ta.
-    let ta = add.iter().fold(0.0f32, |m, a| m.max(*a)) / 255.0;
-    let tint = (ta > 0.0).then(|| Color { r: add[0] / 255.0 / ta, g: add[1] / 255.0 / ta, b: add[2] / 255.0 / ta, a: ta });
-    crate::glass::GlassSpec {
-        variant: crate::glass::GlassVariant::Clear,
-        tint,
-        interactive: false,
-        blur: Some(sigma * k),
-        mix: Some((mul / (1.0 - ta).max(0.01), 0.0)),
-        shadow: None,
-        flat: Some(sat),
-    }
-}
-
-/// Where the bitmap lands inside a `size` box (box-relative points) for the `resizeMode` prop.
-fn image_dest(p: &Value, (bw, bh): (f64, f64), (iw, ih): (f64, f64), scale: f64) -> Rect {
-    let fit = |s: f64| Rect { x: (bw - iw * s) / 2.0, y: (bh - ih * s) / 2.0, w: iw * s, h: ih * s };
-    match p.get("resizeMode").or(p.get("contentFit")).and_then(Value::as_str) {
-        Some("stretch" | "fill") => Rect { x: 0.0, y: 0.0, w: bw, h: bh },
-        Some("contain") => fit((bw / iw).min(bh / ih)),
-        // Natural size (pixels / device scale), scaled down to fit.
-        Some("center") => fit((1.0 / scale).min(bw / iw).min(bh / ih)),
-        Some("none") => fit(1.0 / scale),
-        Some("scale-down") => fit((1.0 / scale).min((bw / iw).min(bh / ih))),
-        // ponytail: `repeat` (tiling) draws as cover.
-        _ => fit((bw / iw).max(bh / ih)),
-    }
-}
-
-/// A text input: node fields, the text run (placeholder when empty) and the caret. Returns the child nodes.
-fn android_switch(cx: &mut Cx<'_, '_>, n: &mut Node, p: &Value, label: Option<String>, parent: usize) -> Vec<Node> {
-    let on = p.get("on").and_then(Value::as_bool) == Some(true);
-    let cy = n.bounds.y + n.bounds.h / 2.0;
-    let x = n.bounds.x + (n.bounds.w - 36.0) / 2.0;
-    n.kind = "switch";
-    n.role = Role::Toggle;
-    n.value = Some(if on { "on" } else { "off" }.into());
-    n.label = label;
-    n.disabled = p.get("enabled").and_then(Value::as_bool) == Some(false);
-
-    let mut track = Node::new(format!("{}#track", n.id), "switch_track");
-    track.bounds = Rect { x, y: cy - 7.0, w: 36.0, h: 14.0 };
-    track.radius = 7.0;
-    track.fill = cx.color(p.get("trackTintColor")).or(Some(if on {
-        Color { a: 0.5, ..ANDROID_ACCENT }
-    } else {
-        Color::rgba(0.5, 0.5, 0.5, 0.55)
-    }));
-    let opacity = n.opacity * if n.disabled { 0.5 } else { 1.0 };
-    track.parent = Some(parent);
-    track.inspect = false;
-    track.opacity = opacity;
-
-    let mut thumb = Node::new(format!("{}#knob", n.id), "switch_knob");
-    thumb.bounds = Rect { x: x + if on { 17.0 } else { -1.0 }, y: cy - 10.0, w: 20.0, h: 20.0 };
-    thumb.radius = 10.0;
-    thumb.fill = cx.color(p.get("thumbTintColor")).or(Some(if on { ANDROID_ACCENT } else { Color::rgba(0.95, 0.95, 0.95, 1.0) }));
-    thumb.shadow = Some(crate::Shadow { color: Color::rgba(0.0, 0.0, 0.0, 0.22), radius: 1.0, dx: 0.0, dy: 1.0 });
-    thumb.parent = Some(parent);
-    thumb.inspect = false;
-    thumb.opacity = opacity;
-    vec![track, thumb]
-}
-
-fn text_field(cx: &mut Cx, n: &mut Node, it: &Item, me: usize, l: &taffy::Layout, params: &SceneParams) -> Vec<Node> {
-    let p = it.props;
-    let Some(Leaf::Text(t)) = cx.tree.get_node_context(it.id) else { return vec![] };
-    let t = t.clone();
-    let value = p.get("__simcoreText").and_then(Value::as_str).unwrap_or("");
-    let placeholder = p.get("placeholder").and_then(Value::as_str).unwrap_or("");
-    let (x, y, w, h) = (n.bounds.x, n.bounds.y, n.bounds.w, n.bounds.h);
-    n.kind = "text_field";
-    n.role = Role::TextField;
-    n.field = it.node.id.parse().ok();
-    n.value = Some(value.to_string());
-    n.label = Some(if placeholder.is_empty() { p.get("accessibilityLabel").and_then(Value::as_str).unwrap_or("") } else { placeholder }.to_string());
-    n.focused = params.focus == Some(it.node.id.as_str());
-    n.disabled = p.get("editable").and_then(Value::as_bool) == Some(false);
-    n.clip_radius = Some(n.radius);
-    let empty = value.is_empty();
-    let color = if empty {
-        cx.color(p.get("placeholderTextColor")).unwrap_or(if cx.dark { Color::rgba(235.0 / 255.0, 235.0 / 255.0, 245.0 / 255.0, 0.3) } else { Color::rgba(60.0 / 255.0, 60.0 / 255.0, 67.0 / 255.0, 0.3) })
-    } else {
-        t.color
-    };
-    let (b, pd) = (l.border, l.padding);
-    let (ix, iy) = (x + (b.left + pd.left) as f64, y + (b.top + pd.top) as f64);
-    let (cw, ch) = (w - (b.left + pd.left + b.right + pd.right) as f64, h - (b.top + pd.top + b.bottom + pd.bottom) as f64);
-    let lh = t.spec.line_height as f64;
-    let single = t.single;
-    let shown = t.text.clone();
-    let (tw, th) = cx.fonts.measure(&shown, &t.spec, if single { None } else { Some(cw as f32) }, &[]);
-    let tw = if empty { 0.0 } else { tw };
-    let overflow = if single { (tw - cw).max(0.0) } else { 0.0 };
-    let ty = if single { iy + (ch - lh) / 2.0 } else { iy };
-    let tbox = Rect { x: ix, y: ty, w: if single { tw.max(cw) } else { cw }, h: if single { lh } else { th.max(lh) } };
-    let mut text = Node::new(format!("{}#text", it.node.id), "text");
-    text.bounds = tbox;
-    text.parent = Some(me);
-    text.opacity = n.opacity;
-    text.inspect = false;
-    text.text = Some(TextRun { text: shown, font: t.spec, color, strike: false, offset_x: -overflow as f32, spans: vec![] });
-    let mut kids = vec![text];
-    if n.focused && !n.disabled {
-        let (cx0, cy0) = if single {
-            let start = match t.spec.align {
-                TextAlign::Center => (cw - tw).max(0.0) / 2.0,
-                TextAlign::Trailing => (cw - tw).max(0.0),
-                TextAlign::Leading => 0.0,
-            };
-            ((start + tw - overflow).min(cw - 2.0) + 1.0, ty)
-        } else {
-            let last = value.rsplit('\n').next().unwrap_or("");
-            let lw = if last.is_empty() { 0.0 } else { cx.fonts.measure(last, &t.spec, None, &[]).0 };
-            (lw.min(cw - 2.0) + 1.0, ty + if empty { 0.0 } else { (th - lh).max(0.0) })
-        };
-        let mut c = Node::new(format!("{}#caret", it.node.id), "caret");
-        c.bounds = Rect { x: ix + cx0, y: cy0, w: 2.0, h: lh };
-        c.fill = Some(if cx.dark { Color::rgba(10.0 / 255.0, 145.0 / 255.0, 1.0, 1.0) } else { Color::rgba(0.0, 136.0 / 255.0, 1.0, 1.0) });
-        c.radius = 1.0;
-        c.parent = Some(me);
-        c.opacity = n.opacity;
-        c.inspect = false;
-        kids.push(c);
-    }
-    kids
 }
 
 #[cfg(test)]
