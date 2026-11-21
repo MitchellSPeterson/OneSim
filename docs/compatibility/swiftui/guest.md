@@ -216,8 +216,18 @@ SwiftUI apps reach for more than `SwiftUI`. Each of these will be reimplemented 
 - Structural identity is positional (`if`/`else` branches use distinct `/T` and `/F` paths; state is distinguished by path and view type).
 - Whole-root re-evaluation on every state change.
 - `Text` takes `String` (no `LocalizedStringKey`); `foregroundColor(nil)` maps to primary.
+- Accessibility (protocol section U): `.accessibility*` modifiers merge outermost-last. The spoken label and value replace the node's label and value, and other semantics are an `accessibility` object on the inspection node (omitted when those are the only ones). `resolve_label` skips hidden and suppressed nodes, then matches an accessibility label or identifier, and uses an activation point when one is set. A finger tap does not run the default accessibility action. Sort priority reorders inspection children only. `LocalizedStringKey` is the key text, including interpolations, with no bundle lookup. There is no VoiceOver UI: rotors, zoom, direct touch, drag and drop points, invert colors, large content, charts, linked groups and the `responds` flag are stored semantics. `AccessibilityFocusState` technologies are stored and not filtered. Modifiers return `some View`, not `ModifiedContent<_, AccessibilityAttachmentModifier>`. `AccessibilityRotorContent.body` supplies rotor entries. A builder block concatenates every entry and has no `ForEach`. `prepare` is not called. Child and representation elements are the texts of those views.
 - `-swift-version 5` language mode is used for the module and apps. macOS/Darwin only for now (autorelease pool, Foundation).
 - `-parse-as-library` is passed only when sources contain `@main`; `@main` must start its line.
+
+### Accessibility
+
+| API | Supported entry points |
+| --- | --- |
+| Modifiers | `.accessibility` through `.accessibilityZoomAction`, including `isEnabled` (false emits nothing). Each returns `some View` |
+| Focus | `@AccessibilityFocusState` for `Bool` and optional values, and `for: AccessibilityTechnologies` (stored, not applied) |
+| Rotors | `AccessibilityRotorContent.body`, concrete `AccessibilityRotorEntry` (id formatted as a string), `AccessibilityRotorContentBuilder` (any number of entries, no `ForEach`) |
+| Chart | `AXChartDescriptorRepresentable.makeChartDescriptor()` title and summary. `updateChartDescriptor` is a no-op |
 
 ### Gradients, Canvas and visual effects
 

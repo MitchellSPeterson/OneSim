@@ -1,6 +1,8 @@
 use crate::symbols::SymbolSpec;
 use crate::text::{FontSpec, Span};
-use onesim_protocol::{Appearance, UiFrame, UiNode};
+use onesim_protocol::{
+    A11yAction, A11yAdjust, A11yCustom, A11yPair, A11yPoint, A11yRotor, A11yScroll, A11yZoom, Appearance, UiAccessibility, UiFrame, UiNode,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Rect {
@@ -255,6 +257,127 @@ pub struct VectorShape {
     pub stroke: Option<VectorStroke>,
 }
 
+/// Resolved accessibility semantics for one node (protocol section U).
+#[derive(Debug, Clone, Default)]
+pub struct A11y {
+    pub label: Option<String>,
+    pub explicit_label: bool,
+    pub value: Option<String>,
+    pub hint: Option<String>,
+    pub identifier: Option<String>,
+    pub hidden: Option<bool>,
+    pub traits: Vec<String>,
+    pub sort: Option<f64>,
+    pub heading: Option<u8>,
+    pub input_labels: Vec<String>,
+    pub children: Option<String>,
+    pub actions: Vec<A11yAction>,
+    pub custom: Vec<A11yCustom>,
+    pub activation: Option<A11yPoint>,
+    pub adjustable: Option<A11yAdjust>,
+    pub scroll: Option<A11yScroll>,
+    pub zoom: Option<A11yZoom>,
+    pub focused: bool,
+    pub elements: Vec<String>,
+    pub pair: Option<A11yPair>,
+    pub linked: Option<String>,
+    pub direct_touch: bool,
+    pub direct_touch_options: Vec<String>,
+    pub drag: Option<A11yPoint>,
+    pub drop: Option<A11yPoint>,
+    pub large_content: bool,
+    pub large_label: Option<String>,
+    pub scroll_status: Option<String>,
+    pub text_content: Option<String>,
+    pub ignores_invert: bool,
+    pub responds: Option<bool>,
+    pub chart: bool,
+    pub rotors: Vec<A11yRotor>,
+    pub rotor_entry: Option<String>,
+    pub technologies: Vec<String>,
+    pub default_focus: bool,
+    pub suppressed: bool,
+}
+
+impl A11y {
+    /// Inspection object. `None` when label and value are the only semantics (those stay on `UiNode`).
+    pub fn ui(&self) -> Option<UiAccessibility> {
+        let extra = self.hint.is_some()
+            || self.identifier.is_some()
+            || self.hidden.is_some()
+            || self.suppressed
+            || !self.traits.is_empty()
+            || self.sort.is_some()
+            || self.heading.is_some()
+            || !self.input_labels.is_empty()
+            || self.children.is_some()
+            || !self.actions.is_empty()
+            || !self.custom.is_empty()
+            || self.activation.is_some()
+            || self.adjustable.is_some()
+            || self.scroll.is_some()
+            || self.zoom.is_some()
+            || self.focused
+            || !self.elements.is_empty()
+            || self.pair.is_some()
+            || self.linked.is_some()
+            || self.direct_touch
+            || !self.direct_touch_options.is_empty()
+            || self.drag.is_some()
+            || self.drop.is_some()
+            || self.large_content
+            || self.large_label.is_some()
+            || self.scroll_status.is_some()
+            || self.text_content.is_some()
+            || self.ignores_invert
+            || self.responds.is_some()
+            || self.chart
+            || !self.rotors.is_empty()
+            || self.rotor_entry.is_some()
+            || !self.technologies.is_empty()
+            || self.default_focus;
+        if !extra {
+            return None;
+        }
+        Some(UiAccessibility {
+            hint: self.hint.clone(),
+            identifier: self.identifier.clone(),
+            hidden: self.hidden,
+            suppressed: self.suppressed,
+            traits: self.traits.clone(),
+            sort_priority: self.sort,
+            heading: self.heading,
+            input_labels: self.input_labels.clone(),
+            children: self.children.clone(),
+            actions: self.actions.clone(),
+            custom: self.custom.clone(),
+            elements: self.elements.clone(),
+            focused: self.focused,
+            text_content_type: self.text_content.clone(),
+            scroll_status: self.scroll_status.clone(),
+            rotors: self.rotors.clone(),
+            chart: self.chart,
+            ignores_invert_colors: self.ignores_invert,
+            responds: self.responds,
+            direct_touch: self.direct_touch,
+            direct_touch_options: self.direct_touch_options.clone(),
+            linked: self.linked.clone(),
+            pair: self.pair.clone(),
+            large_content: self.large_content,
+            large_label: self.large_label.clone(),
+            activation: self.activation.clone(),
+            adjustable: self.adjustable.clone(),
+            scroll: self.scroll.clone(),
+            zoom: self.zoom.clone(),
+            rotor_entry: self.rotor_entry.clone(),
+            technologies: self.technologies.clone(),
+            drag: self.drag.clone(),
+            drop: self.drop.clone(),
+            default_focus: self.default_focus,
+        })
+    }
+}
+
 /// One positioned element. `bounds` are absolute, in points.
 #[derive(Debug, Clone)]
 pub struct Node {
@@ -328,6 +451,8 @@ pub struct Node {
     pub scroll_disabled: bool,
     /// Animation / transition / matchedGeometryEffect metadata (protocol section P).
     pub anim: Option<Box<NodeAnim>>,
+    /// Accessibility semantics (protocol section U). Boxed: nodes live on the stack during layout.
+    pub a11y: Option<Box<A11y>>,
     /// False for layout-only helper nodes (clip/opacity layers); hidden from inspection.
     pub inspect: bool,
     /// Vertical scale of `text` about the bounds' centre (rows of a date picker's wheel, section S); 1 = none.
@@ -385,6 +510,7 @@ impl Node {
             scroll_target: false,
             scroll_disabled: false,
             anim: None,
+            a11y: None,
             inspect: true,
             text_squash: 1.0,
         }
@@ -400,6 +526,7 @@ impl Node {
         self.scroll = None;
         self.sheet = None;
         self.role = Role::None;
+        self.a11y = None;
     }
 }
 
@@ -549,6 +676,12 @@ impl Scene {
 
     fn ui_node(&self, i: usize, kids: &[Vec<usize>]) -> UiNode {
         let n = &self.nodes[i];
+        let mut order = kids[i].clone();
+        order.sort_by(|&a, &b| {
+            let pa = self.nodes[a].a11y.as_ref().and_then(|x| x.sort).unwrap_or(0.0);
+            let pb = self.nodes[b].a11y.as_ref().and_then(|x| x.sort).unwrap_or(0.0);
+            pb.partial_cmp(&pa).unwrap_or(std::cmp::Ordering::Equal)
+        });
         UiNode {
             id: n.id.clone(),
             kind: n.kind.to_string(),
@@ -560,7 +693,8 @@ impl Scene {
             value: n.value.as_ref().map(|value| if n.secure { "\u{2022}".repeat(unicode_segmentation::UnicodeSegmentation::graphemes(value.as_str(), true).count()) } else { value.clone() }),
             focused: n.focused,
             disabled: n.disabled,
-            children: kids[i].iter().map(|&k| self.ui_node(k, kids)).collect(),
+            accessibility: n.a11y.as_ref().and_then(|a| a.ui()),
+            children: order.iter().map(|&k| self.ui_node(k, kids)).collect(),
         }
     }
 }

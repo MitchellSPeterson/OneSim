@@ -378,6 +378,13 @@ impl Ctx<'_> {
                 strike_color: s.color.as_ref().map(|c| self.color(c)),
                 ..env
             }),
+            Modifier::Accessibility(ax) => {
+                let mut inner = self.mods(v, rest, p, env);
+                if let Some(n) = first_node(&mut inner) {
+                    super::accessibility::stamp(n, ax);
+                }
+                inner
+            }
         }
     }
 

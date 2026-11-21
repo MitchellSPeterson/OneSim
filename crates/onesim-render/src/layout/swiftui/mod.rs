@@ -22,6 +22,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
 use unicode_segmentation::UnicodeSegmentation;
 
+mod accessibility;
 mod containers;
 mod controls;
 mod metrics;
@@ -367,6 +368,7 @@ fn layout_inner<'a>(root: &ViewNode, params: &'a SceneParams<'a>, fonts: &'a mut
         bar.inspect = false;
         nodes.push(bar);
     }
+    accessibility::apply(&mut nodes);
     Scene { size: params.viewport, appearance: params.appearance,
         ios: params.ios, nodes, unsupported_symbols: cx.unsupported.into_iter().collect(), notes: vec![] }
 }
@@ -2226,5 +2228,138 @@ mod tests {
         let key = by_id(&with_query, "keyboard#key-return");
         assert!(!key.disabled);
         assert_eq!(key.role, Role::Key);
+    }
+
+    #[test]
+    fn accessibility_semantics_merge_sort_and_resolve() {
+        let s = scene(
+            r#"{
+            "kind":"vstack","id":"col","children":[
+                {"kind":"text","id":"alpha","text":"Alpha","modifiers":[
+                    {"accessibility":{"label":"First","hint":"Opens","value":"1","identifier":"alpha","addTraits":["isHeader"],"sortPriority":1,"heading":1,"inputLabels":["A"],"actions":[{"name":"default","action":7},{"name":"Delete","action":8}]}},
+                    {"accessibility":{"label":"Outer","removeTraits":["isHeader"],"addTraits":["isButton"]}}
+                ]},
+                {"kind":"text","id":"beta","text":"Beta","modifiers":[{"accessibility":{"hidden":true}}]},
+                {"kind":"vstack","id":"pair","children":[
+                    {"kind":"text","id":"one","text":"One"},
+                    {"kind":"text","id":"two","text":"Two"}
+                ],"modifiers":[{"accessibility":{"children":"combine"}}]},
+                {"kind":"text","id":"go","text":"Go","modifiers":[{"accessibility":{
+                    "activation":{"x":0,"y":0,"unit":true},
+                    "actions":[{"name":"default","action":9}],
+                    "adjustable":{"increment":1,"decrement":2},
+                    "scroll":{"top":3,"bottom":4,"leading":5,"trailing":6},
+                    "zoom":{"in":11,"out":12},
+                    "custom":[{"key":"Note","id":"note","value":"Hi","importance":"high"}],
+                    "rotors":[{"name":"links","entries":[{"label":"Docs","id":"d"}]}],
+                    "directTouch":true,"responds":false,"chart":true,"ignoresInvertColors":true,
+                    "textContentType":"sourceCode","focused":true,"linked":"g1"
+                }}]},
+                {"kind":"text","id":"plain","text":"Plain"},
+                {"kind":"text","id":"renamed","text":"Visible","modifiers":[{"accessibility":{"label":"Renamed"}}]},
+                {"kind":"text","id":"name","text":"Name","modifiers":[{"accessibility":{"pair":{"role":"label","id":"p"}}}]},
+                {"kind":"text","id":"val","text":"Value","modifiers":[{"accessibility":{"pair":{"role":"content","id":"p"}}}]},
+                {"kind":"text","id":"late","text":"Late","modifiers":[{"accessibility":{"sortPriority":0}}]},
+                {"kind":"text","id":"early","text":"Early","modifiers":[{"accessibility":{"sortPriority":5}}]},
+                {"kind":"vstack","id":"hid","modifiers":[{"accessibility":{"hidden":true}}],"children":[
+                    {"kind":"text","id":"secret","text":"Secret"}
+                ]},
+                {"kind":"vstack","id":"ign","modifiers":[{"accessibility":{"children":"ignore","label":"Ignored"}}],"children":[
+                    {"kind":"text","id":"hideA","text":"HideA"},
+                    {"kind":"text","id":"hideB","text":"HideB"}
+                ]},
+                {"kind":"vstack","id":"els","modifiers":[{"accessibility":{"elements":["Only"]}}],"children":[
+                    {"kind":"text","id":"gone","text":"Gone"}
+                ]},
+                {"kind":"text","id":"uni","text":"X","modifiers":[{"accessibility":{"label":"書"}}]},
+                {"kind":"text","id":"neg","text":"Neg","modifiers":[{"accessibility":{"sortPriority":-1,"hint":"n"}}]}
+            ]
+        }"#,
+            (200.0, 600.0),
+        );
+
+        let alpha = by_id(&s, "alpha");
+        assert_eq!(alpha.text.as_ref().unwrap().text, "Alpha");
+        assert_eq!(alpha.label.as_deref(), Some("Outer"));
+        assert_eq!(alpha.value.as_deref(), Some("1"));
+        assert!(alpha.action.is_none());
+        let ax = alpha.a11y.as_ref().unwrap();
+        assert_eq!(ax.hint.as_deref(), Some("Opens"));
+        assert_eq!(ax.identifier.as_deref(), Some("alpha"));
+        assert_eq!(ax.traits, ["isButton"]);
+        assert_eq!(ax.heading, Some(1));
+        assert_eq!(ax.input_labels, ["A"]);
+        assert_eq!(ax.actions.iter().map(|a| a.action).collect::<Vec<_>>(), [7, 8]);
+
+        let go = by_id(&s, "go");
+        assert!(go.action.is_none());
+        assert_eq!(go.label.as_deref(), Some("Go"));
+
+        let tree = s.ui_tree();
+        let col = tree.children.iter().find(|n| n.id == "col").expect("col");
+        let ids: Vec<_> = col.children.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, ["early", "alpha", "beta", "pair", "go", "plain", "renamed", "name", "val", "late", "hid", "ign", "els", "uni", "neg"]);
+        assert_eq!(by_id(&s, "secret").a11y.as_ref().unwrap().hidden, Some(true));
+        assert!(by_id(&s, "hideA").a11y.as_ref().unwrap().suppressed);
+        assert!(by_id(&s, "hideB").a11y.as_ref().unwrap().suppressed);
+        assert!(!by_id(&s, "ign").a11y.as_ref().unwrap().suppressed);
+        assert!(by_id(&s, "gone").a11y.as_ref().unwrap().suppressed);
+        assert_eq!(by_id(&s, "els").a11y.as_ref().unwrap().elements, ["Only"]);
+
+        let ua = col.children.iter().find(|n| n.id == "alpha").unwrap();
+        assert_eq!(ua.label.as_deref(), Some("Outer"));
+        assert_eq!(ua.text.as_deref(), Some("Alpha"));
+        assert_eq!(ua.value.as_deref(), Some("1"));
+        assert!(ua.action.is_none());
+        let uax = ua.accessibility.as_ref().unwrap();
+        assert_eq!(uax.hint.as_deref(), Some("Opens"));
+        assert_eq!(uax.identifier.as_deref(), Some("alpha"));
+        assert_eq!(uax.traits, ["isButton"]);
+        assert_eq!(uax.heading, Some(1));
+        assert_eq!(uax.actions.iter().map(|a| (a.name.as_str(), a.action)).collect::<Vec<_>>(), [("default", 7), ("Delete", 8)]);
+
+        let ug = col.children.iter().find(|n| n.id == "go").unwrap();
+        let gax = ug.accessibility.as_ref().unwrap();
+        assert_eq!(gax.actions.iter().map(|a| a.action).collect::<Vec<_>>(), [9]);
+        assert!(ug.action.is_none());
+        assert_eq!(gax.adjustable.as_ref().map(|a| (a.increment, a.decrement)), Some((1, 2)));
+        assert_eq!(gax.scroll.as_ref().map(|a| (a.top, a.bottom, a.leading, a.trailing)), Some((Some(3), Some(4), Some(5), Some(6))));
+        assert_eq!(gax.zoom.as_ref().map(|z| (z.zoom_in, z.zoom_out)), Some((Some(11), Some(12))));
+        assert_eq!(gax.custom[0].key, "Note");
+        assert_eq!(gax.custom[0].value.as_deref(), Some("Hi"));
+        assert_eq!(gax.rotors[0].name, "links");
+        assert_eq!(gax.rotors[0].entries[0].label, "Docs");
+        assert!(gax.direct_touch && gax.chart && gax.ignores_invert_colors && gax.focused);
+        assert_eq!(gax.responds, Some(false));
+        assert_eq!(gax.text_content_type.as_deref(), Some("sourceCode"));
+        assert_eq!(gax.linked.as_deref(), Some("g1"));
+
+        assert!(col.children.iter().find(|n| n.id == "plain").unwrap().accessibility.is_none());
+        let renamed = col.children.iter().find(|n| n.id == "renamed").unwrap();
+        assert_eq!(renamed.label.as_deref(), Some("Renamed"));
+        assert_eq!(renamed.text.as_deref(), Some("Visible"));
+        assert!(renamed.accessibility.is_none());
+
+        let (x, y) = crate::resolve_label(&tree, "Outer").unwrap();
+        let center = alpha.bounds.center();
+        assert!((x - center.0).abs() < 0.01 && (y - center.1).abs() < 0.01);
+        assert!(crate::resolve_label(&tree, "Alpha").is_err());
+        assert!(crate::resolve_label(&tree, "Beta").is_err());
+        assert!(crate::resolve_label(&tree, "alpha").is_ok());
+        let (gx, gy) = crate::resolve_label(&tree, "Go").unwrap();
+        assert!((gx - go.bounds.x).abs() < 0.01 && (gy - go.bounds.y).abs() < 0.01);
+        assert!(crate::resolve_label(&tree, "One, Two").is_ok());
+        assert!(crate::resolve_label(&tree, "One").is_err());
+        assert!(crate::resolve_label(&tree, "Two").is_err());
+        assert!(crate::resolve_label(&tree, "Name, Value").is_ok());
+        assert!(crate::resolve_label(&tree, "Name").is_err());
+        assert!(crate::resolve_label(&tree, "Renamed").is_ok());
+        assert!(crate::resolve_label(&tree, "Visible").is_err());
+        assert!(crate::resolve_label(&tree, "Secret").is_err());
+        assert!(crate::resolve_label(&tree, "HideA").is_err());
+        assert!(crate::resolve_label(&tree, "Gone").is_err());
+        assert!(crate::resolve_label(&tree, "Ignored").is_ok());
+        assert!(crate::resolve_label(&tree, "書").is_ok());
+        assert!(crate::resolve_label(&tree, "X").is_err());
     }
 }

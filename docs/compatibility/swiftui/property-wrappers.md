@@ -4,7 +4,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 
 | API | Since | iOS | Issue | Notes |
 |---|---|---|---|---|
-| `AccessibilityFocusState` | 15 | ⬜ |  |  |
+| `AccessibilityFocusState` | 15 | 🟠 | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Bool and optional values, including default focus on appear. A technologies filter is stored and not applied |
 | `AppStorage` | 14 | 🟠 |  | No `store:`, optionals, `URL`/`Data`/`Date`; in-memory on WASI |
 | `Bindable` | 17 | ✅ | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) |  |
 | `Binding` | 13 | ✅ |  |  |

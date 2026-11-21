@@ -1,5 +1,6 @@
 //! External API (client <-> host) request/response types.
 
+use crate::view::{A11yAction, A11yAdjust, A11yCustom, A11yPair, A11yPoint, A11yRotor, A11yScroll, A11yZoom};
 use crate::wire::{Appearance, DynamicTypeSize, IosVersion, Viewport};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -228,7 +229,84 @@ pub struct UiNode {
     pub focused: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub disabled: bool,
+    /// Extra accessibility semantics. Label and value stay on the fields above.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accessibility: Option<UiAccessibility>,
     pub children: Vec<UiNode>,
+}
+
+/// Accessibility record on an inspection node (protocol section U). Omitted when the node has none.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UiAccessibility {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identifier: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hidden: Option<bool>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub suppressed: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub traits: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort_priority: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heading: Option<u8>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub input_labels: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub children: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<A11yAction>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub custom: Vec<A11yCustom>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub elements: Vec<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub focused: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_content_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scroll_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rotors: Vec<A11yRotor>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub chart: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ignores_invert_colors: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub responds: Option<bool>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub direct_touch: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub direct_touch_options: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linked: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair: Option<A11yPair>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub large_content: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub large_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activation: Option<A11yPoint>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adjustable: Option<A11yAdjust>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scroll: Option<A11yScroll>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zoom: Option<A11yZoom>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rotor_entry: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub technologies: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drag: Option<A11yPoint>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drop: Option<A11yPoint>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub default_focus: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
