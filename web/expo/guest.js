@@ -47,6 +47,11 @@ export function startGuest({ workerUrl, env = {}, onMessage, onFile }) {
     w.postMessage({ type: '__init', env, pageOrigin: location.origin, workerData: { generation: ++generation, dataDir }, files });
     for (const [module, state] of simulated) w.postMessage({ type: 'simulate', module, state, replay: true });
     w.onmessage = ({ data: m }) => {
+      if (m.type === '__treeJson') {
+        if (w !== worker) return;
+        const v = m.version + base; last = v;
+        return onMessage({ type: 'tree', version: v, rawJson: `{"type":"tree","version":${v},"root":${m.rootJson}}` });
+      }
       if (m.type === 'tree') { m.version += base; last = m.version; }
       if (w !== worker) return; // a worker that was already replaced
       if (m.type === '__fs') { if (!m.entry) return void files.delete(m.path); files.set(m.path, m.entry); return void (m.entry.data && onFile?.(m.path, m.entry.data)); }

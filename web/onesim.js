@@ -144,7 +144,8 @@ export class OneSim {
   }
   /** A guest message (protocol section H). True if the frame changed (present it). */
   receive(msg) {
-    const r = this.wasm.simcore_web_rn_receive(this.#put(JSON.stringify(msg)));
+    const json = typeof msg === "string" ? msg : typeof msg?.rawJson === "string" ? msg.rawJson : JSON.stringify(msg);
+    const r = this.wasm.simcore_web_rn_receive(this.#put(json));
     if (r < 0) throw new Error(dec.decode(this.#take()));
     return r === 1;
   }
