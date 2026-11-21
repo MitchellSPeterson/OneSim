@@ -34,11 +34,11 @@ pub struct SpriteKey {
     pub anchor: (i32, i32),
 }
 
-fn hash_color<H: Hasher>(c: Color, h: &mut H) {
+pub(super) fn hash_color<H: Hasher>(c: Color, h: &mut H) {
     [c.r, c.g, c.b, c.a].map(f32::to_bits).hash(h);
 }
 
-fn hash_vector<H: Hasher>(v: &VectorShape, h: &mut H) {
+pub(super) fn hash_vector<H: Hasher>(v: &VectorShape, h: &mut H) {
     match &v.geom {
         VectorGeom::Ellipse => 0u8.hash(h),
         VectorGeom::RoundedRect { radii, continuous } => {
@@ -120,14 +120,14 @@ fn hash_vector<H: Hasher>(v: &VectorShape, h: &mut H) {
     }
 }
 
-fn hash_glyph<H: Hasher>(g: Glyph, h: &mut H) {
+pub(super) fn hash_glyph<H: Hasher>(g: Glyph, h: &mut H) {
     std::mem::discriminant(&g).hash(h);
     if let Glyph::Arc { from, to, width } = g {
         (from, to, width).hash(h);
     }
 }
 
-fn hash_symbol<H: Hasher>(sy: &SymbolRun, h: &mut H) {
+pub(super) fn hash_symbol<H: Hasher>(sy: &SymbolRun, h: &mut H) {
     sy.spec.name.hash(h);
     sy.spec.point_size.to_bits().hash(h);
     sy.spec.weight.hash(h);
@@ -201,7 +201,7 @@ fn hash_span<H: Hasher>(sp: &Span, h: &mut H) {
     }
 }
 
-fn hash_text<H: Hasher>(t: &TextRun, h: &mut H) {
+pub(super) fn hash_text<H: Hasher>(t: &TextRun, h: &mut H) {
     t.text.hash(h);
     hash_font_spec(&t.font, h);
     hash_color(t.color, h);
@@ -437,7 +437,7 @@ fn combine(parts: Vec<(i32, i32, Pixmap)>) -> Option<Sprite> {
 }
 
 /// Crop a tile to its non-transparent pixels (`None` if fully transparent).
-fn crop(x: i32, y: i32, p: Pixmap) -> Option<(i32, i32, Pixmap)> {
+pub(super) fn crop(x: i32, y: i32, p: Pixmap) -> Option<(i32, i32, Pixmap)> {
     let (w, h) = (p.width() as usize, p.height() as usize);
     let d = p.data();
     let live = |i: usize| d[i * 4 + 3] != 0;

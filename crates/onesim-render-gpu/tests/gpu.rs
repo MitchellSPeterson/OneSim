@@ -408,3 +408,437 @@ fn forced_cpu_backdrop_path_matches() {
     assert_eq!(g.backdrop_counts(), (0, 1));
     assert!(g.diagnostics().limitations[0].contains("CPU composite"));
 }
+
+fn build_view(tree: &serde_json::Value, size: (f64, f64), dark: bool, fonts: &mut Fonts) -> Scene {
+    let root: onesim_protocol::ViewNode = serde_json::from_value(tree.clone()).expect("view tree parses");
+    let dev = onesim_render::Device {
+        island: None,
+        safe_top: 0.0,
+        safe_bottom: 0.0,
+        ..*onesim_render::device(onesim_render::DEFAULT_DEVICE).unwrap()
+    };
+    let scroll = std::collections::HashMap::new();
+    let p = onesim_render::SceneParams {
+        viewport: size,
+        device: &dev,
+        scale: 3.0,
+        appearance: if dark { Appearance::Dark } else { Appearance::Light },
+        ios: onesim_protocol::IosVersion::Ios26,
+        dynamic_type: Default::default(),
+        scroll: &scroll,
+        sheets: &Default::default(),
+        focus: None,
+        overscroll: false,
+        status_bar: false,
+        chrome: Default::default(),
+    };
+    onesim_render::build_scene(&root, &p, fonts)
+}
+
+fn rgba_json(r: f64, g: f64, b: f64, a: f64) -> serde_json::Value {
+    serde_json::json!({ "r": r, "g": g, "b": b, "a": a })
+}
+
+fn colorful_card(id: &str, w: f64, h: f64, extra_mods: Vec<serde_json::Value>) -> serde_json::Value {
+    let mut mods = vec![
+        serde_json::json!({ "frame": { "width": w, "height": h } }),
+        serde_json::json!({ "backgroundPaint": {
+            "gradient": {
+                "kind": "linear",
+                "start": [0.0, 0.0],
+                "end": [1.0, 1.0],
+                "stops": [
+                    { "location": 0.0, "color": rgba_json(0.95, 0.25, 0.20, 1.0) },
+                    { "location": 0.5, "color": rgba_json(0.20, 0.78, 0.35, 1.0) },
+                    { "location": 1.0, "color": rgba_json(0.10, 0.45, 0.95, 1.0) }
+                ]
+            }
+        }}),
+        serde_json::json!({ "cornerRadius": 12.0 }),
+    ];
+    mods.extend(extra_mods);
+    serde_json::json!({
+        "kind": "zstack",
+        "id": id,
+        "children": [
+            {
+                "kind": "text",
+                "id": format!("{id}-lbl"),
+                "text": "FX",
+                "modifiers": [
+                    { "foregroundColor": rgba_json(1.0, 1.0, 1.0, 1.0) },
+                    { "fontWeight": "bold" }
+                ]
+            }
+        ],
+        "modifiers": mods
+    })
+}
+
+fn wrap_bg(child: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "kind": "zstack",
+        "id": "root",
+        "children": [child],
+        "modifiers": [
+            { "frame": { "maxWidth": "inf", "maxHeight": "inf" } },
+            { "backgroundPaint": rgba_json(0.95, 0.96, 0.98, 1.0) }
+        ]
+    })
+}
+
+#[test]
+fn composite_scale_rotation_blur_mask_match_cpu() {
+    let Some(mut g) = gpu() else { return };
+    let mut fonts = Fonts::new();
+    let sz = (180.0, 140.0);
+
+    // 1. scaleEffect: scale up, scale down, negative mirror, custom anchor.
+    let scale_cases = [
+        ("scale-up", [1.35, 0.0, 0.0, 1.25, 0.0, 0.0], [0.5, 0.5]),
+        ("scale-down", [0.6, 0.0, 0.0, 0.7, 0.0, 0.0], [0.5, 0.5]),
+        ("scale-mirror", [-1.0, 0.0, 0.0, 1.15, 0.0, 0.0], [0.5, 0.5]),
+        ("scale-anchor", [1.25, 0.0, 0.0, 0.85, 0.0, 0.0], [0.0, 1.0]),
+    ];
+    for (name, matrix, anchor) in scale_cases {
+        let card = colorful_card(name, 80.0, 50.0, vec![
+            serde_json::json!({ "effect": { "kind": "affine", "matrix": matrix, "anchor": anchor } }),
+        ]);
+        let sc = build_view(&wrap_bg(card), sz, false, &mut fonts);
+        compare(&mut g, name, &sc, 1.0);
+    }
+
+    // 2. rotationEffect + offset + opacity + chained outer modifiers.
+    let rad = 20.0_f64.to_radians();
+    let rot_m = [rad.cos(), rad.sin(), -rad.sin(), rad.cos(), 0.0, 0.0];
+    let chained = colorful_card("chained", 80.0, 50.0, vec![
+        serde_json::json!({ "offset": { "x": 10.0, "y": -6.0 } }),
+        serde_json::json!({ "effect": { "kind": "affine", "matrix": rot_m, "anchor": [0.5, 0.5] } }),
+        serde_json::json!({ "effect": { "kind": "affine", "matrix": [-1.0, 0.0, 0.0, 1.15, 0.0, 0.0], "anchor": [0.5, 0.5] } }),
+        serde_json::json!({ "opacity": 0.8 }),
+    ]);
+    let sc = build_view(&wrap_bg(chained), sz, false, &mut fonts);
+    compare(&mut g, "rot-offset-op", &sc, 1.0);
+
+    // 3. blur (non-opaque, opaque, and blurred shape wrapped in outer scaleEffect).
+    let blur_non_opaque = colorful_card("blur-alpha", 80.0, 50.0, vec![
+        serde_json::json!({ "effect": { "kind": "blur", "radius": 5.0, "opaque": false } }),
+    ]);
+    compare(&mut g, "blur-non-opaque", &build_view(&wrap_bg(blur_non_opaque), sz, false, &mut fonts), 1.0);
+
+    let blur_opaque = colorful_card("blur-opaque", 80.0, 50.0, vec![
+        serde_json::json!({ "effect": { "kind": "blur", "radius": 5.0, "opaque": true } }),
+    ]);
+    compare(&mut g, "blur-opaque", &build_view(&wrap_bg(blur_opaque), sz, false, &mut fonts), 1.0);
+
+    let blur_scaled = colorful_card("blur-scaled", 80.0, 50.0, vec![
+        serde_json::json!({ "effect": { "kind": "blur", "radius": 4.0, "opaque": false } }),
+        serde_json::json!({ "effect": { "kind": "affine", "matrix": [1.3, 0.0, 0.0, 0.85, 0.0, 0.0], "anchor": [0.5, 0.5] } }),
+    ]);
+    compare(&mut g, "blur-scaled", &build_view(&wrap_bg(blur_scaled), sz, false, &mut fonts), 1.0);
+
+    // 4. mask and invertedMask with gradient mask source.
+    let grad_mask = serde_json::json!({
+        "kind": "shape",
+        "id": "mask-src",
+        "shape": "rectangle",
+        "fill": {
+            "gradient": {
+                "kind": "linear",
+                "start": [0.0, 0.0],
+                "end": [1.0, 0.0],
+                "stops": [
+                    { "location": 0.0, "color": rgba_json(0.0, 0.0, 0.0, 1.0) },
+                    { "location": 1.0, "color": rgba_json(0.0, 0.0, 0.0, 0.0) }
+                ]
+            }
+        }
+    });
+    let masked = colorful_card("masked", 90.0, 60.0, vec![
+        serde_json::json!({ "mask": { "view": grad_mask.clone(), "alignment": "center" } }),
+    ]);
+    compare(&mut g, "mask-grad", &build_view(&wrap_bg(masked), sz, false, &mut fonts), 1.0);
+
+    let inv_masked = colorful_card("inv-masked", 90.0, 60.0, vec![
+        serde_json::json!({ "invertedMask": { "view": grad_mask, "alignment": "center" } }),
+    ]);
+    compare(&mut g, "inv-mask-grad", &build_view(&wrap_bg(inv_masked), sz, false, &mut fonts), 1.0);
+}
+
+#[test]
+fn composite_group_blend_and_canvas_match_cpu_without_full_frame_fallback() {
+    let Some(mut g) = gpu() else { return };
+    let mut fonts = Fonts::new();
+    let sz = (180.0, 140.0);
+
+    // 5a. compositingGroup containing .blendMode(.multiply)
+    let group_blend = wrap_bg(serde_json::json!({
+        "kind": "zstack",
+        "id": "group",
+        "children": [
+            {
+                "kind": "shape",
+                "id": "c1",
+                "shape": "circle",
+                "fill": rgba_json(0.95, 0.30, 0.25, 1.0),
+                "modifiers": [
+                    { "frame": { "width": 60.0, "height": 60.0 } },
+                    { "offset": { "x": -16.0, "y": 0.0 } }
+                ]
+            },
+            {
+                "kind": "shape",
+                "id": "c2",
+                "shape": "circle",
+                "fill": rgba_json(0.20, 0.65, 0.95, 1.0),
+                "modifiers": [
+                    { "frame": { "width": 60.0, "height": 60.0 } },
+                    { "offset": { "x": 16.0, "y": 0.0 } },
+                    { "effect": { "kind": "blend", "mode": "multiply" } }
+                ]
+            }
+        ],
+        "modifiers": [
+            { "frame": { "width": 110.0, "height": 70.0 } },
+            { "effect": { "kind": "group", "opaque": false } }
+        ]
+    }));
+    let sc_group = build_view(&group_blend, sz, false, &mut fonts);
+    compare(&mut g, "group-multiply", &sc_group, 1.0);
+
+    // Confirm Builder emits native background Op::Fill + bounded Op::Sprite (not a full-frame fallback).
+    let dl = onesim_render::Builder::new().build(&sc_group, &mut fonts, 3.0);
+    let has_native_fill = dl.ops.iter().any(|op| matches!(op, onesim_render::display::Op::Fill { .. }));
+    let has_bounded_sprite = dl.ops.iter().any(|op| {
+        if let onesim_render::display::Op::Sprite { id, .. } = op {
+            dl.added.iter().any(|r| r.id == *id && (r.width < dl.width || r.height < dl.height))
+        } else {
+            false
+        }
+    });
+    assert!(has_native_fill, "compositingGroup should keep native background Op::Fill");
+    assert!(has_bounded_sprite, "compositingGroup should emit bounded Op::Sprite, not full-frame fallback");
+
+    // 5b. Canvas drawing with .blendMode(.copy) and .blendMode(.multiply)
+    let canvas_tree = wrap_bg(serde_json::json!({
+        "kind": "canvas",
+        "id": "cvs",
+        "opaque": false,
+        "children": [
+            {
+                "kind": "canvasItem",
+                "id": "ci-base",
+                "origin": [10.0, 10.0],
+                "anchor": [0.0, 0.0],
+                "size": [60.0, 50.0],
+                "child": {
+                    "kind": "shape",
+                    "id": "ci-r1",
+                    "shape": "rectangle",
+                    "fill": rgba_json(0.95, 0.75, 0.15, 1.0)
+                }
+            },
+            {
+                "kind": "canvasItem",
+                "id": "ci-mult",
+                "origin": [35.0, 20.0],
+                "anchor": [0.0, 0.0],
+                "size": [55.0, 45.0],
+                "child": {
+                    "kind": "shape",
+                    "id": "ci-r2",
+                    "shape": "circle",
+                    "fill": rgba_json(0.25, 0.55, 0.95, 1.0),
+                    "modifiers": [
+                        { "effect": { "kind": "blend", "mode": "multiply" } }
+                    ]
+                }
+            },
+            {
+                "kind": "canvasItem",
+                "id": "ci-copy",
+                "origin": [55.0, 35.0],
+                "anchor": [0.0, 0.0],
+                "size": [35.0, 30.0],
+                "child": {
+                    "kind": "shape",
+                    "id": "ci-r3",
+                    "shape": "rectangle",
+                    "fill": rgba_json(0.20, 0.85, 0.45, 0.85),
+                    "modifiers": [
+                        { "effect": { "kind": "blend", "mode": "copy" } }
+                    ]
+                }
+            }
+        ],
+        "modifiers": [
+            { "frame": { "width": 110.0, "height": 80.0 } }
+        ]
+    }));
+    let sc_canvas = build_view(&canvas_tree, sz, false, &mut fonts);
+    compare(&mut g, "canvas-blends", &sc_canvas, 1.0);
+
+    let dl_canvas = onesim_render::Builder::new().build(&sc_canvas, &mut fonts, 3.0);
+    let canvas_has_fill = dl_canvas.ops.iter().any(|op| matches!(op, onesim_render::display::Op::Fill { .. }));
+    let canvas_has_bounded = dl_canvas.ops.iter().any(|op| {
+        if let onesim_render::display::Op::Sprite { id, .. } = op {
+            dl_canvas.added.iter().any(|r| r.id == *id && (r.width < dl_canvas.width || r.height < dl_canvas.height))
+        } else {
+            false
+        }
+    });
+    assert!(canvas_has_fill, "Canvas should keep native background Op::Fill");
+    assert!(canvas_has_bounded, "Canvas should emit bounded Op::Sprite, not full-frame fallback");
+}
+
+#[test]
+fn composite_color_filters_and_projection_match_cpu() {
+    let Some(mut g) = gpu() else { return };
+    let mut fonts = Fonts::new();
+    let sz = (180.0, 140.0);
+
+    let filters: [(&str, serde_json::Value); 10] = [
+        ("brightness", serde_json::json!({ "kind": "brightness", "amount": 0.25 })),
+        ("contrast", serde_json::json!({ "kind": "contrast", "amount": 1.6 })),
+        ("saturation", serde_json::json!({ "kind": "saturation", "amount": 0.3 })),
+        ("grayscale", serde_json::json!({ "kind": "grayscale", "amount": 0.8 })),
+        ("hue-rotation", serde_json::json!({ "kind": "hueRotation", "radians": 1.2 })),
+        ("color-invert", serde_json::json!({ "kind": "colorInvert", "amount": 1.0 })),
+        ("color-multiply", serde_json::json!({ "kind": "colorMultiply", "color": rgba_json(0.25, 0.85, 0.55, 1.0) })),
+        ("alpha-thresh", serde_json::json!({ "kind": "alphaThreshold", "min": 0.3, "max": 1.0, "color": rgba_json(0.90, 0.20, 0.60, 1.0) })),
+        ("luma-alpha", serde_json::json!({ "kind": "luminanceToAlpha" })),
+        ("projection-3d", serde_json::json!({ "kind": "projection", "matrix": [0.85, 0.08, 0.0015, -0.05, 0.92, 0.0008, 6.0, 2.0, 1.0] })),
+    ];
+
+    for (name, effect) in filters {
+        let card = colorful_card(name, 88.0, 56.0, vec![
+            serde_json::json!({ "effect": effect }),
+        ]);
+        let sc = build_view(&wrap_bg(card), sz, false, &mut fonts);
+        compare(&mut g, name, &sc, 1.0);
+    }
+}
+
+#[test]
+fn composite_interactions_with_clip_glass_and_top_level_blend_match_cpu() {
+    let Some(mut g) = gpu() else { return };
+    let mut fonts = Fonts::new();
+    let sz = (180.0, 140.0);
+
+    // 7a. Composite node inside a rounded clip container (partially clipped).
+    let rad = 22.0_f64.to_radians();
+    let rot_m = [rad.cos(), rad.sin(), -rad.sin(), rad.cos(), 0.0, 0.0];
+    let clipped_composite = wrap_bg(serde_json::json!({
+        "kind": "zstack",
+        "id": "clip-box",
+        "children": [
+            colorful_card("inner-rot", 88.0, 56.0, vec![
+                serde_json::json!({ "effect": { "kind": "affine", "matrix": rot_m, "anchor": [0.5, 0.5] } }),
+                serde_json::json!({ "effect": { "kind": "affine", "matrix": [1.35, 0.0, 0.0, 1.35, 0.0, 0.0], "anchor": [0.5, 0.5] } }),
+            ])
+        ],
+        "modifiers": [
+            { "frame": { "width": 92.0, "height": 64.0 } },
+            { "backgroundPaint": rgba_json(0.88, 0.90, 0.94, 1.0) },
+            { "cornerRadius": 18.0 }
+        ]
+    }));
+    compare(&mut g, "clip-composite", &build_view(&clipped_composite, sz, false, &mut fonts), 1.0);
+
+    // 7b. Composite node painted BEHIND a Liquid Glass node (GPU glass samples it; 0 CPU backdrops).
+    let behind_glass = wrap_bg(serde_json::json!({
+        "kind": "zstack",
+        "id": "glass-over-fx",
+        "children": [
+            colorful_card("fx-bg", 120.0, 80.0, vec![
+                serde_json::json!({ "effect": { "kind": "affine", "matrix": [1.15, 0.0, 0.0, 1.15, 0.0, 0.0], "anchor": [0.5, 0.5] } }),
+                serde_json::json!({ "effect": { "kind": "hueRotation", "radians": 0.9 } }),
+            ]),
+            {
+                "kind": "text",
+                "id": "glass-pill",
+                "text": "Glass",
+                "modifiers": [
+                    { "padding": { "top": 10.0, "leading": 22.0, "bottom": 10.0, "trailing": 22.0 } },
+                    { "glass": { "variant": "regular", "interactive": false, "shape": { "shape": "capsule" } } }
+                ]
+            }
+        ],
+        "modifiers": [
+            { "frame": { "width": 150.0, "height": 100.0 } }
+        ]
+    }));
+    let sc_glass = build_view(&behind_glass, sz, false, &mut fonts);
+    let before = g.backdrop_counts();
+    compare(&mut g, "fx-behind-glass", &sc_glass, 1.0);
+    let after = g.backdrop_counts();
+    let (gpu_nodes, cpu_nodes) = (after.0 - before.0, after.1 - before.1);
+    assert!(gpu_nodes > 0 && cpu_nodes == 0, "expected GPU glass over composite node, got gpu={gpu_nodes} cpu={cpu_nodes}");
+
+    // 7c. Top-level .blendMode(.multiply) outside any compositingGroup.
+    let top_blend = wrap_bg(serde_json::json!({
+        "kind": "zstack",
+        "id": "top-blend",
+        "children": [
+            {
+                "kind": "shape",
+                "id": "tb-base",
+                "shape": "rectangle",
+                "fill": rgba_json(0.95, 0.80, 0.20, 1.0),
+                "modifiers": [
+                    { "frame": { "width": 110.0, "height": 70.0 } }
+                ]
+            },
+            {
+                "kind": "shape",
+                "id": "tb-mult",
+                "shape": "circle",
+                "fill": rgba_json(0.25, 0.50, 0.95, 1.0),
+                "modifiers": [
+                    { "frame": { "width": 70.0, "height": 70.0 } },
+                    { "effect": { "kind": "blend", "mode": "multiply" } }
+                ]
+            }
+        ]
+    }));
+    compare(&mut g, "top-multiply", &build_view(&top_blend, sz, false, &mut fonts), 1.0);
+}
+
+#[test]
+fn animated_scale_effect_over_glass_matches_cpu_and_reuses_sprites() {
+    let Some(mut g) = gpu() else { return };
+    let mut fonts = Fonts::new();
+    let mut builder = onesim_render::Builder::new();
+    let sz = (180.0, 140.0);
+    let scales = [1.0, 1.08, 1.18, 0.92, 1.05, 1.0];
+
+    for (i, s) in scales.iter().enumerate() {
+        let tree = wrap_bg(serde_json::json!({
+            "kind": "zstack",
+            "id": "anim-root",
+            "children": [
+                colorful_card("bg-card", 130.0, 90.0, vec![]),
+                {
+                    "kind": "text",
+                    "id": "glass-card",
+                    "text": "Pulse",
+                    "modifiers": [
+                        { "padding": { "top": 12.0, "leading": 24.0, "bottom": 12.0, "trailing": 24.0 } },
+                        { "glass": { "variant": "regular", "interactive": false, "shape": { "shape": "capsule" } } },
+                        { "effect": { "kind": "affine", "matrix": [*s, 0.0, 0.0, *s, 0.0, 0.0], "anchor": [0.5, 0.5] } }
+                    ]
+                }
+            ]
+        }));
+        let sc = build_view(&tree, sz, false, &mut fonts);
+        compare(&mut g, &format!("anim-scale-{i}"), &sc, 1.0);
+        let dl = builder.build(&sc, &mut fonts, 3.0);
+        if i > 0 {
+            assert!(
+                dl.added.is_empty(),
+                "frame {i} (scale={s}) should reuse cached sprites, but added {} resources",
+                dl.added.len()
+            );
+        }
+    }
+}

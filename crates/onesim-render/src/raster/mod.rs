@@ -1,3 +1,4 @@
+pub(crate) mod composite;
 mod glyphs;
 mod shadow;
 mod sprite;
@@ -29,6 +30,39 @@ pub(crate) struct PaintClip {
 impl PaintClip {
     pub(crate) fn viewport(width: u32, height: u32) -> Self {
         Self { left: 0.0, top: 0.0, right: width as f32, bottom: height as f32 }
+    }
+
+    pub(crate) fn empty() -> Self {
+        Self { left: 0.0, top: 0.0, right: 0.0, bottom: 0.0 }
+    }
+
+    pub(crate) fn from_ltrb(left: f32, top: f32, right: f32, bottom: f32) -> Self {
+        Self { left, top, right, bottom }
+    }
+
+    pub(crate) fn left(self) -> f32 {
+        self.left
+    }
+
+    pub(crate) fn top(self) -> f32 {
+        self.top
+    }
+
+    pub(crate) fn right(self) -> f32 {
+        self.right
+    }
+
+    pub(crate) fn bottom(self) -> f32 {
+        self.bottom
+    }
+
+    pub(crate) fn intersect(self, other: Self) -> Self {
+        Self {
+            left: self.left.max(other.left),
+            top: self.top.max(other.top),
+            right: self.right.min(other.right),
+            bottom: self.bottom.min(other.bottom),
+        }
     }
 
     fn bounds(b: crate::scene::Rect, scale: f32) -> Option<Self> {
@@ -409,6 +443,21 @@ pub fn render_reusing(scene: &Scene, fonts: &mut Fonts, scale: f64, mut pixels: 
     };
     painter.paint_scene(&mut pm, &scene.nodes);
     pm
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn render_subtree_into(
+    pm: &mut Pixmap,
+    roots: &[usize],
+    nodes: &[crate::Node],
+    children: &[Vec<usize>],
+    fonts: &mut Fonts,
+    scale: f32,
+    dark: bool,
+    ios: onesim_protocol::IosVersion,
+) {
+    let mut painter = ScenePainter { fonts, scale, ios, dark };
+    painter.subtree(pm, (PaintClip::viewport(pm.width(), pm.height()), None), roots, nodes, children);
 }
 
 struct ScenePainter<'a> {
