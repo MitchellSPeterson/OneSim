@@ -1,0 +1,10 @@
+[package]
+name = "onesim-display"
+description = "Framework-neutral display list, glass parameters, and error types shared between OneSim renderers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+onesim-protocol = { path = "../onesim-protocol" }

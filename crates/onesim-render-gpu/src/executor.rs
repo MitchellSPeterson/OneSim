@@ -15,8 +15,8 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use onesim_render::display::{DisplayList, Op, RRect, Resource, Sampling};
-use onesim_render::{FrameTimings, RenderError};
+use onesim_display::display::{DisplayList, Op, RRect, Resource, Sampling};
+use onesim_display::{FrameTimings, RenderError};
 use vello::kurbo::{Affine, Join, Point, Rect, RoundedRect, Stroke};
 use vello::peniko::{color::AlphaColor, Blob, Color, Extend, Fill, Gradient, ImageAlphaType, ImageBrush, ImageData, ImageFormat, ImageQuality, InterpolationAlphaSpace};
 use vello::wgpu;
@@ -87,7 +87,7 @@ fn rrect(r: &RRect) -> RoundedRect {
     RoundedRect::new(r.x as f64, r.y as f64, (r.x + r.w) as f64, (r.y + r.h) as f64, r.r.min(r.w / 2.0).min(r.h / 2.0).max(0.0) as f64)
 }
 
-fn c8(c: onesim_render::Color) -> Color {
+fn c8(c: onesim_display::Color) -> Color {
     let q = |v: f32| (v * 255.0).round() as u8;
     Color::from_rgba8(q(c.r), q(c.g), q(c.b), q(c.a))
 }
@@ -409,7 +409,7 @@ impl Executor {
                     self.scene.draw_image(&ImageBrush::new(data.clone()).with_quality(ImageQuality::Low), Affine::translate((*x as f64, *y as f64)));
                     dirty = true;
                 }
-                Op::Glass { spec, .. } if spec.variant == onesim_render::glass::GlassVariant::Identity => {}
+                Op::Glass { spec, .. } if spec.variant == onesim_display::glass::GlassVariant::Identity => {}
                 Op::Glass { .. } | Op::BackdropShadow { .. } | Op::Edge(_) => {
                     // Close the layers, render what is pending and make it the accumulation.
                     for _ in 0..clips.len() {

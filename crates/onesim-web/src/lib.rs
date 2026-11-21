@@ -199,7 +199,7 @@ fn submit(json: &[u8], version: u64) -> Result<(), String> {
         s.inter.version = version;
         s.layout_cache.clear();
         s.tree = Some(root);
-        s.tree_json = text.to_string();
+        s.tree_json.clear();
         update_scene(&mut s);
         Ok(())
     })?;
@@ -375,8 +375,14 @@ pub extern "C" fn simcore_web_set_device(len: usize) -> i32 {
 /// Returns 0 on success, 1 on error.
 #[no_mangle]
 pub extern "C" fn simcore_web_submit_tree(len: usize, version: f64) -> i32 {
-    let bytes = with(|s| s.buf[..len.min(s.buf.len())].to_vec());
-    match submit(&bytes, version.max(0.0) as u64) {
+    let buf = with(|s| std::mem::take(&mut s.buf));
+    let res = submit(&buf[..len.min(buf.len())], version.max(0.0) as u64);
+    with(|s| {
+        if s.buf.is_empty() {
+            s.buf = buf;
+        }
+    });
+    match res {
         Ok(()) => 0,
         Err(e) => {
             set_err(e);
@@ -614,6 +620,19 @@ fn deliver(out: Vec<Out>) -> i32 {
     i32::from(any)
 }
 
+/// React Native mode: deliver coalesced drag output without rebuilding the scene on Redraw.
+fn deliver_coalesced(out: Vec<Out>) -> i32 {
+    let any = !out.is_empty();
+    for o in out {
+        match o {
+            Out::Send(m, _) => with(|s| s.rn.as_mut().map_or((), |rn| rn.outbox.push(m))),
+            Out::Effect(Effect::None | Effect::Redraw) => {}
+            Out::Effect(e) => drop(dispatch(e)),
+        }
+    }
+    i32::from(any)
+}
+
 /// Run `f` against the React Native input state, the interaction and the current scene and tree.
 /// `None` outside React Native mode or before the first tree.
 fn with_rn<R>(f: impl FnOnce(&mut RnInput, &mut Interaction, &RnCtx) -> R) -> Option<R> {
@@ -644,21 +663,30 @@ pub extern "C" fn simcore_web_scroll(x: f64, y: f64, dx: f64, dy: f64) -> i32 {
     e.map_or(0, dispatch)
 }
 
-/// Touch drag (finger scrolling). phase: 0 begin (at the touch-down point), 1 move, 2 end (lift).
+/// Touch drag (finger scrolling). phase: 0 begin (at the touch-down point), 1 move, 2 end (lift),
+/// 3 coalesced move (updates drag state without rebuilding the scene unless a non-Redraw effect fires).
 /// x, y in points; `t` is the event time in ms. Returns 1 if the frame changed. After an end,
 /// call `simcore_web_tick` every frame while it returns 1 (momentum, bounce).
 #[no_mangle]
 pub extern "C" fn simcore_web_drag(phase: i32, x: f64, y: f64, t: f64) -> i32 {
+    let coalesced = phase == 3;
     let phase = match phase {
         0 => DragPhase::Begin,
-        1 => DragPhase::Move,
+        1 | 3 => DragPhase::Move,
         _ => DragPhase::End,
     };
     if let Some(out) = with_rn(|rn, inter, cx| rn.drag(inter, cx, phase, x, y, t)) {
-        return deliver(out);
+        return if coalesced { deliver_coalesced(out) } else { deliver(out) };
     }
     sync_guest_clock();
     let e = with(|s| s.scene.as_ref().map(|sc| s.inter.drag(sc, phase, x, y, t)));
+    if coalesced {
+        return match e {
+            Some(Effect::None) | None => 0,
+            Some(Effect::Redraw) => 1,
+            Some(other) => dispatch(other),
+        };
+    }
     e.map_or(0, dispatch)
 }
 
@@ -864,14 +892,28 @@ pub extern "C" fn simcore_web_fb_width() -> u32 {
 pub extern "C" fn simcore_web_fb_height() -> u32 {
     with_frame(|s| s.fb_size.1)
 }
+fn ensure_tree_json(s: &mut State) {
+    if s.tree_json.is_empty() {
+        if let Some(root) = &s.tree {
+            s.tree_json = serde_json::to_string(root).unwrap_or_default();
+        }
+    }
+}
+
 /// Latest submitted tree JSON (debug hook); valid until the next submit.
 #[no_mangle]
 pub extern "C" fn simcore_web_tree_ptr() -> *const u8 {
-    with(|s| s.tree_json.as_ptr())
+    with(|s| {
+        ensure_tree_json(s);
+        s.tree_json.as_ptr()
+    })
 }
 #[no_mangle]
 pub extern "C" fn simcore_web_tree_len() -> usize {
-    with(|s| s.tree_json.len())
+    with(|s| {
+        ensure_tree_json(s);
+        s.tree_json.len()
+    })
 }
 
 // ---- React Native (the guest runs in a browser Worker; docs/web.md) ----------------------------------------------
@@ -913,7 +955,7 @@ pub extern "C" fn simcore_web_rn_receive(len: usize) -> i32 {
             with(|s| {
                 s.version = Some(version);
                 s.inter.version = version;
-                s.tree_json = serde_json::to_string(&root).unwrap_or_default();
+                s.tree_json.clear();
                 s.layout_cache.clear();
                 s.tree = Some(root);
                 update_scene(s);
@@ -1231,5 +1273,27 @@ mod tests {
         // Next tick at rest: nothing moves, returns 0.
         assert_eq!(simcore_web_tick(16.0), 0);
         assert_eq!(simcore_web_frame_version(), end_version);
+    }
+
+    #[test]
+    fn lazy_tree_json_and_coalesced_drag() {
+        let _ = simcore_web_init(200.0, 300.0, 1.0, 0);
+        let tree = r#"{"kind":"scroll","id":"scroll","child":{"kind":"rectangle","id":"rect","modifiers":[{"frame":{"height":800}}]}}"#;
+        assert_eq!(unsafe { simcore_submit_tree(tree.as_ptr(), tree.len(), 1) }, 0);
+        assert!(with(|s| s.tree_json.is_empty()), "tree_json is lazy until queried");
+        let len = simcore_web_tree_len();
+        let ptr = simcore_web_tree_ptr();
+        assert!(len > 0);
+        let text = std::str::from_utf8(unsafe { std::slice::from_raw_parts(ptr, len) }).unwrap();
+        assert!(text.contains("\"scroll\""));
+
+        // Coalesced drag moves (phase 3) update drag state without rebuilding the scene.
+        assert_eq!(simcore_web_drag(0, 100.0, 200.0, 0.0), 0);
+        let v_before = simcore_web_frame_version();
+        assert_eq!(simcore_web_drag(3, 100.0, 170.0, 4.0), 1);
+        assert_eq!(simcore_web_drag(3, 100.0, 140.0, 8.0), 1);
+        assert_eq!(simcore_web_frame_version(), v_before, "coalesced move skips scene rebuild");
+        assert_eq!(simcore_web_drag(1, 100.0, 120.0, 12.0), 1);
+        assert_ne!(simcore_web_frame_version(), v_before, "final move rebuilds scene");
     }
 }

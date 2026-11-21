@@ -260,9 +260,12 @@ async function main() {
       if (!drag.scrolling) sim.drag("begin", drag.x, drag.y, e.timeStamp);
       drag.scrolling = true;
       const samples = e.getCoalescedEvents?.();
-      for (const c of samples?.length ? samples : [e]) {
+      const list = samples?.length ? samples : [e];
+      for (let i = 0; i < list.length; i++) {
+        const c = list[i];
         const [x, y] = toPoints(c);
-        sim.drag("move", x, y, c.timeStamp);
+        if (i + 1 < list.length) sim.dragCoalesced(x, y, c.timeStamp);
+        else sim.drag("move", x, y, c.timeStamp);
       }
     });
   });

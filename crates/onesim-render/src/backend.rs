@@ -9,7 +9,8 @@
 //! (each at least 1). Full-screen scenes are opaque, so premultiplied equals straight there.
 
 use std::fmt;
-use std::time::Duration;
+
+pub use onesim_display::{FrameTimings, RenderError};
 
 use crate::{Fonts, Scene};
 
@@ -71,32 +72,6 @@ impl BackendPref {
     }
 }
 
-/// Why a frame failed. Callers recover differently per variant.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum RenderError {
-    /// Surface lost/outdated/resized underneath us: reconfigure and retry the same scene.
-    SurfaceLost(String),
-    /// Device lost or out of memory: drop GPU resources; reinitialize or fall back to CPU.
-    DeviceLost(String),
-    /// The scene needs something this backend cannot draw.
-    Unsupported(String),
-    /// Anything else (bad size, encoder failure, ...).
-    Other(String),
-}
-
-impl fmt::Display for RenderError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            RenderError::SurfaceLost(m) => write!(f, "surface lost: {m}"),
-            RenderError::DeviceLost(m) => write!(f, "device lost: {m}"),
-            RenderError::Unsupported(m) => write!(f, "unsupported: {m}"),
-            RenderError::Other(m) => f.write_str(m),
-        }
-    }
-}
-
-impl std::error::Error for RenderError {}
-
 /// One captured frame (see the module docs for the pixel convention).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Frame {
@@ -112,17 +87,6 @@ impl Frame {
         let pm = tiny_skia::Pixmap::from_vec(self.rgba.clone(), size).ok_or("frame size does not match its pixels")?;
         pm.encode_png().map_err(|e| e.to_string())
     }
-}
-
-/// Per-frame stage timings. A stage a backend does not have stays zero.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct FrameTimings {
-    /// Scene to backend commands (CPU: the whole raster).
-    pub encode: Duration,
-    /// GPU submission until work is done (GPU only).
-    pub gpu: Duration,
-    /// Texture to CPU copy (GPU only).
-    pub readback: Duration,
 }
 
 /// What a backend reports about itself, for logs, `--renderer` diagnostics and the RPC.
