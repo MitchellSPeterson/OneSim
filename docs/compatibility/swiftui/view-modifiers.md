@@ -100,7 +100,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.cuttable` | 27 | ⬜ |  |  |
 | `.datePickerStyle` | 13 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Supports built-in and custom styles. Native wheel momentum is incomplete. |
 | `.defaultAdaptableTabBarPlacement` | 18 | ⬜ |  |  |
-| `.defaultAppStorage` | 14 | ⬜ |  |  |
+| `.defaultAppStorage` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) |  |
 | `.defaultFocus` | 17 | ⬜ |  |  |
 | `.defaultHoverEffect` | 17 | ⬜ |  |  |
 | `.defaultScrollAnchor` | 17 | ⬜ |  |  |
@@ -267,7 +267,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.onInteractiveResizeChange` | 26 | ⬜ |  |  |
 | `.onKeyPress` | 17 | ⬜ |  |  |
 | `.onLongPressGesture` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
-| `.onOpenURL` | 14 | ⬜ |  |  |
+| `.onOpenURL` | 14 | 🟠 | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Every handler in the window runs, in view order; not on the web build (no Foundation `URL`) |
 | `.onPencilDoubleTap` | 17.5 | ⬜ |  |  |
 | `.onPencilSqueeze` | 17.5 | ⬜ |  |  |
 | `.onPreferenceChange` | 13 | ⬜ |  |  |
@@ -422,7 +422,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.transaction` | 13 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `.transformAnchorPreference` | 13 | ⬜ |  |  |
 | `.transformEffect` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | 2D affine transform. Hit testing and transform animation are gaps. |
-| `.transformEnvironment` | 13 | ⬜ |  |  |
+| `.transformEnvironment` | 13 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) |  |
 | `.transformPreference` | 13 | ⬜ |  |  |
 | `.transition` | 13 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Built-in transitions run natively; custom `Transition` extracts `opacity` and `offset` |
 | `.truncationMode` | 13 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Head, tail, and middle, with `…` |

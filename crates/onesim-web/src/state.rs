@@ -1,4 +1,4 @@
-use onesim_protocol::{Appearance, DynamicTypeSize, HostMessage, IosVersion, Viewport, ViewNode};
+use onesim_protocol::{Appearance, DynamicTypeSize, HostMessage, IosVersion, ScenePhase, Viewport, ViewNode};
 #[cfg(not(all(target_family = "wasm", feature = "js-guest")))]
 use onesim_protocol::TouchPhase;
 use onesim_render::display::DisplayList;
@@ -58,6 +58,8 @@ pub(crate) struct State {
     pub(crate) clock_ms: f64,
     pub(crate) guest_clock_ms: f64,
     pub(crate) guest_due_ms: Option<f64>,
+    /// SwiftUI scene phase (`simcore_web_set_scene_phase`).
+    pub(crate) scene_phase: ScenePhase,
     pub(crate) last_anim_ver: Option<u64>,
     /// Set before a guest callback; a tree submit clears it by updating the scene.
     pub(crate) stale: bool,
@@ -94,7 +96,7 @@ thread_local! {
     pub(crate) static STATE: RefCell<State> = RefCell::new(State {
         ctx: 0, on_action: None, on_env: None, on_text: None, on_gesture: None, on_layout: None, in_layout: false, version: None, tree: None, layout_cache: SwiftUiLayoutCache::default(), scene: None,
         fonts: None, device: device(DEFAULT_DEVICE).unwrap(), viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios27, inter: Interaction::default(),
-        anim: Animator::new(), animation_target: None, clock_ms: 0.0, guest_clock_ms: 0.0, guest_due_ms: None, last_anim_ver: None,
+        anim: Animator::new(), animation_target: None, clock_ms: 0.0, guest_clock_ms: 0.0, guest_due_ms: None, scene_phase: ScenePhase::Active, last_anim_ver: None,
         stale: false, initialized: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), frame_version: 0, frame_dirty: false,
         output: 0, builder: Builder::new(), dl: Vec::new(), unread: None, buf: Vec::new(), rn: None,
     });

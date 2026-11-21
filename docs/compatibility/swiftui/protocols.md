@@ -9,11 +9,11 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Animatable` | 13 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Used by `KeyframeTimeline` and `KeyframeAnimator`; custom `Animatable` views do not interpolate per frame on `withAnimation` |
 | `AnimatableModifier` | 13 | ⬜ |  | Deprecated |
 | `AnimationStateKey` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `App` | 14 | 🟠 |  | Single scene; `@main` must start its line |
+| `App` | 14 | 🟠 | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | `@main` must start its line (the build looks for it) |
 | `AttributedTextFormattingDefinition` | 26 | ⬜ |  |  |
 | `AttributedTextValueConstraint` | 26 | ⬜ |  |  |
 | `AXChartDescriptorRepresentable` | 15 | ⬜ |  |  |
-| `Commands` | 14 | ⬜ |  |  |
+| `Commands` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
 | `ContainerValueKey` | 18 | ⬜ |  |  |
 | `ControlWidget` | 18 | ⬜ |  |  |
 | `ControlWidgetConfiguration` | 18 | ⬜ |  |  |

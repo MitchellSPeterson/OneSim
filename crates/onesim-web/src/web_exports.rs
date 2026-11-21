@@ -7,7 +7,7 @@ use crate::state::{
 use crate::state::__main_argc_argv;
 #[cfg(all(target_family = "wasm", feature = "js-guest"))]
 use crate::state::on_init;
-use onesim_protocol::{DynamicTypeSize, IosVersion, KeyboardEvent, PointerEvent, PointerKind};
+use onesim_protocol::{DynamicTypeSize, IosVersion, KeyboardEvent, PointerEvent, PointerKind, ScenePhase};
 use onesim_render::{device, resolve_label, DragPhase, Effect, DEVICES};
 use std::ffi::{c_void, CString};
 
@@ -108,6 +108,40 @@ pub extern "C" fn simcore_web_set_dynamic_type(index: i32) -> i32 {
         push_environment()
     } else {
         0
+    }
+}
+
+/// SwiftUI scene phase: 0 active, 1 inactive, 2 background (e.g. the page became hidden or visible). Steps
+/// through `inactive` as iOS does; each step goes to the guest as a `scene_phase` line, which answers with a tree.
+/// Returns 0, or -1 for an unknown phase.
+#[no_mangle]
+pub extern "C" fn simcore_web_set_scene_phase(phase: i32) -> i32 {
+    let to = match phase {
+        0 => ScenePhase::Active,
+        1 => ScenePhase::Inactive,
+        2 => ScenePhase::Background,
+        _ => return -1,
+    };
+    for step in with(|s| s.scene_phase.steps_to(to)) {
+        let (ctx, cb) = with(|s| {
+            s.scene_phase = step;
+            (s.ctx, s.on_layout)
+        });
+        let line = format!(r#"{{"type":"scene_phase","phase":"{}"}}"#, step.as_str());
+        if let (Some(cb), Ok(msg)) = (cb, CString::new(line)) {
+            unsafe { cb(ctx as *mut c_void, msg.as_ptr()) };
+        }
+    }
+    0
+}
+
+/// The scene phase as `simcore_web_set_scene_phase` numbers it.
+#[no_mangle]
+pub extern "C" fn simcore_web_scene_phase() -> i32 {
+    match with(|s| s.scene_phase) {
+        ScenePhase::Active => 0,
+        ScenePhase::Inactive => 1,
+        ScenePhase::Background => 2,
     }
 }
 

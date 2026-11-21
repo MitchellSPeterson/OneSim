@@ -1340,6 +1340,8 @@ struct _CtxView<Content: View>: View, _Flattenable {
         let rt = _Runtime.shared
         let saved = (rt.disabled, rt.buttonStyle, rt.pickerStyle, rt.styles, rt.pageTabStyle, rt.pageIndexStyle, rt.envObjects, rt.envLocal, rt.textInput)
         defer { (rt.disabled, rt.buttonStyle, rt.pickerStyle, rt.styles, rt.pageTabStyle, rt.pageIndexStyle, rt.envObjects, rt.envLocal, rt.textInput) = saved }
+        let store = rt.appStorage
+        defer { rt.appStorage = store }
         #if !os(WASI)
         let imageSession = rt.imageSession
         defer { rt.imageSession = imageSession }

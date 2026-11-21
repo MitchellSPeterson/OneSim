@@ -100,6 +100,20 @@ pub struct CreateSessionParams {
     /// `react-native` only: Metro dev server (default `http://localhost:8081`).
     #[serde(default, alias = "metroUrl")]
     pub metro_url: Option<String>,
+    /// `swiftui` only: the app is launched to open this URL (`onOpenURL` gets it after the first frame).
+    #[serde(default, alias = "launchUrl", alias = "launchURL")]
+    pub launch_url: Option<String>,
+}
+
+/// A URL the system can hand to an app: a scheme (`letter (letter | digit | + - .)*`) then `:`, no surrounding
+/// whitespace, no control characters.
+pub fn is_openable_url(url: &str) -> bool {
+    let Some((scheme, _)) = url.split_once(':') else { return false };
+    let mut cs = scheme.chars();
+    cs.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && cs.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+        && !url.chars().any(char::is_control)
+        && url.trim() == url
 }
 
 fn default_platform() -> String {
@@ -122,6 +136,18 @@ pub struct SetViewportParams {
 pub struct SetAppearanceParams {
     pub session_id: String,
     pub mode: Appearance,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SetScenePhaseParams {
+    pub session_id: String,
+    pub phase: crate::ScenePhase,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct OpenUrlParams {
+    pub session_id: String,
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

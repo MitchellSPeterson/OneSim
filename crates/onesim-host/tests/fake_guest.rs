@@ -440,3 +440,114 @@ fn animation_and_schedule_flow() {
     host.shutdown();
     let _ = std::fs::remove_dir_all(dir);
 }
+
+fn lifecycle_text(host: &mut Host, id: &str) -> String {
+    let (_, root) = host.inspect(id).unwrap();
+    find(&root, &|n| n.text.as_deref().is_some_and(|t| t.starts_with("Lifecycle:")))
+        .and_then(|n| n.text.clone())
+        .unwrap_or_default()
+}
+
+#[test]
+fn scene_phase_steps_and_open_url_foregrounds() {
+    let mut host = Host::new();
+    let id = host.create_session(params(GUEST)).unwrap();
+    // Not running yet: nothing to move.
+    assert_eq!(host.set_scene_phase(&id, ScenePhase::Background).unwrap_err().code, ErrorCode::InvalidState);
+    host.start_session(&id).unwrap();
+    assert_eq!(host.scene_phase(&id).unwrap(), ScenePhase::Active);
+    assert_eq!(host.status(&id).unwrap()["scene_phase"], "active");
+
+    // active -> background goes through inactive, one message (and tree) per step.
+    host.set_scene_phase(&id, ScenePhase::Background).unwrap();
+    assert_eq!(lifecycle_text(&mut host, &id), "Lifecycle: inactive,background");
+    assert_eq!(host.scene_phase(&id).unwrap(), ScenePhase::Background);
+    assert_eq!(host.status(&id).unwrap()["scene_phase"], "background");
+
+    // A backgrounded app gets no touches or keys.
+    let e = host.pointer(&id, PointerEvent::new(PointerKind::Click, 200.0, 400.0)).unwrap_err();
+    assert_eq!(e.code, ErrorCode::InvalidState);
+    assert!(e.message.contains("background"), "{}", e.message);
+    let e = host.keyboard(&id, KeyboardEvent::Text { text: "x".into() }).unwrap_err();
+    assert_eq!(e.code, ErrorCode::InvalidState);
+
+    // Opening a URL brings the app to the front: it gets the URL while inactive, then becomes active.
+    host.open_url(&id, "app://item/7?q=ü").unwrap();
+    assert_eq!(lifecycle_text(&mut host, &id), "Lifecycle: inactive,background,inactive,url:app://item/7?q=ü,active");
+    assert_eq!(host.scene_phase(&id).unwrap(), ScenePhase::Active);
+
+    // While active the URL arrives directly; the same phase again sends nothing.
+    host.open_url(&id, "other:x").unwrap();
+    host.set_scene_phase(&id, ScenePhase::Active).unwrap();
+    assert_eq!(lifecycle_text(&mut host, &id), "Lifecycle: inactive,background,inactive,url:app://item/7?q=ü,active,url:other:x");
+
+    // Inactive (e.g. Control Center down) also blocks input; a URL then just activates.
+    host.set_scene_phase(&id, ScenePhase::Inactive).unwrap();
+    assert_eq!(host.pointer(&id, PointerEvent::new(PointerKind::Click, 1.0, 1.0)).unwrap_err().code, ErrorCode::InvalidState);
+    host.open_url(&id, "app://z").unwrap();
+    assert!(lifecycle_text(&mut host, &id).ends_with(",inactive,url:app://z,active"));
+    assert!(host.pointer(&id, PointerEvent::new(PointerKind::Click, 1.0, 1.0)).is_ok());
+
+    // Not a URL (no scheme): rejected before reaching the guest.
+    for bad in ["", "no-scheme", "://x", "1app:x", " app://x"] {
+        assert_eq!(host.open_url(&id, bad).unwrap_err().code, ErrorCode::BadRequest, "{bad:?}");
+    }
+    // A long URL goes through intact.
+    let long = format!("app://x/{}", "a".repeat(20_000));
+    host.open_url(&id, &long).unwrap();
+    assert!(lifecycle_text(&mut host, &id).ends_with(&format!("url:{long}")));
+    host.stop_session(&id).unwrap();
+}
+
+#[test]
+fn launch_url_arrives_after_the_first_tree() {
+    let mut host = Host::new();
+    let mut p = params(GUEST);
+    p.launch_url = Some("app://cold".into());
+    let id = host.create_session(p).unwrap();
+    host.start_session(&id).unwrap();
+    assert_eq!(lifecycle_text(&mut host, &id), "Lifecycle: url:app://cold");
+    assert_eq!(host.scene_phase(&id).unwrap(), ScenePhase::Active);
+
+    let mut bad = params(GUEST);
+    bad.launch_url = Some("nope".into());
+    assert_eq!(host.create_session(bad).unwrap_err().code, ErrorCode::BadRequest);
+}
+
+#[test]
+fn scene_phase_is_swiftui_only() {
+    let dir = std::env::temp_dir().join(format!("onesim-rn-phase-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let rn = alias(dir.join("fake-rn-guest"));
+    let mut host = Host::new();
+    let p = serde_json::json!({"framework": "expo", "app_path": rn, "prebuilt": true, "metroUrl": "http://localhost:1"});
+    let id = host.create_session(serde_json::from_value(p).unwrap()).unwrap();
+    host.start_session(&id).unwrap();
+    assert_eq!(host.set_scene_phase(&id, ScenePhase::Background).unwrap_err().code, ErrorCode::Unsupported);
+    assert_eq!(host.open_url(&id, "app://x").unwrap_err().code, ErrorCode::Unsupported);
+    host.stop_session(&id).unwrap();
+}
+
+#[test]
+fn json_api_scene_phase_and_open_url() {
+    let mut host = Host::new();
+    let mut out = Vec::new();
+    let guest = serde_json::Value::from(GUEST);
+    let input = format!(
+        r#"{{"id":1,"method":"hello","params":{{"protocol_version":1}}}}
+{{"id":2,"method":"create_session","params":{{"framework":"swiftui","app_path":{guest}}}}}
+{{"id":3,"method":"start_session","params":{{"session_id":"s1"}}}}
+{{"id":4,"method":"set_scene_phase","params":{{"session_id":"s1","phase":"background"}}}}
+{{"id":5,"method":"open_url","params":{{"session_id":"s1","url":"app://v1"}}}}
+{{"id":6,"method":"set_scene_phase","params":{{"session_id":"s1","phase":"sleeping"}}}}
+{{"id":7,"method":"get_session_status","params":{{"session_id":"s1"}}}}
+{{"id":8,"method":"shutdown"}}
+"#
+    );
+    host.serve(input.as_bytes(), &mut out).unwrap();
+    let lines: Vec<serde_json::Value> = String::from_utf8(out).unwrap().lines().map(|l| serde_json::from_str(l).unwrap()).collect();
+    assert_eq!(lines[3]["result"]["scene_phase"], "background", "{}", lines[3]);
+    assert_eq!(lines[4]["result"]["scene_phase"], "active", "{}", lines[4]);
+    assert_eq!(lines[5]["error"]["code"], "bad_request");
+    assert_eq!(lines[6]["result"]["scene_phase"], "active");
+}

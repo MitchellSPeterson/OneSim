@@ -195,3 +195,32 @@ fn reconnect_replays_since_and_modules() {
     b.ok("session.destroy", json!({"sessionId": "s1"}));
     let _ = std::fs::remove_file(rn);
 }
+
+#[test]
+fn scene_phase_and_open_url_over_websocket() {
+    let mut c = Client::connect(&start());
+    let caps = init(&mut c);
+    let methods = caps["capabilities"]["methods"].as_array().unwrap();
+    assert!(methods.contains(&json!("app.setScenePhase")) && methods.contains(&json!("app.openURL")));
+
+    let r = c.ok("session.create", json!({"framework": "swiftui", "appPath": GUEST, "launchURL": "app://cold", "load": true}));
+    let sid = r["sessionId"].clone();
+    assert!(find(&c.ok("render.tree", json!({"sessionId": sid}))["root"], "Lifecycle: url:app://cold"));
+    assert_eq!(c.ok("session.get", json!({"sessionId": sid}))["scenePhase"], "active");
+
+    assert_eq!(c.ok("app.setScenePhase", json!({"sessionId": sid, "phase": "background"}))["phase"], "background");
+    assert_eq!(c.ok("session.get", json!({"sessionId": sid}))["scenePhase"], "background");
+    assert_eq!(c.code("input.tap", json!({"sessionId": sid, "label": "Increment"})), "invalid_state");
+    c.ok("app.openURL", json!({"sessionId": sid, "url": "app://warm"}));
+    let tree = c.ok("render.tree", json!({"sessionId": sid}));
+    assert!(find(&tree["root"], "Lifecycle: url:app://cold,inactive,background,inactive,url:app://warm,active"), "{tree}");
+    assert_eq!(c.ok("session.get", json!({"sessionId": sid}))["scenePhase"], "active");
+
+    assert_eq!(c.code("app.setScenePhase", json!({"sessionId": sid, "phase": "asleep"})), "bad_request");
+    assert_eq!(c.code("app.setScenePhase", json!({"sessionId": sid})), "bad_request");
+    assert_eq!(c.code("app.openURL", json!({"sessionId": sid})), "bad_request");
+    assert_eq!(c.code("app.openURL", json!({"sessionId": sid, "url": "nope"})), "bad_request");
+    assert_eq!(c.code("app.openURL", json!({"sessionId": "s99", "url": "app://x"})), "not_found");
+    assert_eq!(c.code("session.create", json!({"framework": "swiftui", "appPath": GUEST, "launchURL": "x"})), "bad_request");
+    assert_eq!(c.code("session.create", json!({"framework": "expo", "launchURL": "app://x"})), "unsupported");
+}

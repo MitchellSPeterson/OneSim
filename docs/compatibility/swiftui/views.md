@@ -70,7 +70,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `PhaseAnimator` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `Picker` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | `.menu`, `.segmented`, `.palette` (drawn segmented), `.inline` (checkmark rows in a list, a wheel elsewhere), `.navigationLink`, `.wheel` (a tap selects a row; no spinning). No `.tabs`. Options are text only; an inline picker shows no label row |
 | `PlaceholderContentView` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `PresentedWindowContent` | 16 | ⬜ |  |  |
+| `PresentedWindowContent` | 16 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) |  |
 | `PreviewModifierContent` | 18 | ⬜ |  |  |
 | `ProgressView` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Spinner is one static frame; without a value the linear style also draws the spinner |
 | `RadialGradient` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Point radii and relative center. Degenerate radii and interpolation color spaces are approximated. |

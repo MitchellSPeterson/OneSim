@@ -264,6 +264,30 @@ mod tests {
     }
 
     #[test]
+    fn scene_phase_steps_reach_the_guest() {
+        thread_local! { static LINES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) }; }
+        unsafe extern "C" fn capture(_: *mut c_void, line: *const c_char) {
+            let s = unsafe { std::ffi::CStr::from_ptr(line) }.to_str().unwrap().to_string();
+            LINES.with(|l| l.borrow_mut().push(s));
+        }
+        let take = || LINES.with(|l| std::mem::take(&mut *l.borrow_mut()));
+        simcore_runtime_set_layout_callback(Some(capture));
+        assert_eq!(simcore_web_set_scene_phase(2), 0);
+        assert_eq!(take(), [r#"{"type":"scene_phase","phase":"inactive"}"#, r#"{"type":"scene_phase","phase":"background"}"#]);
+        assert_eq!(simcore_web_scene_phase(), 2);
+        assert_eq!(simcore_web_set_scene_phase(2), 0);
+        assert!(take().is_empty(), "the same phase sends nothing");
+        assert_eq!(simcore_web_set_scene_phase(0), 0);
+        assert_eq!(take(), [r#"{"type":"scene_phase","phase":"inactive"}"#, r#"{"type":"scene_phase","phase":"active"}"#]);
+        assert_eq!(simcore_web_set_scene_phase(1), 0);
+        assert_eq!(take(), [r#"{"type":"scene_phase","phase":"inactive"}"#]);
+        assert_eq!(simcore_web_set_scene_phase(3), -1);
+        assert_eq!(simcore_web_set_scene_phase(-1), -1);
+        assert!(take().is_empty());
+        assert_eq!(simcore_web_scene_phase(), 1);
+    }
+
+    #[test]
     fn web_tick_redraws_final_settling_frame() {
         let _ = simcore_web_init(200.0, 200.0, 1.0, 0);
         let t1 = r#"{"kind":"rectangle","id":"r","modifiers":[{"frame":{"width":40.0,"height":40.0}}]}"#;

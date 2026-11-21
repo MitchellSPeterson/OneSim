@@ -290,9 +290,15 @@ final class _Runtime {
     var lastScheduledMs: Double? = nil
     var tickHandlers: [() -> Void] = []
     var completions: [(dueMs: Double, fn: () -> Void)] = []
+    /// The app's scene phase (host `scene_phase`). `App.main` launches inactive; a bare root view starts active.
+    var scenePhase = ScenePhase.active
+    /// `.defaultAppStorage` in scope (nil = `UserDefaults.standard`).
+    var appStorage: UserDefaults?
     #if !os(WASI)
     /// `AsyncImage` HTTP loads. Nil uses `URLSession.shared`. Set by `.asyncImageURLSession`.
     var imageSession: URLSession?
+    /// `onOpenURL` handlers of this evaluation, in view order.
+    var urlHandlers: [(URL) -> Void] = []
     #endif
 
     var currentDate: Date { Date(timeIntervalSince1970: baseEpoch + clockMs / 1000.0) }
@@ -389,7 +395,9 @@ final class _Runtime {
         pageTabStyle = nil; pageIndexStyle = .init(); pageIsActive = true
         #if !os(WASI)
         imageSession = nil
+        urlHandlers.removeAll(keepingCapacity: true)
         #endif
+        appStorage = nil
         layers = []; autoDismiss = nil; dismissHook = nil
         lifecycleNow = [:]; lifecycleOrder = []; changeNow = [:]; changePending = []
         animNow = [:]; contentTransition = .identity; contentTransitionAddsDrawingGroup = false
@@ -500,17 +508,23 @@ func _pool(_ f: () -> Void) {
     #endif
 }
 
+/// Entry point of generated mains (a root view without an `App`).
+public func _onesimRun<V: View>(_ root: V) -> _Done {
+    _onesimStart { _withEditMode("0") { _eval(root, "0") } }
+}
+
 #if os(WASI)
 /// Entry point on WASI (reactor): registers the app and returns. The first render happens when
 /// onesim-web pushes the environment (simcore_web_init); the browser is the event loop.
-public func _onesimRun<V: View>(_ root: V) {
+func _onesimStart(_ render: @escaping () -> Node) {
     let rt = _Runtime.shared
-    rt.render = { _withEditMode("0") { _eval(root, "0") } }
+    rt.render = render
     _onesimRegisterCallbacks()
+    _sceneDidBecomeActive()
 }
 #else
-/// Entry point used by `App.main()` and generated mains. Never returns.
-public func _onesimRun<V: View>(_ root: V) -> Never {
+/// Starts the runtime with `render` as the root and runs the event loop. Never returns.
+func _onesimStart(_ render: @escaping () -> Node) -> Never {
     let rt = _Runtime.shared
     if simcore_runtime_init() != 0 {
         FileHandle.standardError.write(Data("onesim init failed: \(simcore_last_error().map { String(cString: $0) } ?? "?")\n".utf8))
@@ -526,13 +540,14 @@ public func _onesimRun<V: View>(_ root: V) -> Never {
     }
     if let d = env["SIMCORE_DYNAMIC_TYPE"], let s = DynamicTypeSize.allCases.first(where: { "\($0)" == d }) { rt.dynamicType = s }
     if let t = env["SIMCORE_TIME"].flatMap(Double.init) { rt.baseEpoch = t } else { rt.baseEpoch = Date().timeIntervalSince1970 }
-    rt.render = { _withEditMode("0") { _eval(root, "0") } }
+    rt.render = render
     _onesimRegisterCallbacks()
-    #if !os(WASI)
     _installImageWake()
-    #endif
+    _sceneDidBecomeActive()   // the scene connects and becomes active before the first frame
     rt.submitTree()
-    exit(simcore_runtime_run())
+    let rc = simcore_runtime_run()
+    _appWillTerminate()
+    exit(rc)
 }
 #endif
 
@@ -633,6 +648,14 @@ func _applyLayout(_ line: String) {
                          safeLeading: _f64(box["safeLeading"]), safeTrailing: _f64(box["safeTrailing"]))
             if rt.geometries[id] != g { rt.geometries[id] = g; rt.dirty = true }
         }
+    } else if type == "scene_phase" {
+        _applyScenePhase(obj["phase"] as? String ?? "")
+    } else if type == "open_url" {
+        #if os(WASI)
+        rt.submitTree()   // no Foundation `URL` on the web build: nothing receives it
+        #else
+        _applyOpenURL(obj["url"] as? String ?? "")
+        #endif
     } else if type == "scroll_position", let scroll = obj["scroll"] as? String {
         rt.scrollPos[scroll]?(obj["target"] as? String)   // NSNull target becomes nil
     } else if type == "tick" {

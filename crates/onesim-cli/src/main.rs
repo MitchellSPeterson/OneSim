@@ -108,6 +108,15 @@ struct Opts {
     /// Advance SwiftUI animations, transitions, and timelines by MS milliseconds. Repeatable.
     #[arg(long = "wait", value_name = "MS")]
     waits: Vec<String>,
+    /// Move a SwiftUI app to a scene phase (through inactive, as iOS does). Repeatable.
+    #[arg(long = "scene-phase", value_name = "active|inactive|background")]
+    scene_phases: Vec<String>,
+    /// Open a URL in a SwiftUI app (`onOpenURL`); a backgrounded app comes to the front first. Repeatable.
+    #[arg(long = "open-url", value_name = "URL")]
+    open_urls: Vec<String>,
+    /// Launch a SwiftUI app to open this URL (it reaches `onOpenURL` after the first frame).
+    #[arg(long = "launch-url", value_name = "URL")]
+    launch_url: Option<String>,
     /// Print the UI tree as JSON on stdout.
     #[arg(long)]
     inspect: bool,
@@ -145,6 +154,8 @@ enum Step {
     Pinch(String),
     Rotate(String),
     Wait(String),
+    ScenePhase(String),
+    OpenUrl(String),
 }
 
 /// Collect the repeatable interaction flags in the order they were given.
@@ -164,6 +175,8 @@ fn steps(m: &ArgMatches) -> Vec<Step> {
     add("pinches", Step::Pinch);
     add("rotations", Step::Rotate);
     add("waits", Step::Wait);
+    add("scene_phases", Step::ScenePhase);
+    add("open_urls", Step::OpenUrl);
     all.sort_by_key(|(i, _)| *i);
     all.into_iter().map(|(_, s)| s).collect()
 }
@@ -261,6 +274,7 @@ fn params(framework: &str) -> CreateSessionParams {
         os_version: None,
         prebuilt: false,
         metro_url: None,
+        launch_url: None,
     }
 }
 
@@ -285,6 +299,7 @@ fn prepare(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: &mut
         .map(|d| DynamicTypeSize::parse(&d).with_context(|| format!("unknown --dynamic-type {d:?}")))
         .transpose()?;
     p.device = o.device.take();
+    p.launch_url = o.launch_url.take();
     p.os_version = o
         .ios
         .take()
@@ -387,6 +402,12 @@ fn drive(host: &mut Host, id: &str, shot: Option<String>, steps: &[Step], inspec
                     bail!("nothing scrollable at {x},{y}");
                 }
             }
+            Step::ScenePhase(s) => {
+                let phase: onesim_protocol::ScenePhase = serde_json::from_value(serde_json::Value::from(s.as_str()))
+                    .map_err(|_| anyhow::anyhow!("--scene-phase wants active, inactive or background, got {s:?}"))?;
+                host.set_scene_phase(id, phase).context("--scene-phase")?;
+            }
+            Step::OpenUrl(u) => host.open_url(id, u).context("--open-url")?,
             Step::Wait(s) => {
                 let ms: f64 = s.trim().parse().with_context(|| format!("--wait wants milliseconds, got {s:?}"))?;
                 host.wait(id, ms).context("--wait")?;
@@ -432,7 +453,7 @@ mod tests {
     fn steps_keep_command_line_order() {
         let m = Cli::command().get_matches_from([
             "onesim", "run", "app", "--click", "New todo", "--type", "hi", "--key", "enter", "--click", "Add",
-            "--scroll", "1,2,0,50", "--type", "x",
+            "--scroll", "1,2,0,50", "--scene-phase", "background", "--open-url", "app://x", "--type", "x",
         ]);
         let got = steps(m.subcommand_matches("run").unwrap());
         assert_eq!(
@@ -443,6 +464,8 @@ mod tests {
                 Step::Key("enter".into()),
                 Step::Click("Add".into()),
                 Step::Scroll("1,2,0,50".into()),
+                Step::ScenePhase("background".into()),
+                Step::OpenUrl("app://x".into()),
                 Step::Type("x".into()),
             ]
         );
