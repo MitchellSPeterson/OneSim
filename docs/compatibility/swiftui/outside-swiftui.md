@@ -12,3 +12,5 @@ APIs SwiftUI apps use from other modules (Combine, Observation, UIKit), reimplem
 | `UIKeyboardType` | 2 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | OneSim declares this UIKit type in its SwiftUI module. See `.keyboardType` for rendered layouts. |
 | `UITextAutocapitalizationType` | 2 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | OneSim declares this UIKit type in its SwiftUI module. |
 | `UITextContentType` | 10 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | OneSim declares this UIKit type in its SwiftUI module. Content hints do not trigger autofill. |
+| `UIApplication` | 2 | 🟠 | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | `shared`, `applicationState`, `delegate` (SwiftUI's forwarding delegate, as on iOS), the lifecycle notifications, `LaunchOptionsKey`, `OpenURLOptionsKey`; not on the web build |
+| `UIApplicationDelegate` | 2 | 🟠 | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Launch and termination run (scene-based app: the active/background callbacks never do, as on iOS); no scene configuration; not on the web build |

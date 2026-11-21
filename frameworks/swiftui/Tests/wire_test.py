@@ -1521,4 +1521,91 @@ t = act(p, t, zout)
 assert any(m.get("text") == "Zoom out" for m in walk(t["root"]))
 finish(p)
 print("accessibility: labels, actions, focus, rotors, traits ok")
+
+# --- scenes and app lifecycle (#49)
+p = spawn(sys.argv[25])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+def has(t, s): return any(s in x for x in alltexts(t["root"]))
+def line(t, prefix): return next(x for x in alltexts(t["root"]) if x.startswith(prefix))
+# Launch: the delegate ran before the first body (inactive), got no launch options, and is in the environment.
+assert line(t, "Delegate:") == "Delegate: will:inactive,did:nil,active", line(t, "Delegate:")
+assert line(t, "App delegate is SwiftUI's:") == "App delegate is SwiftUI's: true"
+assert line(t, "Phase:") == "Phase: active" and line(t, "UIKit:") == "UIKit: active"
+assert line(t, "Theme:") == "Theme: night!", line(t, "Theme:")   # environment, then transformEnvironment
+assert line(t, "Inner:").endswith("theme:NIGHT!"), line(t, "Inner:")   # View.transformEnvironment below it
+assert line(t, "Legacy:") == "Legacy: 1"
+assert line(t, "Scene log:") == "Scene log: taps,inactive>active", line(t, "Scene log:")   # initial: true once; launch activates
+# App-level @State re-renders the window; the scene's onChange sees it.
+t = act(p, t, button(t, "Tap app")["action"])
+assert line(t, "App taps:") == "App taps: 1" and line(t, "Scene log:") == "Scene log: taps,inactive>active,taps", alltexts(t["root"])
+# Scene phase: each step re-renders; onChange on the scene and the App see it; notifications post; the
+# UIApplicationDelegate's scene-era callbacks stay silent.
+for phase, log, uikit in [("inactive", "taps,inactive>active,taps,active>inactive", "inactive"),
+                          ("background", "taps,inactive>active,taps,active>inactive,inactive>background", "background"),
+                          ("inactive", "taps,inactive>active,taps,active>inactive,inactive>background,background>inactive", "inactive"),
+                          ("active", "taps,inactive>active,taps,active>inactive,inactive>background,background>inactive,inactive>active", "active")]:
+    send(p, type="scene_phase", phase=phase); t = recv(p)
+    assert t["type"] == "tree", t
+    assert line(t, "Phase:") == f"Phase: {phase}" and line(t, "UIKit:") == f"UIKit: {uikit}", alltexts(t["root"])
+    assert line(t, "Scene log:") == f"Scene log: {log}", line(t, "Scene log:")
+assert line(t, "Delegate:") == "Delegate: will:inactive,did:nil,active,resign,bg,fg,active", line(t, "Delegate:")
+assert "app-saw-background" in line(t, "Opened:"), line(t, "Opened:")
+# The same phase again changes nothing but still answers a tree.
+send(p, type="scene_phase", phase="active"); t = recv(p)
+assert line(t, "Delegate:") == "Delegate: will:inactive,did:nil,active,resign,bg,fg,active"
+# An unknown phase is reported and ignored (and still answered with a tree).
+send(p, type="scene_phase", phase="asleep"); e = recv(p)
+assert e["type"] == "error" and "asleep" in e["message"], e
+t = recv(p); assert line(t, "Phase:") == "Phase: active"
+# open_url: every onOpenURL in the window runs, outer before inner, with the exact URL.
+send(p, type="open_url", url="app://item/7?q=1#frag"); t = recv(p)
+assert line(t, "Opened:") == "Opened: app-saw-background,app://item/7?q=1#frag,inner:item", line(t, "Opened:")
+# Unicode survives (percent-encoded the way URL(string:) encodes it).
+send(p, type="open_url", url="app://x/café"); t = recv(p)
+assert line(t, "Opened:").endswith("app://x/caf%C3%A9,inner:x"), line(t, "Opened:")
+# Not a URL: reported, no handler runs.
+send(p, type="open_url", url=""); e = recv(p)
+assert e["type"] == "error" and "URL" in e["message"], e
+t = recv(p); assert line(t, "Opened:").endswith("inner:x"), line(t, "Opened:")
+# defaultAppStorage: the scene's suite, a view's own suite below it, an explicit store: .standard.
+t = act(p, t, button(t, "Store")["action"])
+assert line(t, "Stored:") == "Stored: 1 std:0 suite:1", line(t, "Stored:")
+assert line(t, "Explicit:") == "Explicit: 1 std:1", line(t, "Explicit:")
+t = act(p, t, button(t, "Store inner")["action"])
+assert line(t, "Inner:").startswith("Inner: 10 inner:10"), line(t, "Inner:")
+assert line(t, "Stored:") == "Stored: 1 std:0 suite:1", line(t, "Stored:")
+# Commands inside a builder `if` evaluate with App state; still one window.
+for _ in range(5): t = act(p, t, button(t, "Tap app")["action"])
+assert line(t, "App taps:") == "App taps: 6" and not has(t, "Secondary"), alltexts(t["root"])
+send(p, type="shutdown")
+assert p.wait(timeout=5) == 0
+assert "lab: willTerminate" in p.stderr.read(), "applicationWillTerminate runs on shutdown while in front"
+
+# A backgrounded app is not told it terminates (iOS suspends it first).
+p = spawn(sys.argv[25])
+assert recv(p)["type"] == "hello"; recv(p)
+for phase in ["inactive", "background"]:
+    send(p, type="scene_phase", phase=phase); recv(p)
+finish(p)
+assert "willTerminate" not in p.stderr.read()
+
+# WindowGroup(for:defaultValue:) is the window; its binding is scene state that survives App re-renders.
+p = spawn(sys.argv[26])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+assert has(t, "Item 5") and not has(t, "Never shown"), alltexts(t["root"])
+t = act(p, t, button(t, "Next")["action"]); assert has(t, "Item 6")
+t = act(p, t, button(t, "App")["action"]); assert has(t, "Item 6") and has(t, "App 1"), alltexts(t["root"])
+finish(p)
+
+# WindowGroup(for:) opens with nil and can set and clear it.
+p = spawn(sys.argv[27])
+assert recv(p)["type"] == "hello"
+t = recv(p); assert has(t, "Value none"), alltexts(t["root"])
+assert has(t, "Delegate true false") and not has(t, "Second in the group: never shown"), alltexts(t["root"])
+t = act(p, t, button(t, "Set")["action"]); assert has(t, "Value set")
+t = act(p, t, button(t, "Clear")["action"]); assert has(t, "Value none")
+finish(p)
+print("scenes: App state, scene modifiers, scenePhase, delegate adaptor, onOpenURL, defaultAppStorage, WindowGroup(for:) ok")
 print("PASS")

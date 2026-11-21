@@ -1,6 +1,8 @@
 // Apple's SwiftUI re-exports Foundation; apps use `URL` (Link) without importing it.
 #if !os(WASI)
 @_exported import struct Foundation.URL
+@_exported import class Foundation.UserDefaults   // `@AppStorage(store:)`, `.defaultAppStorage`
+@_exported import class ObjectiveC.NSObject      // `class AppDelegate: NSObject, UIApplicationDelegate`
 #endif
 
 // WASI build (docs/web.md): no Foundation (it is huge). Minimal stand-ins for what the module used from it.

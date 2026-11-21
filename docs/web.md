@@ -70,7 +70,7 @@ The canvas preserves its aspect ratio and redraws when the window resizes.
 
 ## Use the page API
 
-Call `window.onesim.setViewport(w, h)` or `window.onesim.setAppearance('dark'|'light')` to update the layout and Swift environment. To drive the app, call `click(label)`, `type(text)`, `key('backspace'|'enter')`, or `scroll(x,y,dx,dy)` on the same object. Read the UI tree with `inspect()` or `lastTreeText()`.
+Call `window.onesim.setViewport(w, h)` or `window.onesim.setAppearance('dark'|'light')` to update the layout and Swift environment. `window.onesim.setScenePhase('active'|'inactive'|'background')` moves a SwiftUI app between scene phases (through `inactive`, as on iOS); the page backgrounds the app while its tab is hidden. To drive the app, call `click(label)`, `type(text)`, `key('backspace'|'enter')`, or `scroll(x,y,dx,dy)` on the same object. Read the UI tree with `inspect()` or `lastTreeText()`.
 
 ## Expo and React Native
 

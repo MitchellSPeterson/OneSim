@@ -264,6 +264,49 @@ mod tests {
     }
 
     #[test]
+    fn scene_phase_steps_reach_the_guest() {
+        thread_local! { static LINES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) }; }
+        unsafe extern "C" fn capture(_: *mut c_void, line: *const c_char) {
+            let s = unsafe { std::ffi::CStr::from_ptr(line) }.to_str().unwrap().to_string();
+            LINES.with(|l| l.borrow_mut().push(s));
+        }
+        let take = || LINES.with(|l| std::mem::take(&mut *l.borrow_mut()));
+        simcore_runtime_set_layout_callback(Some(capture));
+        assert_eq!(simcore_web_set_scene_phase(2), 0);
+        assert_eq!(take(), [r#"{"type":"scene_phase","phase":"inactive"}"#, r#"{"type":"scene_phase","phase":"background"}"#]);
+        assert_eq!(simcore_web_scene_phase(), 2);
+        assert_eq!(simcore_web_set_scene_phase(2), 0);
+        assert!(take().is_empty(), "the same phase sends nothing");
+        assert_eq!(simcore_web_set_scene_phase(0), 0);
+        assert_eq!(take(), [r#"{"type":"scene_phase","phase":"inactive"}"#, r#"{"type":"scene_phase","phase":"active"}"#]);
+        assert_eq!(simcore_web_set_scene_phase(1), 0);
+        assert_eq!(take(), [r#"{"type":"scene_phase","phase":"inactive"}"#]);
+        assert_eq!(simcore_web_set_scene_phase(3), -1);
+        assert_eq!(simcore_web_set_scene_phase(-1), -1);
+        assert!(take().is_empty());
+        assert_eq!(simcore_web_scene_phase(), 1);
+    }
+
+    #[test]
+    fn leaving_the_foreground_cancels_a_held_touch() {
+        thread_local! { static PHASES: RefCell<Vec<i32>> = const { RefCell::new(Vec::new()) }; }
+        unsafe extern "C" fn on_gesture(_: *mut c_void, phase: i32, _: f64, _: *const f64, _: usize, _: *const *const c_char, _: *const f64, _: usize) {
+            PHASES.with(|p| p.borrow_mut().push(phase));
+        }
+        let _ = simcore_web_init(200.0, 300.0, 1.0, 0);
+        simcore_runtime_set_gesture_callback(Some(on_gesture));
+        let tree = r#"{"kind":"rectangle","id":"r","modifiers":[{"frame":{"width":200.0,"height":300.0}},{"gesture":{"key":"r#g0","pans":false}}]}"#;
+        assert_eq!(unsafe { simcore_submit_tree(tree.as_ptr(), tree.len(), 1) }, 0);
+        simcore_web_drag(0, 100.0, 150.0, 0.0);
+        assert_eq!(PHASES.with(|p| p.borrow().clone()), vec![0], "the finger went down on the gesture view");
+        assert_eq!(simcore_web_set_scene_phase(2), 0);
+        assert_eq!(PHASES.with(|p| p.borrow().clone()), vec![0, 3], "the touch is cancelled");
+        assert_eq!(simcore_web_set_scene_phase(0), 0);
+        simcore_web_drag(2, 100.0, 150.0, 50.0);
+        assert_eq!(PHASES.with(|p| p.borrow().clone()), vec![0, 3], "no touch left to end");
+    }
+
+    #[test]
     fn web_tick_redraws_final_settling_frame() {
         let _ = simcore_web_init(200.0, 200.0, 1.0, 0);
         let t1 = r#"{"kind":"rectangle","id":"r","modifiers":[{"frame":{"width":40.0,"height":40.0}}]}"#;

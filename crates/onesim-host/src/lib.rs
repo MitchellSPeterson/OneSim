@@ -120,6 +120,14 @@ impl Host {
         if matches!(p.framework.as_str(), "swiftui" | "compose") && !std::path::Path::new(&p.app_path).exists() {
             return Err(err(ErrorCode::BadRequest, format!("app_path {:?} does not exist", p.app_path)));
         }
+        if let Some(url) = &p.launch_url {
+            if p.framework != "swiftui" {
+                return Err(err(ErrorCode::Unsupported, format!("launch_url exists only for swiftui sessions, not {}", p.framework)));
+            }
+            if !is_openable_url(url) {
+                return Err(err(ErrorCode::BadRequest, format!("launch_url {url:?} is not a URL (scheme:...)")));
+            }
+        }
         if let Some(d) = &p.device {
             if let Some(dev) = device(d) {
                 check_device_platform(dev, &p.platform)?;
@@ -141,6 +149,66 @@ impl Host {
         if self.get(id)?.is_rn() {
             // First layout pass: FlatList and friends render the rest once they know their frames.
             let _ = self.scene_within(id, STARTUP_MAX);
+        }
+        // Launched to open a URL: the scene connects with it, so `onOpenURL` gets it once the window is up.
+        if let Some(url) = self.get(id)?.params.launch_url.clone() {
+            self.open_url(id, &url)?;
+        }
+        Ok(())
+    }
+
+    /// The SwiftUI app's scene phase.
+    pub fn scene_phase(&mut self, id: &str) -> Result<ScenePhase, ApiError> {
+        Ok(self.get(id)?.scene_phase)
+    }
+
+    fn require_scenes(&mut self, id: &str) -> Result<&mut Session, ApiError> {
+        let s = self.get(id)?;
+        if !s.is_swiftui() {
+            return Err(err(ErrorCode::Unsupported, format!("scene phases and URLs exist only for swiftui sessions, not {}", s.params.framework)));
+        }
+        s.require_running()?;
+        Ok(s)
+    }
+
+    /// Move the app to `phase` the way iOS does: through `inactive` between `active` and `background`, one
+    /// guest message and tree per step. The same phase again does nothing.
+    pub fn set_scene_phase(&mut self, id: &str, phase: ScenePhase) -> Result<(), ApiError> {
+        let s = self.require_scenes(id)?;
+        if s.scene_phase == ScenePhase::Active && phase != ScenePhase::Active {
+            // iOS cancels the app's touches as it resigns active; the input gate would otherwise strand them.
+            let (scene, version, _) = self.scene(id)?;
+            let s = self.get(id)?;
+            s.inter.version = version;
+            let effect = s.inter.cancel_touches(&scene);
+            s.invalidate_scene();
+            s.send_effect(effect)?;
+        }
+        let s = self.get(id)?;
+        for step in s.scene_phase.steps_to(phase) {
+            s.send_and_wait_tree(&HostMessage::ScenePhase { phase: step })?;
+            s.scene_phase = step;
+        }
+        s.invalidate_scene();
+        Ok(())
+    }
+
+    /// The system opens `url` in the app. An app not in front comes forward first and gets the URL while
+    /// inactive, then becomes active, as on iOS.
+    pub fn open_url(&mut self, id: &str, url: &str) -> Result<(), ApiError> {
+        if !is_openable_url(url) {
+            return Err(err(ErrorCode::BadRequest, format!("{url:?} is not a URL (scheme:...)")));
+        }
+        let s = self.require_scenes(id)?;
+        let foreground = s.scene_phase != ScenePhase::Active;
+        if s.scene_phase == ScenePhase::Background {
+            self.set_scene_phase(id, ScenePhase::Inactive)?;
+        }
+        let s = self.get(id)?;
+        s.send_and_wait_tree(&HostMessage::OpenUrl { url: url.into() })?;
+        s.invalidate_scene();
+        if foreground {
+            self.set_scene_phase(id, ScenePhase::Active)?;
         }
         Ok(())
     }
@@ -167,6 +235,7 @@ impl Host {
             "device": s.device.name, "os_version": s.os_version(), "safe_area": {"top": s.device.safe_top, "bottom": s.device.safe_bottom},
             "focus": s.inter.focus, "island": s.device.island.map(|(x, y, w, h)| json!({"x": x, "y": y, "width": w, "height": h})),
             "scale": s.scale, "appearance": s.appearance, "tree_version": s.tree_version(),
+            "scene_phase": s.scene_phase.as_str(),
         }))
     }
 
@@ -282,7 +351,7 @@ impl Host {
     /// focuses it (action = false); any other click unfocuses. `scroll` hits the scroller and
     /// never reaches the guest. The state machine is `onesim_render::Interaction`.
     pub fn pointer(&mut self, id: &str, ev: PointerEvent) -> Result<(Option<String>, bool), ApiError> {
-        self.get(id)?.require_running()?;
+        self.get(id)?.require_input()?;
         self.sync_guest_clock(id)?;
         let (scene, version, _) = self.scene(id)?;
         if self.get(id)?.is_rn() {
@@ -423,7 +492,7 @@ impl Host {
     /// with its release velocity (see [`Host::tick`]); sheets follow too. Returns whether the scene changed.
     /// React Native receives each phase on the same Fabric target and supplies its own gesture behavior.
     pub fn drag(&mut self, id: &str, phase: onesim_render::DragPhase, x: f64, y: f64, t_ms: f64) -> Result<bool, ApiError> {
-        self.get(id)?.require_running()?;
+        self.get(id)?.require_input()?;
         self.sync_guest_clock(id)?;
         let (scene, version, _) = self.scene(id)?;
         let s = self.get(id)?;
@@ -451,7 +520,7 @@ impl Host {
     /// Keyboard input for the focused text field. The host computes the new text and sends it
     /// to the guest as `text_input`.
     pub fn keyboard(&mut self, id: &str, ev: KeyboardEvent) -> Result<(), ApiError> {
-        self.get(id)?.require_running()?;
+        self.get(id)?.require_input()?;
         self.sync_guest_clock(id)?;
         if let KeyboardEvent::Key { key } = &ev {
             if !matches!(key.as_str(), "backspace" | "enter") {

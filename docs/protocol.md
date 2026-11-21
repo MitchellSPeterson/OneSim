@@ -32,12 +32,14 @@ Mismatched major version → `protocol_version` error.
 | method | params | result |
 |---|---|---|
 | `get_capabilities` | – | `{"frameworks":["swiftui"],"platforms":["ios"],"commands":[...],"headless":true}` |
-| `create_session` | `{"framework":"swiftui","platform":"ios","app_path":"<file or dir>","root_view":"CounterView"?,"viewport":{"width":393,"height":852}?,"scale":2.0?,"appearance":"light"\|"dark"?,"dynamic_type_size":"large"?,"device":"iphone-18-pro"?,"os_version":"27.2"?}` | `{"session_id":"s1"}` |
+| `create_session` | `{"framework":"swiftui","platform":"ios","app_path":"<file or dir>","root_view":"CounterView"?,"viewport":{"width":393,"height":852}?,"scale":2.0?,"appearance":"light"\|"dark"?,"dynamic_type_size":"large"?,"device":"iphone-18-pro"?,"os_version":"27.2"?,"launch_url":"app://x"?}` | `{"session_id":"s1"}` (`launch_url`: SwiftUI only, see section V) |
 | `start_session` | `{"session_id"}` | `{"state":"running"}` (blocks until first tree or failure) |
 | `stop_session` | `{"session_id"}` | `{"state":"stopped"}` |
-| `get_session_status` | `{"session_id"}` | `{"session_id","state","framework","platform","app_path","viewport","scale","appearance","tree_version"}` |
+| `get_session_status` | `{"session_id"}` | `{"session_id","state","framework","platform","app_path","viewport","scale","appearance","tree_version","scene_phase"}` |
 | `set_viewport` | `{"session_id","width","height"}` | `{}` |
 | `set_appearance` | `{"session_id","mode":"light"\|"dark"}` | `{}` |
+| `set_scene_phase` | `{"session_id","phase":"active"\|"inactive"\|"background"}` | `{"scene_phase"}` (SwiftUI; section V) |
+| `open_url` | `{"session_id","url"}` | `{"scene_phase"}` (SwiftUI; section V) |
 | `send_pointer_event` | `{"session_id","event":{"kind":"down"\|"up"\|"click","x","y"}}` | `{"hit": <node id or null>, "action": <bool>}` |
 | `send_keyboard_event` | `{"session_id","event":{...}}` | `unsupported` error in v1 |
 | `capture_screenshot` | `{"session_id","path":"out.png"?}` | `{"width","height","path"}` or `{"width","height","png_base64"}` |
@@ -78,6 +80,8 @@ Host → guest (guest stdin):
 - `{"type":"action","id":<u64>,"version":<u64>}` — `version` = tree version the
   action id came from. Guest ignores actions whose version is not current.
 - `{"type":"environment","appearance":"light"|"dark","viewport":{"width","height"},"dynamicTypeSize"?:"large"}` — guest re-evaluates and sends a new tree. `dynamicTypeSize` is omitted at the default (`large`); the guest also gets `SIMCORE_DYNAMIC_TYPE` at launch. The host does the text sizing (below); the guest may later expose it as `@Environment(\.dynamicTypeSize)`.
+- `{"type":"scene_phase","phase":"active"|"inactive"|"background"}` and `{"type":"open_url","url"}` — SwiftUI app
+  lifecycle (section V); the guest answers each with a tree.
 - `{"type":"shutdown"}` — guest exits 0.
 
 ### ViewNode (normalized view tree, produced by Swift, consumed by Rust)
@@ -1001,3 +1005,41 @@ large content, chart, linked group, rotor entries, and `responds`. Zoom is two a
 with a synthetic `AccessibilityZoomGestureAction` at location `.center` and point `.zero`. Rotor `prepare` is not
 called. A text-range rotor entry with no text uses `String(describing:)` of the range as its label. Text, when the entry has it, stays the label. `AccessibilityFocusState` technologies
 are stored and not filtered.
+
+## V. v1 additions for SwiftUI scenes and the app lifecycle
+
+The guest evaluates the `App` every pass: its `@State`, `@StateObject` and `@Environment` live under `app`, scene
+state under `app/body/...`, and the first scene with a window (`WindowGroup`) is the root, its views at `0` as
+before. Scene modifiers set the environment of the window's views; window-only ones (sizes, commands, toolbar
+label style) build and change nothing on iPhone.
+
+- Host → guest `{"type":"scene_phase","phase":"active"|"inactive"|"background"}`: the app moved to that phase. The
+  guest updates `scenePhase` (and `UIApplication.applicationState`), posts the `UIApplication` notification for
+  the step (`willResignActive`, `didEnterBackground`, `willEnterForeground`, `didBecomeActive`), runs the
+  `onChange` handlers that see it, and answers a tree. An unknown phase is reported with `error` and answered with
+  the unchanged tree. The host sends one step at a time: `active` and `background` always pass through `inactive`.
+- Host → guest `{"type":"open_url","url"}`: every `.onOpenURL` handler of the current window runs, in view order,
+  with `URL(string: url)`; then the guest answers a tree. A string `URL(string:)` rejects is reported with `error`.
+  The web build has no Foundation `URL`, so nothing receives it there.
+- C ABI: both lines reach the guest through `simcore_runtime_set_layout_callback`, like `tick`.
+- Launch: `App.main` makes the app (and its `@UIApplicationDelegateAdaptor` delegate), calls the delegate's
+  `application(_:willFinishLaunchingWithOptions:)` and `application(_:didFinishLaunchingWithOptions:)` (no launch
+  options) while `inactive`, evaluates the window once while still `inactive` (state, `onChange(initial: true)`), then
+  becomes `active` (posting `didFinishLaunching` then `didBecomeActive`) and sends the first tree, in which
+  `onChange(of: scenePhase)` sees `inactive -> active` (on the web build this happens at the first render, when the
+  page pushes the environment; a phase or URL line before then connects the scene first). `UIApplication.shared.delegate` is a SwiftUI-owned delegate
+  that forwards to the adaptor's instance, as on iOS.
+  On `shutdown` or stdin EOF it calls `applicationWillTerminate(_:)` and posts `willTerminate`, unless the app is in
+  the `background` (iOS suspends a backgrounded app without telling it).
+- Host: the session keeps the phase (`active` from launch; `get_session_status` `scene_phase`, v2 `scenePhase`).
+  `set_scene_phase` steps through the phases; the same phase sends nothing. `open_url` on an app that is not
+  `active` first brings it forward: from `background` it sends `inactive`, then `open_url`, then `active`, as iOS
+  delivers a URL to a foregrounding scene. A `launch_url` is sent as `open_url` right after the first tree. A URL
+  must have a scheme (`letter (letter | digit | + - .)* :`), no surrounding whitespace and no control characters,
+  else `bad_request`. Leaving `active` cancels the touches in progress (a gesture gets `cancel`, a scroll or sheet
+  drag settles as if lifted). Pointer and keyboard input on an app that is not `active` is `invalid_state`. Other
+  frameworks answer `unsupported`.
+- CLI: `--scene-phase active|inactive|background` and `--open-url URL` are ordered steps like `--click`;
+  `--launch-url URL` launches the app to open it.
+- Web: `simcore_web_set_scene_phase(0 active | 1 inactive | 2 background)` steps the same way through the layout
+  callback, and `simcore_web_scene_phase()` reads it; the page maps a hidden tab to `background`.

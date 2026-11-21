@@ -8,22 +8,22 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `DocumentGroup` | 14 | ⬜ |  |  |
 | `DocumentGroupLaunchScene` | 18 | ⬜ |  |  |
 | `Scene.backgroundTask` | 16 | ⬜ |  |  |
-| `Scene.commands` | 14 | ⬜ |  |  |
-| `Scene.commandsRemoved` | 16 | ⬜ |  |  |
-| `Scene.commandsReplaced` | 16 | ⬜ |  |  |
-| `Scene.defaultAppStorage` | 14 | ⬜ |  |  |
-| `Scene.defaultSize` | 17 | ⬜ |  |  |
+| `Scene.commands` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | The builder runs; iPhones show no menus |
+| `Scene.commandsRemoved` | 16 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | iPhones show no menus |
+| `Scene.commandsReplaced` | 16 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | The builder runs; iPhones show no menus |
+| `Scene.defaultAppStorage` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) |  |
+| `Scene.defaultSize` | 17 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | No effect on iPhone, as on device (iPad and Mac windows only) |
 | `Scene.documentBrowserContextMenu` | 18.1 | ⬜ |  |  |
 | `Scene.documentLaunchSubtitle` | 27 | ⬜ |  |  |
 | `Scene.documentLaunchTitle` | 27 | ⬜ |  |  |
-| `Scene.environment` | 14 | ⬜ |  |  |
-| `Scene.environmentObject` | 17 | ⬜ |  |  |
-| `Scene.handlesExternalEvents` | 14 | ⬜ |  |  |
-| `Scene.onChange` | 13 | ⬜ |  |  |
-| `Scene.persistentSystemOverlays` | 13 | ⬜ |  |  |
-| `Scene.restorationBehavior` | 18 | ⬜ |  |  |
-| `Scene.transformEnvironment` | 17 | ⬜ |  |  |
-| `Scene.windowManagerRole` | 18 | ⬜ |  |  |
-| `Scene.windowResizability` | 17 | ⬜ |  |  |
-| `Scene.windowToolbarLabelStyle` | 18 | ⬜ |  |  |
-| `WindowGroup` | 14 | 🟠 |  | First one launches; content closure runs once |
+| `Scene.environment` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Key paths and `@Observable` objects |
+| `Scene.environmentObject` | 17 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) |  |
+| `Scene.handlesExternalEvents` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | One scene on iPhone: every URL reaches it |
+| `Scene.onChange` | 13 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) |  |
+| `Scene.persistentSystemOverlays` | 13 | 🟠 | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | OneSim draws no home indicator on iPhones (the Duo profile keeps its own) |
+| `Scene.restorationBehavior` | 18 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | No effect on iPhone; OneSim restores no scenes |
+| `Scene.transformEnvironment` | 17 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) |  |
+| `Scene.windowManagerRole` | 18 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | No effect on iPhone, as on device (iPad and Mac windows only) |
+| `Scene.windowResizability` | 17 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | No effect on iPhone, as on device (iPad and Mac windows only) |
+| `Scene.windowToolbarLabelStyle` | 18 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | No effect on iPhone, as on device (iPad and Mac windows only) |
+| `WindowGroup` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | The first scene with a window gets the screen, as on iPhone; `content:` and `makeContent:`; `for:` opens with no value (or `defaultValue`); title and id are unused on iPhone; `LocalizedStringKey` titles use the key (no bundle lookup); no `LocalizedStringResource` overloads (OneSim has no such type) |

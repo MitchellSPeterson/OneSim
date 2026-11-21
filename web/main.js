@@ -233,6 +233,11 @@ async function main() {
     act(() => sim.setAppearance(nextDark ? "dark" : "light"));
   });
 
+  // A hidden tab is a backgrounded app (SwiftUI scenePhase); showing it again brings the app back to the front.
+  if (!rn) document.addEventListener("visibilitychange", () => {
+    act(() => sim.setScenePhase(document.hidden ? "background" : "active"));
+  });
+
   addEventListener("resize", () => {
     resizePending = true;
     requestFrame();
