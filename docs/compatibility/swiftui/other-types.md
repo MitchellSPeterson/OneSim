@@ -86,8 +86,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `CoordinateSpace` | 13 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | `.named` is the screen (no `.coordinateSpace(name:)`) |
 | `CrossFadeNavigationTransition` | 27 | ⬜ |  |  |
 | `CubicKeyframe` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `DatePickerComponents` | 13 | ⬜ |  |  |
-| `DatePickerStyleConfiguration` | 16 | ⬜ |  |  |
+| `DatePickerComponents` | 13 | ✅ | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Date and hour/minute on iOS. |
+| `DatePickerStyleConfiguration` | 16 | ✅ | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Label, selection, bounds and components for custom styles. |
 | `DefaultFocusEvaluationPriority` | 16 | ⬜ |  |  |
 | `DefaultToolbarItem` | 26 | ⬜ |  |  |
 | `DeviceHinge` | 13 | ⬜ |  |  |

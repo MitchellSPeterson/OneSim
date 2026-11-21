@@ -925,4 +925,172 @@ t = act(p, t, button(t, "Hide password")["action"])
 assert "No enum focus" in alltexts(t["root"])
 finish(p)
 print("text input: secure and multiline bindings, inherited submission, focus transfer, disabled controls ok")
+
+
+# --- DatePicker, MultiDatePicker and ColorPicker
+p = spawn(sys.argv[18])
+assert recv(p)["type"] == "hello"
+recv(p)
+send(p, type="environment", appearance="light", viewport={"width": 402, "height": 874})
+t = recv(p)
+
+def picker_button(root, label):
+    return next(n for n in walk(root) if n["kind"] == "button" and label in alltexts(n))
+
+# Compact date and time share a binding with Alarm. Date changes preserve time
+# and a time-wheel selection leaves the date unchanged.
+t = act(p, t, picker_button(tree(t), "Mar 14, 2025")["action"])
+layer, = layers(t)
+assert layer["kind"] == "popover"
+t = act(p, t, picker_button(layer["content"], "15")["action"])
+assert "Mar 15, 2025" in alltexts(tree(t))
+if layers(t):
+    t = act(p, t, layers(t)[0]["dismiss"])
+t = act(p, t, picker_button(tree(t), "2:30\u202fPM")["action"])
+layer, = layers(t)
+wheel = next(n for n in walk(layer["content"]) if n["kind"] == "wheel")
+minute = next(n for n in wheel["columns"][1]["options"] if n["text"] == "31")
+t = act(p, t, minute["action"])
+assert alltexts(tree(t)).count("2:31\u202fPM") == 2 and "Mar 15, 2025" in alltexts(tree(t))
+
+def picker_drag(t, node, start, end, frame, time):
+    key = next(m["gesture"]["key"] for m in node["modifiers"] if "gesture" in m)
+    for offset, phase, point in [(0, "start", start), (16, "move", end), (32, "end", end)]:
+        send(p, type="gesture", phase=phase, time=time + offset, points=[list(point)],
+             targets=[{"key": key, "frame": frame}])
+        t = recv(p)
+    return t
+
+wheel = next(n for n in walk(layers(t)[0]["content"]) if n["kind"] == "wheel")
+t = picker_drag(t, wheel, (100, 150), (100, -42), [0, 0, 218, 172], 100)
+assert alltexts(tree(t)).count("2:37\u202fPM") == 2, "a drag can advance beyond the visible options"
+t = act(p, t, layers(t)[0]["dismiss"])
+assert not layers(t)
+
+# A date outside the graphical picker's upper bound is disabled. Month navigation
+# keeps the previous month available and prevents advancing beyond the upper bound.
+t = act(p, t, picker_button(tree(t), "Graphical")["action"])
+assert picker_button(tree(t), "25")["disabled"]
+assert not picker_button(tree(t), "24")["disabled"]
+prev = next(n for n in walk(tree(t)) if n["kind"] == "button" and n["id"].endswith("/prev"))
+t = act(p, t, prev["action"])
+assert "February 2025" in alltexts(tree(t))
+t = act(p, t, t["root"]["back"]["action"])
+
+# March's exclusive upper bound prevents April navigation. Repeated toggles
+# remove and restore the day, including entries supplied without a calendar.
+t = act(p, t, picker_button(tree(t), "Multiple")["action"])
+assert "3 days" in alltexts(tree(t))
+next_month = next(n for n in walk(tree(t)) if n["kind"] == "button" and n["id"].endswith("/next"))
+assert next_month["disabled"]
+t = act(p, t, picker_button(tree(t), "14")["action"])
+assert "2 days" in alltexts(tree(t))
+t = act(p, t, picker_button(tree(t), "14")["action"])
+assert "3 days" in alltexts(tree(t))
+t = act(p, t, t["root"]["back"]["action"])
+
+# Palette colors and both opacity endpoints update the same binding.
+t = act(p, t, picker_button(tree(t), "Tint")["action"])
+layer, = layers(t)
+assert layer["kind"] == "sheet"
+white = next(n for n in walk(layer["content"]) if n["kind"] == "button" and n["id"].endswith("/g/0/0"))
+t = act(p, t, white["action"])
+assert picker_button(tree(t), "Tint")["value"] == "#FFFFFF"
+for label, expected in [("0%", "#FFFFFF00"), ("100%", "#FFFFFF")]:
+    action = next(n["action"] for n in walk(layers(t)[0]["content"]) if n.get("value") == label)
+    t = act(p, t, action)
+    assert picker_button(tree(t), "Tint")["value"] == expected
+track = next(n for n in walk(layers(t)[0]["content"]) if n["id"].endswith("/op/track"))
+t = picker_drag(t, track, (170, 16), (74, 16), [0, 0, 279, 32.7], 200)
+assert picker_button(tree(t), "Tint")["value"] == "#FFFFFF3C"
+action = next(n["action"] for n in walk(layers(t)[0]["content"]) if n.get("value") == "100%")
+t = act(p, t, action)
+t = act(p, t, picker_button(layers(t)[0]["content"], "Sliders")["action"])
+red = next(n for n in walk(layers(t)[0]["content"]) if n["kind"] == "slider")
+send(p, type="text_input", field=red["field"], version=t["version"], text="0")
+t = recv(p)
+assert picker_button(tree(t), "Tint")["value"] == "#00FFFF"
+def hex_input(t):
+    return next(n for n in walk(layers(t)[0]["content"]) if n["kind"] == "text_field")
+
+def edit_hex(t, text, expected_color):
+    send(p, type="text_input", field=hex_input(t)["field"], version=t["version"], text=text)
+    t = recv(p)
+    assert hex_input(t)["text"] == text
+    assert picker_button(tree(t), "Tint")["value"] == expected_color
+    return t
+
+draft = hex_input(t)["text"]
+assert draft == "#00FFFF"
+while draft:
+    draft = draft[:-1]
+    t = edit_hex(t, draft, "#00FFFF")
+t = edit_hex(t, "##bad", "#00FFFF")
+t = edit_hex(t, "", "#00FFFF")
+for char in "a103fd":
+    draft += char
+    t = edit_hex(t, draft, "#A103FD" if len(draft) == 6 else "#00FFFF")
+favorite = next(n for n in walk(layers(t)[0]["content"]) if n.get("value") == "Add favorite")
+t = act(p, t, favorite["action"])
+assert any(n.get("value") == "#A103FD" for n in walk(layers(t)[0]["content"]))
+
+# An RGB slider change replaces a partial draft with the new selection.
+t = edit_hex(t, "a103f", "#A103FD")
+red = next(n for n in walk(layers(t)[0]["content"]) if n["kind"] == "slider")
+send(p, type="text_input", field=red["field"], version=t["version"], text="0")
+t = recv(p)
+assert hex_input(t)["text"] == "#0003FD"
+
+t = act(p, t, picker_button(layers(t)[0]["content"], "Spectrum")["action"])
+spectrum = next(n for n in walk(layers(t)[0]["content"]) if n["id"].endswith("/spectrum"))
+t = picker_drag(t, spectrum, (50, 150), (185, 0), [0, 0, 370, 308], 400)
+assert picker_button(tree(t), "Tint")["value"] == "#FFFFFF"
+t = act(p, t, layers(t)[0]["dismiss"])
+t = act(p, t, picker_button(tree(t), "Paper")["action"])
+assert "OPACITY" not in alltexts(layers(t)[0]["content"])
+finish(p)
+# A custom style can delegate to Apple's corresponding built-in style API.
+# For a same-day range, the wheel must disable times as well as dates.
+p = spawn(sys.argv[19], {**os.environ, "SIMCORE_TIME": "1746057600"})
+assert recv(p)["type"] == "hello"
+t = recv(p)
+wheel = next(n for n in walk(tree(t)) if n["kind"] == "wheel")
+hours, minutes, _ = wheel["columns"]
+assert next(n for n in hours["options"] if n["text"] == "3")["disabled"]
+assert next(n for n in minutes["options"] if n["text"] == "29")["disabled"]
+assert not next(n for n in minutes["options"] if n["text"] == "31")["disabled"]
+
+# An empty selection with a past exclusive midnight bound opens on the last
+# available month. An empty calendar in April would have no selectable days.
+assert "March 2025" in alltexts(tree(t))
+assert not picker_button(tree(t), "31")["disabled"]
+
+# 02:30 is skipped by the Pacific DST transition on March 9, 2025.
+t = act(p, t, picker_button(tree(t), "Mar 8, 2025")["action"])
+t = act(p, t, picker_button(layers(t)[0]["content"], "9")["action"])
+assert "Mar 9, 2025" in alltexts(tree(t)) and "3:30\u202fAM" in alltexts(tree(t))
+t = act(p, t, layers(t)[0]["dismiss"])
+
+# The selection starts before the range. Both calendars can reach the first
+# allowed month without writing a new date through the binding.
+header = picker_button(tree(t), "March 2030")
+next_id = header["id"][:-len("/title")] + "/next"
+t = act(p, t, next(n["action"] for n in walk(tree(t)) if n["id"] == next_id))
+assert "April 2030" in alltexts(tree(t))
+t = act(p, t, picker_button(tree(t), "Mar 14, 2025")["action"])
+assert "March 2030" in alltexts(layers(t)[0]["content"])
+assert picker_button(layers(t)[0]["content"], "4")["disabled"]
+assert not picker_button(layers(t)[0]["content"], "5")["disabled"]
+t = act(p, t, layers(t)[0]["dismiss"])
+
+# Changing the range leaves the binding alone and clamps both the cached
+# graphical month and the compact popover to the new upper bound's month.
+t = act(p, t, picker_button(tree(t), "Change range")["action"])
+assert "January 2020" in alltexts(tree(t))
+t = act(p, t, picker_button(tree(t), "Mar 14, 2025")["action"])
+assert "January 2020" in alltexts(layers(t)[0]["content"])
+assert picker_button(layers(t)[0]["content"], "21")["disabled"]
+t = act(p, t, picker_button(layers(t)[0]["content"], "20")["action"])
+assert "Jan 20, 2020" in alltexts(tree(t))
+finish(p)
 print("PASS")

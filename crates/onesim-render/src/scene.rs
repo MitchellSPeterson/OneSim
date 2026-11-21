@@ -329,6 +329,8 @@ pub struct Node {
     pub anim: Option<Box<NodeAnim>>,
     /// False for layout-only helper nodes (clip/opacity layers); hidden from inspection.
     pub inspect: bool,
+    /// Vertical scale of `text` about the bounds' centre (rows of a date picker's wheel, section S); 1 = none.
+    pub text_squash: f32,
 }
 
 impl Node {
@@ -383,6 +385,7 @@ impl Node {
             scroll_disabled: false,
             anim: None,
             inspect: true,
+            text_squash: 1.0,
         }
     }
 }
@@ -407,6 +410,8 @@ impl Scene {
         // Content scrolled under the navigation bar / status bar is not tappable there.
         // Under an alert or sheet only the presentation layer (and chrome drawn after it) is reachable.
         let modal = self.nodes.iter().rposition(|n| n.kind == "scrim");
+        let popover = modal.and_then(|i| self.nodes.get(i + 1)).filter(|n| n.kind == "popover");
+        let inside_popover = popover.is_some_and(|card| card.bounds.contains(x, y));
         let bar = self.nodes.iter().position(|n| n.kind == "navbar");
         let bar_bottom = bar.map_or(0.0, |b| self.nodes[b].bounds.y + self.nodes[b].bounds.h);
         let under_bar = |mut i: usize| {
@@ -420,7 +425,8 @@ impl Scene {
         };
         (0..self.nodes.len()).rev().find(|&i| {
             let n = &self.nodes[i];
-            if modal.is_some_and(|m| i < m) {
+            // The scrim catches taps outside the card. Empty or disabled content inside is inert.
+            if modal.is_some_and(|m| i < m || (i == m && inside_popover)) {
                 return false;
             }
             if y < bar_bottom && modal.is_none() && under_bar(i) && n.kind != "keyboard" && n.role != Role::Key {
