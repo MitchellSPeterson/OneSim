@@ -1180,6 +1180,106 @@ mod tests {
         assert_eq!(e2.added.len(), 1, "viewport width resize must re-rasterize ScrollEdge composite");
         assert_eq!(e2.added[0].width, 140);
 
+        // 6. Gradient fill/stroke/content paints hash by content (not Arc pointer), avoiding stale cache hits
+        let make_grad = |r: f32| {
+            Arc::new(crate::paint::Gradient::resolve(
+                &onesim_protocol::GradientPaint::Linear {
+                    stops: vec![
+                        onesim_protocol::GradientStop {
+                            color: onesim_protocol::Color::Rgba { r: f64::from(r), g: 0.2, b: 0.8, a: 1.0, dark: None },
+                            location: 0.0,
+                        },
+                        onesim_protocol::GradientStop {
+                            color: onesim_protocol::Color::Rgba { r: 0.1, g: 0.9, b: 0.3, a: 1.0, dark: None },
+                            location: 1.0,
+                        },
+                    ],
+                    start: [0.0, 0.0],
+                    end: [1.0, 0.0],
+                    color_space: onesim_protocol::GradientColorSpace::Device,
+                    absolute: false,
+                    options: 0,
+                },
+                |c| match c {
+                    onesim_protocol::Color::Rgba { r, g, b, a, .. } => Color::rgba(*r as f32, *g as f32, *b as f32, *a as f32),
+                    _ => Color::rgba(0.0, 0.0, 0.0, 1.0),
+                },
+            ))
+        };
+        let make_grad_scene = |r: f32| {
+            let mut shape = Node::new("grad-shape", "shape");
+            shape.parent = Some(0);
+            shape.bounds = Rect { x: 10.0, y: 10.0, w: 40.0, h: 40.0 };
+            shape.vector = Some(Box::new(crate::scene::VectorShape {
+                geom: crate::scene::VectorGeom::Ellipse,
+                fill: Some(crate::scene::VectorFill {
+                    color: Color::rgba(1.0, 1.0, 1.0, 1.0),
+                    eo_fill: false,
+                    antialiased: true,
+                }),
+                stroke: None,
+            }));
+            shape.fill_paint = Some(make_grad(r));
+            test_scene(80.0, 80.0, vec![
+                effect_node("wrap", None, shape.bounds, VisualOp::Opacity { amount: 0.9 }),
+                shape,
+            ])
+        };
+        let mut grad_builder = Builder::new();
+        let g1 = grad_builder.build(&make_grad_scene(0.9), &mut fonts, 1.0);
+        assert_eq!(g1.added.len(), 1);
+        // Rebuilt identical gradient (fresh Arc allocation) hits cache cleanly.
+        let g1_again = grad_builder.build(&make_grad_scene(0.9), &mut fonts, 1.0);
+        assert!(g1_again.added.is_empty(), "identical rebuilt gradient should hit cache");
+        // Different gradient color (even after dropping the first scene/Arc) produces a distinct key.
+        let g2 = grad_builder.build(&make_grad_scene(0.1), &mut fonts, 1.0);
+        assert_eq!(g2.added.len(), 1, "changed gradient content must not hit stale sprite key");
+        assert_ne!(g1.added[0].id, g2.added[0].id);
+
+        // 7. Acute stroked path with miter_limit > 10 keeps the full extended miter tip inside a composite
+        let mut miter_shape = Node::new("acute", "shape");
+        miter_shape.parent = Some(0);
+        miter_shape.bounds = Rect { x: 20.0, y: 20.0, w: 40.0, h: 40.0 };
+        miter_shape.vector = Some(Box::new(crate::scene::VectorShape {
+            geom: crate::scene::VectorGeom::Path {
+                ops: vec![
+                    onesim_protocol::PathOp::M([40.0, 0.0]),
+                    onesim_protocol::PathOp::L([40.0, 40.0]),
+                    onesim_protocol::PathOp::L([44.0, 0.0]),
+                ],
+                mirror_x: false,
+            },
+            fill: None,
+            stroke: Some(crate::scene::VectorStroke {
+                color: Color::rgba(1.0, 0.0, 0.0, 1.0),
+                line_width: 10.0,
+                line_cap: onesim_protocol::LineCap::Butt,
+                line_join: onesim_protocol::LineJoin::Miter,
+                miter_limit: 30.0,
+                dash: vec![],
+                dash_phase: 0.0,
+                antialiased: true,
+                inset: 0.0,
+            }),
+        }));
+        let miter_scene = test_scene(160.0, 220.0, vec![
+            effect_node("wrap", None, miter_shape.bounds, VisualOp::Opacity { amount: 0.9 }),
+            miter_shape,
+        ]);
+        let cpu_miter = crate::render(&miter_scene, &mut fonts, 1.0);
+        let mut miter_builder = Builder::new();
+        let dl_miter = miter_builder.build(&miter_scene, &mut fonts, 1.0);
+        assert_eq!(dl_miter.added.len(), 1);
+        // The acute miter tip extends well past 60 + 52 = 112px downward; verify sprite height captures it.
+        let cpu_max_y = (0..cpu_miter.height())
+            .rev()
+            .find(|&y| (0..cpu_miter.width()).any(|x| cpu_miter.pixel(x, y).unwrap().alpha() > 0))
+            .expect("miter stroke drew pixels");
+        assert!(cpu_max_y > 120, "acute miter tip should extend past 120px, got {cpu_max_y}");
+        let Op::Image { transform, .. } = dl_miter.ops[0] else { panic!("expected Op::Image for 0.9 opacity") };
+        let sprite_bottom = transform[5] as u32 + dl_miter.added[0].height - 1;
+        assert_eq!(sprite_bottom, cpu_max_y, "bounded composite sprite must preserve the full miter tip");
+
         // Builder::reset() clears cached composite sprites and re-uploads on next build
         let im3 = img_builder.build(&img_scene, &mut fonts, 2.0);
         assert_eq!(im3.added.len(), 1);

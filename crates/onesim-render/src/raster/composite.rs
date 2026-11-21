@@ -8,7 +8,7 @@ use onesim_protocol::{BlendMode, VisualOp};
 use tiny_skia::{Path, Pixmap};
 
 use super::sprite::{crop, hash_color, hash_glyph, hash_symbol, hash_text, hash_vector};
-use super::vector::build_vector_path;
+use super::vector::{build_vector_path, to_skia_stroke};
 use super::{render_subtree_into, text_geometry, PaintClip, Sprite};
 use crate::effects::Composite;
 use crate::glass::{box_radii, spec_params, GlassVariant};
@@ -225,7 +225,7 @@ fn node_own_bounds(
     s: f32,
     dark: bool,
     ios: onesim_protocol::IosVersion,
-    pw: u32,
+    viewport: PaintClip,
     has_scroll_edge: &mut bool,
 ) -> Option<PaintClip> {
     let mut acc: Option<PaintClip> = None;
@@ -256,7 +256,7 @@ fn node_own_bounds(
     }
     if let Some(e) = &n.edge {
         *has_scroll_edge = true;
-        acc = union_opt(acc, Some(PaintClip::from_ltrb(0.0, 0.0, pw as f32, e.bar * s + 4.0)));
+        acc = union_opt(acc, Some(PaintClip::from_ltrb(0.0, 0.0, viewport.right(), e.bar * s + 4.0)));
     }
     if let Some(v) = n.vector.as_deref() {
         let mut min_x = f32::INFINITY;
@@ -278,22 +278,29 @@ fn node_own_bounds(
         if let Some(st) = &v.stroke {
             if st.line_width > 0.0 {
                 if let Some(p) = build_vector_path(&v.geom, b, st.inset) {
-                    let pad = (st.line_width as f32 * (st.miter_limit as f32).clamp(1.0, 10.0) * 0.5 + 2.0)
-                        .max(st.line_width as f32 + 2.0);
-                    grow(&p, pad);
+                    let sk = to_skia_stroke(st);
+                    if let Some(stroked) = p.stroke(&sk, 1.0) {
+                        grow(&stroked, 2.0);
+                    } else {
+                        let miter = match st.line_join {
+                            onesim_protocol::LineJoin::Miter => st.miter_limit.max(1.0),
+                            _ => 1.0,
+                        };
+                        let pad = (st.line_width * miter * 0.5 + 2.0).max(st.line_width + 2.0) as f32;
+                        if pad.is_finite() {
+                            grow(&p, pad);
+                        } else {
+                            acc = union_opt(acc, Some(viewport));
+                        }
+                    }
                 }
             }
         }
-        if min_x.is_finite() && min_y.is_finite() && max_x > min_x && max_y > min_y {
-            acc = union_opt(
-                acc,
-                Some(PaintClip::from_ltrb(
-                    (min_x * s).floor(),
-                    (min_y * s).floor(),
-                    (max_x * s).ceil() + 1.0,
-                    (max_y * s).ceil() + 1.0,
-                )),
-            );
+        let edges = [(min_x * s).floor(), (min_y * s).floor(), (max_x * s).ceil() + 1.0, (max_y * s).ceil() + 1.0];
+        if edges.iter().all(|v| v.is_finite()) && edges[2] > edges[0] && edges[3] > edges[1] {
+            acc = union_opt(acc, Some(PaintClip::from_ltrb(edges[0], edges[1], edges[2], edges[3])));
+        } else if min_x != f32::INFINITY {
+            acc = union_opt(acc, Some(viewport));
         }
     }
     if n.glyph.is_some() {
@@ -466,7 +473,7 @@ pub(crate) fn subtree_bounds(
                 }
             }
         } else {
-            let own = node_own_bounds(n, fonts, s, dark, scene.ios, pw, &mut has_scroll_edge);
+            let own = node_own_bounds(n, fonts, s, dark, scene.ios, viewport, &mut has_scroll_edge);
             let mut work = own;
             let mut out = own;
             for &c in kids {

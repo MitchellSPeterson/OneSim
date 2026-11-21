@@ -842,3 +842,32 @@ fn animated_scale_effect_over_glass_matches_cpu_and_reuses_sprites() {
         }
     }
 }
+
+#[test]
+fn composite_high_miter_limit_stroke_matches_cpu() {
+    let Some(mut g) = gpu() else { return };
+    let mut fonts = Fonts::new();
+    let tree = wrap_bg(serde_json::json!({
+        "kind": "shape",
+        "id": "acute-miter",
+        "shape": "path",
+        "path": [
+            { "m": [40.0, 0.0] },
+            { "l": [40.0, 40.0] },
+            { "l": [44.0, 0.0] }
+        ],
+        "stroke": rgba_json(0.95, 0.15, 0.2, 1.0),
+        "strokeStyle": {
+            "lineWidth": 10.0,
+            "lineCap": "butt",
+            "lineJoin": "miter",
+            "miterLimit": 30.0
+        },
+        "modifiers": [
+            { "frame": { "width": 80.0, "height": 50.0 } },
+            { "effect": { "kind": "opacity", "amount": 0.9 } }
+        ]
+    }));
+    let sc = build_view(&tree, (180.0, 220.0), false, &mut fonts);
+    compare(&mut g, "high-miter", &sc, 1.0);
+}
