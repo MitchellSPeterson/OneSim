@@ -509,7 +509,6 @@ impl Ctx<'_> {
         ListContent { bottom: y, kids }
     }
 
-    #[allow(clippy::too_many_arguments)]
     // Out of line: inlined into the recursive `view` dispatcher it inflates every stack frame.
     #[inline(never)]
     #[allow(clippy::too_many_arguments)]

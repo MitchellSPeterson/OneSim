@@ -232,6 +232,10 @@ impl Host {
             };
             build_scene_reusing_layout(&root, &params, fonts, cache)
         };
+        if s.layout_cache_gen != gen {
+            s.layout_cache.clear();
+            s.layout_cache_gen = gen;
+        }
         let mut scene = layout(&s.inter, &mut s.layout_cache);
         if s.is_swiftui() {
             if s.inter.sync_text_focus(&scene, version) {

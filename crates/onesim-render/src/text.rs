@@ -620,70 +620,91 @@ impl Fonts {
         if nchars == 0 {
             return format!("{text}\u{2026}");
         }
+        // Bound the longest fitting prefix in O(log N) so multiline/explicit-newline text stays in range.
+        let (mut p_lo, mut p_hi) = (0, nchars);
+        while p_lo < p_hi {
+            let mid = (p_lo + p_hi).div_ceil(2);
+            let probe = format!("{}\u{2026}", text[..idx[mid]].trim_end());
+            if self.fits(&probe, &one, limit, n) {
+                p_lo = mid;
+            } else {
+                p_hi = mid - 1;
+            }
+        }
+        let head_max = p_lo;
+
         // Single-shape estimate of cumulative width at each character boundary.
-        let scale = f64::from(width_scale(one.width));
-        let shaped = self.build(text, &one, None, &[]);
-        let mut char_end_x = vec![0.0_f64; nchars + 1];
-        let mut total_w = 0.0_f64;
-        for run in shaped.layout_runs() {
-            for g in run.glyphs {
-                let end_x = f64::from(g.x + g.w) * scale;
-                total_w = total_w.max(end_x);
-                if let Ok(ci) = idx.binary_search(&g.end) {
-                    char_end_x[ci] = char_end_x[ci].max(end_x);
+        let head_est = if text.contains('\n') {
+            head_max / 2
+        } else {
+            let scale = f64::from(width_scale(one.width));
+            let shaped = self.build(text, &one, None, &[]);
+            let mut char_end_x = vec![0.0_f64; nchars + 1];
+            for run in shaped.layout_runs() {
+                for g in run.glyphs {
+                    let end_x = f64::from(g.x + g.w) * scale;
+                    if let Ok(ci) = idx.binary_search(&g.end) {
+                        char_end_x[ci] = char_end_x[ci].max(end_x);
+                    }
                 }
             }
-        }
-        let mut running = 0.0_f64;
-        for x in &mut char_end_x {
-            if *x < running {
-                *x = running;
-            } else {
-                running = *x;
+            let mut running = 0.0_f64;
+            for x in &mut char_end_x {
+                if *x < running {
+                    *x = running;
+                } else {
+                    running = *x;
+                }
             }
-        }
-        let ell_w = self.measure("\u{2026}", &one, None, &[]).0;
-        let budget = (f64::from(limit) * n as f64 - ell_w).max(0.0);
-        let half = budget * 0.5;
-        let head_est = char_end_x.partition_point(|&x| x <= half).min(nchars);
+            let ell_w = self.measure("\u{2026}", &one, None, &[]).0;
+            let budget = (f64::from(limit) * n as f64 - ell_w).max(0.0);
+            let half = budget * 0.5;
+            char_end_x.partition_point(|&x| x <= half).min(head_max)
+        };
         let h_lo = head_est.saturating_sub(6);
-        let h_hi = (head_est + 6).min(nchars);
+        let h_hi = (head_est + 6).min(head_max);
 
         let mut cands: Vec<(f64, f64, usize, String)> = Vec::with_capacity(h_hi - h_lo + 1);
-        for head in h_lo..=h_hi {
-            let pre_end = idx[head];
-            let mut lo = 0;
-            let mut hi = nchars - head;
-            while lo < hi {
-                let mid = (lo + hi).div_ceil(2);
-                let suf_at = idx[nchars - mid];
+        let mut collect = |range: std::ops::RangeInclusive<usize>, cands: &mut Vec<(f64, f64, usize, String)>| {
+            for head in range {
+                let pre_end = idx[head];
+                let mut lo = 0;
+                let mut hi = nchars - head;
+                while lo < hi {
+                    let mid = (lo + hi).div_ceil(2);
+                    let suf_at = idx[nchars - mid];
+                    if pre_end > suf_at {
+                        hi = mid - 1;
+                        continue;
+                    }
+                    let pre = text[..pre_end].trim_end();
+                    let suf = text[suf_at..].trim_start();
+                    if self.fits(&format!("{pre}\u{2026}{suf}"), &one, limit, n) {
+                        lo = mid;
+                    } else {
+                        hi = mid - 1;
+                    }
+                }
+                let suf_at = idx[nchars - lo];
                 if pre_end > suf_at {
-                    hi = mid - 1;
                     continue;
                 }
                 let pre = text[..pre_end].trim_end();
                 let suf = text[suf_at..].trim_start();
-                if self.fits(&format!("{pre}\u{2026}{suf}"), &one, limit, n) {
-                    lo = mid;
-                } else {
-                    hi = mid - 1;
+                let shown = format!("{pre}\u{2026}{suf}");
+                if !self.fits(&shown, &one, limit, n) {
+                    continue;
                 }
+                let kept = pre.chars().count() + suf.chars().count();
+                let hw = self.measure(pre, &one, None, &[]).0;
+                let tw = self.measure(suf, &one, None, &[]).0;
+                let width = self.measure(&shown, &one, None, &[]).0;
+                cands.push((width, (hw - tw).abs(), kept, shown));
             }
-            let suf_at = idx[nchars - lo];
-            if pre_end > suf_at {
-                continue;
-            }
-            let pre = text[..pre_end].trim_end();
-            let suf = text[suf_at..].trim_start();
-            let shown = format!("{pre}\u{2026}{suf}");
-            if !self.fits(&shown, &one, limit, n) {
-                continue;
-            }
-            let kept = pre.chars().count() + suf.chars().count();
-            let hw = self.measure(pre, &one, None, &[]).0;
-            let tw = self.measure(suf, &one, None, &[]).0;
-            let width = self.measure(&shown, &one, None, &[]).0;
-            cands.push((width, (hw - tw).abs(), kept, shown));
+        };
+        collect(h_lo..=h_hi, &mut cands);
+        if cands.is_empty() && (h_lo > 0 || h_hi < head_max) {
+            collect(0..=head_max, &mut cands);
         }
         // Among cuts that fill the line, put the ellipsis at the center.
         let max_w = cands.iter().map(|c| c.0).fold(0.0, f64::max);
@@ -1320,5 +1341,17 @@ mod span_tests {
         assert!((ratio - 0.80).abs() < 0.001, "condensed ratio {ratio} ({cond} vs {plain})");
         let compressed = fonts.measure("Condensed", &FontSpec { width: -2, ..spec }, None, &[]).0;
         assert!((compressed / plain - 0.70).abs() < 0.02, "compressed ratio {}", compressed / plain);
+    }
+
+    #[test]
+    fn middle_truncation_preserves_multiline_explicit_newlines() {
+        let mut fonts = Fonts::new();
+        let text = std::iter::repeat_n("hello", 10).collect::<Vec<_>>().join("\n");
+        let mid = FontSpec { lines: Some(2), trunc: 2, ..FontSpec::new(17.0, 22.0, 400, TextAlign::Leading) };
+        let shown = fonts.truncated_string(&text, &mid, 200.0);
+        assert!(shown.contains('\u{2026}'), "expected ellipsis in {shown:?}");
+        assert!(shown.starts_with("hello"), "expected head preserved in {shown:?}");
+        assert!(shown.ends_with("hello"), "expected tail preserved in {shown:?}");
+        assert!(shown.contains('\n'), "expected two-line result in {shown:?}");
     }
 }

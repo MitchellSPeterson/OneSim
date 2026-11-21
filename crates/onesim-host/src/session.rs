@@ -195,6 +195,8 @@ pub struct Session {
     pub settle: bool,
     /// Reusable SwiftUI layout cache across frames.
     pub layout_cache: SwiftUiLayoutCache,
+    /// Tree generation currently bound to `layout_cache`.
+    pub layout_cache_gen: u64,
     /// Cached laid-out scene for the current `(generation, layout_epoch)`.
     cached_scene: Option<CachedScene>,
     /// Bumped whenever interaction, animation, viewport, appearance, or device changes.
@@ -242,6 +244,7 @@ impl Session {
             sent_geometry: BTreeMap::new(),
             settle: true,
             layout_cache: SwiftUiLayoutCache::default(),
+            layout_cache_gen: 0,
             cached_scene: None,
             layout_epoch: 0,
             last_sent: Instant::now(),
