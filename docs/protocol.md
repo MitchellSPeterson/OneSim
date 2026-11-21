@@ -1026,7 +1026,8 @@ label style) build and change nothing on iPhone.
   `application(_:willFinishLaunchingWithOptions:)` and `application(_:didFinishLaunchingWithOptions:)` (no launch
   options) while `inactive`, evaluates the window once while still `inactive` (state, `onChange(initial: true)`), then
   becomes `active` (posting `didFinishLaunching` then `didBecomeActive`) and sends the first tree, in which
-  `onChange(of: scenePhase)` sees `inactive -> active`. `UIApplication.shared.delegate` is a SwiftUI-owned delegate
+  `onChange(of: scenePhase)` sees `inactive -> active` (on the web build this happens at the first render, when the
+  page pushes the environment; a phase or URL line before then connects the scene first). `UIApplication.shared.delegate` is a SwiftUI-owned delegate
   that forwards to the adaptor's instance, as on iOS.
   On `shutdown` or stdin EOF it calls `applicationWillTerminate(_:)` and posts `willTerminate`, unless the app is in
   the `background` (iOS suspends a backgrounded app without telling it).
@@ -1035,7 +1036,8 @@ label style) build and change nothing on iPhone.
   `active` first brings it forward: from `background` it sends `inactive`, then `open_url`, then `active`, as iOS
   delivers a URL to a foregrounding scene. A `launch_url` is sent as `open_url` right after the first tree. A URL
   must have a scheme (`letter (letter | digit | + - .)* :`), no surrounding whitespace and no control characters,
-  else `bad_request`. Pointer and keyboard input on an app that is not `active` is `invalid_state`. Other
+  else `bad_request`. Leaving `active` cancels the touches in progress (a gesture gets `cancel`, a scroll or sheet
+  drag settles as if lifted). Pointer and keyboard input on an app that is not `active` is `invalid_state`. Other
   frameworks answer `unsupported`.
 - CLI: `--scene-phase active|inactive|background` and `--open-url URL` are ordered steps like `--click`;
   `--launch-url URL` launches the app to open it.

@@ -117,6 +117,12 @@ pub extern "C" fn simcore_web_set_dynamic_type(index: i32) -> i32 {
 #[no_mangle]
 pub extern "C" fn simcore_web_set_scene_phase(phase: i32) -> i32 {
     let Some(&to) = usize::try_from(phase).ok().and_then(|i| ScenePhase::ALL.get(i)) else { return -1 };
+    if with(|s| s.scene_phase) == ScenePhase::Active && to != ScenePhase::Active {
+        // iOS cancels the app's touches as it resigns active.
+        if let Some(e) = with(|s| s.scene.as_ref().map(|sc| s.inter.cancel_touches(sc))) {
+            dispatch(e);
+        }
+    }
     for step in with(|s| s.scene_phase.steps_to(to)) {
         let (ctx, cb) = with(|s| {
             s.scene_phase = step;

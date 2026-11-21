@@ -9,9 +9,12 @@
 use serde_json::json;
 use std::io::{BufRead, Write};
 
-/// The counter screen; with any `scene_phase` / `open_url` seen, a "Lifecycle: ..." line logs them in order.
+/// The counter screen and a "Hold" view with a gesture; with any `scene_phase`, `open_url` or `gesture` seen, a
+/// "Lifecycle: ..." line logs them in order.
 fn tree(count: u32, lifecycle: &[String]) -> serde_json::Value {
     let mut t = counter_tree(count);
+    let hold = json!({"kind": "text", "id": "0.3", "text": "Hold", "modifiers": [{"gesture": {"key": "0.3#g0", "pans": false}}]});
+    t["children"].as_array_mut().unwrap().push(hold);
     if !lifecycle.is_empty() {
         let line = json!({"kind": "text", "id": "0.2", "text": format!("Lifecycle: {}", lifecycle.join(","))});
         t["children"].as_array_mut().unwrap().push(line);
@@ -299,9 +302,10 @@ fn main() {
                 version += 1;
                 send(json!({"type": "tree", "version": version, "root": tree(count, &lifecycle)}));
             }
-            Some("scene_phase") | Some("open_url") => {
+            Some("scene_phase") | Some("open_url") | Some("gesture") => {
                 lifecycle.push(match msg["type"].as_str() {
                     Some("open_url") => format!("url:{}", msg["url"].as_str().unwrap_or("")),
+                    Some("gesture") => format!("gesture:{}", msg["phase"].as_str().unwrap_or("")),
                     _ => msg["phase"].as_str().unwrap_or("").to_string(),
                 });
                 version += 1;

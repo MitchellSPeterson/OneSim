@@ -392,8 +392,19 @@ final class _Runtime {
         }
     }
 
+    /// Set by `_onesimStart`; the first submission (native: at once; web: when the page pushes the environment)
+    /// connects the scene: one pass while inactive for an `App`, then active.
+    var launching = false
+
     /// Re-evaluate the whole root, drop stale actions/state, and submit.
-    func submitTree(emitSchedule: Bool = true) { _pool { _submitTree(emitSchedule: emitSchedule) } }
+    func submitTree(emitSchedule: Bool = true) {
+        if launching {
+            launching = false
+            if scenePhase != .active { primeEvaluation() }   // an `App`: its scene connects inactive
+            _sceneDidBecomeActive()
+        }
+        _pool { _submitTree(emitSchedule: emitSchedule) }
+    }
 
     private func _evaluate() -> Node {
         actions.removeAll(keepingCapacity: true)
@@ -530,7 +541,7 @@ func _onesimStart(_ render: @escaping () -> Node) {
     let rt = _Runtime.shared
     rt.render = render
     _onesimRegisterCallbacks()
-    _sceneDidBecomeActive()
+    rt.launching = true
 }
 #else
 /// Starts the runtime with `render` as the root and runs the event loop. Never returns.
@@ -553,8 +564,7 @@ func _onesimStart(_ render: @escaping () -> Node) -> Never {
     rt.render = render
     _onesimRegisterCallbacks()
     _installImageWake()
-    if rt.scenePhase != .active { rt.primeEvaluation() }   // an `App`: its scene connects inactive
-    _sceneDidBecomeActive()
+    rt.launching = true
     rt.submitTree()
     let rc = simcore_runtime_run()
     _appWillTerminate()

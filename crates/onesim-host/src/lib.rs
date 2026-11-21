@@ -175,6 +175,16 @@ impl Host {
     /// guest message and tree per step. The same phase again does nothing.
     pub fn set_scene_phase(&mut self, id: &str, phase: ScenePhase) -> Result<(), ApiError> {
         let s = self.require_scenes(id)?;
+        if s.scene_phase == ScenePhase::Active && phase != ScenePhase::Active {
+            // iOS cancels the app's touches as it resigns active; the input gate would otherwise strand them.
+            let (scene, version, _) = self.scene(id)?;
+            let s = self.get(id)?;
+            s.inter.version = version;
+            let effect = s.inter.cancel_touches(&scene);
+            s.invalidate_scene();
+            s.send_effect(effect)?;
+        }
+        let s = self.get(id)?;
         for step in s.scene_phase.steps_to(phase) {
             s.send_and_wait_tree(&HostMessage::ScenePhase { phase: step })?;
             s.scene_phase = step;

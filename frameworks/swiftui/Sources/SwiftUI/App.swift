@@ -476,6 +476,7 @@ public struct CommandsBuilder {
 /// and re-render. Always answers a tree.
 func _applyScenePhase(_ name: String) {
     let rt = _Runtime.shared
+    if rt.launching { rt.submitTree() }   // before the first frame (web): connect the scene first
     let phases: [String: ScenePhase] = ["active": .active, "inactive": .inactive, "background": .background]
     guard let phase = phases[name] else {
         "scene_phase: unknown phase \"\(name)\"".withCString { simcore_report_error($0) }
@@ -503,6 +504,7 @@ func _sceneDidBecomeActive() {
 /// Host `open_url` line: every `onOpenURL` in the window runs, in view order. Always answers a tree.
 func _applyOpenURL(_ string: String) {
     let rt = _Runtime.shared
+    if rt.launching { rt.submitTree() }
     if let url = URL(string: string) {
         for h in rt.urlHandlers { h(url) }
     } else {

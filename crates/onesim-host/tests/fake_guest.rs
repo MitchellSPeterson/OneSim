@@ -551,3 +551,25 @@ fn json_api_scene_phase_and_open_url() {
     assert_eq!(lines[5]["error"]["code"], "bad_request");
     assert_eq!(lines[6]["result"]["scene_phase"], "active");
 }
+
+#[test]
+fn leaving_the_foreground_cancels_a_held_touch() {
+    let mut host = Host::new();
+    let id = host.create_session(params(GUEST)).unwrap();
+    host.start_session(&id).unwrap();
+    let (_, root) = host.inspect(&id).unwrap();
+    let f = find(&root, &|n| n.text.as_deref() == Some("Hold")).unwrap().frame;
+    let (x, y) = (f.x + f.width / 2.0, f.y + f.height / 2.0);
+    host.pointer(&id, PointerEvent::new(PointerKind::Down, x, y)).unwrap();
+    assert_eq!(lifecycle_text(&mut host, &id), "Lifecycle: gesture:start");
+    // iOS cancels the touch as the app resigns active; nothing is left for later ticks to report.
+    host.set_scene_phase(&id, ScenePhase::Background).unwrap();
+    assert_eq!(lifecycle_text(&mut host, &id), "Lifecycle: gesture:start,gesture:cancel,inactive,background");
+    host.wait(&id, 2000.0).unwrap();
+    assert_eq!(lifecycle_text(&mut host, &id), "Lifecycle: gesture:start,gesture:cancel,inactive,background");
+    // Back in front, the lifted finger finds no touch to end.
+    host.set_scene_phase(&id, ScenePhase::Active).unwrap();
+    host.pointer(&id, PointerEvent::new(PointerKind::Up, x, y)).unwrap();
+    assert!(!lifecycle_text(&mut host, &id).contains("gesture:end"));
+    host.stop_session(&id).unwrap();
+}
