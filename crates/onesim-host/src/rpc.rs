@@ -30,14 +30,14 @@ pub const METHODS: &[&str] = &[
     "runtime.load", "runtime.reload", "runtime.pause", "runtime.resume", "runtime.stop", "runtime.status",
     "input.tap", "input.press", "input.type", "input.key", "input.scroll", "input.swipe",
     "render.screenshot", "render.frame", "render.backend", "render.tree", "render.inspect",
-    "device.list", "device.set", "device.rotate", "device.appearance", "device.keyboard",
+    "device.list", "device.set", "device.rotate", "device.appearance", "device.keyboard", "device.pasteboard",
     "modules.list", "modules.simulate", "events.subscribe", "events.unsubscribe",
 ];
 
 pub const EVENTS: &[&str] = &[
     "runtime.ready", "runtime.error", "runtime.stopped", "runtime.paused", "runtime.resumed", "bundle.loaded",
     "bundle.reloaded", "bundle.error", "refresh.applied", "render.updated", "navigation.changed", "module.unsupported",
-    "module.called",
+    "module.called", "pasteboard.changed",
 ];
 
 /// A JSON-RPC error: `code` is the JSON-RPC code, `kind` the OneSim `data.code`.
@@ -218,6 +218,14 @@ struct AppearanceP {
     #[serde(default)]
     session_id: String,
     mode: Option<Appearance>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PasteboardP {
+    #[serde(default)]
+    session_id: String,
+    items: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
@@ -743,6 +751,12 @@ fn session_call(srv: &Server, method: &str, p: &Value) -> R {
             let en = srv.entry(&a.session_id)?;
             let m = a.mode.ok_or_else(|| bad("mode must be \"light\" or \"dark\""))?;
             en.with(|h| h.set_appearance(&en.id, m)).map(|_| json!({}))
+        }
+        "device.pasteboard" => {
+            let a: PasteboardP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
+            let items = a.items.ok_or_else(|| bad("items (array of strings) required"))?;
+            en.with(|h| h.set_pasteboard(&en.id, items)).map(|_| json!({}))
         }
         "device.keyboard" => {
             let a: KeyboardP = args(p)?;

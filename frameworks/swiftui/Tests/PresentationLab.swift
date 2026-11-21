@@ -4,6 +4,31 @@ import UniformTypeIdentifiers
 // Wire checks for popovers, presentation modifiers, context menus, ShareLink and PasteButton (wire_test.py).
 struct Row: Identifiable { let id: Int }
 
+/// Shares and pastes through its name (ProxyRepresentation).
+struct Contact: Transferable {
+    let name: String
+    static var transferRepresentation: some TransferRepresentation {
+        ProxyRepresentation(exporting: \.name, importing: { Contact(name: $0) })
+    }
+}
+
+/// JSON first, then a hidden-unless-short text proxy.
+struct Note: Codable, Transferable {
+    let title: String
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .json)
+        ProxyRepresentation(exporting: \.title).exportingCondition { $0.title.count < 3 }
+    }
+}
+
+/// Bytes, through async closures.
+struct Blob: Transferable {
+    let text: String
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(contentType: .plainText, exporting: { Data($0.text.utf8) }, importing: { Blob(text: String(decoding: $0, as: UTF8.self)) })
+    }
+}
+
 struct PresentationLab: View {
     @State private var pop = false
     @State private var bubble = false
@@ -93,6 +118,14 @@ struct PresentationLab: View {
                 PasteButton(payloadType: String.self) { s in pasted += " " + s.joined(separator: ",") }
                 PasteButton(payloadType: URL.self) { u in urls += " " + u.map(\.absoluteString).joined() }
                 PasteButton(supportedContentTypes: [.plainText]) { providers in pasted += " providers\(providers.count)" }
+                }
+                Group {
+                ShareLink(item: Contact(name: "Ada"), preview: SharePreview("Contact")) { Text("Share contact") }
+                ShareLink(item: Note(title: "Hi"), preview: SharePreview("Note")) { Text("Share note") }
+                ShareLink(item: Blob(text: "bytes"), preview: SharePreview("Blob")) { Text("Share blob") }
+                PasteButton(payloadType: Contact.self) { c in pasted += " contact:" + c.map(\.name).joined() }
+                PasteButton(payloadType: Note.self) { n in pasted += " note:" + n.map(\.title).joined() }
+                PasteButton(payloadType: Blob.self) { b in pasted += " blob:" + b.map(\.text).joined() }
                 Text(pasted)
                 Text(urls)
                 }

@@ -50,7 +50,8 @@ struct Root: View {
                         .padding(40)
                 }
             ShareLink(item: "Hello from OneSim")
-            ShareLink("Share link", item: URL(string: "https://example.com")!)
+            ShareLink("Share link", item: URL(string: "https://example.com")!,
+                      preview: SharePreview("Example site", image: Image(systemName: "globe")))
             PasteButton(payloadType: String.self) { strings in
                 pasted = strings.first ?? ""
             }

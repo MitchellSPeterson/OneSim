@@ -1505,7 +1505,7 @@ assert ptext(t, "log:").endswith("primary[1]"), ptext(t, "log:")
 
 # PasteButton: drawn enabled (as on iOS) on an empty pasteboard, but a tap pastes nothing.
 paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
-assert len(paste) == 3 and not any(b["disabled"] for b in paste) and ftexts(paste[0]) == ["Paste"], paste
+assert len(paste) == 6 and not any(b["disabled"] for b in paste) and ftexts(paste[0]) == ["Paste"], paste
 # (nothing changes, so the guest sends no tree; the exact "pasted:" text below shows onPaste never ran)
 send(p, type="action", id=paste[0]["action"], version=t["version"])
 # ShareLink: the default label, a share layer with items, subject, message; Copy fills the pasteboard and closes.
@@ -1527,6 +1527,26 @@ t = act(p, t, pbtn(t, "Nothing")["action"]); assert not PL(t), "no items: no sha
 send(p, type="pasteboard", items=["https://example.com"]); t = recv(p)
 paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
 t = act(p, t, paste[1]["action"]); assert ptext(t, "urls:") == "urls: https://example.com", "only the URL, never the earlier text: " + ptext(t, "urls:")
+# Share-sheet activities other than Copy hand the items to the system: a module.called event, then the sheet closes.
+t = act(p, t, pbtn(t, "Many")["action"]); l = PL(t)[0]
+assert sorted(l["activities"]) == ["Add to Reading List", "More", "Open in Safari", "Reminders", "Safari", "Save to Files"], l
+send(p, type="action", id=l["activities"]["Save to Files"], version=t["version"])
+ev = recv(p); assert ev == {"type": "event", "name": "module.called", "detail": {"module": "ShareSheet", "method": "Save to Files", "args": ["a", "b"]}}, ev
+t = recv(p); assert not PL(t)
+# Custom Transferable types: a ProxyRepresentation shares and pastes through its proxy; a Codable one as JSON (its
+# conditional text proxy only applies when the condition holds); a DataRepresentation through async closures.
+def share_copy(t, label):
+    t = act(p, t, pbtn(t, label)["action"]); l = PL(t)[0]
+    send(p, type="action", id=l["copy"], version=t["version"]); ev = recv(p); return recv(p), ev["items"], l
+t, items, l = share_copy(t, "Share contact"); assert items == ["Ada"] and l["title"] == "Contact", (items, l)
+paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
+t = act(p, t, paste[3]["action"]); assert ptext(t, "pasted:").endswith("contact:Ada"), ptext(t, "pasted:")
+t, items, _ = share_copy(t, "Share note"); assert json.loads(items[0]) == {"title": "Hi"}, items
+paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
+t = act(p, t, paste[4]["action"]); assert ptext(t, "pasted:").endswith("note:Hi"), ptext(t, "pasted:")
+t, items, _ = share_copy(t, "Share blob"); assert items == ["bytes"], items
+paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
+t = act(p, t, paste[5]["action"]); assert ptext(t, "pasted:").endswith("blob:bytes"), ptext(t, "pasted:")
 finish(p)
 # SIMCORE_PASTEBOARD seeds it at launch.
 p, t = pl_spawn(SIMCORE_PASTEBOARD="seeded")

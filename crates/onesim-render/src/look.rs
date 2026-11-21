@@ -49,6 +49,9 @@ pub struct ShareLook {
     pub sep: (f64, f64),
     /// Action circle top in its cell.
     pub action_y: f64,
+    /// Activities offered for links (app row, action row); text always gets Reminders, More / Copy, Save to Files.
+    pub url_apps: &'static [&'static str],
+    pub url_actions: &'static [&'static str],
 }
 
 const IOS26: Look = Look {
@@ -71,6 +74,8 @@ const IOS26: Look = Look {
         label_y: (92.0, 92.0),
         sep: (227.33, 24.33),
         action_y: 17.0,
+        url_apps: &["Reminders", "More"],
+        url_actions: &["Copy", "Add to Reading List"],
     },
 };
 
@@ -94,6 +99,8 @@ const IOS27: Look = Look {
         label_y: (90.0, 88.0),
         sep: (228.67, 27.67),
         action_y: 16.0,
+        url_apps: &["Reminders", "Safari", "More"],
+        url_actions: &["Copy", "Open in Safari", "Add to Reading List"],
     },
 };
 

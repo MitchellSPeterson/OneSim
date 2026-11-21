@@ -160,6 +160,16 @@ export class OneSim {
     return this.wasm.simcore_web_rn_outbox() > 0 ? JSON.parse(dec.decode(this.#take())) : [];
   }
 
+  /** Replace the app's pasteboard (what `PasteButton` pastes) with these strings. True if the guest took it
+   *  (SwiftUI builds only). */
+  setPasteboard(items) {
+    return !!this.wasm.simcore_web_set_pasteboard && this.wasm.simcore_web_set_pasteboard(this.#put(JSON.stringify(items))) === 1;
+  }
+  /** Strings the app put on the pasteboard (the share sheet's Copy) since the last call, or null. */
+  takePasteboard() {
+    return this.wasm.simcore_web_take_pasteboard?.() > 0 ? JSON.parse(dec.decode(this.#take())) : null;
+  }
+
   /** Dynamic Type size: xSmall ... large (default) ... xxxLarge, accessibility1 ... accessibility5. */
   setDynamicType(size) {
     const i = DYNAMIC_TYPE.indexOf(size);

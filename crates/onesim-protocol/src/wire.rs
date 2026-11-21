@@ -238,6 +238,8 @@ pub enum HostMessage {
         #[serde(default, rename = "dynamicTypeSize", skip_serializing_if = "Option::is_none")]
         dynamic_type_size: Option<DynamicTypeSize>,
     },
+    /// SwiftUI: replace the app's pasteboard (section U).
+    Pasteboard { items: Vec<String> },
     /// React Native touch: `x`/`y` page points, `lx`/`ly` relative to the target node (`tag`).
     Touch { phase: TouchPhase, tag: u64, x: f64, y: f64, lx: f64, ly: f64, timestamp: f64 },
     /// React Native: a finger on a scroll view passed the pan slop; the guest answers `touch_answer` with this `ask`
@@ -391,6 +393,7 @@ mod tests {
         assert_eq!((x.resolve(10.0), y.resolve(10.0)), (0.0, 10.0));
         let pb: GuestMessage = serde_json::from_str(r#"{"type":"pasteboard","items":["a"]}"#).unwrap();
         assert_eq!(pb, GuestMessage::Pasteboard { items: vec!["a".into()] });
+        assert_eq!(serde_json::to_string(&HostMessage::Pasteboard { items: vec!["a".into()] }).unwrap(), r#"{"type":"pasteboard","items":["a"]}"#);
         let sid = GuestMessage::ScrollToId { scroll: "0".into(), target: "row".into(), anchor: Some([0.5, 0.0]) };
         let sj = serde_json::to_string(&sid).unwrap();
         assert_eq!(sj, r#"{"type":"scroll_to_id","scroll":"0","target":"row","anchor":[0.5,0.0]}"#);

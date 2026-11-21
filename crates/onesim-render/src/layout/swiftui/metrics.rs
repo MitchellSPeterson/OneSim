@@ -207,6 +207,10 @@ pub(super) const SHARE_MORE_FG: ((u8, u8, u8), (u8, u8, u8)) = ((99, 99, 102), (
 pub(super) const SHARE_ACTION_FILL: ((u8, u8, u8), (u8, u8, u8)) = ((230, 230, 232), (58, 58, 60));
 pub(super) const SHARE_ACTION_GLYPH: f64 = 26.0;
 pub(super) const SHARE_LABEL_PT: f32 = 12.0;
+pub(super) const SHARE_SAFARI_GLYPH: f64 = 30.0;
+pub(super) const SHARE_GLASSES_GLYPH: f64 = 30.0;
+/// A `SharePreview` title sits this much lower (negative: higher) than an item's own text (`share-link`).
+pub(super) const SHARE_TITLED_DY: f64 = -1.0;
 /// `PasteButton` (`popovers`): 13.33 pt each side of the label, 34.67 tall, radius 5.
 pub(super) const PASTE_PAD: (f64, f64) = (13.33, 34.67);
 pub(super) const PASTE_RADIUS: f64 = 5.0;

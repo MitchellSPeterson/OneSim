@@ -1003,18 +1003,30 @@ Additive; `PROTOCOL_VERSION` stays 1. Extends the presentation layers of section
   that, centred (above when there is no room). `contextMenu(forSelectionType:)` wraps each `ForEach` row below it
   whose id is of the selection type: its long press opens the menu built for `[id]`, its tap runs `primaryAction`.
 - New layer `share` (`ShareLink`): `{"kind":"share","anchor","items":[String],"title"?,"subject"?,"message"?,"image"?:
-  bool,"icon"?: bool,"dismiss","copy"}`. `items` are the items' text (`URL` as its absolute string); `title` is the
-  `SharePreview` title. The host draws the Simulator's share sheet for text: a floating glass card (9 pt from the
-  sides and bottom), a header with a text tile and the title (or the single item, or "N Items"), an app row (Reminders,
-  More) and an action row (Copy, Save to Files). Copy runs `copy` (the guest puts the items on the pasteboard and
-  closes the sheet); every other cell, a tap outside and a swipe down run `dismiss`. `subject` and `message` have no
-  visible effect.
+  ViewNode,"icon"?: ViewNode,"url"?: bool,"dismiss","copy","activities":{name: u64}}`. `items` are the items' text
+  (each item's first transfer representation that has one); `title`, `image` and `icon` come from the `SharePreview`
+  (the image and icon as their `image` view); `url` is set when every item is a `URL`. The host draws the Simulator's
+  share sheet: a floating glass card (9 pt from the sides and bottom) with a header tile and title, an app row and an
+  action row. Text items get Reminders, More / Copy, Save to Files; links get the release's link activities
+  (`look::ShareLook`: iOS 27.2 Reminders, Safari, More / Copy, Open in Safari, Add to Reading List; iOS 26.5
+  Reminders, More / Copy, Add to Reading List). The tile shows a text glyph for text, and for links or previews a
+  blank tile, or the preview's bitmap when it has one (a symbol image draws nothing, as on device). A preview
+  title is primary and semibold; an item's own text secondary. Copy runs `copy` (the guest puts the items on the
+  pasteboard and closes the sheet); every other cell runs its `activities` action: the guest reports
+  `module.called` `{"module":"ShareSheet","method":<activity>,"args":items}` (handed to the system, like
+  `openURL`) and closes the sheet. A tap outside and a swipe down run `dismiss`. `subject` and `message` are not
+  shown, as on device (Mail and Messages use them).
 - `button` `style` `"pasteButton"` (`PasteButton`): a white `Label("Paste", systemImage: "doc.on.clipboard")` on an
   accent rounded rect (radius 5, 13.33 pt side padding, 34.67 tall; gray 133 / 140 under a presented layer). iOS draws
   it enabled whatever the pasteboard holds; its action pastes the items that convert to the payload type, or does
   nothing.
 - **Pasteboard.** The session pasteboard is a list of strings in the guest. The host seeds it at launch with
   `SIMCORE_PASTEBOARD` (`create_session` `"pasteboard"`, CLI `--pasteboard TEXT`); host → guest
-  `{"type":"pasteboard","items":[String]}` replaces it (C ABI: the layout callback). When the app replaces it (the
-  share sheet's Copy) the guest sends the same line to the host, which emits `pasteboard.changed` `{"items"}` on the
-  client event stream. Text converts to `String` as is and to `URL` when it has a scheme and no spaces.
+  `{"type":"pasteboard","items":[String]}` replaces it (C ABI: the layout callback; API `device.pasteboard`;
+  web `sim.setPasteboard(items)`). When the app replaces it (the share sheet's Copy) the guest sends the same line
+  to the host, which emits `pasteboard.changed` `{"items"}` on the client event stream (web: `sim.takePasteboard()`).
+  The native window keeps it in step with the host clipboard (read when the window gains focus, written on
+  `pasteboard.changed`) unless `--pasteboard` fixed it; the web page does the same with the browser clipboard as far
+  as the browser allows. Text converts through the payload type's transfer representations: `String` as is, `URL`
+  when it has a scheme and no spaces, `Data` as UTF-8, a `CodableRepresentation` as JSON, a `ProxyRepresentation`
+  through its proxy.

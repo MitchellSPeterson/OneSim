@@ -270,9 +270,14 @@ fn main() {
     send(json!({"type": "hello", "protocol": 1}));
     send(json!({"type": "tree", "version": version, "root": tree(count)}));
     send_boot_extras();
+    // Pasteboard (section U): echo what the host sets, and what it seeded at launch, as app copies.
+    if let Ok(pb) = std::env::var("SIMCORE_PASTEBOARD") {
+        send(json!({"type": "pasteboard", "items": [format!("launch:{pb}")]}));
+    }
     for line in std::io::stdin().lock().lines() {
         let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line.unwrap_or_default()) else { continue };
         match msg["type"].as_str() {
+            Some("pasteboard") => send(json!({"type": "pasteboard", "items": msg["items"]})),
             Some("action") => {
                 if crash {
                     eprintln!("fake guest crashing");

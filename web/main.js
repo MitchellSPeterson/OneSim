@@ -178,8 +178,14 @@ async function main() {
     flush();
     present();
   }
+  // The app's pasteboard follows the browser clipboard (as far as the browser allows reading it) and writes back
+  // what the app copies.
+  const syncClipboardIn = () => navigator.clipboard?.readText?.().then((t) => { if (t) act(() => sim.setPasteboard([t])); }, () => {});
+  addEventListener("focus", syncClipboardIn);
   const act = (f) => {
     const result = f();
+    const copied = sim.takePasteboard();
+    if (copied?.length) navigator.clipboard?.writeText?.(copied.join("\n")).catch(() => {});
     flush();
     lastTick ??= performance.now();
     requestFrame();

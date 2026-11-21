@@ -3,30 +3,6 @@ import Foundation
 #endif
 // ShareLink (the system share sheet) and PasteButton, over the session pasteboard (docs/protocol.md section U).
 
-/// CoreTransferable's protocol, so `ShareLink` / `PasteButton` items type-check. OneSim moves items as text:
-/// `String` as itself, `URL` as its absolute string, anything else as its description.
-public protocol Transferable {}
-extension String: Transferable {}
-extension URL: Transferable {}
-extension Image: Transferable {}
-extension Never: Transferable {}
-
-func _transferText(_ v: Any) -> String {
-    switch v {
-    case let s as String: return s
-    case let u as URL: return u.absoluteString
-    default: return "\(v)"
-    }
-}
-
-/// Builds a `T` from pasted text (`String`, or a `URL` that parses); nil when the text is not a `T`.
-func _transferValue<T>(_ text: String, _ type: T.Type) -> T? {
-    if T.self == String.self { return text as? T }
-    // Only text that is a whole URL with a scheme pastes as a URL (plain text has no URL representation).
-    if T.self == URL.self, !text.contains(" "), _hasScheme(text), let u = URL(string: text) { return u as? T }
-    return nil
-}
-
 /// `scheme:` per RFC 3986 (a letter, then letters, digits, `+`, `-`, `.`).
 func _hasScheme(_ s: String) -> Bool {
     guard let colon = s.firstIndex(of: ":"), let f = s.first, f.isLetter else { return false }
@@ -83,18 +59,28 @@ where Data.Element: Transferable {
         rt.slots[key] = st
         var out = SwiftUI._children(Button(action: { st.open = true; rt.dirty = true }) { label }, path)
         guard st.open, rt.pageIsActive, !rt.disabled, !items.isEmpty else { st.open = false; return out }
-        let texts = items.map { _transferText($0) }
+        let texts = items.compactMap { _transferText($0) }   // items without a text form (an Image) share nothing
         let close = { st.open = false; rt.dirty = true }
-        var l: Node = ["kind": "share", "items": texts, "dismiss": rt.registerAction(close),
+        // Other activities hand the items to the system, as `openURL` does (section U): reported, then closed.
+        var activities: Node = [:]
+        for name in ["Reminders", "Safari", "More", "Save to Files", "Open in Safari", "Add to Reading List"] {
+            activities[name] = rt.registerAction {
+                _send(["type": "event", "name": "module.called",
+                       "detail": ["module": "ShareSheet", "method": name, "args": texts] as Node])
+                close()
+            }
+        }
+        var l: Node = ["kind": "share", "items": texts, "dismiss": rt.registerAction(close), "activities": activities,
                        "copy": rt.registerAction { _setPasteboard(texts); close() }]
         if let id = out.first?["id"] as? String { l["anchor"] = id }
         if let subject { l["subject"] = subject._plainText }
         if let message { l["message"] = message._plainText }
+        if items.allSatisfy({ $0 is URL }) { l["url"] = true }
         if let preview, let first = items.first {
             let p = preview(first)
             l["title"] = p.title
-            if p.image != nil { l["image"] = true }
-            if p.icon != nil { l["icon"] = true }
+            if let v = p.image as? Image { l["image"] = _eval(v, path + "/previewImage") }
+            if let v = p.icon as? Image { l["icon"] = _eval(v, path + "/previewIcon") }
         }
         rt.layers.append(l)
         if !out.isEmpty { out[0]["value"] = "sharing" }
@@ -199,6 +185,7 @@ public struct PasteButton: View, _Primitive {
 
 #if canImport(UniformTypeIdentifiers)
 import UniformTypeIdentifiers
+#endif
 
 extension PasteButton {
     /// Pasteboard text matches a type that plain text (or, for text with a scheme, a URL) conforms to.
@@ -207,12 +194,11 @@ extension PasteButton {
     }
     public init(supportedContentTypes: [UTType], payloadAction: @escaping ([NSItemProvider]) -> Void) {
         accepts = PasteButton._accepts(supportedContentTypes)
-        paste = { texts in payloadAction(texts.map { NSItemProvider(object: $0 as NSString) }) }
+        paste = { texts in payloadAction(texts.map(_itemProvider)) }
     }
     public init<Payload>(supportedContentTypes: [UTType], validator: @escaping ([NSItemProvider]) -> Payload?,
                          payloadAction: @escaping (Payload) -> Void) {
         accepts = PasteButton._accepts(supportedContentTypes)
-        paste = { texts in if let p = validator(texts.map { NSItemProvider(object: $0 as NSString) }) { payloadAction(p) } }
+        paste = { texts in if let p = validator(texts.map(_itemProvider)) { payloadAction(p) } }
     }
 }
-#endif

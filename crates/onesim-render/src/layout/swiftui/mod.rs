@@ -359,10 +359,12 @@ fn layout_inner<'a>(root: &ViewNode, params: &'a SceneParams<'a>, fonts: &'a mut
                 }
                 menu
             }
-            Layer::Share { items, title, dismiss, copy, .. } => {
-                // The header names the item (or the preview's title); several items are counted.
+            Layer::Share { items, title, dismiss, copy, activities, image, icon, url, .. } => {
+                // The header names the item (or the preview's title, drawn darker); several items are counted.
                 let t = title.clone().unwrap_or_else(|| if items.len() == 1 { items[0].clone() } else { format!("{} Items", items.len()) });
-                cx.share_sheet(&id, &t, *copy, *dismiss, &geo)
+                let sheet = share::ShareSheet { title: &t, titled: title.is_some(), url: *url, preview: icon.as_deref().or(image.as_deref()),
+                    copy: *copy, activities, dismiss: *dismiss };
+                cx.share_sheet(&id, &sheet, &geo)
             }
             Layer::Dialog { title, title_visible, message, actions, anchor, dismiss } => {
                 // The popover points at the anchor's label (its first text), not the whole row.
@@ -610,6 +612,14 @@ mod tests {
 
     fn scene(json: &str, vp: (f64, f64)) -> Scene {
         scene_with(json, vp, false, (0.0, 0.0), &HashMap::new(), None)
+    }
+
+    fn scene_ios(json: &str, ios: IosVersion) -> Scene {
+        let v: ViewNode = serde_json::from_str(json).unwrap();
+        let dev = crate::device::device("iphone-18-pro").unwrap();
+        let params = SceneParams { viewport: (402.0, 874.0), device: dev, scale: 3.0, appearance: Appearance::Light, dynamic_type: DynamicTypeSize::Large,
+            ios, scroll: &HashMap::new(), focus: None, sheets: &HashMap::new(), overscroll: false, status_bar: true, chrome: Default::default() };
+        layout(&v, &params, &mut Fonts::new())
     }
 
     fn phone(json: &str) -> Scene {
@@ -1788,6 +1798,19 @@ mod tests {
         inter.drag(&s, DragPhase::Begin, 200.0, 560.0, 0.0);
         inter.drag(&s, DragPhase::Move, 200.0, 800.0, 16.0);
         assert!(matches!(inter.drag(&s, DragPhase::End, 200.0, 860.0, 100.0), Effect::Action { id: 7, .. }));
+        // Activities other than Copy run their own guest actions.
+        let s2 = phone(r#"{"kind":"presentation","id":"p","content":{"kind":"text","id":"u","text":"under"},
+            "layers":[{"kind":"share","items":["Hello"],"dismiss":7,"copy":8,"activities":{"Reminders":9,"More":10,"Save to Files":11}}]}"#);
+        let cell2 = |label: &str| s2.nodes.iter().find(|n| n.label.as_deref() == Some(label) && n.role == Role::Button).unwrap().action;
+        assert_eq!((cell2("Reminders"), cell2("More"), cell2("Save to Files")), (Some(9), Some(10), Some(11)));
+        // Links get the release's link activities and a blank tile; a preview title is drawn in the primary color.
+        let link = r#"{"kind":"presentation","id":"p","content":{"kind":"text","id":"u","text":"under"},
+            "layers":[{"kind":"share","items":["https://example.com"],"url":true,"title":"Example","image":{"kind":"image","id":"g","systemName":"globe"}}]}"#;
+        let labels = |s: &Scene| s.nodes.iter().filter(|n| n.id.starts_with("layer0#cell") && n.role == Role::Button).map(|n| n.label.clone().unwrap()).collect::<Vec<_>>();
+        assert_eq!(labels(&phone(link)), ["Reminders", "More", "Copy", "Add to Reading List"], "iOS 26.5");
+        let s27 = scene_ios(link, IosVersion::Ios27);
+        assert_eq!(labels(&s27), ["Reminders", "Safari", "More", "Copy", "Open in Safari", "Add to Reading List"], "iOS 27.2");
+        assert!(!s27.nodes.iter().any(|n| n.id.starts_with("layer0#tile#")), "a symbol preview leaves the tile blank");
         // Several items are counted in the header.
         let s = phone(r#"{"kind":"presentation","id":"p","content":{"kind":"text","id":"u","text":"under"},"layers":[{"kind":"share","items":["a","b"]}]}"#);
         assert_eq!(by_id(&s, "layer0#title").text.as_ref().map(|t| t.text.as_str()), Some("2 Items"));

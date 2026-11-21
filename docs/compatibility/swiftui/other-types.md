@@ -240,8 +240,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `PresentationDetent` | 16 | ✅ |  |  |
 | `PresentationMode` | 13 | ⬜ |  | Deprecated |
 | `PresentationPlacement` | 13 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | No effect in compact width |
-| `PresentationSizingContext` | 18 | 🟠 | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Declared for custom `PresentationSizing`; never consulted (compact width only) |
-| `PresentationSizingRoot` | 18 | 🟠 | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Declared for custom `PresentationSizing`; never consulted (compact width only) |
+| `PresentationSizingContext` | 18 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Never consulted in compact width, as on iPhone |
+| `PresentationSizingRoot` | 18 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Never consulted in compact width, as on iPhone |
 | `PreviewDevice` | 13 | ⬜ |  |  |
 | `PreviewPlatform` | 13 | ⬜ |  |  |
 | `PrimitiveButtonStyleConfiguration` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
@@ -298,7 +298,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ShaderFunction` | 17 | ⬜ |  |  |
 | `ShaderLibrary` | 17 | ⬜ |  |  |
 | `ShapeRole` | 15 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
-| `SharePreview` | 16 | 🟠 | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | The title shows in the share sheet header; `image` and `icon` are not drawn |
+| `SharePreview` | 16 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Title in the share sheet header; a bitmap image or icon fills the header tile, a symbol image leaves it blank (as on device) |
 | `SidebarCommands` | 14 | ⬜ |  |  |
 | `SidebarRowSize` | 16 | ⬜ |  |  |
 | `SizeDependentTextVariant` | 18 | ⬜ |  |  |

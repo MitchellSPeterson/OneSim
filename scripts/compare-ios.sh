@@ -296,6 +296,7 @@ for ios in ${SIMCORE_IOS:-27.2}; do
     pvshot context-menu-dark   --dark --long-press "Hold for menu"
     pvshot context-preview     --long-press "Hold for preview"
     pvshot share               --click "Share…"
+    pvshot share-link          --click "Share link"
     pvshot pasted              --pasteboard "Copied text" --click Paste
     echo "== SwiftUI popovers (iOS $ios)"
     python3 scripts/compare_ios.py "$pvfx" "$pvout/onesim" "$pvout" || rc=1

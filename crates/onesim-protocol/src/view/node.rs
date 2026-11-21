@@ -147,14 +147,22 @@ pub enum Layer {
         subject: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         message: Option<String>,
+        /// `SharePreview` image and icon, as views (drawn in the header tile when they are bitmaps).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        image: Option<Box<ViewNode>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<Box<ViewNode>>,
+        /// Every item is a `URL`: the sheet offers the link activities (Safari, Add to Reading List).
         #[serde(default, skip_serializing_if = "is_false")]
-        image: bool,
-        #[serde(default, skip_serializing_if = "is_false")]
-        icon: bool,
+        url: bool,
         #[serde(default)]
         dismiss: Option<u64>,
         #[serde(default)]
         copy: Option<u64>,
+        /// Guest actions of the other activities by name (`Reminders`, `More`, `Save to Files`): each reports the
+        /// items as a `module.called` event and closes the sheet.
+        #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+        activities: std::collections::BTreeMap<String, u64>,
     },
     /// Menu of a menu-style `Picker` or a `Menu`, anchored to it; `dismiss` closes it (tap outside).
     Menu {
@@ -2327,14 +2335,15 @@ mod tests {
              "backgroundInteraction": {"kind": "enabled", "upThrough": {"kind": "medium"}}, "background": {"kind": "empty", "id": "bg"}},
             {"kind": "popover", "content": {"kind": "empty", "id": "c"}, "arrow": true, "arrowEdge": "top", "attachment": {"point": [0.5, 1.0]}},
             {"kind": "contextMenu", "anchor": "a", "preview": {"kind": "empty", "id": "p"}, "items": [{"text": "Copy", "action": 2}], "dismiss": 3},
-            {"kind": "share", "items": ["x", "y"], "title": "T", "subject": "S", "message": "M", "dismiss": 4, "copy": 5},
+            {"kind": "share", "items": ["x", "y"], "title": "T", "subject": "S", "message": "M", "dismiss": 4, "copy": 5, "url": true,
+             "image": {"kind": "image", "id": "i", "systemName": "globe"}, "activities": {"More": 6}},
         ]))
         .unwrap();
         assert!(matches!(&layers[0], Layer::Sheet { corner_radius: Some(r), content_interaction: Some(ContentInteraction::Scrolls),
             background_interaction: Some(BackgroundInteraction::Enabled { up_through: Some(Detent::Medium) }), background: Some(_), .. } if *r == 0.0));
         assert!(matches!(&layers[1], Layer::Popover { arrow: true, attachment: Some(Attachment::Point([x, y])), arrow_edge: Some(e), .. } if *x == 0.5 && *y == 1.0 && e == "top"));
         assert!(matches!(&layers[2], Layer::ContextMenu { preview: Some(_), dismiss: Some(3), .. }));
-        assert!(matches!(&layers[3], Layer::Share { copy: Some(5), dismiss: Some(4), .. }));
+        assert!(matches!(&layers[3], Layer::Share { copy: Some(5), dismiss: Some(4), url: true, image: Some(_), icon: None, activities, .. } if activities["More"] == 6));
         for l in &layers {
             let again: Layer = serde_json::from_value(serde_json::to_value(l).unwrap()).unwrap();
             assert_eq!(&again, l);

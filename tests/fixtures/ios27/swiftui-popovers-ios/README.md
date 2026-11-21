@@ -25,6 +25,7 @@ visible (light states; dark PNGs cannot show it). Taps are by point coordinates;
 | `context-menu` / `context-menu-dark` | Long-press Hold for menu at (201, 401) |
 | `context-preview` | Long-press Hold for preview at (201, 457) |
 | `share` | Tap the first ShareLink (Share…) at (201, 499) |
+| `share-link` | Tap Share link at (201, 541) |
 | `pasted` | `clipboard write "Copied text"`, relaunch, tap Paste at (201, 590); no permission prompt appeared |
 
 Island tries (light states): popovers 225, popover-sheet 135, popover-bubble 93, styled-sheet 19, context-menu 24,

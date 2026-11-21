@@ -262,6 +262,8 @@ pub static MAP: &[(&str, [&str; 3])] = &[
     row!("text.alignright", "text-align-right"),
     row!("textformat", "text-aa"),
     row!("character.cursor.ibeam", "text-aa"),
+    row!("safari", "compass"),
+    row!("eyeglasses", "eyeglasses"),
     row!("number", "hash"),
     row!("at", "at"),
     row!("percent", "percent"),

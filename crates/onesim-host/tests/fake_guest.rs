@@ -66,6 +66,36 @@ fn counter_flow() {
 }
 
 #[test]
+fn pasteboard_reaches_the_guest_and_back() {
+    use onesim_host::HostEvent;
+    let next_pasteboard = |rx: &std::sync::mpsc::Receiver<HostEvent>| loop {
+        match rx.recv_timeout(std::time::Duration::from_secs(5)).expect("pasteboard.changed") {
+            HostEvent::Other { name, data } if name == "pasteboard.changed" => return data["items"].clone(),
+            _ => {}
+        }
+    };
+    let mut host = Host::new();
+    let mut p = params(GUEST);
+    p.pasteboard = Some("seed".into());
+    let id = host.create_session(p).unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    host.events(&id).unwrap().subscribe_typed(tx);
+    host.start_session(&id).unwrap();
+    // SIMCORE_PASTEBOARD seeds the guest (it echoes it back as an app copy).
+    assert_eq!(next_pasteboard(&rx), serde_json::json!(["launch:seed"]));
+    // set_pasteboard sends {"type":"pasteboard","items"} to the guest.
+    host.set_pasteboard(&id, vec!["a".into(), "b".into()]).unwrap();
+    assert_eq!(next_pasteboard(&rx), serde_json::json!(["a", "b"]));
+    host.stop_session(&id).unwrap();
+    // Not running: kept for the next launch, no error.
+    host.set_pasteboard(&id, vec!["later".into()]).unwrap();
+    // Only SwiftUI apps have one.
+    let rn: CreateSessionParams = serde_json::from_value(serde_json::json!({"framework": "react-native", "app_path": GUEST})).unwrap();
+    let rid = host.create_session(rn).unwrap();
+    assert_eq!(host.set_pasteboard(&rid, vec![]).unwrap_err().code, ErrorCode::Unsupported);
+}
+
+#[test]
 fn crash_is_isolated() {
     let dir = std::env::temp_dir().join(format!("onesim-crash-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
