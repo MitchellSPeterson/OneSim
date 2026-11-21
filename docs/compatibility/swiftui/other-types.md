@@ -363,10 +363,10 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ToolbarCustomizationBehavior` | 16 | ⬜ |  |  |
 | `ToolbarCustomizationOptions` | 16 | ⬜ |  |  |
 | `ToolbarDefaultItemKind` | 17 | ⬜ |  |  |
-| `ToolbarItem` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Displays view content in supported regions. Explicit IDs and initial visibility are accepted. User customization and overflow are pending. |
+| `ToolbarItem` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Displays view content in supported regions. Explicit IDs and initial visibility are accepted. Dense toolbars compress items. Native overflow and user customization are pending. |
 | `ToolbarItemAxisBehavior` | 13 | ⬜ |  |  |
 | `ToolbarItemGroup` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Renders individual views in a shared region. Group labels and overflow grouping are pending. |
-| `ToolbarItemPlacement` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Top leading, principal, trailing, bottom, and common semantic aliases. Keyboard, subtitle, ornament, and accessory placements are pending. |
+| `ToolbarItemPlacement` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Top leading, principal, trailing, bottom, and common semantic aliases. Pinned items follow ordinary trailing items during search. Keyboard, subtitle, ornament, and accessory placements are pending. |
 | `ToolbarItemVisibilityPriority` | 27 | ⬜ |  |  |
 | `ToolbarMinimizationBehavior` | 13 | ⬜ |  |  |
 | `ToolbarMinimizationRestoration` | 13 | ⬜ |  |  |

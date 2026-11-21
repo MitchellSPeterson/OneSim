@@ -1098,10 +1098,12 @@ p = spawn(sys.argv[20])
 assert recv(p)["type"] == "hello"
 t = recv(p)
 assert title(t) == "Library" and "back" not in tree(t)
+split_id = tree(t)["id"]
 item, = tree(t)["chrome"]["items"]
 assert item["region"] == "trailing" and "About" in alltexts(item["content"]["label"]["title"])
 t = act(p, t, item["content"]["action"])
 assert title(t) == "Detail" and tree(t)["displayMode"] == "inline"
+assert tree(t)["id"] == split_id and tree(t)["back"]["label"] == "Library"
 chrome = tree(t)["chrome"]
 item, = chrome["items"]
 assert item["region"] == "bottom"
@@ -1153,4 +1155,29 @@ assert title(t) == "Library" and "search" not in tree(t)["chrome"]
 finish(p)
 print("navigation: compact column changes, toolbar actions, and search binding and dismissal ok")
 
+p = spawn(sys.argv[21])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+assert title(t) == "Content" and search(t)["field"]["placeholder"] == "Find a title"
+assert search(t)["field"]["text"] == "Prefilled" and not search(t)["field"]["focused"]
+t = act(p, t, button(t, "Dismiss search")["action"])
+assert "Dismissed: 1" in alltexts(tree(t))
+assert search(t)["field"]["text"] == "Prefilled", "inactive dismiss must preserve the query"
+t = act(p, t, button(t, "Present search")["action"])
+assert search(t)["field"]["focused"]
+t = act(p, t, search(t)["field"]["submit_action"])
+assert "Submitted: Prefilled" in alltexts(tree(t))
+t = act(p, t, search(t)["cancel"]["action"])
+assert search(t)["field"]["text"] == "" and not search(t)["field"]["focused"]
+
+t = act(p, t, button(t, "Open detail")["action"])
+assert title(t) == "Detail" and tree(t)["back"]["label"] == "Content"
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Content" and "Submitted: Prefilled" in alltexts(tree(t))
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Sidebar" and "back" not in tree(t)
+t = act(p, t, button(t, "Open content")["action"])
+assert title(t) == "Content"
+finish(p)
+print("navigation lab: inactive dismissal, search submission, and three compact columns ok")
 print("PASS")

@@ -476,6 +476,7 @@ public struct NavigationPath {
 /// Guest-owned path stack, persisted in the state registry. Root is depth 0; pushed screens have ids `<stack>/s<depth>`.
 /// With `NavigationStack(path:)` the binding is the source of truth for depth and screens are built from its values.
 final class _NavState {
+    static func slotKey(_ path: String) -> String { path + "#NavigationStack" }
     /// Destination-style screens. With a bound path they sit on top of the path-driven screens (back pops them first).
     var stack: [_NavScreen] = []
     var titles: [Int: String] = [:]   // last evaluated title per depth, for the back label
@@ -533,10 +534,11 @@ public struct NavigationStack<Root: View>: View, _Primitive {
     }
 }
 
-func _navigation(_ path: String, externalPath: _NavPath? = nil, rootBack: (() -> Void)? = nil,
+func _navigation(_ path: String, columnPath: String? = nil, externalPath: _NavPath? = nil, rootBack: (() -> Void)? = nil,
                  backLabel: String = "Back", root: (String) -> Node) -> Node {
     let rt = _Runtime.shared
-    let key = "\(path)#NavigationStack"
+    let screenPath = columnPath ?? path
+    let key = _NavState.slotKey(screenPath)
     rt.touched.insert(key)
     let st = (rt.slots[key] as? _NavState) ?? _NavState()
     rt.slots[key] = st
@@ -545,7 +547,7 @@ func _navigation(_ path: String, externalPath: _NavPath? = nil, rootBack: (() ->
     let depth = st.depth
     // Screens below the top are not evaluated; keep their @State alive.
     for d in 0..<depth {
-        let prefix = d == 0 ? "\(path)/0" : "\(path)/s\(d)"
+        let prefix = d == 0 ? "\(screenPath)/0" : "\(screenPath)/s\(d)"
         for k in rt.slots.keys where k.hasPrefix(prefix + "/") || k.hasPrefix(prefix + "#") { rt.touched.insert(k) }
     }
     let saved = (rt.nav, rt.disabled, rt.buttonStyle, rt.envLocal, rt.styles.inList)
@@ -554,7 +556,7 @@ func _navigation(_ path: String, externalPath: _NavPath? = nil, rootBack: (() ->
     let preferences = rt.navigationPreferences
     rt.navigationPreferences = [:]
     defer { rt.navigationPreferences = preferences }
-    var content = depth == 0 ? root("\(path)/0") : st.screen(depth - 1, "\(path)/s\(depth)")
+    var content = depth == 0 ? root("\(screenPath)/0") : st.screen(depth - 1, "\(screenPath)/s\(depth)")
 
     var title: String?, mode = "large"
     let mods = (content["modifiers"] as? [Node]) ?? []

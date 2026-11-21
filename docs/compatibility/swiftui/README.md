@@ -26,7 +26,7 @@ are the ones that matter most.
 | Area | iOS |
 |---|---|
 | [Views](views.md) | 44% (41.5/95) |
-| [View modifiers](view-modifiers.md) | 23% (98/433) |
+| [View modifiers](view-modifiers.md) | 22% (93.5/433) |
 | [Text and Image methods](text-and-image.md) | 56% (19/34) |
 | [Shapes](shapes.md) | 87% (29.5/34) |
 | [Styles](styles.md) | 50% (59.5/120) |
@@ -37,7 +37,7 @@ are the ones that matter most.
 | [Protocols](protocols.md) | 23% (18/78) |
 | [Other types](other-types.md) | 24% (98/410) |
 | [Outside SwiftUI](outside-swiftui.md) | 75% (4.5/6) |
-| **Total** | **29% (404/1385)** |
+| **Total** | **29% (399.5/1385)** |
 <!-- coverage:end -->
 
 Refresh with `node scripts/api-coverage.mjs`; CI runs it with `--check`.

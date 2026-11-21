@@ -262,6 +262,7 @@ for ios in ${SIMCORE_IOS:-27.2}; do
     }
     nshot library
     nshot detail --click About
+    nshot detail-menu --click About --click 188,84
     nshot legacy --click Legacy
     nshot search --click Search
     nshot search-active --click Search --click 100,138

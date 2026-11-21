@@ -69,9 +69,9 @@ public struct NavigationSplitView<Sidebar: View, Content: View, Detail: View>: V
         }
         let previous: NavigationSplitViewColumn = column == .detail && hasContent ? .content : .sidebar
         let back: (() -> Void)? = column == .sidebar ? nil : { binding.wrappedValue = previous }
-        let previousState = rt.slots["\(path)/\(previous)#NavigationStack"] as? _NavState
+        let previousState = rt.slots[_NavState.slotKey("\(path)/\(previous)")] as? _NavState
         let backLabel = previousState.flatMap { $0.titles[$0.depth] } ?? "Back"
-        return _navigation("\(path)/\(column)", rootBack: back, backLabel: backLabel) { screen in
+        return _navigation(path, columnPath: "\(path)/\(column)", rootBack: back, backLabel: backLabel) { screen in
             switch column {
             case .sidebar: return _eval(sidebar, screen)
             case .content: return _eval(content, screen)

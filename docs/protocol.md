@@ -179,8 +179,9 @@ Navigation `chrome` has an optional `items` array of `{region, content}` records
 `navigationBarVisibility`, `bottomBarVisibility`, `navigationBarBackgroundVisibility`, and
 `bottomBarBackgroundVisibility` fields accept `automatic`, `visible`, or `hidden`.
 `navigationBarBackground` and `bottomBarBackground` accept shape paint. `titleMenu` is an
-optional ViewNode. Optional `search` contains a text-field ViewNode in `field`, a placement string,
-and a `cancel` ViewNode during presentation. Search focus and edits use the text input wire actions. A text field with `"search_field": true` has a search key that enables when the query is nonempty.
+optional ViewNode. Optional `search` contains a text-field ViewNode in `field` and a `cancel` ViewNode during
+presentation. The guest sends `placement` as `drawer`, `always`, `toolbar`, or `principal`. The host
+currently uses the drawer for each placement. Search focus and edits use the text input wire actions. A text field with `"search_field": true` has a search key that enables when the query is nonempty.
 
 ### `button` additions
 

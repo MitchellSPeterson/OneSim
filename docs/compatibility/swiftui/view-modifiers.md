@@ -406,17 +406,17 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.toolbar` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Renders view and ToolbarContent builders in navigation chrome. Customization, overflow, default-item removal, and non-navigation bars are pending. |
 | `.toolbarBackground` | 16 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Shape paint and background visibility for navigation and bottom bars. Tab and window toolbars are pending. |
 | `.toolbarBackgroundVisibility` | 18 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Navigation and bottom bars. Tab and window toolbars are pending. |
-| `.toolbarColorScheme` | 16 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Bar-specific appearance overrides are unavailable. |
-| `.toolbarMinimizationBehavior` | 13 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Scroll-driven toolbar minimization is unavailable. |
-| `.toolbarMinimizationRestoration` | 13 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Toolbar minimization restoration is unavailable. |
-| `.toolbarMinimizationSafeAreaAdjustment` | 13 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Minimized toolbar safe-area adjustment is unavailable. |
-| `.toolbarOverflowMenu` | 27 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Native overflow routing and custom overflow menus are unavailable. |
-| `.toolbarRole` | 16 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Role-specific toolbar layouts and customization are unavailable. |
-| `.toolbarTitleAlignment` | 27.2 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Custom title alignment is unavailable. |
+| `.toolbarColorScheme` | 16 | ⬜ | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Bar-specific appearance overrides are unavailable. |
+| `.toolbarMinimizationBehavior` | 13 | ⬜ | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Scroll-driven toolbar minimization is unavailable. |
+| `.toolbarMinimizationRestoration` | 13 | ⬜ | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Toolbar minimization restoration is unavailable. |
+| `.toolbarMinimizationSafeAreaAdjustment` | 13 | ⬜ | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Minimized toolbar safe-area adjustment is unavailable. |
+| `.toolbarOverflowMenu` | 27 | ⬜ | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Native overflow routing and custom overflow menus are unavailable. |
+| `.toolbarRole` | 16 | ⬜ | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Role-specific toolbar layouts and customization are unavailable. |
+| `.toolbarTitleAlignment` | 27.2 | ⬜ | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Custom title alignment is unavailable. |
 | `.toolbarTitleDisplayMode` | 17 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Inline and large titles. Automatic inheritance and the distinct inline-large appearance are pending. |
 | `.toolbarTitleMenu` | 16 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Opens a menu from the navigation title. Native menu alignment and the transition during title collapse are pending. |
-| `.toolbarVerticalBehavior` | 13 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Toolbar-specific vertical behavior is unavailable. |
-| `.toolbarVerticalCompressionBehavior` | 13 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Toolbar-specific vertical compression is unavailable. |
+| `.toolbarVerticalBehavior` | 13 | ⬜ | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Toolbar-specific vertical behavior is unavailable. |
+| `.toolbarVerticalCompressionBehavior` | 13 | ⬜ | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Toolbar-specific vertical compression is unavailable. |
 | `.toolbarVisibility` | 18 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Navigation and bottom bars. Tab and window toolbars are pending. |
 | `.tracking` | 16 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Added to the font's fitted tracking |
 | `.transaction` | 13 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |

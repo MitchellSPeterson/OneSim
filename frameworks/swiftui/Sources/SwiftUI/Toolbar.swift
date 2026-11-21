@@ -184,7 +184,8 @@ extension View {
     private func barPreferences(_ bars: [ToolbarPlacement], _ prefix: String, _ value: Any) -> some View {
         let placements = bars.isEmpty || bars.contains(.automatic) ? [.navigationBar, .bottomBar] : bars
         return _NavigationPreference(content: self) { _ in
-            Dictionary(placements.map { ($0.key + prefix, value) }, uniquingKeysWith: { _, last in last })
+            Dictionary(placements.filter { $0 == .navigationBar || $0 == .bottomBar }
+                .map { ($0.key + prefix, value) }, uniquingKeysWith: { _, last in last })
         }
     }
 

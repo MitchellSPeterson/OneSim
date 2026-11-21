@@ -1208,7 +1208,6 @@ pub struct BackButton {
     pub label: String,
 }
 
-/// A `tabview` tab bar item; running `action` selects the tab.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ToolbarRegion {
@@ -1255,6 +1254,7 @@ pub struct NavigationChrome {
     pub search: Option<NavigationSearch>,
 }
 
+/// A `tabview` tab bar item; running `action` selects the tab.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TabItem {
     #[serde(default)]

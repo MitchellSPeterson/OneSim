@@ -475,6 +475,13 @@ struct NavBar<'a> {
     band: f64,
     offset: f64,
     back: Option<NavBack>,
+    inline_title_bounds: Option<(f64, f64)>,
+}
+
+#[derive(Default)]
+struct ToolbarLayout {
+    items: Vec<(f64, f64, Lay)>,
+    inline_title_bounds: Option<(f64, f64)>,
 }
 
 #[derive(Clone)]
@@ -642,7 +649,7 @@ pub(crate) fn rn_nav_bar(params: &SceneParams, fonts: &mut Fonts, id: &str, top:
     let w = params.viewport.0;
     let (large_title, title_h, band) = cx.nav_large(id, w, title, large);
     let bar_h = NAV_INLINE_H + band;
-    let bar = NavBar { id, w, h: params.viewport.1, top, bar_h, title, large: large && title.is_some(), large_title, title_h, band, offset: 0.0, back };
+    let bar = NavBar { id, w, h: params.viewport.1, top, bar_h, title, large: large && title.is_some(), large_title, title_h, band, offset: 0.0, back, inline_title_bounds: None };
     flatten(cx.nav_bar(bar), 0.0, top, Some(parent), 1.0, out);
 }
 
@@ -3952,14 +3959,19 @@ impl Ctx<'_> {
             let has_back = back.is_some();
             let back = back.map(|b| NavBack { action: Some(b.action), label: b.label.clone(), pill: false });
             let has_principal = chrome.items.iter().any(|item| item.region == ToolbarRegion::Principal);
-            let bar = NavBar { id: &v.id, w, h, top, bar_h, title: title.filter(|_| !has_principal), large, large_title, title_h, band, offset, back };
+            let leading = self.margin + if has_back { 52.0 } else { 0.0 };
+            let ToolbarLayout { items, inline_title_bounds } = self.toolbar_items(chrome, w, leading, false, cenv);
+            let title_bounds = inline_title_bounds.map(|(left, right)| {
+                (left, right - if chrome.title_menu.is_some() { 24.0 } else { 0.0 })
+            });
+            let bar = NavBar { id: &v.id, w, h, top, bar_h, title: title.filter(|_| !has_principal), large, large_title,
+                title_h, band, offset, back, inline_title_bounds: title_bounds };
             let mut bar = self.nav_bar(bar);
             if let Some(node) = bar.node.as_mut() {
                 self.toolbar_background(node, chrome.navigation_bar_background.as_ref(),
                     chrome.navigation_bar_background_visibility, offset > band, edge_bg, env);
             }
-            let leading = self.margin + if has_back { 52.0 } else { 0.0 };
-            bar.kids.extend(self.toolbar_items(chrome, w, leading, false, cenv));
+            bar.kids.extend(items);
             if let Some(menu) = chrome.title_menu.as_ref() {
                 let title_id = format!("{}#title", v.id);
                 let inline_id = format!("{}#inline", v.id);
@@ -3969,7 +3981,9 @@ impl Ctx<'_> {
                     let (title_x, title_y, title_lay) = bar.kids.remove(index);
                     let mut menu = self.view(menu, Prop { w: None, h: None }, cenv);
                     let size = Size { w: title_lay.size.w + 6.0 + menu.size.w, h: title_lay.size.h.max(menu.size.h) };
-                    let x = if large && offset < band { title_x } else { (w - size.w) / 2.0 };
+                    let (left, right) = inline_title_bounds.unwrap_or((0.0, w));
+                    let x = if large && offset < band { title_x }
+                        else { ((w - size.w) / 2.0).clamp(left, (right - size.w).max(left)) };
                     let title_w = title_lay.size.w;
                     let title_dy = (size.h - title_lay.size.h) / 2.0;
                     let menu_dy = (size.h - menu.size.h) / 2.0;
@@ -3991,7 +4005,7 @@ impl Ctx<'_> {
             let mut bar = Node::new(format!("{}#bottomBar", v.id), "toolbar");
             self.toolbar_background(&mut bar, chrome.bottom_bar_background.as_ref(),
                 chrome.bottom_bar_background_visibility, false, edge_bg, env);
-            let items = self.toolbar_items(chrome, w, self.margin, true, cenv);
+            let items = self.toolbar_items(chrome, w, self.margin, true, cenv).items;
             kids.push((0.0, (h - bottom).max(0.0), Lay::new(Size { w, h: bottom_h }, Some(bar), items)));
         }
         Lay::new(Size { w, h }, Some(bg), kids)
@@ -4008,9 +4022,9 @@ impl Ctx<'_> {
     }
 
     fn toolbar_items(&mut self, chrome: &NavigationChrome, width: f64, start: f64, bottom: bool,
-                     env: Env) -> Vec<(f64, f64, Lay)> {
+                     env: Env) -> ToolbarLayout {
         let count = chrome.items.iter().filter(|item| (item.region == ToolbarRegion::Bottom) == bottom).count();
-        if count == 0 { return vec![]; }
+        if count == 0 { return ToolbarLayout::default(); }
         let end = (width - self.margin).max(start);
         let gap = 8.0_f64.min((end - start) / count as f64);
         let max_item = (end - start - gap * (count - 1) as f64) / count as f64;
@@ -4048,7 +4062,8 @@ impl Ctx<'_> {
         let trailing_x = end - total(&trailing);
         let center_min = start + total(&leading) + if leading.is_empty() { 0.0 } else { gap };
         let center_max = trailing_x - center_width - if trailing.is_empty() { 0.0 } else { gap };
-        let center = ((width - center_width) / 2.0).max(center_min).min(center_max.max(center_min));
+        let center = ((width - center_width) / 2.0).clamp(center_min, center_max.max(center_min));
+        let bounds = (!bottom).then_some((center_min, center_max));
         let mut kids = vec![];
         for (mut x, items) in [(start, leading), (center, principal), (trailing_x, trailing)] {
             for item in items {
@@ -4058,7 +4073,7 @@ impl Ctx<'_> {
                 x = next;
             }
         }
-        kids
+        ToolbarLayout { items: kids, inline_title_bounds: bounds }
     }
 
     fn navigation_search(&mut self, search: &NavigationSearch, width: f64, height: f64, env: Env) -> Lay {
@@ -4116,7 +4131,7 @@ impl Ctx<'_> {
     /// The navigation bar (no background at rest on iOS 26): large + inline title and the glass back
     /// button. Shared by SwiftUI `NavigationStack` and React Native's native stack header.
     fn nav_bar(&mut self, nb: NavBar) -> Lay {
-        let NavBar { id, w, h, top, bar_h, title, large, large_title, title_h, band, offset, back } = nb;
+        let NavBar { id, w, h, top, bar_h, title, large, large_title, title_h, band, offset, back, inline_title_bounds } = nb;
         let primary = self.semantic(Semantic::Primary);
                 // The large title scrolls with the content and disappears under the inline bar; the bar
         // shrinks with it and the inline title fades in over the last INLINE_FADE points.
@@ -4149,14 +4164,20 @@ impl Ctx<'_> {
             if alpha > 0.0 {
                 // Inline titles grow with Dynamic Type but cap at x1.225 (measured at accessibility5).
                 let nsz = 17.0 * (onesim_protocol::TextStyle::Body.size_at(self.dts) as f32 / 17.0).min(1.225);
-                let spec = FontSpec::new(nsz, self.line_h(nsz), 600, TextAlign::Leading);
+                let mut spec = FontSpec::new(nsz, self.line_h(nsz), 600, TextAlign::Leading);
                 let id = if large { format!("{}#inline", id) } else { format!("{}#title", id) };
-                let mut tl = self.text_lay(&id, t, spec, primary, Some((w - 120.0) as f32));
-                if let Some(n) = tl.node.as_mut() {
-                    n.opacity = alpha;
+                let (left, right) = inline_title_bounds.unwrap_or((0.0, w));
+                let max_width = (right - left).min(w - 120.0);
+                if max_width > 0.0 {
+                    if inline_title_bounds.is_some() { spec.lines = Some(1); }
+                    let mut tl = self.text_lay(&id, t, spec, primary, Some(max_width as f32));
+                    if let Some(n) = tl.node.as_mut() {
+                        n.opacity = alpha;
+                    }
+                    let (tw, th) = (tl.size.w, tl.size.h);
+                    let x = ((w - tw) / 2.0).clamp(left, (right - tw).max(left));
+                    bar_kids.push((x, 22.0 - th / 2.0, tl));
                 }
-                let (tw, th) = (tl.size.w, tl.size.h);
-                bar_kids.push(((w - tw) / 2.0, 22.0 - th / 2.0, tl));
             }
         }
         if let Some(b) = back {
@@ -5522,6 +5543,27 @@ mod tests {
         assert!(scene.nodes.iter().all(|node| node.id != "bottom" && node.id != "nav#bottomBar"));
         assert_eq!(by_id(&scene, "top#toolbarSurface").action, Some(7));
         assert_eq!(by_id(&scene, "nav#title").text.as_ref().unwrap().text, "Library");
+    }
+
+    #[test]
+    fn inline_title_fits_between_toolbar_items() {
+        let scene = phone(r#"{
+            "kind":"navigation","id":"nav","displayMode":"inline",
+            "title":"A long title constrained by toolbar actions",
+            "chrome":{"items":[
+                {"region":"leading","content":{"kind":"button","id":"leading","action":1,
+                    "label":{"kind":"text","id":"leading-label","text":"Long leading action"}}},
+                {"region":"trailing","content":{"kind":"button","id":"trailing","action":2,
+                    "label":{"kind":"text","id":"trailing-label","text":"Long trailing action"}}}
+            ]},
+            "content":{"kind":"empty","id":"content"}
+        }"#);
+        let left = by_id(&scene, "leading#toolbarSurface").bounds;
+        let right = by_id(&scene, "trailing#toolbarSurface").bounds;
+        let title = by_id(&scene, "nav#title").bounds;
+        assert!(left.x + left.w <= title.x);
+        assert!(title.x + title.w <= right.x);
+        assert!(title.h < 24.0);
     }
 
     #[test]

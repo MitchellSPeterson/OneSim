@@ -57,6 +57,7 @@ private struct _Searchable<Content: View>: View, _Flattenable {
         _active._bind(path + "#searchActive")
         let presentation = presented ?? $active
         let dismiss = DismissSearchAction {
+            guard presentation.wrappedValue else { return }
             text.wrappedValue = ""
             presentation.wrappedValue = false
         }
