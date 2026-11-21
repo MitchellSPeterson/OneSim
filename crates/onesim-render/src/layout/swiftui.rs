@@ -6,7 +6,7 @@
 //! Visual constants (row height, card radius, nav bar heights, control sizes) are measured from
 //! an iOS 26 / iPhone 17 Pro simulator, see `tests/fixtures/showcase-ios/README.md`.
 
-use onesim_protocol::{ShapePaint, StyleReference, VisualOp};
+use onesim_protocol::{ShapePaint, StyleReference, TextInputBorderShape, TextInputOptions, TextInputStyle, VisualOp};
 use std::sync::Arc;
 
 use super::rn::{ModalLayers, Placement};
@@ -17,8 +17,10 @@ use crate::text::{FontSpec, Fonts, Span, TextAlign};
 use onesim_protocol::{
     Alignment, AnimationSpec, Appearance, Axis, ButtonStyle, ConcentricCorners, ContainerShapeSpec, ContentMode, ContentTransitionKind, CornerStyleSpec, Detent, DisplayMode, DynamicTypeSize, Edges, FitAxes, Font, GaugeStyle, GlassShapeKind, GlassVariant, GridTrack, ImageScale, IosVersion, Layer, LineCap, LineJoin, ListStyle, MatchedGeometryMod, MatchedProps, Modifier, PageIndexBackground, PageIndexDisplay, PickerOption, PickerStyle, RoundedCornerStyle, ScrollSnap, Section, Semantic, ShapeKind, ShapeSizeHint, TabPage, TrackSize, TransitionSpec, UniformCorners, ViewKind, ViewNode,
 };
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
+use unicode_segmentation::UnicodeSegmentation;
 
 const INF: f64 = f64::INFINITY;
 const DEFAULT_SPACING: f64 = 8.0;
@@ -700,7 +702,11 @@ fn layout_inner<'a>(root: &ViewNode, params: &'a SceneParams<'a>, fonts: &'a mut
     let (w, h) = params.viewport;
     // Keyboard avoidance: the keyboard top replaces the bottom safe-area inset.
     let kb = params.chrome.keyboard && params.focus.is_some();
-    let kb_h = crate::look::keyboard_height(params.device, params.ios);
+    let kb_h = if params.chrome.keypad {
+        crate::look::keypad_height(params.device, params.ios)
+    } else {
+        crate::look::keyboard_height(params.device, params.ios)
+    };
     let (safe_top, dev_bottom) = (params.device.safe_top, params.device.safe_bottom);
     let safe_bottom = if kb { kb_h } else { dev_bottom };
     let mut cx = ctx(params, fonts);
@@ -776,7 +782,7 @@ fn layout_inner<'a>(root: &ViewNode, params: &'a SceneParams<'a>, fonts: &'a mut
     }
     let dark = params.appearance == Appearance::Dark;
     if kb {
-        crate::chrome::keyboard(&mut nodes, w, h, kb_h, dark, params.chrome.shift, params.device,
+        crate::chrome::keyboard(&mut nodes, w, h, kb_h, dark, params.chrome.shift, params.chrome.phone_symbols, params.device,
             crate::look::look(params.ios));
     }
     if let Some(isl) = params.device.island {
@@ -2375,34 +2381,8 @@ impl Ctx<'_> {
             }
             ViewKind::Toggle { is_on, action, label, disabled } => self.toggle(v, *is_on, *action, label, *disabled, p, env),
             ViewKind::Stepper { label, decrement, increment } => self.stepper(v, label, *decrement, *increment, p, env),
-            ViewKind::TextField { placeholder, text, field, secure, disabled } => {
-                let mut l = self.text_field(v, placeholder, if *secure { "" } else { text }, *field, p, env);
-                if *disabled {
-                    if let Some(n) = l.node.as_mut() {
-                        n.field = None;
-                        n.disabled = true;
-                    }
-                }
-                if !*secure || text.is_empty() {
-                    return l;
-                }
-                // SecureField: one bullet (a dot) per character.
-                let fg = env.fg.unwrap_or_else(|| self.semantic(Semantic::Primary));
-                let (d, pitch, x0) = SECURE_BULLET;
-                let y = (l.size.h - d) / 2.0;
-                l.kids.retain(|(_, _, k)| k.node.as_ref().is_none_or(|n| n.kind != "text"));
-                for i in 0..text.chars().count() {
-                    let mut b = Node::new(format!("{}#bullet{i}", v.id), "bullet");
-                    b.fill = Some(fg);
-                    b.radius = PILL;
-                    b.inspect = false;
-                    l.kids.push((x0 + i as f64 * pitch, y, Lay::new(Size { w: d, h: d }, Some(b), vec![])));
-                }
-                if let Some(n) = l.node.as_mut() {
-                    n.value = Some(text.clone());
-                }
-                l
-            }
+            ViewKind::TextField { placeholder, text, field, secure, disabled, input } =>
+                self.text_field(v, placeholder, text, *field, *secure, *disabled, input, p, env),
             ViewKind::Picker { label, style, options, selected, open, disabled } => {
                 match style {
                     PickerStyle::Segmented => self.segmented(v, options, *selected, *disabled, p),
@@ -2814,37 +2794,139 @@ impl Ctx<'_> {
         Lay::new(Size { w, h }, Some(root), vec![(0.0, ly, l), (w - STEPPER.0, (h - STEPPER.1) / 2.0, cl)])
     }
 
-    fn text_field(&mut self, v: &ViewNode, placeholder: &str, text: &str, field: u64, p: Prop, env: Env) -> Lay {
+    #[allow(clippy::too_many_arguments)]
+    fn text_field(&mut self, v: &ViewNode, placeholder: &str, text: &str, field: u64, secure: bool, disabled: bool, input: &TextInputOptions, p: Prop, env: Env) -> Lay {
         let w = p.w.filter(|w| w.is_finite()).unwrap_or(120.0);
-        let h = 22.0;
-        let spec = self.spec(&Env { align: TextAlign::Leading, ..env });
-        let focused = self.focus == Some(v.id.as_str());
-        let empty = text.is_empty();
-        let shown = if empty { placeholder } else { text };
-        let color = if empty { self.semantic(Semantic::Tertiary) } else { env.fg.unwrap_or_else(|| self.semantic(Semantic::Primary)) };
-        let mut t = self.text_lay(&format!("{}#text", v.id), shown, spec, color, None);
-        let tw = if empty { 0.0 } else { t.size.w };
-        let overflow = (tw - (w - 2.0)).max(0.0);
-        if let Some(tr) = t.node.as_mut().and_then(|n| n.text.as_mut()) {
-            tr.offset_x = -overflow as f32;
-        }
-        if let Some(n) = t.node.as_mut() {
-            n.inspect = false;
-        }
+        let focused = !disabled && self.focus == Some(v.id.as_str());
+        let multiline = input.editor || input.axis == Some(Axis::Vertical);
         let mut n = Node::new(&v.id, "text_field");
         n.role = Role::TextField;
-        n.field = Some(field);
+        n.field = (!disabled).then_some(field);
+        n.disabled = disabled;
+        n.secure = secure;
+        n.input = Some(Box::new(input.clone()));
         n.value = Some(text.to_string());
         n.label = Some(placeholder.to_string());
         n.focused = focused;
-        n.clip_radius = Some(0.0);
-        let mut kids = vec![(0.0, (h - t.size.h) / 2.0, t)];
+
+        let spec = self.spec(&Env { max_lines: None, reserve_lines: None, ..env });
+        let line_h = f64::from(spec.line_height);
+        let (pad_x, pad_y, min_h) = match input.input_style {
+            Some(TextInputStyle::RoundedBorder) => {
+                n.radius = 6.0;
+                n.fill = Some(self.semantic(Semantic::Background));
+                n.stroke = Some((self.semantic(Semantic::Separator), self.hairline()));
+                (7.0, 5.0, 34.0)
+            }
+            Some(TextInputStyle::Bordered) => {
+                n.stroke = Some((self.semantic(Semantic::Separator), 1.0));
+                (4.0, 3.0, 28.0)
+            }
+            _ if input.editor => {
+                n.fill = Some(self.semantic(Semantic::Background));
+                (5.0, 8.0, 38.0)
+            }
+            Some(TextInputStyle::Plain) => (0.0, 0.0, (line_h * self.scale).ceil() / self.scale),
+            _ => (0.0, 0.0, 22.0),
+        };
+        if self.ios >= IosVersion::Ios27 && n.stroke.is_some() {
+            match input.input_border_shape {
+                Some(TextInputBorderShape::Capsule) => n.radius = PILL,
+                Some(TextInputBorderShape::RoundedRectangle) => n.radius = 6.0,
+                Some(TextInputBorderShape::Automatic) | None => {}
+            }
+        }
+        n.clip_radius = Some(n.radius);
+        let inner_w = (w - 2.0 * pad_x).max(0.0);
+        let wrap = multiline.then_some(inner_w.max(1.0) as f32);
+        let empty = text.is_empty();
+        let fg = env.fg.unwrap_or_else(|| self.semantic(Semantic::Primary));
+        let placeholder_fg = self.semantic(Semantic::Tertiary);
+        let (d, pitch, x0) = SECURE_BULLET;
+        let bullets = if secure { text.graphemes(true).count() } else { 0 };
+        let shown = if empty { placeholder } else if secure { "" } else { text };
+        let shown = if !multiline && shown.contains(['\n', '\r']) {
+            Cow::Owned(shown.replace(['\n', '\r'], " "))
+        } else {
+            Cow::Borrowed(shown)
+        };
+        let prompt = input.prompt.as_deref().filter(|_| empty);
+        let mut t = match prompt {
+            Some(prompt) => self.view(prompt, Prop { w: wrap.map(f64::from), h: None }, Env { fg: Some(placeholder_fg), foreground_paint: None, ..env }),
+            None => self.text_lay(&format!("{}#text", v.id), &shown, spec, if empty { placeholder_fg } else { fg }, wrap),
+        };
+        let line_pitch = f64::from(spec.pitch);
+        let line_space = |lines: usize| line_h + lines.saturating_sub(1) as f64 * line_pitch;
+        let natural_h = t.size.h;
+        let h = if input.editor {
+            p.h.filter(|h| h.is_finite()).unwrap_or_else(|| (natural_h + 2.0 * pad_y).max(min_h)).max(0.0)
+        } else if multiline {
+            let cap = env.max_lines.map_or(f64::INFINITY, line_space);
+            (natural_h.min(cap).max(env.reserve_lines.map_or(0.0, line_space)) + 2.0 * pad_y).max(min_h)
+        } else {
+            (natural_h + 2.0 * pad_y).max(min_h)
+        };
+        let max_scroll = (natural_h + 2.0 * pad_y - h).max(0.0);
+        let offset = self.scroll.get(&v.id).map_or(if focused { max_scroll } else { 0.0 }, |(_, y)| *y).clamp(0.0, max_scroll);
+        if multiline && max_scroll > 0.0 && !disabled {
+            n.scroll = Some(ScrollInfo {
+                vertical: true, offset: (0.0, offset), max: (0.0, max_scroll),
+                snap: None, content: None, page: None, aligned: false,
+            });
+        }
+        let y = if multiline { pad_y - offset } else { (h - t.size.h) / 2.0 };
+        let (caret_x, caret_y) = if bullets > 0 {
+            (x0 + (bullets - 1) as f64 * pitch + d, 0.0)
+        } else if empty {
+            (0.0, 0.0)
+        } else if focused {
+            self.fonts.text_end(&shown, &spec, wrap)
+        } else {
+            (t.size.w, 0.0)
+        };
+        let overflow = if multiline || empty { 0.0 } else { (caret_x - (inner_w - 2.0)).max(0.0) };
+        let ink_w = if bullets == 0 { t.size.w } else { caret_x };
+        let align = match env.align {
+            TextAlign::Leading => 0.0,
+            TextAlign::Center => 0.5,
+            TextAlign::Trailing => 1.0,
+        };
+        let x = pad_x + if multiline { 0.0 } else { (inner_w - ink_w).max(0.0) * align };
+        if let Some(tn) = t.node.as_mut() {
+            tn.inspect = false;
+            if let Some(run) = tn.text.as_mut() {
+                run.offset_x = -overflow as f32;
+            }
+        }
+        if multiline && prompt.is_none() {
+            // Text draws using its bounds as the wrap width. Keep the original proposal.
+            t.size.w = inner_w;
+        }
+        let mut kids = vec![];
+        if bullets == 0 {
+            kids.push((x, y, t));
+        } else {
+            // Emit only the visible dots, even for a long paste.
+            let start = ((overflow - x0 - d) / pitch).floor().max(0.0) as usize;
+            let end = ((overflow + inner_w - x0) / pitch).ceil().max(0.0) as usize;
+            for i in start..bullets.min(end) {
+                let mut b = Node::new(format!("{}#bullet{i}", v.id), "bullet");
+                b.fill = Some(fg);
+                b.radius = PILL;
+                b.inspect = false;
+                kids.push((x + x0 + i as f64 * pitch - overflow, (h - d) / 2.0, Lay::new(Size { w: d, h: d }, Some(b), vec![])));
+            }
+        }
         if focused {
             let mut c = Node::new(format!("{}#caret", v.id), "caret");
-            c.fill = Some(self.semantic(Semantic::Accent));
+            c.fill = Some(env.tint.unwrap_or_else(|| self.semantic(Semantic::Accent)));
             c.radius = 1.0;
             c.inspect = false;
-            kids.push(((tw - overflow).min(w - 2.0) + 1.0, 1.0, Lay::new(Size { w: 2.0, h: h - 2.0 }, Some(c), vec![])));
+            let caret_h = line_h.min((h - 2.0).max(0.0));
+            let caret_origin = if empty { pad_x + inner_w * align } else { x + caret_x - overflow };
+            let x = (caret_origin + 1.0).clamp(pad_x, pad_x + (inner_w - 2.0).max(0.0));
+            let y = if multiline { y + caret_y } else { (h - caret_h) / 2.0 };
+            kids.push((x, y, Lay::new(Size { w: 2.0, h: caret_h }, Some(c), vec![])));
         }
         Lay::new(Size { w, h }, Some(n), kids)
     }
@@ -5168,6 +5250,85 @@ mod tests {
         // unfocused: no caret
         let s = phone(&json);
         assert!(s.nodes.iter().all(|n| n.id != "l.a.f#caret"));
+    }
+
+    #[test]
+    fn rounded_text_field_renders_styled_prompt() {
+        let s = phone(r#"{"kind":"text_field","id":"f","field":4,"placeholder":"Name",
+            "input_style":"rounded_border","prompt":{"kind":"text","id":"f#prompt","text":"Full name",
+            "modifiers":[{"foregroundColor":{"r":1,"g":0,"b":0,"a":1}}]}}"#);
+        let f = by_id(&s, "f");
+        assert!(f.radius > 0.0 && f.bounds.h > 22.0);
+        assert_eq!(f.label.as_deref(), Some("Name"));
+        let prompt = by_id(&s, "f#prompt").text.as_ref().unwrap();
+        assert_eq!(prompt.text, "Full name");
+        assert_eq!(prompt.color, rgba(255, 0, 0, 1.0));
+    }
+
+    #[test]
+    fn capsule_input_border_shape_applies_only_on_ios_27() {
+        let tree: ViewNode = serde_json::from_str(r#"{"kind":"text_field","id":"f","field":4,
+            "input_style":"rounded_border","input_border_shape":"capsule"}"#).unwrap();
+        let mut params = SceneParams {
+            viewport: (120.0, 100.0), device: crate::device::device("iphone-17-pro").unwrap(), scale: 3.0,
+            appearance: Appearance::Light, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios26,
+            scroll: &HashMap::new(), sheets: &HashMap::new(), focus: None,
+            overscroll: false, status_bar: false, chrome: Default::default(),
+        };
+        let mut fonts = Fonts::new();
+        let previous = layout(&tree, &params, &mut fonts);
+        params.ios = IosVersion::Ios27;
+        let current = layout(&tree, &params, &mut fonts);
+        let radius = |s: &Scene| by_id(s, "f").radius;
+        assert!(radius(&previous) < by_id(&previous, "f").bounds.h / 2.0);
+        assert!(radius(&current) >= by_id(&current, "f").bounds.h / 2.0);
+    }
+
+    #[test]
+    fn vertical_text_field_grows_and_places_caret_on_last_line() {
+        let json = r#"{"kind":"text_field","id":"f","field":4,"axis":"vertical","text":"First line\n"}"#;
+        let s = scene_with(json, (120.0, 200.0), false, (0.0, 0.0), &HashMap::new(), Some("f"));
+        let f = by_id(&s, "f");
+        let caret = by_id(&s, "f#caret");
+        assert!(f.bounds.h > 40.0);
+        assert!(caret.bounds.y > f.bounds.y + 20.0);
+        assert!(caret.bounds.x < f.bounds.x + 4.0);
+    }
+
+    #[test]
+    fn vertical_text_field_scrolls_beyond_its_line_limit() {
+        let json = r#"{"kind":"text_field","id":"f","field":4,"axis":"vertical",
+            "text":"First line\nSecond line\nThird line","modifiers":[{"lineLimit":{"max":2}}]}"#;
+        let s = scene_with(json, (120.0, 200.0), false, (0.0, 0.0), &HashMap::new(), Some("f"));
+        let f = by_id(&s, "f");
+        assert_eq!(f.value.as_deref(), Some("First line\nSecond line\nThird line"));
+        let scroll = f.scroll.unwrap();
+        assert!(scroll.max.1 > 0.0 && scroll.offset.1 == scroll.max.1);
+        assert!(f.bounds.contains(f.bounds.x + 1.0, by_id(&s, "f#caret").bounds.y));
+    }
+
+    #[test]
+    fn text_editor_uses_available_height_and_scrolls_overflow() {
+        let json = r#"{"kind":"text_field","id":"f","field":4,"editor":true,
+            "text":"First line\nSecond line\nThird line\nFourth line\nFifth line"}"#;
+        let s = scene(json, (120.0, 80.0));
+        let f = by_id(&s, "f");
+        near(f.bounds.h, 80.0);
+        assert!(f.scroll.is_some_and(|scroll| scroll.max.1 > 0.0));
+        assert_eq!(f.field, Some(4));
+
+        let s = scene(json, (120.0, 0.0));
+        near(by_id(&s, "f").bounds.h, 0.0);
+    }
+
+    #[test]
+    fn secure_text_field_masks_graphemes_and_hides_disabled_caret() {
+        let json = r#"{"kind":"text_field","id":"f","field":4,"secure":true,"disabled":true,"text":"é👩‍💻"}"#;
+        let s = scene_with(json, (120.0, 200.0), false, (0.0, 0.0), &HashMap::new(), Some("f"));
+        let f = by_id(&s, "f");
+        assert!(f.secure && f.disabled && !f.focused && f.field.is_none());
+        assert_eq!(s.nodes.iter().filter(|n| n.kind == "bullet").count(), 2);
+        assert!(s.nodes.iter().all(|n| n.id != "f#caret" && n.id != "f#text"));
     }
 
     #[test]

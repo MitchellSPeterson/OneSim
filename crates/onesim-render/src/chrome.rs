@@ -85,6 +85,28 @@ pub struct ChromeParams {
     pub keyboard: bool,
     /// Shift state (host-owned: auto-capitalization, shift key and typing update it).
     pub shift: bool,
+    /// Use the numeric keypad's shorter safe-area inset.
+    pub keypad: bool,
+    /// Show the phone pad's alternate symbol keys.
+    pub phone_symbols: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Keypad {
+    Number,
+    Decimal,
+    Phone,
+}
+
+impl Keypad {
+    pub(crate) fn for_input(input: &onesim_protocol::TextInputOptions) -> Option<Self> {
+        match input.keyboard_type.as_deref()? {
+            "numberPad" | "asciiCapableNumberPad" => Some(Self::Number),
+            "decimalPad" => Some(Self::Decimal),
+            "phonePad" => Some(Self::Phone),
+            _ => None,
+        }
+    }
 }
 
 /// Auto-capitalization: start of text, or after sentence punctuation plus a space.
@@ -155,7 +177,7 @@ impl Builder<'_> {
         self.out.len() - 1
     }
 
-    fn key(&mut self, parent: usize, id: &str, label: &str, r: Rect, glyph: Option<Glyph>, text: Option<(&str, f32)>) {
+    fn key(&mut self, parent: usize, id: &str, label: &str, r: Rect, glyph: Option<Glyph>, text: Option<(&str, f32)>) -> usize {
         let mut n = Node::new(format!("keyboard#key-{id}"), "key");
         n.role = Role::Key;
         n.label = Some(label.to_string());
@@ -172,20 +194,102 @@ impl Builder<'_> {
             let y = r.y + (r.h - lh) / 2.0 - 1.8;
             self.push(tn, k, Rect { x: r.x, y, w: r.w, h: lh });
         }
+        k
+    }
+}
+
+/// Number and phone keyboards share a four-row, three-column grid.
+fn draw_keypad(b: &mut Builder<'_>, root: usize, panel: Rect, top_inset: f64, keypad: Keypad, phone_symbols: bool) {
+    let (leading, trailing, gap) = (4.67, 6.0, 6.0);
+    let width = ((panel.w - leading - trailing - 2.0 * gap) / 3.0).max(0.0);
+    let row_scale = ((panel.h - top_inset - gap) / (3.0 * 54.0 + 48.0)).clamp(0.0, 1.0);
+    let symbols = phone_symbols && keypad == Keypad::Phone;
+    let extra = match keypad {
+        Keypad::Number => "",
+        Keypad::Decimal => ".",
+        Keypad::Phone => "+*#",
+    };
+    let labels = if symbols {
+        ["1", "2", "3", "pause", "5", "wait", "*", "8", "#", "123", "+", "delete"]
+    } else {
+        ["1", "2", "3", "4", "5", "6", "7", "8", "9", extra, "0", "delete"]
+    };
+    let letters = ["", "ABC", "DEF", "GHI", "JKL", "MNO", "PQRS", "TUV", "WXYZ", "", "", ""];
+    for (i, label) in labels.into_iter().enumerate() {
+        if label.is_empty() {
+            continue;
+        }
+        let frame = Rect {
+            x: leading + (i % 3) as f64 * (width + gap),
+            y: panel.y + top_inset + (i / 3) as f64 * 54.0 * row_scale,
+            w: width,
+            h: 48.0 * row_scale,
+        };
+        let digit = label.as_bytes().iter().all(u8::is_ascii_digit) && label.len() == 1;
+        let disabled = symbols && digit;
+        let glyph = (label == "delete").then_some(Glyph::Backspace);
+        let size = match label {
+            "pause" | "wait" => 16.0,
+            "+" | "#" => 28.0,
+            _ => 22.0,
+        };
+        let key = b.key(root, label, label, frame, glyph, glyph.is_none().then_some((label, size * row_scale as f32)));
+        let color = if disabled { Color { a: 0.35, ..b.th.label } } else { b.th.label };
+        b.out[key].radius = 10.0;
+        if i == 9 || i == 11 {
+            b.out[key].fill = None;
+        }
+        if disabled {
+            b.out[key].role = Role::None;
+            b.out[key].disabled = true;
+        }
+        if glyph.is_none() {
+            let text = &mut b.out[key + 1];
+            text.bounds.y += row_scale * if digit { -3.67 } else if label == "*" { 3.0 } else { 0.0 };
+            if let Some(run) = &mut text.text {
+                run.color = color;
+                if label == "+*#" {
+                    run.font.extra = 2.0;
+                }
+            }
+        }
+        if digit && !letters[i].is_empty() {
+            let mut caption = Node::new(format!("keyboard#key-{label}#caption"), "text");
+            caption.inspect = false;
+            let mut run = text_run(letters[i], 9.0 * row_scale as f32, 600, color);
+            run.font.extra = 2.0;
+            caption.text = Some(run);
+            b.push(caption, key, Rect { y: frame.y + 33.0 * row_scale, h: 11.0 * row_scale, ..frame });
+        }
     }
 }
 
 /// Append the keyboard (panel, suggestion bar, keys) for a `w` x `h` screen. Returns the top y.
 /// `shift` is the effective shift state; `kb_h` the total keyboard height.
 #[allow(clippy::too_many_arguments)]
-pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shift: bool, dev: &Device, look: &Look) {
+pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shift: bool, phone_symbols: bool, dev: &Device, look: &Look) {
     // Emoji / dictation stay where the device's iOS 26 keyboard puts them when the panel height changes (iOS 27).
     let kb_shrink = dev.kb_base_h + dev.safe_bottom - kb_h;
     let th = theme(dark, look);
-    // The word being typed in the focused field (iOS 27 offers it, quoted, as the first suggestion).
-    let word = out
-        .iter()
-        .find(|n| n.focused && n.field.is_some())
+    let focused = out.iter().find(|n| n.focused && n.field.is_some());
+    let input = focused.and_then(|n| n.input.as_deref());
+    let hide_suggestions = focused.is_some_and(|n| n.secure)
+        || input.is_some_and(|i| i.autocorrection_disabled == Some(true));
+    let submit = match input.and_then(|i| i.submit_label.as_deref()) {
+        Some("done") => Some("Done"),
+        Some("go") => Some("Go"),
+        Some("send") => Some("Send"),
+        Some("join") => Some("Join"),
+        Some("route") => Some("Route"),
+        Some("search") => Some("Search"),
+        Some("next") => Some("Next"),
+        Some("continue") => Some("Continue"),
+        _ => None,
+    };
+    let keypad = input.and_then(Keypad::for_input);
+    // Suggestions never use the contents of a secure field.
+    let word = focused
+        .filter(|_| !hide_suggestions)
         .and_then(|n| n.value.as_deref())
         .and_then(|v| v.rsplit(char::is_whitespace).next())
         .filter(|w| !w.is_empty() && look.typed_word_suggestion)
@@ -199,8 +303,12 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
     out.push(kb);
     let root = out.len() - 1;
     let mut b = Builder { out, th };
-    if dev.wide_keyboard {
-        return wide(&mut b, root, w, top, kb_h, &word, shift, look);
+    if dev.wide_keyboard && keypad.is_none() {
+        return wide(&mut b, root, w, top, kb_h, &word, shift, look, submit, hide_suggestions);
+    }
+
+    if keypad.is_some() && !dark {
+        b.th.panel = c(226, 228, 232, 1.0);
     }
 
     // Panel: 30pt top corners, ~55pt (device) bottom corners, from two overlapping rounded rects.
@@ -212,6 +320,10 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
         b.push(n, root, Rect { x: 0.0, y, w, h: hh });
     }
 
+    if let Some(keypad) = keypad {
+        return draw_keypad(&mut b, root, Rect { x: 0.0, y: top, w, h: kb_h }, look.keypad_top_inset, keypad, phone_symbols);
+    }
+
     // Static suggestions (no prediction engine), with hairline dividers.
     let third = w / 3.0;
     let words: [&str; 3] = match &word {
@@ -221,7 +333,7 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
     };
     for (i, s) in words.iter().enumerate() {
         // iOS 27 references were all captured with the suggestion words; iOS 26 only on the 17 Pro.
-        if (dev.suggestions || look.always_suggestions) && !s.is_empty() {
+        if !hide_suggestions && (dev.suggestions || look.always_suggestions) && !s.is_empty() {
             let mut n = Node::new(format!("keyboard#suggestion-{i}"), "suggestion");
             n.role = Role::Text;
             n.label = Some(s.to_string());
@@ -229,7 +341,7 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
             n.text = Some(text_run(s, 17.0, 400, b.th.suggest));
             b.push(n, root, Rect { x: third * i as f64, y: top + 24.8 - lh / 2.0, w: third, h: lh });
         }
-        if i > 0 {
+        if !hide_suggestions && i > 0 {
             let mut d = Node::new(format!("keyboard#divider-{i}"), "divider");
             d.fill = Some(b.th.divider);
             d.inspect = false;
@@ -273,12 +385,12 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
         put("emoji", 40.0, emoji, None, &mut b);
         put("dictation", 31.0, mic, None, &mut b);
         put("space", space, None, None, &mut b);
-        put("return", 86.0, Some(Glyph::Return), None, &mut b);
+        put("return", 86.0, submit.is_none().then_some(Glyph::Return), submit.map(|label| (label, 16.0)), &mut b);
         return;
     }
     b.key(root, "123", "123", Rect { x: margin, y: ys[3], w: wide, h: kh }, None, Some(("123", 17.0)));
     b.key(root, "space", "space", Rect { x: margin + wide + gap, y: ys[3], w: w - 2.0 * (margin + wide + gap), h: kh }, None, None);
-    b.key(root, "return", "return", Rect { x: w - margin - wide, y: ys[3], w: wide, h: kh }, Some(Glyph::Return), None);
+    b.key(root, "return", "return", Rect { x: w - margin - wide, y: ys[3], w: wide, h: kh }, submit.is_none().then_some(Glyph::Return), submit.map(|label| (label, 16.0)));
 
     // Emoji and dictation sit in the panel below the keys, without key caps.
     for (id, g, cx) in [("emoji", Glyph::Emoji, 42.4), ("dictation", Glyph::Mic, w - 42.4)] {
@@ -302,6 +414,8 @@ fn wide(
     word: &Option<String>,
     shift: bool,
     look: &Look,
+    submit: Option<&str>,
+    hide_suggestions: bool,
 ) {
     for (id, y, hh, r) in [
         ("top", top, kb_h, 26.0),
@@ -346,7 +460,7 @@ fn wide(
     };
     for (i, s) in words.iter().enumerate() {
         let x = l + 267.0 * i as f64;
-        if !s.is_empty() {
+        if !hide_suggestions && !s.is_empty() {
             let mut n = Node::new(format!("keyboard#suggestion-{i}"), "suggestion");
             n.role = Role::Text;
             n.label = Some(s.to_string());
@@ -363,7 +477,7 @@ fn wide(
                 },
             );
         }
-        if i > 0 {
+        if !hide_suggestions && i > 0 {
             let mut d = Node::new(format!("keyboard#divider-{i}"), "divider");
             d.fill = Some(b.th.divider);
             d.inspect = false;
@@ -462,8 +576,8 @@ fn wide(
         "return",
         "return",
         cap(l + 688.0, rows[3], 111.0),
-        Some(Glyph::Return),
-        None,
+        submit.is_none().then_some(Glyph::Return),
+        submit.map(|label| (label, 16.0)),
     );
 }
 

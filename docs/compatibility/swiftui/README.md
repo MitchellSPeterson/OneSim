@@ -26,18 +26,18 @@ are the ones that matter most.
 | Area | iOS |
 |---|---|
 | [Views](views.md) | 41% (39/95) |
-| [View modifiers](view-modifiers.md) | 19% (82/433) |
+| [View modifiers](view-modifiers.md) | 21% (89/433) |
 | [Text and Image methods](text-and-image.md) | 56% (19/34) |
-| [Shapes](shapes.md) | 85% (29/34) |
-| [Styles](styles.md) | 40% (48/120) |
+| [Shapes](shapes.md) | 87% (29.5/34) |
+| [Styles](styles.md) | 46% (55/120) |
 | [Gestures](gestures.md) | 79% (11/14) |
 | [Scenes](scenes.md) | 2% (0.5/23) |
-| [Property wrappers](property-wrappers.md) | 53% (10.5/20) |
-| [Environment values](environment-values.md) | 7% (8/118) |
+| [Property wrappers](property-wrappers.md) | 55% (11/20) |
+| [Environment values](environment-values.md) | 8% (10/118) |
 | [Protocols](protocols.md) | 22% (17/78) |
-| [Other types](other-types.md) | 21% (86.5/410) |
-| [Outside SwiftUI](outside-swiftui.md) | 83% (2.5/3) |
-| **Total** | **26% (353/1382)** |
+| [Other types](other-types.md) | 22% (90.5/410) |
+| [Outside SwiftUI](outside-swiftui.md) | 75% (4.5/6) |
+| **Total** | **27% (376/1385)** |
 <!-- coverage:end -->
 
 Refresh with `node scripts/api-coverage.mjs`; CI runs it with `--check`.

@@ -117,6 +117,8 @@ final class _Runtime {
     var render: () -> Node = { [:] }
     // Per-evaluation context (reset every submit; set while walking modifier subtrees).
     var fields: [UInt64: (String) -> Void] = [:]
+    var textInput = _TextInputContext()
+    var textFocus: [String: [_TextFocus]] = [:]
     var disabled = false
     var buttonStyle = "automatic"
     var pickerStyle = "menu"
@@ -264,6 +266,9 @@ final class _Runtime {
     private func _evaluate() -> Node {
         actions.removeAll(keepingCapacity: true)
         fields.removeAll(keepingCapacity: true)
+        let previousFocus = textFocus
+        textFocus.removeAll(keepingCapacity: true)
+        textInput = _TextInputContext()
         disabled = false; buttonStyle = "automatic"; pickerStyle = "menu"; styles = _Styles(); tags = [:]; nav = nil; envObjects = [:]; envLocal = []
         pageTabStyle = nil; pageIndexStyle = .init(); pageIsActive = true
         #if !os(WASI)
@@ -288,6 +293,9 @@ final class _Runtime {
         animSeen = animNow
         anchorScroll = anchorScrollNow   // a later button action (stack empty) can still scrollTo
         dirty = false
+        for target in previousFocus.values.joined() where target.isFocused() {
+            if !textFocus.values.joined().contains(where: { $0.matches(target) }) { target.blur() }
+        }
         return tree
     }
 

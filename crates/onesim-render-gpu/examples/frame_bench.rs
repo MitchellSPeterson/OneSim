@@ -32,7 +32,7 @@ fn layout(root: &ViewNode, dev: &Device, fonts: &mut Fonts, scroll: &HashMap<Str
             focus,
             overscroll: false,
             status_bar: true,
-            chrome: onesim_render::ChromeParams { keyboard: focus.is_some(), shift: false },
+            chrome: onesim_render::ChromeParams { keyboard: focus.is_some(), shift: false, ..Default::default() },
         },
         fonts,
     )

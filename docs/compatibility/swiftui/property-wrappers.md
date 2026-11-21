@@ -14,7 +14,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `FocusedBinding` | 14 | ⬜ |  |  |
 | `FocusedObject` | 16 | ⬜ |  |  |
 | `FocusedValue` | 14 | ⬜ |  |  |
-| `FocusState` | 15 | ⬜ |  |  |
+| `FocusState` | 15 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Boolean and optional hashable focus bindings for text controls. Other focusable views are a gap. |
 | `GestureState` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
 | `Namespace` | 14 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `ObservedObject` | 13 | ✅ |  |  |

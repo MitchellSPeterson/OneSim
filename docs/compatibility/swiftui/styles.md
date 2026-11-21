@@ -17,12 +17,12 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `AutomaticLabeledContentStyle` | 16 | ⬜ |  |  |
 | `AutomaticNavigationSplitViewStyle` | 16 | ⬜ |  |  |
 | `AutomaticTableStyle` | 16 | ⬜ |  |  |
-| `AutomaticTextEditorStyle` | 17 | ⬜ |  |  |
+| `AutomaticTextEditorStyle` | 17 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) |  |
 | `BackgroundStyle` | 14 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Background environment paint and appearance defaults. Safe-area edge extension is a gap. |
 | `BalancedNavigationSplitViewStyle` | 16 | ⬜ |  |  |
 | `BorderedButtonStyle` | 15 | ✅ |  |  |
 | `BorderedProminentButtonStyle` | 15 | ✅ |  |  |
-| `BorderedTextFieldStyle` | 13 | ⬜ |  |  |
+| `BorderedTextFieldStyle` | 27 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Border and focus appearance approximate iOS. |
 | `BorderlessButtonMenuStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Deprecated |
 | `BorderlessButtonStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `ButtonMenuStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
@@ -46,7 +46,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `DefaultPickerStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `DefaultProgressViewStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `DefaultTabViewStyle` | 14 | ✅ | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | iPhone tab bar |
-| `DefaultTextFieldStyle` | 13 | ⬜ |  |  |
+| `DefaultTextFieldStyle` | 13 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) |  |
 | `DefaultToggleStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `DisclosureGroupStyle` | 16 | ⬜ |  |  |
 | `DoubleColumnNavigationViewStyle` | 13 | ⬜ |  | Deprecated |
@@ -90,12 +90,12 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `PlaceholderTextShapeStyle` | 17 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Uses the semantic tertiary color. |
 | `PlainButtonStyle` | 13 | ✅ |  |  |
 | `PlainListStyle` | 13 | ⬜ |  |  |
-| `PlainTextEditorStyle` | 17 | ⬜ |  |  |
-| `PlainTextFieldStyle` | 13 | ⬜ |  |  |
+| `PlainTextEditorStyle` | 17 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Uses the same appearance as the automatic style. |
+| `PlainTextFieldStyle` | 13 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) |  |
 | `PrimitiveButtonStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `ProgressViewStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `ProminentDetailNavigationSplitViewStyle` | 16 | ⬜ |  |  |
-| `RoundedBorderTextFieldStyle` | 13 | ⬜ |  | Deprecated |
+| `RoundedBorderTextFieldStyle` | 13 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Deprecated |
 | `RoundedCornerStyle` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `ScrollEdgeEffectStyle` | 26 | ⬜ |  |  |
 | `SegmentedPickerStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
@@ -114,8 +114,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `TableStyle` | 16 | ⬜ |  |  |
 | `TabsPickerStyle` | 27 | ⬜ |  |  |
 | `TabViewStyle` | 14 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Built-in styles only |
-| `TextEditorStyle` | 17 | ⬜ |  |  |
-| `TextFieldStyle` | 13 | ⬜ |  |  |
+| `TextEditorStyle` | 17 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Evaluates custom style bodies. |
+| `TextFieldStyle` | 13 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Evaluates custom style bodies. |
 | `TintShapeStyle` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Inherited tint paint and accent fallback. Propagation to native-style controls is a gap. |
 | `TitleAndIconLabelStyle` | 14.5 | ⬜ |  |  |
 | `TitleOnlyLabelStyle` | 14 | ⬜ |  |  |
