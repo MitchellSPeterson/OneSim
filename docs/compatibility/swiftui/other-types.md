@@ -34,7 +34,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `AnimationContext` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `AnimationState` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `AnimationTimelineSchedule` | 15 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `AnyGradient` | 16 | ⬜ |  |  |
+| `AnyGradient` | 16 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Gradient erasure and shape-style factories. Color.gradient is approximate. |
 | `AnyLayout` | 16 | ⬜ |  |  |
 | `AnyLocation` | 13 | ⬜ |  |  |
 | `AnyLocationBase` | 13 | ⬜ |  |  |
@@ -54,7 +54,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `BackgroundProminence` | 17 | ⬜ |  |  |
 | `BackgroundTask` | 16 | ⬜ |  |  |
 | `BadgeProminence` | 17 | ⬜ |  |  |
-| `BlendMode` | 13 | ⬜ |  |  |
+| `BlendMode` | 13 | ✅ | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | View modes and the Porter-Duff modes exposed by GraphicsContext. |
 | `BlurReplaceTransition` | 17 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Animates opacity and scale; Gaussian blur effect is not rendered yet |
 | `ButtonRepeatBehavior` | 17 | ⬜ |  |  |
 | `ButtonRole` | 15 | ✅ |  |  |
@@ -62,7 +62,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ButtonStyleConfiguration` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | `isPressed` is always false |
 | `CameraCaptureAccessory` | 27.1 | ⬜ |  |  |
 | `ColorMatrix` | 15 | ⬜ |  |  |
-| `ColorRenderingMode` | 13 | ⬜ |  |  |
+| `ColorRenderingMode` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Cases are available. Canvas and drawingGroup use an 8-bit device-color backing. |
 | `ColorScheme` | 13 | ✅ |  |  |
 | `ColorSchemeContrast` | 13 | ⬜ |  |  |
 | `CommandGroup` | 14 | ⬜ |  |  |
@@ -126,7 +126,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `EmptyMatchedTransitionSourceConfiguration` | 18 | ⬜ |  |  |
 | `EmptyModifier` | 13 | ⬜ |  |  |
 | `EmptyTableRowContent` | 16 | ⬜ |  |  |
-| `EmptyVisualEffect` | 17 | ⬜ |  |  |
+| `EmptyVisualEffect` | 17 | ✅ | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Identity value for visualEffect closures. |
 | `EmptyWidgetConfiguration` | 14 | ⬜ |  |  |
 | `EnabledTextSelectability` | 15 | ⬜ |  |  |
 | `EnvironmentValues` | 13 | 🟠 | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) | `colorScheme`, `dismiss`, `dynamicTypeSize`, size classes, `isEnabled`, `openURL`, `scenePhase`, `EnvironmentKey` subscripts, `contentTransition`, `contentTransitionAddsDrawingGroup` |
@@ -159,13 +159,13 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Glass` | 26 | 🟠 |  | `interactive` has no visual effect |
 | `GlassEffectTransition` | 26 | ⬜ |  |  |
 | `GlobalCoordinateSpace` | 17 | ⬜ |  |  |
-| `Gradient` | 13 | ⬜ |  |  |
-| `GraphicsContext` | 15 | ⬜ |  |  |
+| `Gradient` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Mutable stops, hashing and device/perceptual color space. Interpolation color spaces are approximated. |
+| `GraphicsContext` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Draw commands, context copying, clip layers and common filters. Resolved metrics, CG contexts, tiled images, shader, shadow and matrix filters, linear filter options and blur dithering are gaps. |
 | `GridItem` | 14 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `GridLayout` | 16 | ⬜ |  |  |
 | `GroupBoxStyleConfiguration` | 14 | ⬜ |  |  |
 | `HandGestureShortcut` | 18 | ⬜ |  |  |
-| `HierarchicalShapeStyleModifier` | 17 | ⬜ |  |  |
+| `HierarchicalShapeStyleModifier` | 17 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Solid foreground and fill hierarchy. Gradients and multi-style symbol levels are gaps. |
 | `HighlightHoverEffect` | 18 | ⬜ |  |  |
 | `HorizontalAlignment` | 13 | ✅ |  |  |
 | `HorizontalDirection` | 18 | ⬜ |  |  |
@@ -246,7 +246,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `PreviewPlatform` | 13 | ⬜ |  |  |
 | `PrimitiveButtonStyleConfiguration` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `ProgressViewStyleConfiguration` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
-| `ProjectionTransform` | 13 | ⬜ |  |  |
+| `ProjectionTransform` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | 2D matrix, concatenation and inversion. CATransform3D initializer and platform perspective filtering are gaps. |
 | `Prominence` | 15 | ⬜ |  |  |
 | `ProposedViewSize` | 16 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `PushTransition` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |

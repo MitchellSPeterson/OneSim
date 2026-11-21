@@ -24,7 +24,10 @@ extension ShapeStyle where Self == ForegroundStyle {
 
 public struct HierarchicalShapeStyle: ShapeStyle {
     let name: String
-    public var _json: [String: Any] { ["semantic": name] }
+    public var _json: [String: Any] {
+        if name == "quaternary" || name == "quinary" { return ["style": name] }
+        return ["semantic": name, "hierarchical": true]
+    }
 }
 extension ShapeStyle where Self == HierarchicalShapeStyle {
     public static var primary: HierarchicalShapeStyle { .init(name: "primary") }

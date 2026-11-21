@@ -961,6 +961,7 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
     let (mut ox, mut oy) = (x, y);
     if scroll_view {
         n.kind = "scroll";
+        n.scroll_disabled = p.get("scrollEnabled").and_then(Value::as_bool) == Some(false);
         let vertical = component != "AndroidHorizontalScrollView" && p.get("horizontal").and_then(Value::as_bool) != Some(true);
         let content = it.kids.iter().find(|k| rn_component(k.node) != "PullToRefreshView").and_then(|k| cx.tree.layout(k.id).ok()).map_or((0.0, 0.0), |c| (c.size.width as f64, c.size.height as f64));
         // A refreshing `RefreshControl` keeps its band open above the content (UIRefreshControl's extra top inset).

@@ -5,7 +5,7 @@ import Foundation
 #endif
 
 // DatePicker (compact, graphical, wheel), MultiDatePicker, ColorPicker, and the `\.calendar`, `\.timeZone` and
-// `\.locale` environment values they read (docs/protocol.md section R). The pickers are built from ordinary nodes
+// `\.locale` environment values they read (docs/protocol.md section S). The pickers are built from ordinary nodes
 // here; the host adds a `popover` layer and a multi-column `wheel` kind. Dates are Gregorian; days, weekdays and
 // wall-clock times come from `_Civil` in the environment's time zone.
 

@@ -237,7 +237,7 @@ sec = next(m for m in walk(t["root"]) if m.get("kind") == "text_field" and m.get
 assert sec["text"] == "hunter2" and sec["placeholder"] == "Password", sec
 assert ["Version", "1.0"] == alltexts(lst["sections"][0]["rows"][2]), alltexts(lst["sections"][0]["rows"][2])
 ver = next(m for m in walk(lst["sections"][0]["rows"][2]) if m.get("text") == "1.0")
-assert {"foregroundColor": {"semantic": "secondary"}} in ver["modifiers"], ver
+assert {"foregroundColor": {"semantic": "secondary", "hierarchical": True}} in ver["modifiers"], ver
 pk = lambda t, style: next(m for m in walk(t["root"]) if m.get("kind") == "picker" and m["style"] == style)
 fl = pk(t, "menu")
 assert fl["label"]["text"] == "Flavor" and [o["text"] for o in fl["options"]] == ["Vanilla", "Chocolate", "Strawberry"] and fl["selected"] == 0, fl
@@ -820,8 +820,45 @@ t = act(p, t, wh["options"][2]["action"]); assert has(t, "hour 2")
 fl = next(m for m in node(t, "picker") if m["style"] == "menu"); assert fl["label"]["kind"] == "empty", "labelsHidden"
 assert any(m["label"]["kind"] == "empty" for m in node(t, "toggle")), "labelsHidden hides a toggle's label"
 finish(p)
-# --- DatePicker, MultiDatePicker and ColorPicker
+# --- Canvas and visual effects (protocol section R)
 p = spawn(sys.argv[16])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+canvas = lambda t: next(n for n in walk(t["root"]) if n["kind"] == "canvas")
+effect = lambda t: next(n for n in walk(t["root"]) if n["kind"] == "visualEffect")
+cid, eid = canvas(t)["id"], effect(t)["id"]
+palette = next(m["foregroundPalette"] for n in walk(t["root"]) for m in n.get("modifiers", []) if "foregroundPalette" in m)
+assert palette["primary"]["r"] == 1 and palette["secondary"]["b"] == 1
+assert palette["tertiary"]["g"] > palette["tertiary"]["r"]
+assert canvas(t)["children"] == [], "initial Canvas waits for its layout size"
+send(p, type="layout", frames={cid: [3, 4, 44, 28], eid: [7, 11, 80, 20]})
+t = recv(p)
+assert canvas(t)["proposal"] == [44, 28]
+clipped, clean, symbol, masked, resolved = canvas(t)["children"]
+assert clipped["path"][2] == {"l": [44, 28]}, clipped
+assert [{"effect": {"kind": "affine", "matrix": [1, 0, 0, 1, 3, -2], "anchor": [0, 0]}}] == clipped["modifiers"][:1]
+assert clipped["modifiers"][1] == {"effect": {"kind": "opacity", "amount": 0.25}} and "invertedMask" in clipped["modifiers"][2]
+assert "modifiers" not in clean and clean["stroke"]["dash"] == [1, 2], "clip changes stay on a context copy"
+assert symbol["origin"] == [22, 14] and symbol["child"]["text"] == "星", symbol
+assert masked["path"][2] == {"l": [22, 28]}, "clipBoundingRect follows the layer's half-width fill"
+assert resolved["child"]["modifiers"][0]["foregroundColor"]["r"] == 1, "resolved shading preserves explicit red"
+assert effect(t)["frame"] == [7, 11, 80, 20]
+translation, scale, blend = effect(t)["effects"]
+assert translation["matrix"] == [1, 0, 0, 1, 87, 0]
+assert scale["matrix"] == [-1, 0, 0, 0, 0, 0] and scale["anchor"] == [1, 0]
+assert blend == {"kind": "blend", "mode": "multiply"}
+assert effect(t)["child"]["fill"]["gradient"]["colorSpace"] == "perceptual"
+t = act(p, t, button(t, "Draw more")["action"])
+assert len(canvas(t)["children"]) == 304, "a state update redraws every Canvas command"
+send(p, type="layout", frames={cid: [0, 0, 0, 0], eid: [-6, 3, 120, 20]})
+t = recv(p)
+assert canvas(t)["proposal"] == [0, 0]
+assert canvas(t)["children"][-3]["origin"] == [0, 0]
+assert effect(t)["effects"][0]["matrix"][4] == 114
+finish(p)
+
+# --- DatePicker, MultiDatePicker and ColorPicker
+p = spawn(sys.argv[17])
 assert recv(p)["type"] == "hello"
 recv(p)
 send(p, type="environment", appearance="light", viewport={"width": 402, "height": 874})
@@ -926,7 +963,7 @@ assert "OPACITY" not in alltexts(layers(t)[0]["content"])
 finish(p)
 # A custom style can delegate to Apple's corresponding built-in style API.
 # For a same-day range, the wheel must disable times as well as dates.
-p = spawn(sys.argv[17], {**os.environ, "SIMCORE_TIME": "1746057600"})
+p = spawn(sys.argv[18], {**os.environ, "SIMCORE_TIME": "1746057600"})
 assert recv(p)["type"] == "hello"
 t = recv(p)
 wheel = next(n for n in walk(tree(t)) if n["kind"] == "wheel")
