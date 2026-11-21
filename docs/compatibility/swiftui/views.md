@@ -60,9 +60,9 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ModifiedContent` | 13 | ⬜ |  |  |
 | `MultiDatePicker` | 16 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Gregorian day selection and range navigation. Localized title-key and title-resource overloads, narrow parent layouts and non-Gregorian dates are incomplete. |
 | `NavigationLink` | 13 | ✅ |  |  |
-| `NavigationSplitView` | 16 | ⬜ |  |  |
+| `NavigationSplitView` | 16 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Two- and three-column initializers and the preferred compact column binding. Regular-width layouts, visibility changes, and selection-driven column routing are pending. |
 | `NavigationStack` | 16 | ✅ |  |  |
-| `NavigationView` | 13 | ⬜ |  | Deprecated |
+| `NavigationView` | 13 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Deprecated. Uses a compact navigation stack. The legacy column styles, selection-based links, and adaptive composition are pending. |
 | `NewDocumentButton` | 18 | ⬜ |  |  |
 | `OutlineGroup` | 14 | ⬜ |  |  |
 | `OutlineSubgroupChildren` | 14 | ⬜ |  |  |

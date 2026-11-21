@@ -42,7 +42,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `DefaultLabelStyle` | 14 | ⬜ |  |  |
 | `DefaultListStyle` | 13 | ⬜ |  |  |
 | `DefaultMenuStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
-| `DefaultNavigationViewStyle` | 13 | ⬜ |  | Deprecated |
+| `DefaultNavigationViewStyle` | 13 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Deprecated. Uses the compact stack presentation. Adaptive layout is pending. |
 | `DefaultPickerStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `DefaultProgressViewStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `DefaultTabViewStyle` | 14 | ✅ | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | iPhone tab bar |
@@ -80,7 +80,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `NavigationControlGroupStyle` | 15 | ⬜ |  |  |
 | `NavigationLinkPickerStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `NavigationSplitViewStyle` | 16 | ⬜ |  |  |
-| `NavigationViewStyle` | 13 | ⬜ |  | Deprecated |
+| `NavigationViewStyle` | 13 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Deprecated. Compact stack style only. Custom and column styles are pending. |
 | `OverlayArrangementViewStyle` | 13 | ⬜ |  |  |
 | `PageIndexViewStyle` | 14 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Indicator taps, automatic, always and never backgrounds. Interactive background and scrubbing are unsupported. |
 | `PageTabViewStyle` | 14 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Horizontal drag and selection binding. Release and programmatic changes snap. Whole simulated swipes that turn the page bypass child tap gesture callbacks. |
@@ -106,7 +106,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `SidebarAdaptableTabViewStyle` | 18 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Compact iPhone tab bar. Sidebar layout is unsupported. |
 | `SidebarListStyle` | 14 | ⬜ |  |  |
 | `SplitArrangementViewStyle` | 13 | ⬜ |  |  |
-| `StackNavigationViewStyle` | 13 | ⬜ |  | Deprecated |
+| `StackNavigationViewStyle` | 13 | ✅ | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Deprecated. Compact stack presentation. |
 | `StrokeStyle` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `SwitchToggleStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `SystemFormatStyle` | 18 | ⬜ |  |  |
