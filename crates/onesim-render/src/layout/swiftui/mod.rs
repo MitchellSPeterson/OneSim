@@ -676,10 +676,33 @@ mod tests {
         let mut builder = crate::Builder::new();
         let built = builder.build(&scene, &mut fonts, 1.0);
         let frame = DisplayList::decode(&built.encode()).unwrap();
-        let [Op::Image { id, .. }] = frame.ops.as_slice() else { panic!("expected the composed image") };
+        let [Op::Fill { .. }, Op::Sprite { id, x: 0, y: 0 }] = frame.ops.as_slice() else {
+            panic!("expected background Fill + bounded Op::Sprite, got {:?}", frame.ops)
+        };
+        assert_eq!(frame.added.len(), 1);
         assert_eq!(frame.added[0].id, *id);
+        assert_eq!((frame.added[0].width, frame.added[0].height), (8, 8));
         assert_eq!(frame.added[0].rgba, cpu.data());
-        assert_eq!(builder.build(&scene, &mut fonts, 1.0).dropped, vec![*id]);
+
+        // Second build of the same scene is a cache hit.
+        let cached = builder.build(&scene, &mut fonts, 1.0);
+        assert!(cached.added.is_empty());
+        assert!(cached.dropped.is_empty());
+
+        // Building an empty scene past CACHE_TTL_FRAMES drops the cached sprite.
+        let empty = crate::Scene {
+            size: (8.0, 8.0),
+            appearance: onesim_protocol::Appearance::Light,
+            ios: Default::default(),
+            nodes: vec![],
+            unsupported_symbols: vec![],
+            notes: vec![],
+        };
+        let mut dropped = Vec::new();
+        for _ in 0..=crate::display_build::CACHE_TTL_FRAMES {
+            dropped.extend(builder.build(&empty, &mut fonts, 1.0).dropped);
+        }
+        assert_eq!(dropped, vec![*id]);
     }
 
     #[test]

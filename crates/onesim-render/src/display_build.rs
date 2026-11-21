@@ -19,6 +19,10 @@ use std::sync::Arc;
 use tiny_skia::Pixmap;
 
 use crate::display::{DisplayList, Op, RRect, Resource, Sampling};
+use crate::raster::composite::{
+    aligned_origin, composite_key, needs_whole_frame_blend, plan_composite, render_composite_sprite,
+    subtree_bounds, transform_clip,
+};
 use crate::raster::{clip_radius, needs_backdrop, node_sprite, sprite_key, text_sprite, PaintClip, SpriteLayer};
 use crate::scene::{Color, Gradient, ImageRun, Node};
 use crate::{Fonts, Scene};
@@ -34,6 +38,9 @@ const BITMAP_ID_BIT: u64 = 1 << 63;
 struct SpriteEntry {
     tile: SpriteTile,
     last_used: u64,
+    /// Keeps referenced `ImageRun` pixmaps alive while this cached sprite key depends on their pointers.
+    #[allow(dead_code)]
+    pinned: Vec<Arc<Pixmap>>,
 }
 
 enum SpriteTile {
@@ -144,9 +151,9 @@ impl Builder {
         let (pw, ph) = ((scene.size.0 * scale).round().max(1.0) as u32, (scene.size.1 * scale).round().max(1.0) as u32);
         let mut dl = DisplayList { width: pw, height: ph, scale: s, dark: scene.appearance == onesim_protocol::Appearance::Dark, ios: scene.ios, ..Default::default() };
         dl.dropped.extend(self.composed_frame.take());
-        if scene.nodes.iter().any(|n| n.composite.is_some()) {
-            // The shared rasterizer resolves isolated composite layers before handing
-            // the result to the executor. A replaced frame resource can be released immediately.
+        let has_composite = scene.nodes.iter().any(|n| n.composite.is_some());
+        if has_composite && needs_whole_frame_blend(&scene.nodes) {
+            // Top-level non-Normal Blend reads the outer framebuffer; resolve on CPU.
             let rgba = crate::render(scene, fonts, scale).take();
             let id = BITMAP_ID_BIT | self.next_bitmap;
             self.next_bitmap += 1;
@@ -161,13 +168,30 @@ impl Builder {
             return dl;
         }
         let nodes = &scene.nodes;
+        let children: Vec<Vec<usize>> = if has_composite {
+            let mut ch = vec![Vec::new(); nodes.len()];
+            for (i, n) in nodes.iter().enumerate() {
+                if let Some(p) = n.parent {
+                    ch[p].push(i);
+                }
+            }
+            ch
+        } else {
+            Vec::new()
+        };
+        let mut skipped = if has_composite { vec![false; nodes.len()] } else { Vec::new() };
         // Ancestor clips of each node, with their conservative intersection and the chain open in `dl.ops`.
         let viewport = PaintClip::viewport(pw, ph);
         let root_chain = Rc::new(vec![]);
         let mut chains: Vec<(Rc<Vec<usize>>, PaintClip)> = Vec::with_capacity(nodes.len());
         let mut open: Vec<usize> = vec![];
 
-        for n in nodes {
+        for (idx, n) in nodes.iter().enumerate() {
+            if has_composite && n.parent.is_some_and(|p| skipped[p]) {
+                skipped[idx] = true;
+                chains.push((root_chain.clone(), PaintClip::viewport(0, 0)));
+                continue;
+            }
             let (chain, clip) = match n.parent {
                 None => (root_chain.clone(), viewport),
                 Some(p) => {
@@ -184,6 +208,9 @@ impl Builder {
             };
             chains.push((chain.clone(), clip));
             if clip.is_empty() {
+                if has_composite && n.composite.is_some() {
+                    skipped[idx] = true;
+                }
                 continue;
             }
 
@@ -198,12 +225,102 @@ impl Builder {
                 open.push(i);
             }
 
-            self.lower_node(n, fonts, sd, clip, &mut dl);
+            if n.composite.is_some() {
+                skipped[idx] = true;
+                self.lower_composite(scene, idx, &children, fonts, sd, (pw, ph), clip, &mut dl);
+            } else {
+                self.lower_node(n, fonts, sd, clip, &mut dl);
+            }
         }
         dl.ops.extend(open.iter().map(|_| Op::PopClip));
         self.evict(&mut dl.dropped);
         dl.dropped.sort_unstable();
         dl
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn lower_composite(
+        &mut self,
+        scene: &Scene,
+        idx: usize,
+        children: &[Vec<usize>],
+        fonts: &mut Fonts,
+        scale: f64,
+        (pw, ph): (u32, u32),
+        clip: PaintClip,
+        dl: &mut DisplayList,
+    ) {
+        let Some(plan) = plan_composite(idx, &scene.nodes, children, scale) else {
+            return;
+        };
+        let roots = plan.roots.slice(children);
+        let bounds = subtree_bounds(scene, roots, children, fonts, scale, pw, ph);
+        if bounds.work.is_empty() || bounds.output.is_empty() {
+            return;
+        }
+        let out_clip = transform_clip(bounds.output, plan.affine, if plan.had_affine { 2.0 } else { 0.0 });
+        if !clip.overlaps(out_clip) {
+            return;
+        }
+        let Some((ox, oy, dx_pt, dy_pt, rw, rh)) =
+            aligned_origin(bounds.work, scale, bounds.has_scroll_edge, pw, ph)
+        else {
+            return;
+        };
+        let padded = plan.had_affine;
+        let viewport_clip = (bounds.clipped_by_viewport || bounds.has_scroll_edge).then_some((ox, oy, rw, rh));
+        let (hash, pinned) = composite_key(scene, roots, children, fonts, scale, dx_pt, dy_pt, padded, viewport_clip);
+        let id = hash & !BITMAP_ID_BIT;
+        let now = self.frame;
+        self.sprite_lookups += 1;
+
+        let entry = match self.sprites.entry(id) {
+            Entry::Occupied(entry) => {
+                let entry = entry.into_mut();
+                entry.last_used = now;
+                entry
+            }
+            Entry::Vacant(entry) => {
+                self.sprite_misses += 1;
+                let tile = match render_composite_sprite(
+                    scene, roots, children, fonts, scale, ox, oy, dx_pt, dy_pt, rw, rh, padded,
+                ) {
+                    Some(sp) => {
+                        let (width, height) = (sp.pixmap.width(), sp.pixmap.height());
+                        dl.added.push(Resource { id, width, height, rgba: sp.pixmap.take() });
+                        SpriteTile::Uploaded(sp.x - ox, sp.y - oy, width, height)
+                    }
+                    None => SpriteTile::Empty,
+                };
+                entry.insert(SpriteEntry { tile, last_used: now, pinned })
+            }
+        };
+
+        if let SpriteTile::Uploaded(dx, dy, width, height) = entry.tile {
+            let (sx, sy) = (ox + dx, oy + dy);
+            let sprite_clip = transform_clip(
+                PaintClip::pixels(sx, sy, width, height),
+                plan.affine,
+                if plan.had_affine { 1.0 } else { 0.0 },
+            );
+            if !clip.overlaps(sprite_clip) {
+                return;
+            }
+            let [a, b, c, d, e, f] = plan.affine;
+            let pure_int_translate = (a - 1.0).abs() < 1e-6
+                && b.abs() < 1e-6
+                && c.abs() < 1e-6
+                && (d - 1.0).abs() < 1e-6
+                && (e - e.round()).abs() < 1e-4
+                && (f - f.round()).abs() < 1e-4;
+            if pure_int_translate && plan.opacity >= 1.0 - 1e-6 {
+                dl.ops.push(Op::Sprite { id, x: sx + e.round() as i32, y: sy + f.round() as i32 });
+            } else {
+                let m = Aff::translate(sx as f64, sy as f64).then(Aff(plan.affine)).0.map(|v| v as f32);
+                let sampling = if plan.had_affine { Sampling::Bilinear } else { Sampling::Nearest };
+                dl.ops.push(Op::Image { id, transform: m, sampling, opacity: plan.opacity, shape: None });
+            }
+        }
     }
 
     /// The ops of one node, in the order of `raster::render`: halo/glass/shadow/edge, fill, gradient,
@@ -299,7 +416,7 @@ impl Builder {
                     [value, value, value, alpha]
                 }).collect();
                 dl.added.push(Resource { id, width: g.width, height: g.height, rgba });
-                SpriteEntry { tile: SpriteTile::Uploaded(0, 0, g.width, g.height), last_used: self.frame }
+                SpriteEntry { tile: SpriteTile::Uploaded(0, 0, g.width, g.height), last_used: self.frame, pinned: Vec::new() }
             });
             entry.last_used = self.frame;
             dl.ops.push(Op::Sprite { id, x: g.x, y: g.y });
@@ -347,7 +464,7 @@ impl Builder {
                 }
                 entry
             }
-            Entry::Vacant(entry) => entry.insert(SpriteEntry { tile: build(), last_used: now }),
+            Entry::Vacant(entry) => entry.insert(SpriteEntry { tile: build(), last_used: now, pinned: Vec::new() }),
         };
         match entry.tile {
             SpriteTile::Empty => entry.last_used = now,
@@ -540,7 +657,7 @@ mod tests {
         let mut builder = Builder::new();
         builder.frame = 2;
         for id in 1..=3 {
-            builder.sprites.insert(id, SpriteEntry { tile: SpriteTile::Uploaded(0, 0, 2048, 2048), last_used: id.min(2) });
+            builder.sprites.insert(id, SpriteEntry { tile: SpriteTile::Uploaded(0, 0, 2048, 2048), last_used: id.min(2), pinned: Vec::new() });
         }
         let mut dropped = vec![];
         builder.evict(&mut dropped);
@@ -588,5 +705,588 @@ mod tests {
         let visible_again = builder.build(&scene, &mut fonts, 3.0);
         assert!(visible_again.added.is_empty());
         assert_eq!(visible_again.ops, visible.ops);
+    }
+
+    fn test_scene(w: f64, h: f64, nodes: Vec<Node>) -> Scene {
+        Scene {
+            size: (w, h),
+            appearance: onesim_protocol::Appearance::Light,
+            ios: Default::default(),
+            nodes,
+            unsupported_symbols: vec![],
+            notes: vec![],
+        }
+    }
+
+    fn effect_node(id: &str, parent: Option<usize>, bounds: Rect, op: onesim_protocol::VisualOp) -> Node {
+        let mut n = Node::new(id, "effect");
+        n.parent = parent;
+        n.bounds = bounds;
+        n.composite = Some(Box::new(crate::effects::Composite::Effect(op, None)));
+        n
+    }
+
+    fn fill_node(id: &str, parent: Option<usize>, bounds: Rect, color: Color, radius: f64) -> Node {
+        let mut n = Node::new(id, "rect");
+        n.parent = parent;
+        n.bounds = bounds;
+        n.fill = Some(color);
+        n.radius = radius;
+        n
+    }
+
+    #[test]
+    fn animated_transforms_on_realistic_scene_stay_native_and_hit_cache() {
+        use onesim_protocol::VisualOp;
+
+        let mut bg = fill_node("bg", None, Rect { x: 0.0, y: 0.0, w: 402.0, h: 874.0 }, Color::rgba(0.95, 0.96, 0.98, 1.0), 0.0);
+        bg.kind = "bg";
+
+        let card = fill_node("card", None, Rect { x: 20.0, y: 120.0, w: 362.0, h: 200.0 }, Color::rgba(1.0, 1.0, 1.0, 1.0), 20.0);
+
+        let mut glass = Node::new("glass", "glass");
+        glass.bounds = Rect { x: 20.0, y: 340.0, w: 362.0, h: 80.0 };
+        glass.radius = 24.0;
+        glass.glass = Some(crate::glass::GlassSpec {
+            variant: crate::glass::GlassVariant::Regular,
+            tint: None,
+            interactive: false,
+            blur: None,
+            mix: None,
+            shadow: None,
+            flat: None,
+        });
+
+        let mut label = Node::new("label", "text");
+        label.bounds = Rect { x: 36.0, y: 140.0, w: 200.0, h: 24.0 };
+        label.text = Some(TextRun {
+            text: "Hello World".into(),
+            font: FontSpec::new(17.0, 22.0, 600, TextAlign::Leading),
+            color: Color::rgba(0.1, 0.1, 0.1, 1.0),
+            strike: false,
+            offset_x: 0.0,
+            spans: vec![],
+        });
+
+        // Blurred orb wrapped in animated scaleEffect / rotationEffect / offset / opacity.
+        let orb_bounds = Rect { x: 140.0, y: 500.0, w: 80.0, h: 80.0 };
+        let orb_opacity = effect_node("orb_opacity", None, orb_bounds, VisualOp::Opacity { amount: 0.9 });
+        let orb_affine = effect_node(
+            "orb_affine",
+            Some(4),
+            orb_bounds,
+            VisualOp::Affine { matrix: [1.15, 0.0, 0.0, 1.15, 0.0, 0.0], anchor: [0.5, 0.5] },
+        );
+        let orb_blur = effect_node("orb_blur", Some(5), orb_bounds, VisualOp::Blur { radius: 8.0, opaque: false });
+        let orb_fill = fill_node("orb_fill", Some(6), orb_bounds, Color::rgba(0.2, 0.5, 1.0, 0.8), 40.0);
+
+        let mut scene = test_scene(402.0, 874.0, vec![bg, card, glass, label, orb_opacity, orb_affine, orb_blur, orb_fill]);
+        let mut fonts = Fonts::with_fallback(true);
+        let mut builder = Builder::new();
+
+        let frame1 = builder.build(&scene, &mut fonts, 3.0);
+        assert_eq!((frame1.width, frame1.height), (1206, 2622));
+        assert!(frame1.ops.iter().any(|op| matches!(op, Op::Fill { .. })), "background & card stay native Op::Fill");
+        assert!(frame1.ops.iter().any(|op| matches!(op, Op::Glass { .. })), "glass node stays native Op::Glass");
+        assert!(
+            frame1.added.iter().all(|r| r.width < 1206 && r.height < 2622),
+            "must not upload a full-frame 1206x2622 resource"
+        );
+        let total_added_bytes: usize = frame1.added.iter().map(|r| r.rgba.len()).sum();
+        assert!(total_added_bytes < 1_000_000, "orb sprite upload should be small (got {total_added_bytes} bytes)");
+
+        // Frames 2..10: animate scale (including 1.0 and back to 1.15), rotation, offset, and opacity.
+        let anim_steps: &[(f64, f64, f64, f64, f64)] = &[
+            (1.10, 0.0, 0.0, 0.0, 0.85),
+            (1.00, 0.0, 0.0, 0.0, 1.00),
+            (1.15, 0.0, 0.0, 0.0, 0.90),
+            (1.05, 0.25, 0.0, 0.0, 0.80),
+            (1.00, 0.50, 4.0, -3.0, 0.75),
+            (0.95, -0.30, -6.0, 5.0, 0.60),
+            (1.20, 0.10, 10.0, 10.0, 0.95),
+            (1.00, 0.0, 12.0, -8.0, 1.00),
+            (1.15, 0.0, 0.0, 0.0, 0.50),
+        ];
+
+        for (step, &(sc, rot, tx, ty, op)) in anim_steps.iter().enumerate() {
+            let (s, c) = rot.sin_cos();
+            scene.nodes[4].composite = Some(Box::new(crate::effects::Composite::Effect(
+                VisualOp::Opacity { amount: op },
+                None,
+            )));
+            scene.nodes[5].composite = Some(Box::new(crate::effects::Composite::Effect(
+                VisualOp::Affine {
+                    matrix: [c * sc, s * sc, -s * sc, c * sc, tx, ty],
+                    anchor: [0.5, 0.5],
+                },
+                None,
+            )));
+            let dl = builder.build(&scene, &mut fonts, 3.0);
+            assert!(dl.added.is_empty(), "frame {} should upload zero resources", step + 2);
+            assert!(dl.dropped.is_empty(), "frame {} should drop zero resources", step + 2);
+            let (hits, misses) = builder.sprite_cache_counts();
+            assert!(hits >= 1 && misses == 0, "frame {} should hit sprite cache (hits={hits}, misses={misses})", step + 2);
+            let encoded = dl.encode();
+            assert!(encoded.len() < 4096, "frame {} encoded payload too large: {} bytes", step + 2, encoded.len());
+        }
+    }
+
+    #[test]
+    fn chained_outer_modifiers_peel_and_handle_edge_inputs() {
+        use onesim_protocol::{BlendMode, VisualOp};
+
+        let mut fonts = Fonts::with_fallback(true);
+        let b = Rect { x: 20.0, y: 20.0, w: 40.0, h: 40.0 };
+
+        // 1. Chained Affine + Affine + Opacity + Group(false) + Blur(0) + Blend(Normal) -> single Op::Image
+        let scene = test_scene(120.0, 120.0, vec![
+            effect_node("a1", None, b, VisualOp::Affine { matrix: [1.1, 0.0, 0.0, 1.1, 2.0, 3.0], anchor: [0.5, 0.5] }),
+            effect_node("a2", Some(0), b, VisualOp::Affine { matrix: [1.0, 0.0, 0.0, 1.0, 1.0, -1.0], anchor: [0.0, 0.0] }),
+            effect_node("op", Some(1), b, VisualOp::Opacity { amount: 0.7 }),
+            effect_node("grp", Some(2), b, VisualOp::Group { opaque: false }),
+            effect_node("blur0", Some(3), b, VisualOp::Blur { radius: 0.0, opaque: false }),
+            effect_node("blendn", Some(4), b, VisualOp::Blend { mode: BlendMode::Normal }),
+            fill_node("child", Some(5), b, Color::rgba(0.9, 0.2, 0.2, 1.0), 6.0),
+        ]);
+        let mut builder = Builder::new();
+        let dl = builder.build(&scene, &mut fonts, 2.0);
+        assert_eq!(dl.ops.len(), 1);
+        assert!(matches!(dl.ops[0], Op::Image { sampling: Sampling::Bilinear, opacity, .. } if (opacity - 0.7).abs() < 1e-5));
+
+        // Pure integer translation + opacity 1.0 -> Op::Sprite
+        let scene_int = test_scene(120.0, 120.0, vec![
+            effect_node("a1", None, b, VisualOp::Affine { matrix: [1.0, 0.0, 0.0, 1.0, 5.0, -3.0], anchor: [0.0, 0.0] }),
+            effect_node("op", Some(0), b, VisualOp::Opacity { amount: 1.0 }),
+            effect_node("grp", Some(1), b, VisualOp::Group { opaque: false }),
+            effect_node("blur0", Some(2), b, VisualOp::Blur { radius: 0.0, opaque: false }),
+            effect_node("blendn", Some(3), b, VisualOp::Blend { mode: BlendMode::Normal }),
+            fill_node("child", Some(4), b, Color::rgba(0.2, 0.8, 0.2, 1.0), 4.0),
+        ]);
+        let dl_int = Builder::new().build(&scene_int, &mut fonts, 2.0);
+        assert_eq!(dl_int.ops.len(), 1);
+        assert!(matches!(dl_int.ops[0], Op::Sprite { .. }), "pure integer translate with opacity 1.0 should emit Op::Sprite");
+
+        // 2. Negative scale (mirror: x: -1.0, y: 1.15)
+        let scene_mirror = test_scene(120.0, 120.0, vec![
+            effect_node("mirror", None, b, VisualOp::Affine { matrix: [-1.0, 0.0, 0.0, 1.15, 0.0, 0.0], anchor: [0.5, 0.5] }),
+            fill_node("child", Some(0), b, Color::rgba(0.2, 0.4, 0.9, 1.0), 4.0),
+        ]);
+        let dl_mirror = Builder::new().build(&scene_mirror, &mut fonts, 2.0);
+        assert_eq!(dl_mirror.ops.len(), 1);
+        assert!(matches!(dl_mirror.ops[0], Op::Image { transform, .. } if transform[0] < 0.0 && transform[3] > 1.0));
+
+        // 3. Singular, NaN, and Inf affines -> no ops, no resources, no panic
+        for matrix in [
+            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            [f64::NAN, 0.0, 0.0, 1.0, 0.0, 0.0],
+            [f64::INFINITY, 0.0, 0.0, 1.0, 0.0, 0.0],
+        ] {
+            let s = test_scene(100.0, 100.0, vec![
+                effect_node("bad_aff", None, b, VisualOp::Affine { matrix, anchor: [0.5, 0.5] }),
+                fill_node("child", Some(0), b, Color::rgba(1.0, 0.0, 0.0, 1.0), 0.0),
+            ]);
+            let dl = Builder::new().build(&s, &mut fonts, 2.0);
+            assert!(dl.ops.is_empty(), "invalid affine {matrix:?} should emit no ops");
+            assert!(dl.added.is_empty(), "invalid affine {matrix:?} should upload no resources");
+        }
+
+        // 4. Zero, negative, and NaN opacity -> no ops, no resources
+        for amount in [0.0, -0.5, f64::NAN] {
+            let s = test_scene(100.0, 100.0, vec![
+                effect_node("bad_op", None, b, VisualOp::Opacity { amount }),
+                fill_node("child", Some(0), b, Color::rgba(1.0, 0.0, 0.0, 1.0), 0.0),
+            ]);
+            let dl = Builder::new().build(&s, &mut fonts, 2.0);
+            assert!(dl.ops.is_empty(), "opacity {amount:?} should emit no ops");
+            assert!(dl.added.is_empty(), "opacity {amount:?} should upload no resources");
+        }
+
+        // 5. Empty composite (0 children) and transparent child -> no ops, no resources
+        let s_empty = test_scene(100.0, 100.0, vec![effect_node("empty", None, b, VisualOp::Group { opaque: false })]);
+        let dl_empty = Builder::new().build(&s_empty, &mut fonts, 2.0);
+        assert!(dl_empty.ops.is_empty() && dl_empty.added.is_empty());
+
+        let s_trans = test_scene(100.0, 100.0, vec![
+            effect_node("wrap", None, b, VisualOp::Blur { radius: 2.0, opaque: false }),
+            fill_node("clear", Some(0), b, Color::rgba(1.0, 0.0, 0.0, 0.0), 0.0),
+        ]);
+        let dl_trans = Builder::new().build(&s_trans, &mut fonts, 2.0);
+        assert!(dl_trans.ops.is_empty() && dl_trans.added.is_empty());
+
+        // 6. Zero-height hairline fill (h = 0.0, radius = 0.0) inside a composite is preserved
+        let hairline_bounds = Rect { x: 10.0, y: 20.0, w: 60.0, h: 0.0 };
+        let s_hair = test_scene(100.0, 100.0, vec![
+            effect_node("op", None, hairline_bounds, VisualOp::Opacity { amount: 0.5 }),
+            fill_node("line", Some(0), hairline_bounds, Color::rgba(0.0, 0.0, 0.0, 1.0), 0.0),
+        ]);
+        let dl_hair = Builder::new().build(&s_hair, &mut fonts, 2.0);
+        assert_eq!(dl_hair.ops.len(), 1, "zero-height hairline inside composite must be preserved");
+        assert_eq!(dl_hair.added.len(), 1);
+    }
+
+    #[test]
+    fn non_peelable_effects_lower_cleanly() {
+        use onesim_protocol::{BlendMode, VisualOp};
+
+        let mut fonts = Fonts::with_fallback(true);
+        let b = Rect { x: 20.0, y: 20.0, w: 40.0, h: 40.0 };
+
+        // 1. Blur (non-opaque, opaque, huge radius 1e7)
+        for (radius, opaque) in [(4.0, false), (4.0, true)] {
+            let s = test_scene(100.0, 100.0, vec![
+                effect_node("blur", None, b, VisualOp::Blur { radius, opaque }),
+                fill_node("c", Some(0), b, Color::rgba(0.2, 0.6, 0.9, 1.0), 4.0),
+            ]);
+            let dl = Builder::new().build(&s, &mut fonts, 2.0);
+            assert_eq!(dl.ops.len(), 1, "blur({radius}, {opaque}) should emit 1 op");
+            assert_eq!(dl.added.len(), 1);
+        }
+        // Huge blur radius: no overflow/panic (may dilute alpha to 0 and emit empty sprite)
+        let s_huge_blur = test_scene(100.0, 100.0, vec![
+            effect_node("blur_huge", None, b, VisualOp::Blur { radius: 1e7, opaque: false }),
+            fill_node("c", Some(0), b, Color::rgba(0.2, 0.6, 0.9, 1.0), 4.0),
+        ]);
+        let dl_huge_blur = Builder::new().build(&s_huge_blur, &mut fonts, 2.0);
+        assert!(dl_huge_blur.ops.len() <= 1 && dl_huge_blur.added.len() <= 1);
+
+        // 2. Projection: valid perspective + behind-camera (w <= 0) fallback to viewport bounds
+        let valid_proj = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.001, 0.0, 1.0];
+        let behind_cam = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0, 0.0, 0.0];
+        for matrix in [valid_proj, behind_cam] {
+            let s = test_scene(100.0, 100.0, vec![
+                effect_node("proj", None, b, VisualOp::Projection { matrix }),
+                fill_node("c", Some(0), b, Color::rgba(0.8, 0.3, 0.2, 1.0), 4.0),
+            ]);
+            let dl = Builder::new().build(&s, &mut fonts, 2.0);
+            assert!(dl.added.len() <= 1);
+        }
+
+        // 3. Mask (normal, inverted, plus 0-child and 1-child degenerate masks)
+        for inverted in [false, true] {
+            let mut m = Node::new("mask", "mask");
+            m.bounds = b;
+            m.composite = Some(Box::new(crate::effects::Composite::Mask { inverted }));
+            let content = fill_node("content", Some(0), b, Color::rgba(1.0, 0.0, 0.0, 1.0), 0.0);
+            let mask_shape = fill_node("shape", Some(0), Rect { x: 25.0, y: 25.0, w: 20.0, h: 20.0 }, Color::rgba(0.0, 0.0, 0.0, 1.0), 10.0);
+            let dl = Builder::new().build(&test_scene(100.0, 100.0, vec![m, content, mask_shape]), &mut fonts, 2.0);
+            assert_eq!(dl.ops.len(), 1, "mask(inverted={inverted}) should emit 1 op");
+            assert_eq!(dl.added.len(), 1);
+        }
+        // Degenerate 0-child and 1-child masks
+        let mut m0 = Node::new("m0", "mask");
+        m0.bounds = b;
+        m0.composite = Some(Box::new(crate::effects::Composite::Mask { inverted: false }));
+        let dl_m0 = Builder::new().build(&test_scene(100.0, 100.0, vec![m0]), &mut fonts, 2.0);
+        assert!(dl_m0.ops.is_empty() && dl_m0.added.is_empty());
+
+        let mut m1 = Node::new("m1", "mask");
+        m1.bounds = b;
+        m1.composite = Some(Box::new(crate::effects::Composite::Mask { inverted: false }));
+        let m1_child = fill_node("c", Some(0), b, Color::rgba(1.0, 0.0, 0.0, 1.0), 0.0);
+        let dl_m1 = Builder::new().build(&test_scene(100.0, 100.0, vec![m1, m1_child]), &mut fonts, 2.0);
+        assert!(dl_m1.ops.is_empty() && dl_m1.added.is_empty());
+
+        // 4. Group(opaque: true/false) containing nested Blend(Multiply) does NOT trigger whole-frame fallback
+        for opaque in [true, false] {
+            let sibling = fill_node("sib", None, Rect { x: 0.0, y: 0.0, w: 100.0, h: 100.0 }, Color::rgba(0.9, 0.9, 0.9, 1.0), 0.0);
+            let grp = effect_node("grp", None, b, VisualOp::Group { opaque });
+            let base = fill_node("base", Some(1), b, Color::rgba(0.2, 0.5, 0.9, 1.0), 0.0);
+            let blend = effect_node("blend", Some(1), b, VisualOp::Blend { mode: BlendMode::Multiply });
+            let top = fill_node("top", Some(3), b, Color::rgba(0.9, 0.4, 0.2, 1.0), 0.0);
+            let dl = Builder::new().build(&test_scene(100.0, 100.0, vec![sibling, grp, base, blend, top]), &mut fonts, 2.0);
+            assert!(dl.ops.iter().any(|op| matches!(op, Op::Fill { .. })), "sibling stays native Op::Fill for group(opaque={opaque})");
+            assert!(dl.added.iter().all(|r| r.width < 200 && r.height < 200), "group(opaque={opaque}) emits bounded sprite, not full-frame");
+        }
+
+        // 5. All color filters
+        let filters: Vec<(VisualOp, Option<Color>)> = vec![
+            (VisualOp::Brightness { amount: 0.2 }, None),
+            (VisualOp::Contrast { amount: 1.5 }, None),
+            (VisualOp::Saturation { amount: 0.5 }, None),
+            (VisualOp::Grayscale { amount: 1.0 }, None),
+            (VisualOp::HueRotation { radians: 1.0 }, None),
+            (VisualOp::ColorInvert { amount: 1.0 }, None),
+            (
+                VisualOp::ColorMultiply { color: onesim_protocol::Color::Rgba { r: 0.5, g: 0.8, b: 1.0, a: 1.0, dark: None } },
+                Some(Color::rgba(0.5, 0.8, 1.0, 1.0)),
+            ),
+            (
+                VisualOp::AlphaThreshold { min: 0.5, max: 1.0, color: onesim_protocol::Color::Rgba { r: 1.0, g: 0.0, b: 0.0, a: 1.0, dark: None } },
+                Some(Color::rgba(1.0, 0.0, 0.0, 1.0)),
+            ),
+            (VisualOp::LuminanceToAlpha, None),
+        ];
+        for (filter, resolved_color) in filters {
+            let mut cf = effect_node("cf", None, b, filter.clone());
+            cf.composite = Some(Box::new(crate::effects::Composite::Effect(filter.clone(), resolved_color)));
+            let s = test_scene(100.0, 100.0, vec![
+                cf,
+                fill_node("c", Some(0), b, Color::rgba(0.4, 0.6, 0.8, 1.0), 0.0),
+            ]);
+            let dl = Builder::new().build(&s, &mut fonts, 2.0);
+            assert_eq!(dl.ops.len(), 1, "color filter {filter:?} should emit 1 op");
+            assert_eq!(dl.added.len(), 1);
+        }
+    }
+
+    #[test]
+    fn top_level_blend_fallback_vs_normal() {
+        use onesim_protocol::{BlendMode, VisualOp};
+
+        let mut fonts = Fonts::with_fallback(true);
+        let mut builder = Builder::new();
+        let b = Rect { x: 10.0, y: 10.0, w: 40.0, h: 40.0 };
+
+        // Top-level Blend(Multiply) falls back to full-frame Op::Image matching crate::render
+        let bg = fill_node("bg", None, Rect { x: 0.0, y: 0.0, w: 60.0, h: 60.0 }, Color::rgba(0.8, 0.8, 0.8, 1.0), 0.0);
+        let blend = effect_node("blend", None, b, VisualOp::Blend { mode: BlendMode::Multiply });
+        let child = fill_node("c", Some(1), b, Color::rgba(0.2, 0.5, 0.9, 1.0), 0.0);
+        let scene_mul = test_scene(60.0, 60.0, vec![bg.clone(), blend, child]);
+
+        let dl_mul = builder.build(&scene_mul, &mut fonts, 2.0);
+        assert_eq!(dl_mul.ops.len(), 1);
+        assert_eq!(dl_mul.added.len(), 1);
+        let composed_id = dl_mul.added[0].id;
+        assert_eq!((dl_mul.added[0].width, dl_mul.added[0].height), (120, 120));
+        let expected_rgba = crate::render(&scene_mul, &mut fonts, 2.0).take();
+        assert_eq!(dl_mul.added[0].rgba, expected_rgba);
+
+        // Next frame without blend drops the composed_frame resource
+        let dl_next = builder.build(&test_scene(60.0, 60.0, vec![bg.clone()]), &mut fonts, 2.0);
+        assert!(dl_next.dropped.contains(&composed_id), "composed_frame must be dropped on next frame");
+        assert!(dl_next.ops.iter().any(|op| matches!(op, Op::Fill { .. })));
+
+        // Top-level Blend(Normal) does NOT trigger whole-frame fallback
+        let blend_norm = effect_node("blend_n", None, b, VisualOp::Blend { mode: BlendMode::Normal });
+        let child_n = fill_node("cn", Some(1), b, Color::rgba(0.2, 0.5, 0.9, 1.0), 0.0);
+        let dl_norm = Builder::new().build(&test_scene(60.0, 60.0, vec![bg, blend_norm, child_n]), &mut fonts, 2.0);
+        assert!(dl_norm.ops.iter().any(|op| matches!(op, Op::Fill { .. })), "Blend::Normal must not trigger whole-frame fallback");
+        assert!(dl_norm.added.iter().all(|r| r.width < 120 && r.height < 120));
+    }
+
+    #[test]
+    fn composite_clips_culling_scrolling_viewport_edge_and_cache_lifecycle() {
+        use onesim_protocol::VisualOp;
+
+        let mut fonts = Fonts::with_fallback(true);
+        let mut builder = Builder::new();
+
+        // 1. Ancestor clip_radius emits PushClip / PopClip around composite op, and offscreen composite is culled
+        let mut clip_parent = Node::new("clip", "clip");
+        clip_parent.bounds = Rect { x: 10.0, y: 10.0, w: 80.0, h: 50.0 };
+        clip_parent.clip_radius = Some(8.0);
+        let comp = effect_node("comp", Some(0), Rect { x: 20.0, y: 20.0, w: 30.0, h: 20.0 }, VisualOp::Blur { radius: 2.0, opaque: false });
+        let child = fill_node("child", Some(1), Rect { x: 20.0, y: 20.0, w: 30.0, h: 20.0 }, Color::rgba(0.1, 0.4, 0.8, 1.0), 4.0);
+        let mut scene = test_scene(120.0, 120.0, vec![clip_parent, comp, child]);
+
+        let dl_in = builder.build(&scene, &mut fonts, 3.0);
+        assert!(dl_in.ops.iter().any(|op| matches!(op, Op::PushClip(_))));
+        assert!(dl_in.ops.iter().any(|op| matches!(op, Op::Sprite { .. } | Op::Image { .. })));
+        assert!(dl_in.ops.iter().any(|op| matches!(op, Op::PopClip)));
+        assert_eq!(dl_in.added.len(), 1);
+
+        // Scroll completely outside ancestor clip -> culled (zero composite ops, zero added resources)
+        scene.nodes[1].bounds.y = 90.0;
+        scene.nodes[2].bounds.y = 90.0;
+        let dl_out = builder.build(&scene, &mut fonts, 3.0);
+        assert!(dl_out.added.is_empty());
+        assert!(dl_out.ops.iter().all(|op| !matches!(op, Op::Sprite { .. } | Op::Image { .. })));
+
+        // 2. Scrolling a fully-in-viewport composite by whole points hits the sprite cache
+        let mut scroll_builder = Builder::new();
+        let mut scroll_scene = test_scene(200.0, 200.0, vec![
+            effect_node("orb", None, Rect { x: 40.0, y: 40.0, w: 40.0, h: 40.0 }, VisualOp::Blur { radius: 3.0, opaque: false }),
+            fill_node("c", Some(0), Rect { x: 40.0, y: 40.0, w: 40.0, h: 40.0 }, Color::rgba(0.9, 0.3, 0.1, 1.0), 20.0),
+        ]);
+        let s1 = scroll_builder.build(&scroll_scene, &mut fonts, 3.0);
+        assert_eq!(s1.added.len(), 1);
+        scroll_scene.nodes[0].bounds.y += 15.0;
+        scroll_scene.nodes[1].bounds.y += 15.0;
+        let s2 = scroll_builder.build(&scroll_scene, &mut fonts, 3.0);
+        assert!(s2.added.is_empty(), "whole-point scroll inside viewport should hit sprite cache");
+        assert_eq!(scroll_builder.sprite_cache_counts(), (1, 0));
+
+        // 3. Moving a composite partially clipped at viewport edge does NOT produce a stale cache hit
+        scroll_scene.nodes[0].bounds.x = -10.0;
+        scroll_scene.nodes[1].bounds.x = -10.0;
+        let edge1 = scroll_builder.build(&scroll_scene, &mut fonts, 3.0);
+        assert_eq!(edge1.added.len(), 1, "partially clipped composite must re-rasterize");
+        scroll_scene.nodes[0].bounds.x = -20.0;
+        scroll_scene.nodes[1].bounds.x = -20.0;
+        let edge2 = scroll_builder.build(&scroll_scene, &mut fonts, 3.0);
+        assert_eq!(edge2.added.len(), 1, "moving partially clipped composite must not reuse stale clipped sprite");
+
+        // 4. ImageRun inside a composite pins Arc<Pixmap> in SpriteEntry, survives reuse, and drops on reset & TTL
+        let mut px = Pixmap::new(16, 16).unwrap();
+        px.fill(tiny_skia::Color::from_rgba8(200, 100, 50, 255));
+        let arc_px = Arc::new(px);
+        let mut img_node = Node::new("img", "image");
+        img_node.parent = Some(0);
+        img_node.bounds = Rect { x: 20.0, y: 20.0, w: 32.0, h: 32.0 };
+        img_node.image = Some(ImageRun {
+            pixmap: arc_px.clone(),
+            dest: img_node.bounds,
+            rotation: 0.0,
+            filter: 1,
+        });
+        let img_scene = test_scene(100.0, 100.0, vec![
+            effect_node("wrap", None, img_node.bounds, VisualOp::Opacity { amount: 0.8 }),
+            img_node,
+        ]);
+        let mut img_builder = Builder::new();
+        let im1 = img_builder.build(&img_scene, &mut fonts, 2.0);
+        assert_eq!(im1.added.len(), 1);
+        let sprite_id = im1.added[0].id;
+        assert!(Arc::strong_count(&arc_px) >= 3, "SpriteEntry must pin Arc<Pixmap> (local + scene + cache)");
+        let im2 = img_builder.build(&img_scene, &mut fonts, 2.0);
+        assert!(im2.added.is_empty());
+
+        // TTL eviction drops the composite sprite cleanly
+        let empty_scene = test_scene(100.0, 100.0, vec![]);
+        let mut dropped_it = false;
+        for _ in 0..=CACHE_TTL_FRAMES + 1 {
+            let dl = img_builder.build(&empty_scene, &mut fonts, 2.0);
+            if dl.dropped.contains(&sprite_id) {
+                dropped_it = true;
+                break;
+            }
+        }
+        assert!(dropped_it, "composite sprite must be evicted after CACHE_TTL_FRAMES");
+
+        // 5. ScrollEdge inside a composite re-rasterizes when viewport width changes (no stale width cache hit)
+        let mut edge_bg = Node::new("edge-bg", "rect");
+        edge_bg.parent = Some(0);
+        edge_bg.bounds = Rect { x: 0.0, y: 0.0, w: 140.0, h: 30.0 };
+        edge_bg.fill = Some(Color::rgba(0.2, 0.4, 0.8, 1.0));
+        let mut edge_node = Node::new("edge", "edge");
+        edge_node.parent = Some(0);
+        edge_node.bounds = Rect { x: 0.0, y: 0.0, w: 100.0, h: 30.0 };
+        edge_node.edge = Some(crate::glass::ScrollEdge {
+            bar: 20.0,
+            color: Color::rgba(1.0, 1.0, 1.0, 1.0),
+            tint: 0.2,
+        });
+        let mut edge_scene = test_scene(100.0, 100.0, vec![
+            effect_node("wrap", None, edge_node.bounds, VisualOp::Opacity { amount: 0.9 }),
+            edge_bg,
+            edge_node,
+        ]);
+        let mut edge_builder = Builder::new();
+        let e1 = edge_builder.build(&edge_scene, &mut fonts, 1.0);
+        assert_eq!(e1.added.len(), 1);
+        assert_eq!(e1.added[0].width, 100);
+        edge_scene.size.0 = 140.0;
+        let e2 = edge_builder.build(&edge_scene, &mut fonts, 1.0);
+        assert_eq!(e2.added.len(), 1, "viewport width resize must re-rasterize ScrollEdge composite");
+        assert_eq!(e2.added[0].width, 140);
+
+        // 6. Gradient fill/stroke/content paints hash by content (not Arc pointer), avoiding stale cache hits
+        let make_grad = |r: f32| {
+            Arc::new(crate::paint::Gradient::resolve(
+                &onesim_protocol::GradientPaint::Linear {
+                    stops: vec![
+                        onesim_protocol::GradientStop {
+                            color: onesim_protocol::Color::Rgba { r: f64::from(r), g: 0.2, b: 0.8, a: 1.0, dark: None },
+                            location: 0.0,
+                        },
+                        onesim_protocol::GradientStop {
+                            color: onesim_protocol::Color::Rgba { r: 0.1, g: 0.9, b: 0.3, a: 1.0, dark: None },
+                            location: 1.0,
+                        },
+                    ],
+                    start: [0.0, 0.0],
+                    end: [1.0, 0.0],
+                    color_space: onesim_protocol::GradientColorSpace::Device,
+                    absolute: false,
+                    options: 0,
+                },
+                |c| match c {
+                    onesim_protocol::Color::Rgba { r, g, b, a, .. } => Color::rgba(*r as f32, *g as f32, *b as f32, *a as f32),
+                    _ => Color::rgba(0.0, 0.0, 0.0, 1.0),
+                },
+            ))
+        };
+        let make_grad_scene = |r: f32| {
+            let mut shape = Node::new("grad-shape", "shape");
+            shape.parent = Some(0);
+            shape.bounds = Rect { x: 10.0, y: 10.0, w: 40.0, h: 40.0 };
+            shape.vector = Some(Box::new(crate::scene::VectorShape {
+                geom: crate::scene::VectorGeom::Ellipse,
+                fill: Some(crate::scene::VectorFill {
+                    color: Color::rgba(1.0, 1.0, 1.0, 1.0),
+                    eo_fill: false,
+                    antialiased: true,
+                }),
+                stroke: None,
+            }));
+            shape.fill_paint = Some(make_grad(r));
+            test_scene(80.0, 80.0, vec![
+                effect_node("wrap", None, shape.bounds, VisualOp::Opacity { amount: 0.9 }),
+                shape,
+            ])
+        };
+        let mut grad_builder = Builder::new();
+        let g1 = grad_builder.build(&make_grad_scene(0.9), &mut fonts, 1.0);
+        assert_eq!(g1.added.len(), 1);
+        // Rebuilt identical gradient (fresh Arc allocation) hits cache cleanly.
+        let g1_again = grad_builder.build(&make_grad_scene(0.9), &mut fonts, 1.0);
+        assert!(g1_again.added.is_empty(), "identical rebuilt gradient should hit cache");
+        // Different gradient color (even after dropping the first scene/Arc) produces a distinct key.
+        let g2 = grad_builder.build(&make_grad_scene(0.1), &mut fonts, 1.0);
+        assert_eq!(g2.added.len(), 1, "changed gradient content must not hit stale sprite key");
+        assert_ne!(g1.added[0].id, g2.added[0].id);
+
+        // 7. Acute stroked path with miter_limit > 10 keeps the full extended miter tip inside a composite
+        let mut miter_shape = Node::new("acute", "shape");
+        miter_shape.parent = Some(0);
+        miter_shape.bounds = Rect { x: 20.0, y: 20.0, w: 40.0, h: 40.0 };
+        miter_shape.vector = Some(Box::new(crate::scene::VectorShape {
+            geom: crate::scene::VectorGeom::Path {
+                ops: vec![
+                    onesim_protocol::PathOp::M([40.0, 0.0]),
+                    onesim_protocol::PathOp::L([40.0, 40.0]),
+                    onesim_protocol::PathOp::L([44.0, 0.0]),
+                ],
+                mirror_x: false,
+            },
+            fill: None,
+            stroke: Some(crate::scene::VectorStroke {
+                color: Color::rgba(1.0, 0.0, 0.0, 1.0),
+                line_width: 10.0,
+                line_cap: onesim_protocol::LineCap::Butt,
+                line_join: onesim_protocol::LineJoin::Miter,
+                miter_limit: 30.0,
+                dash: vec![],
+                dash_phase: 0.0,
+                antialiased: true,
+                inset: 0.0,
+            }),
+        }));
+        let miter_scene = test_scene(160.0, 220.0, vec![
+            effect_node("wrap", None, miter_shape.bounds, VisualOp::Opacity { amount: 0.9 }),
+            miter_shape,
+        ]);
+        let cpu_miter = crate::render(&miter_scene, &mut fonts, 1.0);
+        let mut miter_builder = Builder::new();
+        let dl_miter = miter_builder.build(&miter_scene, &mut fonts, 1.0);
+        assert_eq!(dl_miter.added.len(), 1);
+        // The acute miter tip extends well past 60 + 52 = 112px downward; verify sprite height captures it.
+        let cpu_max_y = (0..cpu_miter.height())
+            .rev()
+            .find(|&y| (0..cpu_miter.width()).any(|x| cpu_miter.pixel(x, y).unwrap().alpha() > 0))
+            .expect("miter stroke drew pixels");
+        assert!(cpu_max_y > 120, "acute miter tip should extend past 120px, got {cpu_max_y}");
+        let Op::Image { transform, .. } = dl_miter.ops[0] else { panic!("expected Op::Image for 0.9 opacity") };
+        let sprite_bottom = transform[5] as u32 + dl_miter.added[0].height - 1;
+        assert_eq!(sprite_bottom, cpu_max_y, "bounded composite sprite must preserve the full miter tip");
+
+        // Builder::reset() clears cached composite sprites and re-uploads on next build
+        let im3 = img_builder.build(&img_scene, &mut fonts, 2.0);
+        assert_eq!(im3.added.len(), 1);
+        assert!(img_builder.cache_len() >= 1);
+        img_builder.reset();
+        assert_eq!(img_builder.cache_len(), 0);
+        let im4 = img_builder.build(&img_scene, &mut fonts, 2.0);
+        assert_eq!(im4.added.len(), 1, "after reset, composite sprite must be re-uploaded");
     }
 }

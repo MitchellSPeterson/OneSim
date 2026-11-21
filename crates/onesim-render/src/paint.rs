@@ -221,9 +221,71 @@ impl Gradient {
 
     pub(crate) fn hash_key<H: std::hash::Hasher>(&self, state: &mut H) {
         use std::hash::Hash;
-        (std::sync::Arc::as_ptr(&self.data) as usize).hash(state);
         self.opacity.to_bits().hash(state);
         (self.space as u8).hash(state);
+        match self.data.as_ref() {
+            GradientData::Stops {
+                stops,
+                geometry,
+                absolute,
+                options,
+            } => {
+                0u8.hash(state);
+                stops.len().hash(state);
+                for (loc, rgba) in stops {
+                    loc.to_bits().hash(state);
+                    rgba.map(f64::to_bits).hash(state);
+                }
+                match geometry {
+                    Geometry::Linear(a, b) => {
+                        0u8.hash(state);
+                        a.map(f64::to_bits).hash(state);
+                        b.map(f64::to_bits).hash(state);
+                    }
+                    Geometry::Radial(c, end, r0, r1, elliptical) => {
+                        1u8.hash(state);
+                        c.map(f64::to_bits).hash(state);
+                        end.map(|p| p.map(f64::to_bits)).hash(state);
+                        r0.to_bits().hash(state);
+                        r1.to_bits().hash(state);
+                        elliptical.hash(state);
+                    }
+                    Geometry::Angular(c, start, end) => {
+                        2u8.hash(state);
+                        c.map(f64::to_bits).hash(state);
+                        start.to_bits().hash(state);
+                        end.to_bits().hash(state);
+                    }
+                }
+                absolute.hash(state);
+                options.hash(state);
+            }
+            GradientData::Mesh {
+                width,
+                height,
+                points,
+                colors,
+                background,
+                smooth,
+            } => {
+                1u8.hash(state);
+                (*width, *height, *smooth).hash(state);
+                [background.r, background.g, background.b, background.a]
+                    .map(f32::to_bits)
+                    .hash(state);
+                points.len().hash(state);
+                for p in points {
+                    p.position.map(f64::to_bits).hash(state);
+                    p.controls
+                        .map(|cs| cs.map(|c| c.map(f64::to_bits)))
+                        .hash(state);
+                }
+                colors.len().hash(state);
+                for c in colors {
+                    c.map(f64::to_bits).hash(state);
+                }
+            }
+        }
     }
 
     pub(crate) fn composite(
