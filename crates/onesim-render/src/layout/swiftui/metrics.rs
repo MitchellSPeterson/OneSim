@@ -285,6 +285,7 @@ pub(super) struct Env {
     pub(super) img: ImageScale,
     /// Laid out as (part of) a list row: `Label` uses the fixed icon column and accent icon.
     pub(super) in_row: bool,
+    pub(super) in_toolbar: bool,
     /// Active animation index into `Ctx::anims` (section P); `None` = no animation.
     pub(super) anim: Option<u32>,
     /// Inherited `.contentTransition` (section P).
@@ -678,6 +679,7 @@ impl Env {
             bottom_inset: 0.0,
             img: ImageScale::Medium,
             in_row: false,
+            in_toolbar: false,
             anim: None,
             content_transition: ContentTransitionKind::Identity,
             extra: 0.0,

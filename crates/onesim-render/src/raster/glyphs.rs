@@ -236,7 +236,7 @@ pub(super) fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32,
                 );
             }
         }
-        Glyph::Shift | Glyph::ShiftFilled | Glyph::Backspace | Glyph::Return | Glyph::Emoji | Glyph::Mic => {
+        Glyph::Shift | Glyph::ShiftFilled | Glyph::Backspace | Glyph::Return | Glyph::Search | Glyph::Emoji | Glyph::Mic => {
             crate::chrome::draw_glyph(pm, g, c, b, xf, mask);
         }
         Glyph::ArrowDown | Glyph::ArrowUp | Glyph::ArrowLeft => {

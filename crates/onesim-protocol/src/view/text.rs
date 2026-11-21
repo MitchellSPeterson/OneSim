@@ -269,6 +269,8 @@ pub struct TextInputOptions {
     pub autocapitalization: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub submit_label: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub search_field: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_type: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

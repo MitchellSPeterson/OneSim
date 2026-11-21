@@ -31,10 +31,17 @@ impl Ctx<'_> {
         n.action = (!disabled).then_some(action);
         n.disabled = disabled;
         n.label = first_text(label);
+        let label = match (&label.kind, env.in_toolbar, style) {
+            (ViewKind::Label { icon, .. }, true, ButtonStyle::Automatic) => icon.as_ref(),
+            _ => label,
+        };
         match style {
             ButtonStyle::Automatic | ButtonStyle::Plain => {
                 let (fg, tint) = match (style, disabled) {
                     (_, true) => (dim, None),
+                    (ButtonStyle::Automatic, _) if env.in_toolbar => {
+                        (env.tint.unwrap_or_else(|| self.semantic(Semantic::Primary)), env.tint)
+                    }
                     (ButtonStyle::Automatic, _) => (accent, Some(accent)),
                     _ => (env.fg.unwrap_or_else(|| self.semantic(Semantic::Primary)), None),
                 };
@@ -190,7 +197,7 @@ impl Ctx<'_> {
         let wrap = multiline.then_some(inner_w.max(1.0) as f32);
         let empty = text.is_empty();
         let fg = env.fg.unwrap_or_else(|| self.semantic(Semantic::Primary));
-        let placeholder_fg = self.semantic(Semantic::Tertiary);
+        let placeholder_fg = self.semantic(if input.search_field { Semantic::Secondary } else { Semantic::Tertiary });
         let (d, pitch, x0) = SECURE_BULLET;
         let bullets = if secure { text.graphemes(true).count() } else { 0 };
         let shown = if empty { placeholder } else if secure { "" } else { text };

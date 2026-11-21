@@ -6,7 +6,7 @@
 //! Visual constants (row height, card radius, nav bar heights, control sizes) are measured from
 //! an iOS 26 / iPhone 17 Pro simulator, see `tests/fixtures/showcase-ios/README.md`.
 
-use onesim_protocol::{ShapePaint, StyleReference, TextInputBorderShape, TextInputOptions, TextInputStyle, VisualOp};
+use onesim_protocol::{BarVisibility, NavigationChrome, NavigationSearch, ShapePaint, StyleReference, TextInputBorderShape, TextInputOptions, TextInputStyle, ToolbarRegion, VisualOp};
 use std::sync::Arc;
 
 use crate::device::Device;
@@ -191,7 +191,7 @@ pub(crate) fn rn_nav_bar(params: &SceneParams, fonts: &mut Fonts, id: &str, top:
     let w = params.viewport.0;
     let (large_title, title_h, band) = cx.nav_large(id, w, title, large);
     let bar_h = NAV_INLINE_H + band;
-    let bar = NavBar { id, w, h: params.viewport.1, top, bar_h, title, large: large && title.is_some(), large_title, title_h, band, offset: 0.0, back };
+    let bar = NavBar { id, w, h: params.viewport.1, top, bar_h, title, large: large && title.is_some(), large_title, title_h, band, offset: 0.0, back, inline_title_bounds: None };
     flatten(cx.nav_bar(bar), 0.0, top, Some(parent), 1.0, out);
 }
 
@@ -1992,5 +1992,92 @@ mod tests {
         let b = by_id(&s, "b").anim.as_ref().expect("b inherits contentTransition");
         assert!(b.animation.is_none(), "animation(nil) disables outer animation");
         assert_eq!(b.content_transition, ContentTransitionKind::NumericTextUp);
+    }
+
+    #[test]
+    fn navigation_chrome_visibility_is_independent_per_bar() {
+        let mut root = serde_json::json!({
+            "kind": "navigation", "id": "nav", "title": "Library",
+            "chrome": {
+                "navigationBarVisibility": "hidden",
+                "bottomBarBackgroundVisibility": "visible",
+                "bottomBarBackground": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0},
+                "items": [
+                    {"region": "trailing", "content": {
+                        "kind": "button", "id": "top", "action": 7,
+                        "label": {"kind": "text", "id": "top-label", "text": "Top"}
+                    }},
+                    {"region": "bottom", "content": {
+                        "kind": "button", "id": "bottom", "action": 8,
+                        "label": {"kind": "text", "id": "bottom-label", "text": "Bottom"}
+                    }}
+                ]
+            },
+            "content": {"kind": "text", "id": "content", "text": "Books"}
+        });
+        let scene = phone(&root.to_string());
+        assert!(scene.nodes.iter().all(|node| node.id != "top" && node.id != "nav#title"));
+        assert_eq!(by_id(&scene, "nav#bottomBar").fill, Some(Color::rgba(1.0, 0.0, 0.0, 1.0)));
+        let bottom = by_id(&scene, "bottom#toolbarSurface");
+        assert_eq!(bottom.action, Some(8));
+        near(bottom.bounds.x + bottom.bounds.w / 2.0, 201.0);
+        near(bottom.bounds.y + bottom.bounds.h / 2.0, 822.0);
+
+        root["chrome"]["bottomBarVisibility"] = "hidden".into();
+        root["chrome"]["navigationBarVisibility"] = "automatic".into();
+        let scene = phone(&root.to_string());
+        assert!(scene.nodes.iter().all(|node| node.id != "bottom" && node.id != "nav#bottomBar"));
+        assert_eq!(by_id(&scene, "top#toolbarSurface").action, Some(7));
+        assert_eq!(by_id(&scene, "nav#title").text.as_ref().unwrap().text, "Library");
+    }
+
+    #[test]
+    fn inline_title_fits_between_toolbar_items() {
+        let scene = phone(r#"{
+            "kind":"navigation","id":"nav","displayMode":"inline",
+            "title":"A long title constrained by toolbar actions",
+            "chrome":{"items":[
+                {"region":"leading","content":{"kind":"button","id":"leading","action":1,
+                    "label":{"kind":"text","id":"leading-label","text":"Long leading action"}}},
+                {"region":"trailing","content":{"kind":"button","id":"trailing","action":2,
+                    "label":{"kind":"text","id":"trailing-label","text":"Long trailing action"}}}
+            ]},
+            "content":{"kind":"empty","id":"content"}
+        }"#);
+        let left = by_id(&scene, "leading#toolbarSurface").bounds;
+        let right = by_id(&scene, "trailing#toolbarSurface").bounds;
+        let title = by_id(&scene, "nav#title").bounds;
+        assert!(left.x + left.w <= title.x);
+        assert!(title.x + title.w <= right.x);
+        assert!(title.h < 24.0);
+    }
+
+    #[test]
+    fn search_key_requires_a_query() {
+        let mut field = serde_json::json!({
+            "kind": "text_field", "id": "search", "field": 3, "search_field": true, "text": ""
+        });
+        let focused = |field: &serde_json::Value| {
+            let tree = serde_json::from_value(field.clone()).unwrap();
+            let params = SceneParams {
+                viewport: (402.0, 874.0), device: crate::device::device("iphone-17-pro").unwrap(), scale: 3.0,
+                appearance: Appearance::Light, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios26,
+                scroll: &HashMap::new(), sheets: &HashMap::new(), focus: Some("search"),
+                overscroll: false, status_bar: false,
+                chrome: crate::chrome::ChromeParams { keyboard: true, ..Default::default() },
+            };
+            layout(&tree, &params, &mut Fonts::new())
+        };
+        let empty = focused(&field);
+        let key = by_id(&empty, "keyboard#key-return");
+        assert!(key.disabled);
+        assert!(matches!(key.glyph, Some((Glyph::Search, _))));
+        assert!(empty.nodes.iter().all(|node| !node.id.starts_with("keyboard#suggestion-")));
+
+        field["text"] = "書".into();
+        let with_query = focused(&field);
+        let key = by_id(&with_query, "keyboard#key-return");
+        assert!(!key.disabled);
+        assert_eq!(key.role, Role::Key);
     }
 }

@@ -536,8 +536,8 @@ impl Ctx<'_> {
             ViewKind::PageTabView { selected, pages, index_display, index_background } => {
                 self.page_tab_view(v, *selected, pages, (*index_display, *index_background), p, child_env)
             }
-            ViewKind::Navigation { title, display_mode, back, content } => {
-                self.navigation(v, title.as_deref(), *display_mode, back.as_deref(), content, p, env)
+            ViewKind::Navigation { title, display_mode, back, chrome, content } => {
+                self.navigation(v, title.as_deref(), *display_mode, back.as_deref(), chrome.as_deref(), content, p, env)
             }
             ViewKind::Toggle { is_on, action, label, disabled } => self.toggle(v, *is_on, *action, label, *disabled, p, env),
             ViewKind::Stepper { label, decrement, increment } => self.stepper(v, label, *decrement, *increment, p, env),

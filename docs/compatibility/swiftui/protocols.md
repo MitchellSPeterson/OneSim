@@ -21,7 +21,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `CoordinateSpaceProtocol` | 17 | ⬜ |  |  |
 | `CustomAnimation` | 17 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Sampled into a curve over up to 2 s; `shouldMerge` is not called |
 | `CustomHoverEffect` | 18 | ⬜ |  |  |
-| `CustomizableToolbarContent` | 14 | ⬜ |  |  |
+| `CustomizableToolbarContent` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Supports declaration and initial visibility. The customization editor and persisted layout are pending. |
 | `CustomPresentationDetent` | 16 | ⬜ |  |  |
 | `Document` | 27 | ⬜ |  |  |
 | `DocumentBaseBox` | 17 | ⬜ |  |  |
@@ -67,7 +67,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `TextSelectability` | 15 | ⬜ |  |  |
 | `TextVariantPreference` | 18 | ⬜ |  |  |
 | `TimelineSchedule` | 15 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `ToolbarContent` | 14 | ⬜ |  |  |
+| `ToolbarContent` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Supports compositions of renderer-backed toolbar items. Platform customization is pending. |
 | `TransactionKey` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `Transition` | 17 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Built-in transitions run natively; custom `body(content:phase:)` extracts `opacity` and `offset` |
 | `UIGestureRecognizerRepresentable` | 18 | ⬜ |  |  |

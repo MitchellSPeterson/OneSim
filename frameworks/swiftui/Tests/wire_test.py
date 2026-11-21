@@ -1093,4 +1093,118 @@ assert picker_button(layers(t)[0]["content"], "21")["disabled"]
 t = act(p, t, picker_button(layers(t)[0]["content"], "20")["action"])
 assert "Jan 20, 2020" in alltexts(tree(t))
 finish(p)
+# --- compact navigation, toolbar actions, and search binding/focus
+p = spawn(sys.argv[20])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+assert title(t) == "Library" and "back" not in tree(t)
+split_id = tree(t)["id"]
+item, = tree(t)["chrome"]["items"]
+assert item["region"] == "trailing" and "About" in alltexts(item["content"]["label"]["title"])
+t = act(p, t, item["content"]["action"])
+assert title(t) == "Detail" and tree(t)["displayMode"] == "inline"
+assert tree(t)["id"] == split_id and tree(t)["back"]["label"] == "Library"
+chrome = tree(t)["chrome"]
+item, = chrome["items"]
+assert item["region"] == "bottom"
+assert chrome["navigationBarBackgroundVisibility"] == chrome["bottomBarBackgroundVisibility"] == "visible"
+assert "navigationBarBackground" in chrome and "bottomBarBackground" in chrome
+t = act(p, t, item["content"]["action"])
+assert "Book marked" in alltexts(tree(t))
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Library"
+t = act(p, t, button(t, "Open detail")["action"])
+assert "Book marked" in alltexts(tree(t)), "compact columns retain their state when hidden"
+t = act(p, t, tree(t)["chrome"]["titleMenu"]["action"])
+menu = layers(t)[0]
+assert menu["kind"] == "menu"
+reset, = menu["items"]
+t = act(p, t, reset["action"])
+assert "Choose a book" in alltexts(tree(t))
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Library"
+
+t = act(p, t, button(t, "Legacy")["action"])
+assert tree(t)["content"]["kind"] == "navigation"
+assert tree(t)["content"]["title"] == "Archive"
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Library"
+
+t = act(p, t, button(t, "Search")["action"])
+assert title(t) == "Search"
+search = lambda t: tree(t)["chrome"]["search"]
+assert search(t)["placement"] == "always"
+assert "cancel" not in search(t) and not search(t)["field"]["focused"]
+assert "Reset search" not in alltexts(tree(t))
+t = act(p, t, search(t)["field"]["focus_action"])
+assert search(t)["field"]["focused"]
+assert "Close" in alltexts(search(t)["cancel"]["label"]["title"])
+assert "Reset search" in alltexts(tree(t))
+for query in ("書📚 مرحبا", "é" * 1024, ""):
+    send(p, type="text_input", field=search(t)["field"]["field"], version=t["version"], text=query)
+    t = recv(p)
+    assert search(t)["field"]["text"] == query
+    assert (query or "All books") in alltexts(tree(t))
+send(p, type="text_input", field=search(t)["field"]["field"], version=t["version"], text="Reset me")
+t = recv(p)
+t = act(p, t, button(t, "Reset search")["action"])
+assert search(t)["field"]["text"] == "" and not search(t)["field"]["focused"]
+assert "cancel" not in search(t) and "Reset search" not in alltexts(tree(t))
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Library" and "search" not in tree(t)["chrome"]
+finish(p)
+print("navigation: compact column changes, toolbar actions, and search binding and dismissal ok")
+
+p = spawn(sys.argv[21])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+assert title(t) == "Content" and search(t)["field"]["placeholder"] == "Find a title"
+assert search(t)["field"]["text"] == "Prefilled" and not search(t)["field"]["focused"]
+t = act(p, t, button(t, "Dismiss search")["action"])
+assert "Dismissed: 1" in alltexts(tree(t))
+assert search(t)["field"]["text"] == "Prefilled", "inactive dismiss must preserve the query"
+t = act(p, t, button(t, "Present search")["action"])
+assert search(t)["field"]["focused"]
+t = act(p, t, search(t)["field"]["submit_action"])
+assert "Submitted: Prefilled" in alltexts(tree(t))
+t = act(p, t, search(t)["cancel"]["action"])
+assert search(t)["field"]["text"] == "" and not search(t)["field"]["focused"]
+
+t = act(p, t, button(t, "Open detail")["action"])
+assert title(t) == "Detail" and tree(t)["back"]["label"] == "Content"
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Content" and "Submitted: Prefilled" in alltexts(tree(t))
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Sidebar" and "back" not in tree(t)
+t = act(p, t, button(t, "Open content")["action"])
+assert title(t) == "Content"
+t = act(p, t, tree(t)["back"]["action"])
+t = act(p, t, button(t, "Test toolbars")["action"])
+
+def toolbar_action(nav, label):
+    return next(item["content"]["action"] for item in nav["chrome"]["items"]
+                if label in alltexts(item["content"]))
+
+assert title(t) == "Outer"
+t = act(p, t, toolbar_action(tree(t), "Toolbar count: 0"))
+t = act(p, t, toolbar_action(tree(t), "Toolbar count: 1"))
+assert toolbar_action(tree(t), "Toolbar count: 2")
+# Queue the count action too, so an inert navigation action produces a
+# mismatched tree instead of waiting forever for the guest to respond.
+send(p, type="action", id=toolbar_action(tree(t), "Open inner"), version=t["version"])
+send(p, type="action", id=toolbar_action(tree(t), "Toolbar count: 2"), version=t["version"])
+t = recv(p)
+inner = tree(t)["content"]
+assert inner["title"] == "Inner"
+send(p, type="action", id=toolbar_action(inner, "Open inner detail"), version=t["version"])
+send(p, type="action", id=toolbar_action(tree(t), "Toolbar count: 2"), version=t["version"])
+t = recv(p)
+inner = tree(t)["content"]
+assert inner["title"] == "Inner detail" and "Inner destination 42" in alltexts(inner)
+t = act(p, t, inner["back"]["action"])
+assert tree(t)["content"]["title"] == "Inner"
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Outer" and toolbar_action(tree(t), "Toolbar count: 2")
+finish(p)
+print("navigation lab: inactive dismissal, search submission, and three compact columns ok")
 print("PASS")

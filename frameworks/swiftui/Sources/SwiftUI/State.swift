@@ -243,7 +243,7 @@ public struct EnvironmentValues {
     /// Pops a pushed screen, else dismisses the enclosing sheet.
     public var dismiss: DismissAction {
         let n = nav, s = sheetDismiss
-        return DismissAction { if let n, n.depth > 0 { n.pop() } else if let s { s() } else { n?.pop() } }
+        return DismissAction { if let n, n.depth > 0 || n.rootBack != nil { n.pop() } else if let s { s() } else { n?.pop() } }
     }
 }
 

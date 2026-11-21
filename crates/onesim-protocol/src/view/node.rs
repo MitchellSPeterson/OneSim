@@ -5,7 +5,7 @@ use serde::de::{self, Deserializer, MapAccess, Visitor};
 use serde::ser::{SerializeMap, Serializer};
 use serde::{Deserialize, Serialize};
 
-use crate::VisualOp;
+use crate::{ShapePaint, VisualOp};
 use super::color::Color;
 use super::modifier::{
     Alignment, ContentMode, DynamicRange, ImageScale, Interpolation, Modifier, SymbolColorMode,
@@ -285,6 +285,52 @@ pub struct BackButton {
     pub label: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ToolbarRegion {
+    Leading,
+    Principal,
+    Trailing,
+    Bottom,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolbarItem {
+    pub region: ToolbarRegion,
+    pub content: ViewNode,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BarVisibility {
+    #[default]
+    Automatic,
+    Visible,
+    Hidden,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NavigationSearch {
+    pub field: ViewNode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cancel: Option<ViewNode>,
+    pub placement: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct NavigationChrome {
+    pub items: Vec<ToolbarItem>,
+    pub navigation_bar_visibility: BarVisibility,
+    pub bottom_bar_visibility: BarVisibility,
+    pub navigation_bar_background: Option<ShapePaint>,
+    pub bottom_bar_background: Option<ShapePaint>,
+    pub navigation_bar_background_visibility: BarVisibility,
+    pub bottom_bar_background_visibility: BarVisibility,
+    pub title_menu: Option<ViewNode>,
+    pub search: Option<NavigationSearch>,
+}
+
 /// A `tabview` tab bar item; running `action` selects the tab.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TabItem {
@@ -458,6 +504,8 @@ pub enum ViewKind {
         display_mode: DisplayMode,
         #[serde(default)]
         back: Option<Box<BackButton>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        chrome: Option<Box<NavigationChrome>>,
         content: Box<ViewNode>,
     },
     /// `TabView`: `content` is the selected tab's (the others are not sent); `selected` indexes `tabs`.
@@ -817,11 +865,14 @@ fn serialize_view_kind<M: SerializeMap>(kind: &ViewKind, map: &mut M) -> Result<
             map.serialize_entry("style", style)?;
             map.serialize_entry("sections", sections)?;
         }
-        ViewKind::Navigation { title, display_mode, back, content } => {
+        ViewKind::Navigation { title, display_mode, back, chrome, content } => {
             map.serialize_entry("kind", "navigation")?;
             map.serialize_entry("title", title)?;
             map.serialize_entry("displayMode", display_mode)?;
             map.serialize_entry("back", back)?;
+            if let Some(c) = chrome {
+                map.serialize_entry("chrome", c)?;
+            }
             map.serialize_entry("content", content)?;
         }
         ViewKind::TabView { selected, tabs, content } => {
@@ -893,6 +944,9 @@ fn serialize_view_kind<M: SerializeMap>(kind: &ViewKind, map: &mut M) -> Result<
             }
             if let Some(v) = &input.submit_label {
                 map.serialize_entry("submit_label", v)?;
+            }
+            if input.search_field {
+                map.serialize_entry("search_field", &input.search_field)?;
             }
             if let Some(v) = &input.content_type {
                 map.serialize_entry("content_type", v)?;
@@ -1434,6 +1488,7 @@ fn deserialize_view_kind<'de, A: MapAccess<'de>>(
             let mut title: Option<String> = None;
             let mut display_mode: DisplayMode = DisplayMode::default();
             let mut back: Option<Box<BackButton>> = None;
+            let mut chrome: Option<Box<NavigationChrome>> = None;
             let mut content: Option<Box<ViewNode>> = None;
             while let Some(k) = stream.next_key()? {
                 common_key!(k.as_ref());
@@ -1441,6 +1496,7 @@ fn deserialize_view_kind<'de, A: MapAccess<'de>>(
                     "title" => title = stream.next_value()?,
                     "displayMode" => display_mode = stream.next_value()?,
                     "back" => back = stream.next_value()?,
+                    "chrome" => chrome = stream.next_value()?,
                     "content" => content = Some(stream.next_value()?),
                     _ => stream.skip_value()?,
                 }
@@ -1449,6 +1505,7 @@ fn deserialize_view_kind<'de, A: MapAccess<'de>>(
                 title,
                 display_mode,
                 back,
+                chrome,
                 content: content.ok_or_else(|| de::Error::missing_field("content"))?,
             })
         }
@@ -1557,6 +1614,7 @@ fn deserialize_view_kind<'de, A: MapAccess<'de>>(
                     "keyboard_type" => input.keyboard_type = stream.next_value()?,
                     "autocapitalization" => input.autocapitalization = stream.next_value()?,
                     "submit_label" => input.submit_label = stream.next_value()?,
+                    "search_field" => input.search_field = stream.next_value()?,
                     "content_type" => input.content_type = stream.next_value()?,
                     "autocorrection_disabled" => input.autocorrection_disabled = stream.next_value()?,
                     "prompt" => input.prompt = stream.next_value()?,
