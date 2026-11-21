@@ -4,22 +4,22 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 
 | API | Since | iOS | Issue | Notes |
 |---|---|---|---|---|
-| `AccessibilityActionCategory` | 18 | ⬜ |  |  |
-| `AccessibilityActionKind` | 13 | ⬜ |  |  |
-| `AccessibilityAdjustmentDirection` | 13 | ⬜ |  |  |
-| `AccessibilityAttachmentModifier` | 13 | ⬜ |  |  |
-| `AccessibilityChildBehavior` | 13 | ⬜ |  |  |
-| `AccessibilityCustomContentKey` | 15 | ⬜ |  |  |
-| `AccessibilityDirectTouchOptions` | 17 | ⬜ |  |  |
-| `AccessibilityHeadingLevel` | 15 | ⬜ |  |  |
-| `AccessibilityLabeledPairRole` | 14 | ⬜ |  |  |
-| `AccessibilityRotorContentBuilder` | 15 | ⬜ |  |  |
-| `AccessibilityRotorEntry` | 15 | ⬜ |  |  |
-| `AccessibilitySystemRotor` | 15 | ⬜ |  |  |
-| `AccessibilityTechnologies` | 15 | ⬜ |  |  |
-| `AccessibilityTextContentType` | 15 | ⬜ |  |  |
-| `AccessibilityTraits` | 13 | ⬜ |  |  |
-| `AccessibilityZoomGestureAction` | 13 | ⬜ |  |  |
+| `AccessibilityActionCategory` | 18 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityActionKind` | 13 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Includes macOS `delete` and `showMenu` |
+| `AccessibilityAdjustmentDirection` | 13 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityAttachmentModifier` | 13 | 🟠 | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Empty type. Modifiers return `some View`, not `ModifiedContent<_, AccessibilityAttachmentModifier>` |
+| `AccessibilityChildBehavior` | 13 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityCustomContentKey` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityDirectTouchOptions` | 17 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityHeadingLevel` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityLabeledPairRole` | 14 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityRotorContentBuilder` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | A block concatenates every entry, plus optional, if/else and availability. No `ForEach` |
+| `AccessibilityRotorEntry` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Not generic; the id is formatted as a string. `prepare` is not called |
+| `AccessibilitySystemRotor` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityTechnologies` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | `voiceOver` and `switchControl` |
+| `AccessibilityTextContentType` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityTraits` | 13 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityZoomGestureAction` | 13 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | The guest builds one at `.center` and `.zero` |
 | `ActionSheet` | 13 | ⬜ |  | Deprecated |
 | `AdaptableTabBarPlacement` | 18 | ⬜ |  |  |
 | `Alert` | 13 | ⬜ |  | Deprecated |
@@ -202,7 +202,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ListItemTint` | 14 | ⬜ |  |  |
 | `ListSectionSpacing` | 17 | ⬜ |  |  |
 | `LocalCoordinateSpace` | 17 | ⬜ |  |  |
-| `LocalizedStringKey` | 13 | ⬜ |  |  |
+| `LocalizedStringKey` | 13 | 🟠 | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | The key, including interpolations, is the value. No bundle lookup |
 | `MatchedGeometryProperties` | 14 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `Material` | 15 | ⬜ |  |  |
 | `MaterialActiveAppearance` | 18 | ⬜ |  |  |

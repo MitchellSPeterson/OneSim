@@ -197,27 +197,27 @@ impl Ctx<'_> {
                 let mut n = Node::new(format!("{}#mask{}", v.id, rest.len()), "mask");
                 n.inspect = false;
                 n.composite = Some(Box::new(crate::effects::Composite::Mask { inverted: matches!(last, Modifier::InvertedMask(_)) }));
-                Lay::new(inner.size, Some(n), vec![(0.0, 0.0, inner), (dx, dy, mask)])
+                with_content(Lay::new(inner.size, Some(n), vec![(0.0, 0.0, inner), (dx, dy, mask)]), 0)
             }
             Modifier::AlignedBackground(o) => {
                 let inner = self.mods(v, rest, p, env);
                 let bg = self.view(&o.view, Prop { w: Some(inner.size.w), h: Some(inner.size.h) }, Env { axis: None, ..env });
                 let dx = (inner.size.w - bg.size.w) * h_frac(o.alignment);
                 let dy = (inner.size.h - bg.size.h) * v_frac(o.alignment);
-                Lay::new(inner.size, None, vec![(dx, dy, bg), (0.0, 0.0, inner)])
+                with_content(Lay::new(inner.size, None, vec![(dx, dy, bg), (0.0, 0.0, inner)]), 1)
             }
             Modifier::Background(bg) => {
                 let inner = self.mods(v, rest, p, env);
                 let bgl = self.view(bg, Prop { w: Some(inner.size.w), h: Some(inner.size.h) }, Env { axis: None, ..env });
                 let dx = (inner.size.w - bgl.size.w) * 0.5;
                 let dy = (inner.size.h - bgl.size.h) * 0.5;
-                Lay::new(inner.size, None, vec![(dx, dy, bgl), (0.0, 0.0, inner)])
+                with_content(Lay::new(inner.size, None, vec![(dx, dy, bgl), (0.0, 0.0, inner)]), 1)
             }
             Modifier::Overlay(o) => {
                 let inner = self.mods(v, rest, p, env);
                 let ovl = self.view(&o.view, Prop { w: Some(inner.size.w), h: Some(inner.size.h) }, Env { axis: None, ..env });
                 let (dx, dy) = ((inner.size.w - ovl.size.w) * h_frac(o.alignment), (inner.size.h - ovl.size.h) * v_frac(o.alignment));
-                Lay::new(inner.size, None, vec![(0.0, 0.0, inner), (dx, dy, ovl)])
+                with_content(Lay::new(inner.size, None, vec![(0.0, 0.0, inner), (dx, dy, ovl)]), 0)
             }
             Modifier::CornerRadius(r) => {
                 let inner = self.mods(v, rest, p, env);
@@ -378,6 +378,11 @@ impl Ctx<'_> {
                 strike_color: s.color.as_ref().map(|c| self.color(c)),
                 ..env
             }),
+            Modifier::Accessibility(ax) => {
+                let mut inner = self.mods(v, rest, p, env);
+                super::accessibility::stamp_on(&mut inner, ax);
+                inner
+            }
         }
     }
 

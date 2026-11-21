@@ -1,5 +1,6 @@
 //! ViewNode schema (guest -> host).
 
+pub mod accessibility;
 pub mod animation;
 pub mod color;
 pub mod modifier;
@@ -7,6 +8,7 @@ pub mod node;
 pub mod shape;
 pub mod text;
 
+pub use accessibility::*;
 pub use animation::*;
 pub use color::*;
 pub use modifier::*;
