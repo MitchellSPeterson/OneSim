@@ -41,7 +41,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.description` | 13 | ⬜ |  |  |
 | `\.disableAutocorrection` | 13 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Deprecated |
 | `\.dismiss` | 15 | ✅ |  |  |
-| `\.dismissSearch` | 15 | ⬜ |  |  |
+| `\.dismissSearch` | 15 | ✅ | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Clears and dismisses text search within the searchable view. |
 | `\.dismissWindow` | 17 | ⬜ |  |  |
 | `\.displayScale` | 13 | ⬜ |  |  |
 | `\.documentConfiguration` | 17 | ⬜ |  |  |
@@ -63,7 +63,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.isPresented` | 15 | ⬜ |  |  |
 | `\.isSceneCaptured` | 17 | ⬜ |  |  |
 | `\.isScrollEnabled` | 16 | ⬜ |  |  |
-| `\.isSearching` | 15 | ⬜ |  |  |
+| `\.isSearching` | 15 | ✅ | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Reports the active presentation binding to descendants of the searchable view. |
 | `\.isTabBarShowingSections` | 18 | ⬜ |  |  |
 | `\.isTabViewSidebarAvailable` | 27 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Always `false` on the supported compact iPhone layouts. |
 | `\.isUserAuthenticationEnabled` | 18 | ⬜ |  |  |

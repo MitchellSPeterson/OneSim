@@ -85,6 +85,23 @@ so `@State` persists while a screen is on the stack (hidden screens' slots are k
 mechanism as buttons. Return runs the submit action if one is registered. Otherwise, Return inserts a newline in multiline controls. `Slider` also uses `text_input`. The guest clamps the value and snaps it to `step`.
 A `Picker` registers one action per tagged option (protocol section I).
 
+`NavigationView { ... }` uses a compact stack. `NavigationSplitView` supports two or three columns with
+`preferredCompactColumn:` as an optional binding. The visible column has its own stack and keeps its state
+when hidden. Back writes the previous column to the binding. Regular-width layout, split visibility changes,
+and selection-driven column routing are pending.
+
+`.toolbar` accepts view content and `ToolbarContent` builders. `ToolbarItem` and `ToolbarItemGroup`
+place content at the top leading edge, principal position, top trailing edge, or bottom of the navigation
+container. `.toolbarVisibility`, `.toolbarBackground`, and `.toolbarBackgroundVisibility` control the
+navigation and bottom bars. `.toolbarTitleDisplayMode` supports inline and large titles.
+`.toolbarTitleMenu` opens a menu from the title. Toolbar customization, overflow, keyboard and tab bar
+placements, and automatic title-mode inheritance are pending.
+
+`.searchable(text:placement:prompt:)` and its `isPresented:` overload add a search drawer to navigation
+chrome. The active field binds its text and supplies `\.isSearching` and `\.dismissSearch` to descendants.
+Dismissing clears the query and ends presentation. Token and suggestion overloads, localized resources,
+and placement-specific behavior outside the drawer are pending.
+
 ### Forms and containers
 
 Lists and forms (protocol section T):

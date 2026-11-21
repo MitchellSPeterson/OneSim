@@ -6,7 +6,7 @@
 //! Visual constants (row height, card radius, nav bar heights, control sizes) are measured from
 //! an iOS 26 / iPhone 17 Pro simulator, see `tests/fixtures/showcase-ios/README.md`.
 
-use onesim_protocol::{ShapePaint, StyleReference, TextInputBorderShape, TextInputOptions, TextInputStyle, VisualOp};
+use onesim_protocol::{BarVisibility, NavigationChrome, NavigationSearch, ToolbarRegion, ShapePaint, StyleReference, TextInputBorderShape, TextInputOptions, TextInputStyle, VisualOp};
 use std::sync::Arc;
 
 use super::rn::{ModalLayers, Placement};
@@ -335,6 +335,7 @@ struct Env {
     img: ImageScale,
     /// Laid out as (part of) a list row: `Label` uses the fixed icon column and accent icon.
     in_row: bool,
+    in_toolbar: bool,
     /// Active animation index into `Ctx::anims` (section P); `None` = no animation.
     anim: Option<u32>,
     /// Inherited `.contentTransition` (section P).
@@ -451,7 +452,7 @@ impl Env {
             safe_top: 0.0,
             bottom_inset: 0.0,
             img: ImageScale::Medium,
-            in_row: false,
+            in_row: false, in_toolbar: false,
             anim: None,
             content_transition: ContentTransitionKind::Identity,
             extra: 0.0,
@@ -502,6 +503,13 @@ struct NavBar<'a> {
     band: f64,
     offset: f64,
     back: Option<NavBack>,
+    inline_title_bounds: Option<(f64, f64)>,
+}
+
+#[derive(Default)]
+struct ToolbarLayout {
+    items: Vec<(f64, f64, Lay)>,
+    inline_title_bounds: Option<(f64, f64)>,
 }
 
 #[derive(Clone)]
@@ -673,7 +681,7 @@ pub(crate) fn rn_nav_bar(params: &SceneParams, fonts: &mut Fonts, id: &str, top:
     let w = params.viewport.0;
     let (large_title, title_h, band) = cx.nav_large(id, w, title, large);
     let bar_h = NAV_INLINE_H + band;
-    let bar = NavBar { id, w, h: params.viewport.1, top, bar_h, title, large: large && title.is_some(), large_title, title_h, band, offset: 0.0, back };
+    let bar = NavBar { id, w, h: params.viewport.1, top, bar_h, title, large: large && title.is_some(), large_title, title_h, band, offset: 0.0, back, inline_title_bounds: None };
     flatten(cx.nav_bar(bar), 0.0, top, Some(parent), 1.0, out);
 }
 
@@ -2461,8 +2469,8 @@ impl Ctx<'_> {
             ViewKind::PageTabView { selected, pages, index_display, index_background } => {
                 self.page_tab_view(v, *selected, pages, (*index_display, *index_background), p, child_env)
             }
-            ViewKind::Navigation { title, display_mode, back, content } => {
-                self.navigation(v, title.as_deref(), *display_mode, back.as_ref(), content, p, env)
+            ViewKind::Navigation { title, display_mode, back, chrome, content } => {
+                self.navigation(v, title.as_deref(), *display_mode, back.as_ref(), chrome.as_deref(), content, p, env)
             }
             ViewKind::Toggle { is_on, action, label, disabled } => self.toggle(v, *is_on, *action, label, *disabled, p, env),
             ViewKind::Stepper { label, decrement, increment } => self.stepper(v, label, *decrement, *increment, p, env),
@@ -2768,10 +2776,17 @@ impl Ctx<'_> {
         n.action = (!disabled).then_some(action);
         n.disabled = disabled;
         n.label = first_text(label);
+        let label = match (&label.kind, env.in_toolbar, style) {
+            (ViewKind::Label { icon, .. }, true, ButtonStyle::Automatic) => icon.as_ref(),
+            _ => label,
+        };
         match style {
             ButtonStyle::Automatic | ButtonStyle::Plain => {
                 let (fg, tint) = match (style, disabled) {
                     (_, true) => (dim, None),
+                    (ButtonStyle::Automatic, _) if env.in_toolbar => {
+                        (env.tint.unwrap_or_else(|| self.semantic(Semantic::Primary)), env.tint)
+                    }
                     (ButtonStyle::Automatic, _) => (accent, Some(accent)),
                     _ => (env.fg.unwrap_or_else(|| self.semantic(Semantic::Primary)), None),
                 };
@@ -2927,7 +2942,7 @@ impl Ctx<'_> {
         let wrap = multiline.then_some(inner_w.max(1.0) as f32);
         let empty = text.is_empty();
         let fg = env.fg.unwrap_or_else(|| self.semantic(Semantic::Primary));
-        let placeholder_fg = self.semantic(Semantic::Tertiary);
+        let placeholder_fg = self.semantic(if input.search_field { Semantic::Secondary } else { Semantic::Tertiary });
         let (d, pitch, x0) = SECURE_BULLET;
         let bullets = if secure { text.graphemes(true).count() } else { 0 };
         let shown = if empty { placeholder } else if secure { "" } else { text };
@@ -4182,17 +4197,46 @@ impl Ctx<'_> {
         title: Option<&str>,
         mode: DisplayMode,
         back: Option<&onesim_protocol::BackButton>,
+        chrome: Option<&NavigationChrome>,
         content: &ViewNode,
         p: Prop,
         env: Env,
     ) -> Lay {
         let w = p.w.filter(|w| w.is_finite()).unwrap_or(402.0);
         let h = p.h.filter(|h| h.is_finite()).unwrap_or(874.0);
-        let (top, bottom) = (env.safe_top, env.bottom_inset);
-        let large = mode == DisplayMode::Large && title.is_some();
-        let (large_title, title_h, band) = self.nav_large(&v.id, w, title, large);
-        let bar_h = if title.is_none() && back.is_none() { 0.0 } else { NAV_INLINE_H + band };
-        let ctop = top + bar_h;
+        let defaults = NavigationChrome::default();
+        let chrome = chrome.unwrap_or(&defaults);
+        let navigation_visible = chrome.navigation_bar_visibility != BarVisibility::Hidden;
+        let search = chrome.search.as_ref().filter(|_| navigation_visible);
+        let searching = search.is_some_and(|search| search.cancel.is_some());
+        let top_visible = navigation_visible && !searching;
+        let top_has_items = chrome.items.iter().any(|item| item.region != ToolbarRegion::Bottom);
+        let bottom_has_items = chrome.items.iter().any(|item| item.region == ToolbarRegion::Bottom);
+        let bottom_bar = match chrome.bottom_bar_visibility {
+            BarVisibility::Visible => true,
+            BarVisibility::Automatic => bottom_has_items,
+            BarVisibility::Hidden => false,
+        };
+        let bottom_h = if bottom_bar { NAV_INLINE_H } else { 0.0 };
+        let (top, bottom) = (env.safe_top, env.bottom_inset + bottom_h);
+        let title = title.filter(|_| top_visible);
+        let back = back.filter(|_| top_visible);
+        let large = mode == DisplayMode::Large && title.is_some() && !chrome.items.iter().any(|item| item.region == ToolbarRegion::Principal);
+        let (large_title, title_h, mut band) = self.nav_large(&v.id, w, title, large);
+        if mode == DisplayMode::Large && title.is_none() && back.is_some() && matches!(content.kind, ViewKind::Navigation { .. }) {
+            band = 52.0;
+        }
+        let bar_h = if top_visible && (title.is_some() || back.is_some() || top_has_items
+            || chrome.title_menu.is_some() || chrome.navigation_bar_visibility == BarVisibility::Visible)
+        {
+            NAV_INLINE_H + band
+        } else {
+            0.0
+        };
+        let look = crate::look::look(self.ios);
+        let search_h = search.map_or(0.0, |_| look.search_drawer_height);
+        let search_gap = if searching && is_scroller(content) { 35.0 } else { 0.0 };
+        let ctop = top + bar_h + search_h + search_gap;
         let scroller = is_scroller(content);
         let edge_bg = self.semantic(if is_list(content) { Semantic::GroupedBackground } else { Semantic::Background });
         let mut bg = Node::new(&v.id, "navigation");
@@ -4212,7 +4256,7 @@ impl Ctx<'_> {
             offset = c.node.as_ref().and_then(|n| n.scroll).map_or(0.0, |s| s.offset.1);
             kids.push((0.0, 0.0, c));
             // Content reaches under the bar once the large title has collapsed.
-            if offset > band {
+            if offset > band && bar_h > 0.0 && chrome.navigation_bar_background_visibility != BarVisibility::Hidden {
                 let mut e = Node::new(format!("{}#edge", v.id), "scrolledge");
                 e.edge = Some(crate::glass::ScrollEdge {
                     bar: (top + NAV_INLINE_H) as f32,
@@ -4227,10 +4271,156 @@ impl Ctx<'_> {
             let c = self.view(content, Prop { w: Some(w), h: Some(avail) }, Env { bottom_inset: 0.0, ..cenv });
             kids.push(((w - c.size.w) / 2.0, ctop + (avail - c.size.h) / 2.0, c));
         }
-        let back = back.map(|b| NavBack { action: Some(b.action), label: b.label.clone(), pill: false });
-        let bar = NavBar { id: &v.id, w, h, top, bar_h, title, large, large_title, title_h, band, offset, back };
-        kids.push((0.0, top, self.nav_bar(bar)));
+        if top_visible {
+            let has_back = back.is_some();
+            let back = back.map(|b| NavBack { action: Some(b.action), label: b.label.clone(), pill: false });
+            let has_principal = chrome.items.iter().any(|item| item.region == ToolbarRegion::Principal);
+            let leading = self.margin + if has_back { 52.0 } else { 0.0 };
+            let ToolbarLayout { items, inline_title_bounds } = self.toolbar_items(chrome, w, leading, false, cenv);
+            let title_bounds = inline_title_bounds.map(|(left, right)| {
+                (left, right - if chrome.title_menu.is_some() { 24.0 } else { 0.0 })
+            });
+            let bar = NavBar { id: &v.id, w, h, top, bar_h, title: title.filter(|_| !has_principal), large, large_title,
+                title_h, band, offset, back, inline_title_bounds: title_bounds };
+            let mut bar = self.nav_bar(bar);
+            if let Some(node) = bar.node.as_mut() {
+                self.toolbar_background(node, chrome.navigation_bar_background.as_ref(),
+                    chrome.navigation_bar_background_visibility, offset > band, edge_bg, env);
+            }
+            bar.kids.extend(items);
+            if let Some(menu) = chrome.title_menu.as_ref() {
+                let title_id = format!("{}#title", v.id);
+                let inline_id = format!("{}#inline", v.id);
+                if let Some(index) = bar.kids.iter().position(|(_, _, lay)| {
+                    lay.node.as_ref().is_some_and(|n| n.id == title_id || n.id == inline_id)
+                }) {
+                    let (title_x, title_y, title_lay) = bar.kids.remove(index);
+                    let mut menu = self.view(menu, Prop { w: None, h: None }, cenv);
+                    let size = Size { w: title_lay.size.w + 6.0 + menu.size.w, h: title_lay.size.h.max(menu.size.h) };
+                    let (left, right) = inline_title_bounds.unwrap_or((0.0, w));
+                    let x = if large && offset < band { title_x }
+                        else { ((w - size.w) / 2.0).clamp(left, (right - size.w).max(left)) };
+                    let title_w = title_lay.size.w;
+                    let title_dy = (size.h - title_lay.size.h) / 2.0;
+                    let menu_dy = (size.h - menu.size.h) / 2.0;
+                    if let Some(node) = menu.node.as_mut() {
+                        node.label = title.map(|title| format!("{title}, Actions Menu"));
+                    }
+                    let contents = vec![(0.0, title_dy, title_lay), (title_w + 6.0, menu_dy, Lay::new(menu.size, None, menu.kids))];
+                    bar.kids.push((x, title_y - title_dy, Lay::new(size, menu.node.map(|node| *node), contents)));
+                }
+            }
+            kids.push((0.0, top, bar));
+        }
+        if let Some(search) = search {
+            let collapse = if large { offset.clamp(0.0, band) } else { 0.0 };
+            let search_y = top + bar_h - collapse + if searching { look.active_search_top } else { 0.0 };
+            kids.push((0.0, search_y, self.navigation_search(search, w, search_h, cenv)));
+        }
+        if bottom_bar {
+            let mut bar = Node::new(format!("{}#bottomBar", v.id), "toolbar");
+            self.toolbar_background(&mut bar, chrome.bottom_bar_background.as_ref(),
+                chrome.bottom_bar_background_visibility, false, edge_bg, env);
+            let items = self.toolbar_items(chrome, w, self.margin, true, cenv).items;
+            kids.push((0.0, (h - bottom).max(0.0), Lay::new(Size { w, h: bottom_h }, Some(bar), items)));
+        }
         Lay::new(Size { w, h }, Some(bg), kids)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn toolbar_background(&self, bar: &mut Node, paint: Option<&ShapePaint>, visibility: BarVisibility,
+                          scrolled: bool, fallback: Color, env: Env) {
+        if visibility == BarVisibility::Visible || (visibility == BarVisibility::Automatic && scrolled && paint.is_some()) {
+            let paint = paint.map_or(ResolvedPaint::Color(fallback), |p| self.shape_paint(p, env));
+            bar.fill = Some(paint.color());
+            bar.fill_paint = paint.gradient();
+        }
+    }
+
+    fn toolbar_items(&mut self, chrome: &NavigationChrome, width: f64, start: f64, bottom: bool,
+                     env: Env) -> ToolbarLayout {
+        let count = chrome.items.iter().filter(|item| (item.region == ToolbarRegion::Bottom) == bottom).count();
+        if count == 0 { return ToolbarLayout::default(); }
+        let end = (width - self.margin).max(start);
+        let gap = 8.0_f64.min((end - start) / count as f64);
+        let max_item = (end - start - gap * (count - 1) as f64) / count as f64;
+        let mut leading = vec![];
+        let mut principal = vec![];
+        let mut trailing = vec![];
+        for item in &chrome.items {
+            if (item.region == ToolbarRegion::Bottom) != bottom { continue; }
+            let is_button = matches!(&item.content.kind, ViewKind::Button { .. });
+            let pill = is_button && item.region != ToolbarRegion::Principal;
+            let item_width = if pill { (max_item - 20.0).max(0.0) } else { max_item };
+            let item_env = Env { in_toolbar: true, max_lines: Some(1), ..env };
+            let mut lay = self.view(&item.content, Prop { w: Some(item_width), h: Some(NAV_INLINE_H) }, item_env);
+            if pill {
+                let size = Size { w: (lay.size.w + 20.0).max(44.0).min(max_item), h: 44.0 };
+                if let Some(node) = lay.node.as_mut() {
+                    // The containing surface handles taps across the entire pill.
+                    let mut pill = Node::new(format!("{}#toolbarSurface", item.content.id), "toolbarItem");
+                    pill.radius = PILL;
+                    pill.glass = Some(self.glass_spec(GlassVariant::Regular, None, true));
+                    pill.action = node.action;
+                    pill.disabled = node.disabled;
+                    pill.inspect = false;
+                    lay = Lay::new(size, Some(pill), vec![((size.w - lay.size.w) / 2.0, (size.h - lay.size.h) / 2.0, lay)]);
+                }
+            }
+            match item.region {
+                ToolbarRegion::Leading => leading.push(lay),
+                ToolbarRegion::Bottom | ToolbarRegion::Principal => principal.push(lay),
+                ToolbarRegion::Trailing => trailing.push(lay),
+            }
+        }
+        let total = |items: &[Lay]| items.iter().map(|item| item.size.w).sum::<f64>() + gap * items.len().saturating_sub(1) as f64;
+        let center_width = total(&principal);
+        let trailing_x = end - total(&trailing);
+        let center_min = start + total(&leading) + if leading.is_empty() { 0.0 } else { gap };
+        let center_max = trailing_x - center_width - if trailing.is_empty() { 0.0 } else { gap };
+        let center = ((width - center_width) / 2.0).clamp(center_min, center_max.max(center_min));
+        let bounds = (!bottom).then_some((center_min, center_max));
+        let mut kids = vec![];
+        for (mut x, items) in [(start, leading), (center, principal), (trailing_x, trailing)] {
+            for item in items {
+                let y = (44.0 - item.size.h) / 2.0 + if bottom { 14.0 } else { 0.0 };
+                let next = x + item.size.w + gap;
+                kids.push((x, y, item));
+                x = next;
+            }
+        }
+        ToolbarLayout { items: kids, inline_title_bounds: bounds }
+    }
+
+    fn navigation_search(&mut self, search: &NavigationSearch, width: f64, height: f64, env: Env) -> Lay {
+        let mut kids = vec![];
+        let mut field_width = (width - 2.0 * self.margin).max(0.0);
+        if let Some(cancel) = search.cancel.as_ref() {
+            let mut button = self.view(cancel, Prop { w: Some(44.0), h: None }, Env { in_toolbar: true, ..env });
+            let size = Size { w: 44.0, h: 44.0 };
+            field_width = (field_width - size.w - 11.0).max(0.0);
+            if let Some(node) = button.node.as_mut() {
+                node.radius = PILL;
+                node.glass = Some(self.glass_spec(GlassVariant::Regular, None, true));
+            }
+            let x = (size.w - button.size.w) / 2.0;
+            let y = (size.h - button.size.h) / 2.0;
+            let content = vec![(x, y, Lay::new(button.size, None, button.kids))];
+            kids.push((self.margin + field_width + 11.0, 0.0, Lay::new(size, button.node.map(|node| *node), content)));
+        }
+        let icon_color = self.semantic(if search.cancel.is_some() { Semantic::Primary } else { Semantic::Secondary });
+        let icon = self.symbol_lay(format!("{}#icon", search.field.id), "magnifyingglass", 19.0, 400, icon_color);
+        let mut field = self.view(&search.field, Prop { w: Some((field_width - 44.0).max(0.0)), h: None }, env);
+        let field_height = 44.0_f64.max(field.size.h);
+        let mut contents = vec![(12.0, (field_height - icon.size.h) / 2.0, icon)];
+        contents.extend(field.kids.drain(..).map(|(x, y, lay)| (x + 34.0, y + (field_height - field.size.h) / 2.0, lay)));
+        if let Some(node) = field.node.as_mut() {
+            node.radius = PILL;
+            node.clip_radius = Some(PILL);
+            node.glass = Some(self.glass_spec(GlassVariant::Regular, None, false));
+        }
+        kids.push((self.margin, 0.0, Lay::new(Size { w: field_width, h: field_height }, field.node.map(|node| *node), contents)));
+        Lay::new(Size { w: width, h: height }, None, kids)
     }
 
     /// Large title lay (when `large`), its height and the band it occupies below the inline bar.
@@ -4257,7 +4447,7 @@ impl Ctx<'_> {
     /// The navigation bar (no background at rest on iOS 26): large + inline title and the glass back
     /// button. Shared by SwiftUI `NavigationStack` and React Native's native stack header.
     fn nav_bar(&mut self, nb: NavBar) -> Lay {
-        let NavBar { id, w, h, top, bar_h, title, large, large_title, title_h, band, offset, back } = nb;
+        let NavBar { id, w, h, top, bar_h, title, large, large_title, title_h, band, offset, back, inline_title_bounds } = nb;
         let primary = self.semantic(Semantic::Primary);
                 // The large title scrolls with the content and disappears under the inline bar; the bar
         // shrinks with it and the inline title fades in over the last INLINE_FADE points.
@@ -4290,14 +4480,20 @@ impl Ctx<'_> {
             if alpha > 0.0 {
                 // Inline titles grow with Dynamic Type but cap at x1.225 (measured at accessibility5).
                 let nsz = 17.0 * (onesim_protocol::TextStyle::Body.size_at(self.dts) as f32 / 17.0).min(1.225);
-                let spec = FontSpec::new(nsz, self.line_h(nsz), 600, TextAlign::Leading);
+                let mut spec = FontSpec::new(nsz, self.line_h(nsz), 600, TextAlign::Leading);
                 let id = if large { format!("{}#inline", id) } else { format!("{}#title", id) };
-                let mut tl = self.text_lay(&id, t, spec, primary, Some((w - 120.0) as f32));
-                if let Some(n) = tl.node.as_mut() {
-                    n.opacity = alpha;
+                let (left, right) = inline_title_bounds.unwrap_or((0.0, w));
+                let max_width = (right - left).min(w - 120.0);
+                if max_width > 0.0 {
+                    if inline_title_bounds.is_some() { spec.lines = Some(1); }
+                    let mut tl = self.text_lay(&id, t, spec, primary, Some(max_width as f32));
+                    if let Some(n) = tl.node.as_mut() {
+                        n.opacity = alpha;
+                    }
+                    let (tw, th) = (tl.size.w, tl.size.h);
+                    let x = ((w - tw) / 2.0).clamp(left, (right - tw).max(left));
+                    bar_kids.push((x, 22.0 - th / 2.0, tl));
                 }
-                let (tw, th) = (tl.size.w, tl.size.h);
-                bar_kids.push(((w - tw) / 2.0, 22.0 - th / 2.0, tl));
             }
         }
         if let Some(b) = back {
@@ -5748,6 +5944,64 @@ mod tests {
     }
 
     #[test]
+    fn navigation_chrome_visibility_is_independent_per_bar() {
+        let mut root = serde_json::json!({
+            "kind": "navigation", "id": "nav", "title": "Library",
+            "chrome": {
+                "navigationBarVisibility": "hidden",
+                "bottomBarBackgroundVisibility": "visible",
+                "bottomBarBackground": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0},
+                "items": [
+                    {"region": "trailing", "content": {
+                        "kind": "button", "id": "top", "action": 7,
+                        "label": {"kind": "text", "id": "top-label", "text": "Top"}
+                    }},
+                    {"region": "bottom", "content": {
+                        "kind": "button", "id": "bottom", "action": 8,
+                        "label": {"kind": "text", "id": "bottom-label", "text": "Bottom"}
+                    }}
+                ]
+            },
+            "content": {"kind": "text", "id": "content", "text": "Books"}
+        });
+        let scene = phone(&root.to_string());
+        assert!(scene.nodes.iter().all(|node| node.id != "top" && node.id != "nav#title"));
+        assert_eq!(by_id(&scene, "nav#bottomBar").fill, Some(Color::rgba(1.0, 0.0, 0.0, 1.0)));
+        let bottom = by_id(&scene, "bottom#toolbarSurface");
+        assert_eq!(bottom.action, Some(8));
+        near(bottom.bounds.x + bottom.bounds.w / 2.0, 201.0);
+        near(bottom.bounds.y + bottom.bounds.h / 2.0, 822.0);
+
+        root["chrome"]["bottomBarVisibility"] = "hidden".into();
+        root["chrome"]["navigationBarVisibility"] = "automatic".into();
+        let scene = phone(&root.to_string());
+        assert!(scene.nodes.iter().all(|node| node.id != "bottom" && node.id != "nav#bottomBar"));
+        assert_eq!(by_id(&scene, "top#toolbarSurface").action, Some(7));
+        assert_eq!(by_id(&scene, "nav#title").text.as_ref().unwrap().text, "Library");
+    }
+
+    #[test]
+    fn inline_title_fits_between_toolbar_items() {
+        let scene = phone(r#"{
+            "kind":"navigation","id":"nav","displayMode":"inline",
+            "title":"A long title constrained by toolbar actions",
+            "chrome":{"items":[
+                {"region":"leading","content":{"kind":"button","id":"leading","action":1,
+                    "label":{"kind":"text","id":"leading-label","text":"Long leading action"}}},
+                {"region":"trailing","content":{"kind":"button","id":"trailing","action":2,
+                    "label":{"kind":"text","id":"trailing-label","text":"Long trailing action"}}}
+            ]},
+            "content":{"kind":"empty","id":"content"}
+        }"#);
+        let left = by_id(&scene, "leading#toolbarSurface").bounds;
+        let right = by_id(&scene, "trailing#toolbarSurface").bounds;
+        let title = by_id(&scene, "nav#title").bounds;
+        assert!(left.x + left.w <= title.x);
+        assert!(title.x + title.w <= right.x);
+        assert!(title.h < 24.0);
+    }
+
+    #[test]
     fn toggle_stepper_and_buttons() {
         let s = phone(CONTROLS);
         let sw = by_id(&s, "l.0#switch");
@@ -5810,6 +6064,35 @@ mod tests {
         // unfocused: no caret
         let s = phone(&json);
         assert!(s.nodes.iter().all(|n| n.id != "l.a.f#caret"));
+    }
+
+    #[test]
+    fn search_key_requires_a_query() {
+        let mut field = serde_json::json!({
+            "kind": "text_field", "id": "search", "field": 3, "search_field": true, "text": ""
+        });
+        let focused = |field: &serde_json::Value| {
+            let tree = serde_json::from_value(field.clone()).unwrap();
+            let params = SceneParams {
+                viewport: (402.0, 874.0), device: crate::device::device("iphone-17-pro").unwrap(), scale: 3.0,
+                appearance: Appearance::Light, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios26,
+                scroll: &HashMap::new(), sheets: &HashMap::new(), focus: Some("search"),
+                overscroll: false, status_bar: false,
+                chrome: crate::chrome::ChromeParams { keyboard: true, ..Default::default() },
+            };
+            layout(&tree, &params, &mut Fonts::new())
+        };
+        let empty = focused(&field);
+        let key = by_id(&empty, "keyboard#key-return");
+        assert!(key.disabled);
+        assert!(matches!(key.glyph, Some((Glyph::Search, _))));
+        assert!(empty.nodes.iter().all(|node| !node.id.starts_with("keyboard#suggestion-")));
+
+        field["text"] = "書".into();
+        let with_query = focused(&field);
+        let key = by_id(&with_query, "keyboard#key-return");
+        assert!(!key.disabled);
+        assert_eq!(key.role, Role::Key);
     }
 
     #[test]

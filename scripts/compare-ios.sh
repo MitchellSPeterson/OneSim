@@ -43,6 +43,7 @@ effects="$guests/effects"
 textinput="$guests/text-input"
 keypads="$guests/keypads"
 pickers="$guests/pickers"
+navigation="$guests/navigation"
 forms="$guests/forms"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
@@ -60,6 +61,7 @@ if want swiftui && [ -z "$smoke" ]; then
   scripts/build-swift-app.sh examples/swiftui-text-input "$textinput"
   scripts/build-swift-app.sh examples/swiftui-keypads "$keypads"
   scripts/build-swift-app.sh examples/swiftui-pickers "$pickers"
+  scripts/build-swift-app.sh examples/swiftui-navigation "$navigation"
   scripts/build-swift-app.sh examples/swiftui-forms "$forms"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
@@ -247,6 +249,27 @@ for ios in ${SIMCORE_IOS:-27.2}; do
     pshot colors       --click 352,492
     echo "== SwiftUI date and color pickers (iOS $ios)"
     python3 scripts/compare_ios.py "$pkfx" "$pkout/onesim" "$pkout" || rc=1
+    nout=$out/swiftui-navigation
+    nfx=$fx/swiftui-navigation-ios
+    mkdir -p "$nout/onesim"
+    nshot() {
+      local name=$1
+      shift
+      if [ ! -f "$nfx/$name.png" ]; then
+        echo "Missing iOS $ios navigation reference: $nfx/$name.png" >&2
+        rc=1
+        return
+      fi
+      ./target/debug/onesim run "$navigation" "${base[@]}" "$@" --screenshot "$nout/onesim/$name.png" >/dev/null
+    }
+    nshot library
+    nshot detail --click About
+    nshot detail-menu --click About --click 188,84
+    nshot legacy --click Legacy
+    nshot search --click Search
+    nshot search-active --click Search --click 100,138
+    echo "== SwiftUI navigation (iOS $ios)"
+    python3 scripts/compare_ios.py "$nfx" "$nout/onesim" "$nout" || rc=1
     # Forms and containers (tests/fixtures/ios27/swiftui-forms-ios/README.md). Screens below the fold are reached
     # after a scroll; toggles and swipes animate, so those states wait for them to settle.
     fmout=$out/swiftui-forms

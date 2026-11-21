@@ -98,7 +98,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `DisclosureTableRow` | 17 | ⬜ |  |  |
 | `DismissAction` | 15 | ✅ |  |  |
 | `DismissBehavior` | 17 | ⬜ |  |  |
-| `DismissSearchAction` | 15 | ⬜ |  |  |
+| `DismissSearchAction` | 15 | ✅ | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Clears the query and presentation state for descendants of the searchable view. |
 | `DismissWindowAction` | 17 | ⬜ |  |  |
 | `DocumentConfiguration` | 17 | ⬜ |  |  |
 | `DocumentCreationContext` | 27 | ⬜ |  |  |
@@ -214,9 +214,9 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `NamedCoordinateSpace` | 17 | ⬜ |  |  |
 | `NavigationBarItem` | 13 | ✅ |  |  |
 | `NavigationPath` | 16 | 🟠 |  | See value-navigation limits in [guest.md](guest.md) |
-| `NavigationSplitViewColumn` | 17 | ⬜ |  |  |
+| `NavigationSplitViewColumn` | 17 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Sidebar, content, and detail in the compact presentation. Selection-driven updates are pending. |
 | `NavigationSplitViewStyleConfiguration` | 16 | ⬜ |  |  |
-| `NavigationSplitViewVisibility` | 16 | ⬜ |  |  |
+| `NavigationSplitViewVisibility` | 16 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Accepted by the split-view initializers. Regular-width visibility and writeback are pending. |
 | `OffsetTransition` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `OnInsertTableRowModifier` | 16 | ⬜ |  |  |
 | `OpacityTransition` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
@@ -284,7 +284,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ScrollTransitionConfiguration` | 17 | ⬜ |  |  |
 | `ScrollTransitionPhase` | 17 | ⬜ |  |  |
 | `ScrollViewProxy` | 14 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | `scrollTo` only. No animation |
-| `SearchFieldPlacement` | 15 | ⬜ |  |  |
+| `SearchFieldPlacement` | 15 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Accepts drawer, sidebar, and toolbar placements. The field uses a drawer in the compact navigation bar; native toolbar and sidebar behavior is pending. |
 | `SearchPresentationToolbarBehavior` | 17.1 | ⬜ |  |  |
 | `SearchScopeActivation` | 16.4 | ⬜ |  |  |
 | `SearchSuggestionsPlacement` | 16 | ⬜ |  |  |
@@ -359,24 +359,24 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `TimelineScheduleMode` | 15 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `ToggleStyleConfiguration` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | `isMixed` is always false |
 | `ToolbarCommands` | 14 | ⬜ |  |  |
-| `ToolbarContentBuilder` | 14 | ⬜ |  |  |
+| `ToolbarContentBuilder` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Builds empty, conditional, loop, and multiple toolbar entries. Apple’s concrete builder result types differ. |
 | `ToolbarCustomizationBehavior` | 16 | ⬜ |  |  |
 | `ToolbarCustomizationOptions` | 16 | ⬜ |  |  |
 | `ToolbarDefaultItemKind` | 17 | ⬜ |  |  |
-| `ToolbarItem` | 14 | ⬜ |  |  |
+| `ToolbarItem` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Displays view content in supported regions. Explicit IDs and initial visibility are accepted. Dense toolbars compress items. Native overflow and user customization are pending. |
 | `ToolbarItemAxisBehavior` | 13 | ⬜ |  |  |
-| `ToolbarItemGroup` | 14 | ⬜ |  |  |
-| `ToolbarItemPlacement` | 14 | ⬜ |  |  |
+| `ToolbarItemGroup` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Renders individual views in a shared region. Group labels and overflow grouping are pending. |
+| `ToolbarItemPlacement` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Top leading, principal, trailing, bottom, and common semantic aliases. Pinned items follow ordinary trailing items during search. Keyboard, subtitle, ornament, and accessory placements are pending. |
 | `ToolbarItemVisibilityPriority` | 27 | ⬜ |  |  |
 | `ToolbarMinimizationBehavior` | 13 | ⬜ |  |  |
 | `ToolbarMinimizationRestoration` | 13 | ⬜ |  |  |
 | `ToolbarMinimizationSafeAreaAdjustment` | 13 | ⬜ |  |  |
 | `ToolbarOverflowMenu` | 27 | ⬜ |  |  |
-| `ToolbarPlacement` | 16 | ⬜ |  |  |
+| `ToolbarPlacement` | 16 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Navigation and bottom bars. Tab bar, window toolbar, and platform-specific bars are pending. |
 | `ToolbarRole` | 16 | ⬜ |  |  |
 | `ToolbarSpacer` | 26 | ⬜ |  |  |
 | `ToolbarTitleAlignment` | 13 | ⬜ |  |  |
-| `ToolbarTitleDisplayMode` | 17 | ⬜ |  |  |
+| `ToolbarTitleDisplayMode` | 17 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Inline and large titles. Automatic inheritance and the distinct inline-large appearance are pending. |
 | `ToolbarTitleMenu` | 16 | ⬜ |  |  |
 | `ToolbarVerticalBehavior` | 13 | ⬜ |  |  |
 | `ToolbarVerticalCompressionBehavior` | 13 | ⬜ |  |  |

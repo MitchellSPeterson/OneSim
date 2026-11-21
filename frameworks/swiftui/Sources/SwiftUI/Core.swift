@@ -130,6 +130,9 @@ final class _Runtime {
     var rowMeta: [String: _RowMeta] = [:]   // list row delete/move/swipe actions by node id, read by `List` (section T)
     var rowActions = _RowActions()          // `onDelete` / `onMove` for the ForEach being evaluated
     var nav: _NavState?
+    // Container modifiers finish after their navigation node has been emitted.
+    var emittedNavigationStates: [String: _NavState] = [:]
+    var navigationPreferences: Node?
     var envObjects: [ObjectIdentifier: Any] = [:]   // `.environmentObject` / `.environment` objects and EnvironmentKey values
     var envLocal = Set<ObjectIdentifier>()   // envObjects keys set inside the enclosing NavigationStack (pushed screens re-apply only these)
     // Presentation layer: set by .alert / .sheet while evaluating; hoisted above the tree by `_evaluate`.
@@ -288,6 +291,7 @@ final class _Runtime {
         touched.removeAll(keepingCapacity: true)
         // Any `@Observable` property read while evaluating dirties the tree when it next changes (one-shot; re-armed each pass).
         var tree = withObservationTracking(render) { _Runtime.shared.dirty = true }
+        emittedNavigationStates.removeAll(keepingCapacity: true)
         if !layers.isEmpty { tree = ["kind": "presentation", "id": "presentation", "content": tree, "layers": layers] }
         slots = slots.filter { touched.contains($0.key) }
         visualEffectFrames = visualEffectFrames.filter { visualEffectIDs.contains($0.key) }

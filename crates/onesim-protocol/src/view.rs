@@ -1290,6 +1290,52 @@ pub struct BackButton {
     pub label: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ToolbarRegion {
+    Leading,
+    Principal,
+    Trailing,
+    Bottom,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ToolbarItem {
+    pub region: ToolbarRegion,
+    pub content: ViewNode,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum BarVisibility {
+    #[default]
+    Automatic,
+    Visible,
+    Hidden,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NavigationSearch {
+    pub field: ViewNode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cancel: Option<ViewNode>,
+    pub placement: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct NavigationChrome {
+    pub items: Vec<ToolbarItem>,
+    pub navigation_bar_visibility: BarVisibility,
+    pub bottom_bar_visibility: BarVisibility,
+    pub navigation_bar_background: Option<ShapePaint>,
+    pub bottom_bar_background: Option<ShapePaint>,
+    pub navigation_bar_background_visibility: BarVisibility,
+    pub bottom_bar_background_visibility: BarVisibility,
+    pub title_menu: Option<ViewNode>,
+    pub search: Option<NavigationSearch>,
+}
+
 /// A `tabview` tab bar item; running `action` selects the tab.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TabItem {
@@ -1409,6 +1455,8 @@ pub struct TextInputOptions {
     pub autocapitalization: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub submit_label: Option<String>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub search_field: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content_type: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1543,6 +1591,8 @@ pub enum ViewKind {
         display_mode: DisplayMode,
         #[serde(default)]
         back: Option<BackButton>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        chrome: Option<Box<NavigationChrome>>,
         content: Box<ViewNode>,
     },
     /// `TabView`: `content` is the selected tab's (the others are not sent); `selected` indexes `tabs`.
