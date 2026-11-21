@@ -20,10 +20,27 @@ public protocol TransferRepresentation<Item> {
     @TransferRepresentationBuilder<Item> var body: Body { get }
 }
 
-/// A representation that converts by itself (not through `body`).
+/// A representation that converts by itself (not through `body`). Conversions report through `done`: at once for
+/// synchronous ones, on the guest thread later for async closures (the event loop never blocks on them).
 protocol _TransferLeaf {
-    func _export(_ item: Any) -> String?
-    func _import(_ text: String) -> Any?
+    func _export(_ item: Any, _ done: @escaping (String?) -> Void)
+    func _import(_ text: String, _ done: @escaping (Any?) -> Void)
+}
+
+/// The first non-nil result of `f` over `xs`, tried in order.
+func _firstResult<A, R>(_ xs: ArraySlice<A>, _ f: @escaping (A, @escaping (R?) -> Void) -> Void, _ done: @escaping (R?) -> Void) {
+    guard let x = xs.first else { return done(nil) }
+    f(x) { r in if let r { done(r) } else { _firstResult(xs.dropFirst(), f, done) } }
+}
+
+/// `f` over every element in order, keeping the non-nil results.
+func _allResults<A, R>(_ xs: [A], _ f: @escaping (A, @escaping (R?) -> Void) -> Void, _ done: @escaping ([R]) -> Void) {
+    var out: [R] = []
+    func step(_ i: Int) {
+        guard i < xs.count else { return done(out) }
+        f(xs[i]) { r in if let r { out.append(r) }; step(i + 1) }
+    }
+    step(0)
 }
 
 extension TransferRepresentation {
@@ -80,8 +97,8 @@ extension Never: Transferable {
 public struct _TextRepresentation<Item: Transferable>: TransferRepresentation, _TransferLeaf {
     let export: (Item) -> String?, importing: (String) -> Item?
     public var body: _NoBody<Item> { _NoBody() }
-    func _export(_ item: Any) -> String? { (item as? Item).flatMap(export) }
-    func _import(_ text: String) -> Any? { importing(text) }
+    func _export(_ item: Any, _ done: @escaping (String?) -> Void) { done((item as? Item).flatMap(export)) }
+    func _import(_ text: String, _ done: @escaping (Any?) -> Void) { done(importing(text)) }
 }
 
 extension String: Transferable {
@@ -115,13 +132,13 @@ public struct ProxyRepresentation<Item: Transferable, ProxyRepresentation: Trans
         self.exporting = exporting; self.importing = importing
     }
     public init(importing: @escaping (ProxyRepresentation) throws -> Item) { exporting = nil; self.importing = importing }
-    func _export(_ item: Any) -> String? {
-        guard let exporting, let i = item as? Item, let proxy = try? exporting(i) else { return nil }
-        return _transferText(proxy)
+    func _export(_ item: Any, _ done: @escaping (String?) -> Void) {
+        guard let exporting, let i = item as? Item, let proxy = try? exporting(i) else { return done(nil) }
+        _transferText(proxy, done)
     }
-    func _import(_ text: String) -> Any? {
-        guard let importing, let proxy = _transferValue(text, ProxyRepresentation.self) else { return nil }
-        return try? importing(proxy)
+    func _import(_ text: String, _ done: @escaping (Any?) -> Void) {
+        guard let importing else { return done(nil) }
+        _transferValue(text, ProxyRepresentation.self) { proxy in done(proxy.flatMap { try? importing($0) }) }
     }
 }
 
@@ -134,14 +151,14 @@ public struct CodableRepresentation<Item: Transferable & Codable, Encoder, Decod
     public init(for itemType: Item.Type = Item.self, contentType: UTType) where Encoder == JSONEncoder, Decoder == JSONDecoder {
         self.contentType = contentType
     }
-    func _export(_ item: Any) -> String? {
-        guard let i = item as? Item, let d = try? JSONEncoder().encode(i) else { return nil }
-        return String(data: d, encoding: .utf8)
+    func _export(_ item: Any, _ done: @escaping (String?) -> Void) {
+        guard let i = item as? Item, let d = try? JSONEncoder().encode(i) else { return done(nil) }
+        done(String(data: d, encoding: .utf8))
     }
-    func _import(_ text: String) -> Any? { try? JSONDecoder().decode(Item.self, from: Data(text.utf8)) }
+    func _import(_ text: String, _ done: @escaping (Any?) -> Void) { done(try? JSONDecoder().decode(Item.self, from: Data(text.utf8))) }
 }
 
-/// Raw bytes as UTF-8 text. The async closures run to completion before the share or paste finishes.
+/// Raw bytes as UTF-8 text. The async closures run off the guest thread; the share or paste completes when they do.
 public struct DataRepresentation<Item: Transferable>: TransferRepresentation, _TransferLeaf {
     let exporting: ((Item) async throws -> Data)?
     let importing: ((Data) async throws -> Item)?
@@ -151,13 +168,13 @@ public struct DataRepresentation<Item: Transferable>: TransferRepresentation, _T
     }
     public init(exportedContentType: UTType, exporting: @escaping (Item) async throws -> Data) { self.exporting = exporting; importing = nil }
     public init(importedContentType: UTType, importing: @escaping (Data) async throws -> Item) { exporting = nil; self.importing = importing }
-    func _export(_ item: Any) -> String? {
-        guard let exporting, let i = item as? Item, let d = _await({ try await exporting(i) }) else { return nil }
-        return String(data: d, encoding: .utf8)
+    func _export(_ item: Any, _ done: @escaping (String?) -> Void) {
+        guard let exporting, let i = item as? Item else { return done(nil) }
+        _async({ try await exporting(i) }) { d in done(d.flatMap { String(data: $0, encoding: .utf8) }) }
     }
-    func _import(_ text: String) -> Any? {
-        guard let importing else { return nil }
-        return _await { try await importing(Data(text.utf8)) }
+    func _import(_ text: String, _ done: @escaping (Any?) -> Void) {
+        guard let importing else { return done(nil) }
+        _async({ try await importing(Data(text.utf8)) }) { done($0) }
     }
 }
 
@@ -185,28 +202,38 @@ public struct FileRepresentation<Item: Transferable>: TransferRepresentation, _T
     public init(importedContentType: UTType, shouldAttemptToOpenInPlace: Bool = false, importing: @escaping (ReceivedTransferredFile) async throws -> Item) {
         exporting = nil; self.importing = importing
     }
-    func _export(_ item: Any) -> String? {
-        guard let exporting, let i = item as? Item, let f = _await({ try await exporting(i) }),
-              let d = try? Data(contentsOf: f.file) else { return nil }
-        return String(data: d, encoding: .utf8)
+    func _export(_ item: Any, _ done: @escaping (String?) -> Void) {
+        guard let exporting, let i = item as? Item else { return done(nil) }
+        _async({ try await exporting(i) }) { f in
+            done(f.flatMap { try? Data(contentsOf: $0.file) }.flatMap { String(data: $0, encoding: .utf8) })
+        }
     }
-    func _import(_ text: String) -> Any? {
-        guard let importing else { return nil }
+    func _import(_ text: String, _ done: @escaping (Any?) -> Void) {
+        guard let importing else { return done(nil) }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("onesim-paste-\(UUID().uuidString).txt")
-        guard (try? Data(text.utf8).write(to: url)) != nil else { return nil }
-        return _await { try await importing(ReceivedTransferredFile(file: url, isOriginalFile: false)) }
+        guard (try? Data(text.utf8).write(to: url)) != nil else { return done(nil) }
+        _async({ try await importing(ReceivedTransferredFile(file: url, isOriginalFile: false)) }) { done($0) }
     }
 }
 
-/// Runs an async conversion to completion from the (synchronous) event handler.
-/// ponytail: blocks the event loop while it runs; a closure that needs the main actor would deadlock. Make
-/// share/paste asynchronous (a guest wake like AsyncImage's) if apps need that.
-final class _AwaitBox<T>: @unchecked Sendable { var value: T? }
-func _await<T>(_ f: @escaping @Sendable () async throws -> T) -> T? {
-    let box = _AwaitBox<T>(), done = DispatchSemaphore(value: 0)
-    Task.detached { box.value = try? await f(); done.signal() }
-    done.wait()
-    return box.value
+/// Runs an async conversion off the guest thread and hands its result back on the guest thread (the event loop
+/// keeps running meanwhile, so a closure may hop to the main actor).
+func _async<T>(_ f: @escaping @Sendable () async throws -> T, _ done: @escaping (T?) -> Void) {
+    let box = _AsyncResult<T>()
+    Task.detached {
+        box.value = try? await f()
+        box.finished.signal()
+        _onGuestThread { done(box.value) }
+    }
+    // The guest thread only drains main-actor jobs when woken, so keep waking it while the closure runs.
+    // ponytail: a 5 ms nudge loop per conversion; a main-queue hook in the runtime would make it event-driven.
+    Thread.detachNewThread {
+        while box.finished.wait(timeout: .now() + .milliseconds(5)) == .timedOut { _wakeGuest() }
+    }
+}
+final class _AsyncResult<T>: @unchecked Sendable {
+    var value: T?
+    let finished = DispatchSemaphore(value: 0)
 }
 #endif
 
@@ -225,11 +252,11 @@ extension TransferRepresentation {
 public struct _ConditionalRepresentation<Item: Transferable>: TransferRepresentation, _TransferLeaf {
     let leaves: [_TransferLeaf], condition: (Item) -> Bool
     public var body: _NoBody<Item> { _NoBody() }
-    func _export(_ item: Any) -> String? {
-        guard let i = item as? Item, condition(i) else { return nil }
-        return leaves.lazy.compactMap { $0._export(i) }.first
+    func _export(_ item: Any, _ done: @escaping (String?) -> Void) {
+        guard let i = item as? Item, condition(i) else { return done(nil) }
+        _firstResult(leaves[...], { l, d in l._export(i, d) }, done)
     }
-    func _import(_ text: String) -> Any? { leaves.lazy.compactMap { $0._import(text) }.first }
+    func _import(_ text: String, _ done: @escaping (Any?) -> Void) { _firstResult(leaves[...], { l, d in l._import(text, d) }, done) }
 }
 
 public struct TransferRepresentationVisibility: Sendable {
@@ -240,17 +267,19 @@ public struct TransferRepresentationVisibility: Sendable {
 }
 
 /// An item's text, from the first of its representations that exports it (nil: it has no text form).
-func _transferText(_ v: Any) -> String? {
-    guard let t = v as? any Transferable else { return nil }
-    func open<T: Transferable>(_ x: T) -> String? { T.transferRepresentation._leaves().lazy.compactMap { $0._export(x) }.first }
-    return open(t)
+func _transferText(_ v: Any, _ done: @escaping (String?) -> Void) {
+    guard let t = v as? any Transferable else { return done(nil) }
+    func open<T: Transferable>(_ x: T) { _firstResult(T.transferRepresentation._leaves()[...], { l, d in l._export(x, d) }, done) }
+    open(t)
 }
 
 /// Builds a `T` from pasted text with the first of its representations that imports it; nil when none does.
-func _transferValue<T>(_ text: String, _ type: T.Type) -> T? {
-    guard let t = T.self as? any Transferable.Type else { return nil }
-    func open<U: Transferable>(_ u: U.Type) -> Any? { U.transferRepresentation._leaves().lazy.compactMap { $0._import(text) }.first }
-    return open(t) as? T
+func _transferValue<T>(_ text: String, _ type: T.Type, _ done: @escaping (T?) -> Void) {
+    guard let t = T.self as? any Transferable.Type else { return done(nil) }
+    func open<U: Transferable>(_ u: U.Type) {
+        _firstResult(U.transferRepresentation._leaves()[...], { l, d in l._import(text, d) }) { done($0 as? T) }
+    }
+    open(t)
 }
 
 #if !canImport(UniformTypeIdentifiers)

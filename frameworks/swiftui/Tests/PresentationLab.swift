@@ -7,8 +7,18 @@ struct Row: Identifiable { let id: Int }
 /// Shares and pastes through its name (ProxyRepresentation).
 struct Contact: Transferable {
     let name: String
+    /// Imports run only when Paste is tapped, never while rendering.
+    nonisolated(unsafe) static var imports = 0
     static var transferRepresentation: some TransferRepresentation {
-        ProxyRepresentation(exporting: \.name, importing: { Contact(name: $0) })
+        ProxyRepresentation(exporting: \.name, importing: { imports += 1; return Contact(name: $0) })
+    }
+}
+
+/// An async export that hops to the main actor (it must not block the guest's event loop).
+struct MainBlob: Transferable {
+    let text: String
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(exportedContentType: .plainText) { b in await MainActor.run { Data(b.text.utf8) } }
     }
 }
 
@@ -37,6 +47,7 @@ struct PresentationLab: View {
     @State private var lockedPop = false
     @State private var popItem: Row?
     @State private var styled = false
+    @State private var flipped = false
     @State private var plainStyled = false
     @State private var log = "log:"
     @State private var pasted = "pasted:"
@@ -82,6 +93,11 @@ struct PresentationLab: View {
                         .presentationSizing(.form.fitted(horizontal: true, vertical: false))
                         .presentationPlacement(.leading)
                     }
+                Button("Flipped") { flipped = true }
+                    .sheet(isPresented: $flipped) {
+                        // Same view, same modifier twice: the outermost wins (dismissible).
+                        Text("Flipped").interactiveDismissDisabled(true).interactiveDismissDisabled(false)
+                    }
                 Button("PlainStyled") { plainStyled = true }
                     .sheet(isPresented: $plainStyled) {
                         Text("Plain styled")
@@ -123,6 +139,11 @@ struct PresentationLab: View {
                 ShareLink(item: Contact(name: "Ada"), preview: SharePreview("Contact")) { Text("Share contact") }
                 ShareLink(item: Note(title: "Hi"), preview: SharePreview("Note")) { Text("Share note") }
                 ShareLink(item: Blob(text: "bytes"), preview: SharePreview("Blob")) { Text("Share blob") }
+                }
+                Group {
+                ShareLink(item: MainBlob(text: "main"), preview: SharePreview("Main")) { Text("Share main") }
+                PasteButton(supportedContentTypes: [.utf8PlainText]) { providers in pasted += " utf8:\(providers.count)" }
+                Text("imports: \(Contact.imports)")
                 PasteButton(payloadType: Contact.self) { c in pasted += " contact:" + c.map(\.name).joined() }
                 PasteButton(payloadType: Note.self) { n in pasted += " note:" + n.map(\.title).joined() }
                 PasteButton(payloadType: Blob.self) { b in pasted += " blob:" + b.map(\.text).joined() }

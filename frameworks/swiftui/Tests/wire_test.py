@@ -1569,6 +1569,8 @@ assert l["contentInteraction"] == "scrolls" and l["background"]["kind"] == "zsta
 assert sorted(d["kind"] for d in l["detents"]) == ["large", "medium"], l["detents"]
 assert not any(k.startswith("presentation") for n in fwalk(l["content"]) for m in n.get("modifiers", []) for k in m), l["content"]
 t = act(p, t, l["dismiss"])
+t = ptap(t, "Flipped"); assert PL(t)[0].get("dismiss"), "outermost interactiveDismissDisabled(false) wins: " + str(PL(t)[0])
+t = act(p, t, PL(t)[0]["dismiss"])
 t = ptap(t, "PlainStyled"); l = PL(t)[0]
 assert "cornerRadius" not in l and l["backgroundInteraction"] == {"kind": "disabled"} and "contentInteraction" not in l, l
 assert l["background"]["kind"] in ("shape", "rectangle") or "fill" in json.dumps(l["background"]), l["background"]
@@ -1603,7 +1605,7 @@ assert ptext(t, "log:").endswith("primary[1]"), ptext(t, "log:")
 
 # PasteButton: drawn enabled (as on iOS) on an empty pasteboard, but a tap pastes nothing.
 paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
-assert len(paste) == 6 and not any(b["disabled"] for b in paste) and ftexts(paste[0]) == ["Paste"], paste
+assert len(paste) == 7 and not any(b["disabled"] for b in paste) and ftexts(paste[0]) == ["Paste"], paste
 # (nothing changes, so the guest sends no tree; the exact "pasted:" text below shows onPaste never ran)
 send(p, type="action", id=paste[0]["action"], version=t["version"])
 # ShareLink: the default label, a share layer with items, subject, message; Copy fills the pasteboard and closes.
@@ -1637,14 +1639,21 @@ def share_copy(t, label):
     t = act(p, t, pbtn(t, label)["action"]); l = PL(t)[0]
     send(p, type="action", id=l["copy"], version=t["version"]); ev = recv(p); return recv(p), ev["items"], l
 t, items, l = share_copy(t, "Share contact"); assert items == ["Ada"] and l["title"] == "Contact", (items, l)
+assert ptext(t, "imports:") == "imports: 0", "rendering with text on the pasteboard runs no importer"
 paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
-t = act(p, t, paste[3]["action"]); assert ptext(t, "pasted:").endswith("contact:Ada"), ptext(t, "pasted:")
+t = act(p, t, paste[4]["action"]); assert ptext(t, "pasted:").endswith("contact:Ada"), ptext(t, "pasted:")
+assert ptext(t, "imports:") == "imports: 1", "one import per tap: " + ptext(t, "imports:")
 t, items, _ = share_copy(t, "Share note"); assert json.loads(items[0]) == {"title": "Hi"}, items
 paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
-t = act(p, t, paste[4]["action"]); assert ptext(t, "pasted:").endswith("note:Hi"), ptext(t, "pasted:")
+t = act(p, t, paste[5]["action"]); assert ptext(t, "pasted:").endswith("note:Hi"), ptext(t, "pasted:")
 t, items, _ = share_copy(t, "Share blob"); assert items == ["bytes"], items
 paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
-t = act(p, t, paste[5]["action"]); assert ptext(t, "pasted:").endswith("blob:bytes"), ptext(t, "pasted:")
+t = act(p, t, paste[6]["action"]); assert ptext(t, "pasted:").endswith("blob:bytes"), ptext(t, "pasted:")
+# An async export that hops to the main actor completes (the guest's event loop is not blocked meanwhile).
+t, items, _ = share_copy(t, "Share main"); assert items == ["main"], items
+# supportedContentTypes: [.utf8PlainText] accepts pasted text.
+paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
+t = act(p, t, paste[3]["action"]); assert ptext(t, "pasted:").endswith("utf8:1"), ptext(t, "pasted:")
 finish(p)
 # SIMCORE_PASTEBOARD seeds it at launch.
 p, t = pl_spawn(SIMCORE_PASTEBOARD="seeded")

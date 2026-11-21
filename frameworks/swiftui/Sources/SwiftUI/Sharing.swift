@@ -36,7 +36,7 @@ public struct DefaultShareLinkLabel: View {
     public var body: some View { Label { title } icon: { Image(systemName: "square.and.arrow.up") } }
 }
 
-final class _ShareState { var open = false }
+final class _ShareState { var open = false; var texts: [String] = [] }
 
 /// A button presenting the share sheet for `items`. The sheet's Copy puts the items' text on the pasteboard;
 /// other activities and the Close button dismiss it.
@@ -57,9 +57,16 @@ where Data.Element: Transferable {
         rt.touched.insert(key)
         let st = (rt.slots[key] as? _ShareState) ?? _ShareState()
         rt.slots[key] = st
-        var out = SwiftUI._children(Button(action: { st.open = true; rt.dirty = true }) { label }, path)
+        // The tap converts the items (async representations finish on the guest thread), then opens the sheet.
+        let items = Array(self.items)
+        let share = {
+            _allResults(items, { i, d in _transferText(i, d) }) { texts in   // items without a text form share nothing
+                st.texts = texts; st.open = true; rt.dirty = true
+            }
+        }
+        var out = SwiftUI._children(Button(action: share) { label }, path)
         guard st.open, rt.pageIsActive, !rt.disabled, !items.isEmpty else { st.open = false; return out }
-        let texts = items.compactMap { _transferText($0) }   // items without a text form (an Image) share nothing
+        let texts = st.texts
         let close = { st.open = false; rt.dirty = true }
         // Other activities hand the items to the system, as `openURL` does (section V): reported, then closed.
         var activities: Node = [:]
@@ -168,18 +175,19 @@ func _setPasteboard(_ items: [String]) {
 public struct PasteButton: View, _Primitive {
     public typealias Body = Never
     public var body: Never { fatalError() }
-    let accepts: (String) -> Bool, paste: ([String]) -> Void
+    /// Converts the pasteboard's text when tapped (never while rendering) and runs the app's handler when some converts.
+    let paste: ([String]) -> Void
     public init<T: Transferable>(payloadType: T.Type, onPaste: @escaping ([T]) -> Void) {
-        accepts = { _transferValue($0, T.self) != nil }
-        paste = { texts in onPaste(texts.compactMap { _transferValue($0, T.self) }) }
+        paste = { texts in
+            _allResults(texts, { t, d in _transferValue(t, T.self, d) }) { values in if !values.isEmpty { onPaste(values) } }
+        }
     }
     func _emit(_ path: String) -> Node {
         let rt = _Runtime.shared, paste = paste
         // iOS draws it enabled whatever the pasteboard holds; a tap with nothing it accepts does nothing.
-        let items = rt.pasteboard.filter(accepts)
         let label = _eval(Label("Paste", systemImage: "doc.on.clipboard"), path + "/0")
         return ["kind": "button", "id": path, "style": "pasteButton", "disabled": rt.disabled,
-                "action": rt.disabled ? 0 : rt.registerAction { if !items.isEmpty { paste(items) } }, "label": label]
+                "action": rt.disabled ? 0 : rt.registerAction { paste(rt.pasteboard) }, "label": label]
     }
 }
 
@@ -188,17 +196,24 @@ import UniformTypeIdentifiers
 #endif
 
 extension PasteButton {
-    /// Pasteboard text matches a type that plain text (or, for text with a scheme, a URL) conforms to.
+    /// Pasteboard text matches a type that UTF-8 plain text (what the providers carry; or, for text with a scheme, a
+    /// URL) conforms to.
     static func _accepts(_ types: [UTType]) -> (String) -> Bool {
-        { text in types.contains { UTType.plainText.conforms(to: $0) || (_hasScheme(text) && UTType.url.conforms(to: $0)) } }
+        { text in types.contains { UTType.utf8PlainText.conforms(to: $0) || (_hasScheme(text) && UTType.url.conforms(to: $0)) } }
     }
     public init(supportedContentTypes: [UTType], payloadAction: @escaping ([NSItemProvider]) -> Void) {
-        accepts = PasteButton._accepts(supportedContentTypes)
-        paste = { texts in payloadAction(texts.map(_itemProvider)) }
+        let accepts = PasteButton._accepts(supportedContentTypes)
+        paste = { texts in
+            let ok = texts.filter(accepts)
+            if !ok.isEmpty { payloadAction(ok.map(_itemProvider)) }
+        }
     }
     public init<Payload>(supportedContentTypes: [UTType], validator: @escaping ([NSItemProvider]) -> Payload?,
                          payloadAction: @escaping (Payload) -> Void) {
-        accepts = PasteButton._accepts(supportedContentTypes)
-        paste = { texts in if let p = validator(texts.map(_itemProvider)) { payloadAction(p) } }
+        let accepts = PasteButton._accepts(supportedContentTypes)
+        paste = { texts in
+            let ok = texts.filter(accepts)
+            if !ok.isEmpty, let p = validator(ok.map(_itemProvider)) { payloadAction(p) }
+        }
     }
 }

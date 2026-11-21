@@ -71,7 +71,8 @@ func _liftPresentation(_ node: inout Node) -> Node {
     var found: Node = [:]
     func walk(_ n: inout Node) {
         if var mods = n["modifiers"] as? [Node] {
-            for m in mods { for k in _presentationKeys where found[k] == nil { if let v = m[k] { found[k] = v } } }
+            // Modifiers are listed innermost first: on one view the outermost (last) wins.
+            for m in mods.reversed() { for k in _presentationKeys where found[k] == nil { if let v = m[k] { found[k] = v } } }
             mods.removeAll { m in _presentationKeys.contains { m[$0] != nil } }
             n["modifiers"] = mods
         }
