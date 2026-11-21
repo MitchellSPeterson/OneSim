@@ -11,14 +11,70 @@ use onesim_protocol::{
     AnimationCurve, AnimationSpec, ContentTransitionKind, MatchedProps, RepeatCount, TransitionEdge,
     TransitionEffect,
 };
+use std::borrow::{Borrow, Cow};
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
+use std::sync::Arc;
 
 /// Structural identity key for diffing nodes across trees: `(node.id, node.anchor)`.
 /// Changing `.id(_:)` changes `anchor`, triggering removal + insertion transitions.
-type NodeKey = (String, Option<String>);
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NodeKey {
+    id: String,
+    anchor: Option<String>,
+}
+
+impl Hash for NodeKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.key_parts().hash(state);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct KeyRef<'a>(&'a str, Option<&'a str>);
+
+trait KeyLike {
+    fn key_parts(&self) -> (&str, Option<&str>);
+}
+
+impl KeyLike for NodeKey {
+    fn key_parts(&self) -> (&str, Option<&str>) {
+        (&self.id, self.anchor.as_deref())
+    }
+}
+
+impl KeyLike for KeyRef<'_> {
+    fn key_parts(&self) -> (&str, Option<&str>) {
+        (self.0, self.1)
+    }
+}
+
+impl<'a> Borrow<dyn KeyLike + 'a> for NodeKey {
+    fn borrow(&self) -> &(dyn KeyLike + 'a) {
+        self
+    }
+}
+
+impl PartialEq for dyn KeyLike + '_ {
+    fn eq(&self, other: &Self) -> bool {
+        self.key_parts() == other.key_parts()
+    }
+}
+
+impl Eq for dyn KeyLike + '_ {}
+
+impl Hash for dyn KeyLike + '_ {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.key_parts().hash(state);
+    }
+}
 
 fn node_key(n: &Node) -> NodeKey {
-    (n.id.clone(), n.anchor.clone())
+    NodeKey { id: n.id.clone(), anchor: n.anchor.clone() }
+}
+
+fn key_ref(n: &Node) -> KeyRef<'_> {
+    KeyRef(&n.id, n.anchor.as_deref())
 }
 
 // ---------------------------------------------------------------------------
@@ -482,9 +538,9 @@ struct ContentGhost {
 pub struct Animator {
     /// Last displayed scene (after applying any in-flight tracks), used as the starting snapshot
     /// for newly triggered animations and fluid retargeting.
-    displayed: Option<Scene>,
+    displayed: Option<Arc<Scene>>,
     /// Last target scene (before interpolation), so unrelated tree updates preserve in-flight tracks.
-    last_target: Option<Scene>,
+    last_target: Option<Arc<Scene>>,
     /// Last seen animation token per node key so unchanged tokens don't re-trigger.
     tokens: HashMap<NodeKey, u64>,
     props: HashMap<NodeKey, PropTrack>,
@@ -511,61 +567,62 @@ impl Animator {
     /// displayed scene and starts/retargets any animations, transitions, matchedGeometryEffect
     /// morphs, and contentTransitions.
     pub fn update(&mut self, target: &Scene) {
-        let Some(prev) = self.displayed.clone() else {
+        let Some(prev) = self.displayed.take() else {
             self.record_tokens(target);
-            self.last_target = Some(target.clone());
-            self.displayed = Some(target.clone());
+            let arc = Arc::new(target.clone());
+            self.last_target = Some(Arc::clone(&arc));
+            self.displayed = Some(arc);
             return;
         };
-        let prev_target = self.last_target.as_ref();
-        let mut prev_target_map: HashMap<NodeKey, usize> = HashMap::new();
+        let prev_target = self.last_target.as_deref();
+        let mut prev_target_map: HashMap<KeyRef<'_>, usize> = HashMap::new();
         if let Some(pt) = prev_target {
             prev_target_map.reserve(pt.nodes.len());
             for (i, n) in pt.nodes.iter().enumerate() {
-                prev_target_map.entry(node_key(n)).or_insert(i);
+                prev_target_map.entry(key_ref(n)).or_insert(i);
             }
         }
 
         let root_anim = find_root_animation(target);
 
-        let mut prev_map: HashMap<NodeKey, usize> = HashMap::with_capacity(prev.nodes.len());
+        let mut prev_map: HashMap<KeyRef<'_>, usize> = HashMap::with_capacity(prev.nodes.len());
         for (i, n) in prev.nodes.iter().enumerate() {
-            prev_map.entry(node_key(n)).or_insert(i);
+            prev_map.entry(key_ref(n)).or_insert(i);
         }
-        let mut target_map: HashMap<NodeKey, usize> = HashMap::with_capacity(target.nodes.len());
+        let mut target_map: HashMap<KeyRef<'_>, usize> = HashMap::with_capacity(target.nodes.len());
         for (i, n) in target.nodes.iter().enumerate() {
-            target_map.entry(node_key(n)).or_insert(i);
+            target_map.entry(key_ref(n)).or_insert(i);
         }
 
         // Drop stale insert / match_insert tracks for nodes that disappeared or are being retargeted.
-        self.inserts.retain(|k, _| target_map.contains_key(k));
-        self.match_inserts.retain(|k, _| target_map.contains_key(k));
+        self.inserts.retain(|k, _| target_map.contains_key(&KeyRef(&k.id, k.anchor.as_deref())));
+        self.match_inserts.retain(|k, _| target_map.contains_key(&KeyRef(&k.id, k.anchor.as_deref())));
 
         // 1. Cross-frame matchedGeometryEffect pairing (disappeared old node <-> appeared new node with same (ns, id)).
         let mut matched_handled_prev: HashSet<usize> = HashSet::new();
         let mut matched_handled_new: HashSet<usize> = HashSet::new();
 
-        let mut prev_matched: HashMap<(String, String), usize> = HashMap::new();
+        let mut prev_matched: HashMap<(&str, &str), usize> = HashMap::new();
         for (i, n) in prev.nodes.iter().enumerate() {
             if let Some(m) = n.anim.as_ref().and_then(|a| a.matched.as_ref()) {
-                if !target_map.contains_key(&node_key(n)) {
-                    prev_matched.entry((m.namespace.clone(), m.id.clone())).or_insert(i);
+                if !target_map.contains_key(&key_ref(n)) {
+                    prev_matched.entry((m.namespace.as_str(), m.id.as_str())).or_insert(i);
                 }
             }
         }
         for (i, n) in target.nodes.iter().enumerate() {
             let Some(m) = n.anim.as_ref().and_then(|a| a.matched.as_ref()) else { continue };
-            let key = node_key(n);
-            if prev_map.contains_key(&key) {
+            let kref = key_ref(n);
+            if prev_map.contains_key(&kref) {
                 continue;
             }
-            let Some(&pi) = prev_matched.get(&(m.namespace.clone(), m.id.clone())) else { continue };
+            let Some(&pi) = prev_matched.get(&(m.namespace.as_str(), m.id.as_str())) else { continue };
             let anim = n.anim.as_ref().and_then(|a| a.animation.clone()).or_else(|| root_anim.clone());
             let Some(spec) = anim else { continue };
             let old_rect = prev.nodes[pi].bounds;
             let new_rect = n.bounds;
             self.match_inserts.insert(
-                key,
+                node_key(n),
                 MatchInsertTrack {
                     spec: spec.clone(),
                     elapsed: 0.0,
@@ -574,7 +631,7 @@ impl Animator {
                     anchor: m.anchor,
                 },
             );
-            let old_sub = extract_ghost_subtree(&prev.nodes, pi);
+            let (old_sub, prev_indices) = extract_ghost_subtree(&prev.nodes, pi);
             self.ghosts.push(RemovalGhost {
                 spec,
                 elapsed: 0.0,
@@ -583,28 +640,24 @@ impl Animator {
                 container: parent_bounds(&prev, pi),
                 nodes: old_sub,
             });
-            for idx in subtree_indices(&prev.nodes, pi) {
-                matched_handled_prev.insert(idx);
-            }
-            for idx in subtree_indices(&target.nodes, i) {
-                matched_handled_new.insert(idx);
-            }
+            matched_handled_prev.extend(prev_indices);
+            matched_handled_new.extend(subtree_indices(&target.nodes, i));
         }
 
         // 2. Property animations & contentTransitions for nodes present in both scenes.
         let mut next_props = HashMap::new();
-        for (i, n) in target.nodes.iter().enumerate() {
+        for n in &target.nodes {
             if n.kind == "screen" || is_chrome(n) {
                 continue;
             }
-            let key = node_key(n);
-            let Some(&pi) = prev_map.get(&key) else { continue };
+            let kref = key_ref(n);
+            let Some(&pi) = prev_map.get(&kref) else { continue };
             let pn = &prev.nodes[pi];
             let anim = n.anim.as_ref().and_then(|a| a.animation.as_ref());
             let ct = n.anim.as_ref().map_or(ContentTransitionKind::Identity, |a| a.content_transition);
 
             // Keep any already-running track if the target hasn't changed and token didn't bump.
-            let prev_tok = self.tokens.get(&key).copied().unwrap_or(0);
+            let prev_tok = self.tokens.get(&kref as &dyn KeyLike).copied().unwrap_or(0);
             let should_animate = match anim {
                 Some(spec) => spec.token == 0 || spec.token != prev_tok,
                 None => false,
@@ -656,12 +709,12 @@ impl Animator {
 
             if should_animate && any_prop_chg {
                 // `prev` already holds the displayed frame; let the new PropTrack take over smoothly.
-                self.match_inserts.remove(&key);
+                self.match_inserts.remove(&kref as &dyn KeyLike);
                 let spec = anim.unwrap().clone();
                 // Preserve normalized spring velocity if retargeting an in-flight track.
-                let init_vel = self.props.get(&key).map_or(0.0, |old| old.progress().1.clamp(-8.0, 8.0));
+                let init_vel = self.props.get(&kref as &dyn KeyLike).map_or(0.0, |old| old.progress().1.clamp(-8.0, 8.0));
                 next_props.insert(
-                    key.clone(),
+                    node_key(n),
                     PropTrack {
                         spec,
                         elapsed: 0.0,
@@ -678,15 +731,15 @@ impl Animator {
                         glyph_color: glyph_col_chg.then(|| (pn.glyph.unwrap().1, n.glyph.unwrap().1)),
                     },
                 );
-            } else if let Some(mut existing) = self.props.remove(&key) {
+            } else if let Some((existing_key, mut existing)) = self.props.remove_entry(&kref as &dyn KeyLike) {
                 // Keep running existing track when the target itself did not snap to a new value
                 // (e.g. an unrelated TimelineView tick arrived while this track is in flight).
                 let target_unchanged = prev_target
-                    .and_then(|pt| prev_target_map.get(&key).map(|&ti| &pt.nodes[ti]))
+                    .and_then(|pt| prev_target_map.get(&kref).map(|&ti| &pt.nodes[ti]))
                     .is_some_and(|old_t| !props_differ(old_t, n));
                 if target_unchanged {
                     existing.bounds = existing.bounds.map(|(a, _)| (a, n.bounds));
-                    next_props.insert(key.clone(), existing);
+                    next_props.insert(existing_key, existing);
                 }
             }
 
@@ -703,10 +756,11 @@ impl Animator {
                 if text_changed || sym_changed {
                     let dir = numeric_direction(ct, pn.text.as_ref().map(|t| t.text.as_str()), n.text.as_ref().map(|t| t.text.as_str()));
                     let mut ghost_node = pn.clone();
-                    strip_interactive(&mut ghost_node);
+                    ghost_node.strip_interactive();
+                    let key = node_key(n);
                     self.content_ghosts.retain(|g| g.key != key);
                     self.content_ghosts.push(ContentGhost {
-                        key: key.clone(),
+                        key,
                         spec: anim.unwrap().clone(),
                         elapsed: 0.0,
                         kind: ct,
@@ -715,7 +769,6 @@ impl Animator {
                     });
                 }
             }
-            let _ = i;
         }
         self.props = next_props;
 
@@ -725,8 +778,7 @@ impl Animator {
             if insert_covered.contains(&i) || n.kind == "screen" || is_chrome(n) {
                 continue;
             }
-            let key = node_key(n);
-            if prev_map.contains_key(&key) {
+            if prev_map.contains_key(&key_ref(n)) {
                 continue;
             }
             let explicit = n.anim.as_ref().and_then(|a| a.transition.as_ref());
@@ -742,25 +794,21 @@ impl Animator {
                     continue;
                 }
                 // Only apply default transition at the root of a newly inserted branch (parent existed).
-                let parent_existed = n.parent.is_some_and(|p| prev_map.contains_key(&node_key(&target.nodes[p])));
+                let parent_existed = n.parent.is_some_and(|p| prev_map.contains_key(&key_ref(&target.nodes[p])));
                 if !parent_existed {
                     continue;
                 }
                 TransitionEffect { opacity: Some(0.0), ..TransitionEffect::default() }
             };
             if is_identity_effect(&effect) {
-                for idx in subtree_indices(&target.nodes, i) {
-                    insert_covered.insert(idx);
-                }
+                insert_covered.extend(subtree_indices(&target.nodes, i));
                 continue;
             }
             self.inserts.insert(
-                key,
+                node_key(n),
                 InsertTrack { spec, elapsed: 0.0, effect, container: parent_bounds(target, i) },
             );
-            for idx in subtree_indices(&target.nodes, i) {
-                insert_covered.insert(idx);
-            }
+            insert_covered.extend(subtree_indices(&target.nodes, i));
         }
 
         // 4. Removal transitions for disappeared nodes.
@@ -769,15 +817,14 @@ impl Animator {
             if remove_covered.contains(&i) || n.kind == "screen" || is_chrome(n) {
                 continue;
             }
-            let key = node_key(n);
-            if target_map.contains_key(&key) {
+            if target_map.contains_key(&key_ref(n)) {
                 continue;
             }
             let explicit = n.anim.as_ref().and_then(|a| a.transition.as_ref());
             // Check if the new tree has an active animation on the parent or root (or on the transition itself).
             let parent_anim = n
                 .parent
-                .and_then(|p| target_map.get(&node_key(&prev.nodes[p])))
+                .and_then(|p| target_map.get(&key_ref(&prev.nodes[p])))
                 .and_then(|&ti| target.nodes[ti].anim.as_ref().and_then(|a| a.animation.clone()));
             let anim = explicit
                 .and_then(|t| t.animation.clone())
@@ -790,19 +837,17 @@ impl Animator {
                 if spec.token == 0 {
                     continue;
                 }
-                let parent_exists = n.parent.is_some_and(|p| target_map.contains_key(&node_key(&prev.nodes[p])));
+                let parent_exists = n.parent.is_some_and(|p| target_map.contains_key(&key_ref(&prev.nodes[p])));
                 if !parent_exists {
                     continue;
                 }
                 TransitionEffect { opacity: Some(0.0), ..TransitionEffect::default() }
             };
             if is_identity_effect(&effect) {
-                for idx in subtree_indices(&prev.nodes, i) {
-                    remove_covered.insert(idx);
-                }
+                remove_covered.extend(subtree_indices(&prev.nodes, i));
                 continue;
             }
-            let sub = extract_ghost_subtree(&prev.nodes, i);
+            let (sub, prev_indices) = extract_ghost_subtree(&prev.nodes, i);
             self.ghosts.push(RemovalGhost {
                 spec,
                 elapsed: 0.0,
@@ -811,15 +856,17 @@ impl Animator {
                 container: parent_bounds(&prev, i),
                 nodes: sub,
             });
-            for idx in subtree_indices(&prev.nodes, i) {
-                remove_covered.insert(idx);
-            }
+            remove_covered.extend(prev_indices);
         }
 
         self.record_tokens(target);
-        self.last_target = Some(target.clone());
-        let applied = self.apply(target);
-        self.displayed = Some(applied);
+        let target_arc = Arc::new(target.clone());
+        self.displayed = Some(if self.is_animating() {
+            Arc::new(self.apply(target))
+        } else {
+            Arc::clone(&target_arc)
+        });
+        self.last_target = Some(target_arc);
     }
 
     fn record_tokens(&mut self, scene: &Scene) {
@@ -861,9 +908,27 @@ impl Animator {
 
     /// Snapshot the current interpolated frame for `target` and remember it as `displayed`.
     pub fn render_scene(&mut self, target: &Scene) -> Scene {
+        if !self.is_animating() {
+            if let Some(lt) = &self.last_target {
+                self.displayed = Some(Arc::clone(lt));
+            } else {
+                self.displayed = Some(Arc::new(target.clone()));
+            }
+            return target.clone();
+        }
         let out = self.apply(target);
-        self.displayed = Some(out.clone());
+        self.displayed = Some(Arc::new(out.clone()));
         out
+    }
+
+    /// Apply all active tracks, transitions, matchedGeometry morphs, and ghosts to `target`,
+    /// returning a borrowed reference when idle.
+    pub fn apply_cow<'a>(&self, target: &'a Scene) -> Cow<'a, Scene> {
+        if !self.is_animating() {
+            Cow::Borrowed(target)
+        } else {
+            Cow::Owned(self.apply(target))
+        }
     }
 
     /// Apply all active tracks, transitions, matchedGeometry morphs, and ghosts to `target`.
@@ -876,7 +941,7 @@ impl Animator {
         // 1. Property interpolation tracks.
         if !self.props.is_empty() {
             for n in &mut out.nodes {
-                if let Some(tr) = self.props.get(&node_key(n)) {
+                if let Some(tr) = self.props.get(&key_ref(n) as &dyn KeyLike) {
                     tr.apply(n);
                 }
             }
@@ -888,7 +953,7 @@ impl Animator {
                 .nodes
                 .iter()
                 .enumerate()
-                .filter_map(|(i, n)| self.inserts.get(&node_key(n)).cloned().map(|tr| (i, tr)))
+                .filter_map(|(i, n)| self.inserts.get(&key_ref(n) as &dyn KeyLike).cloned().map(|tr| (i, tr)))
                 .collect();
             for (i, tr) in roots {
                 let (p, _, _) = eval_curve(&tr.spec, tr.elapsed, 0.0);
@@ -905,7 +970,7 @@ impl Animator {
                 .nodes
                 .iter()
                 .enumerate()
-                .filter_map(|(i, n)| self.match_inserts.get(&node_key(n)).cloned().map(|tr| (i, tr)))
+                .filter_map(|(i, n)| self.match_inserts.get(&key_ref(n) as &dyn KeyLike).cloned().map(|tr| (i, tr)))
                 .collect();
             for (i, tr) in roots {
                 let (p, _, _) = eval_curve(&tr.spec, tr.elapsed, 0.0);
@@ -921,7 +986,7 @@ impl Animator {
         for cg in &self.content_ghosts {
             let (p, _, _) = eval_curve(&cg.spec, cg.elapsed, 0.0);
             let p_clamped = p.clamp(0.0, 1.0);
-            let Some(idx) = out.nodes.iter().position(|n| node_key(n) == cg.key) else { continue };
+            let Some(idx) = out.nodes.iter().position(|n| key_ref(n).key_parts() == cg.key.key_parts()) else { continue };
             let h = out.nodes[idx].bounds.h.max(16.0);
             let mut ghost = cg.old_node.clone();
             ghost.parent = out.nodes[idx].parent;
@@ -1063,31 +1128,22 @@ fn is_identity_effect(e: &TransitionEffect) -> bool {
     e.opacity.is_none() && e.scale.is_none() && e.offset.is_none() && e.edge.is_none()
 }
 
-fn strip_interactive(n: &mut Node) {
-    n.action = None;
-    n.field = None;
-    n.tag = None;
-    n.gesture = None;
-    n.scroll = None;
-    n.sheet = None;
-    n.inspect = false;
-}
-
-fn extract_ghost_subtree(nodes: &[Node], root: usize) -> Vec<Node> {
+fn extract_ghost_subtree(nodes: &[Node], root: usize) -> (Vec<Node>, Vec<usize>) {
     let indices = subtree_indices(nodes, root);
     let mut index_map: HashMap<usize, usize> = HashMap::with_capacity(indices.len());
     for (new_i, &old_i) in indices.iter().enumerate() {
         index_map.insert(old_i, new_i);
     }
-    indices
-        .into_iter()
-        .map(|old_i| {
+    let ghost_nodes = indices
+        .iter()
+        .map(|&old_i| {
             let mut n = nodes[old_i].clone();
-            strip_interactive(&mut n);
+            n.strip_interactive();
             n.parent = n.parent.and_then(|p| index_map.get(&p).copied());
             n
         })
-        .collect()
+        .collect();
+    (ghost_nodes, indices)
 }
 
 fn props_differ(a: &Node, b: &Node) -> bool {

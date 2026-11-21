@@ -79,6 +79,7 @@ pub struct Executor {
     glass: Option<GlassGpu>,
     glass_note: String,
     backdrops: (u64, u64),
+    grad_stops: Vec<(f32, Color)>,
     #[cfg(feature = "native")]
     readback: crate::readback::Readback,
 }
@@ -153,6 +154,7 @@ impl Executor {
             glass,
             glass_note,
             backdrops: (0, 0),
+            grad_stops: Vec::new(),
         })
     }
 
@@ -338,7 +340,9 @@ impl Executor {
         self.begin_scene();
         let missing = |id: u64| RenderError::Other(format!("display list uses unknown resource {id}"));
 
-        for (i, op) in dl.ops.iter().enumerate() {
+        let mut i = 0;
+        while i < dl.ops.len() {
+            let op = &dl.ops[i];
             match op {
                 Op::PushClip(r) => {
                     self.scene.push_clip_layer(Fill::NonZero, Affine::IDENTITY, &rrect(r));
@@ -368,10 +372,12 @@ impl Executor {
                 Op::Gradient { shape, p0, p1, stops } => {
                     let (from, to) = (Point::new(p0.0 as f64, p0.1 as f64), Point::new(p1.0 as f64, p1.1 as f64));
                     if stops.is_empty() || from == to {
+                        i += 1;
                         continue;
                     }
-                    let stops: Vec<(f32, Color)> = stops.iter().map(|(at, c)| (*at, AlphaColor::new([c.r, c.g, c.b, c.a]))).collect();
-                    let mut grad = Gradient::new_linear(from, to).with_stops(stops.as_slice());
+                    self.grad_stops.clear();
+                    self.grad_stops.extend(stops.iter().map(|(at, c)| (*at, AlphaColor::new([c.r, c.g, c.b, c.a]))));
+                    let mut grad = Gradient::new_linear(from, to).with_stops(self.grad_stops.as_slice());
                     // tiny-skia interpolates straight (unpremultiplied) color.
                     grad.interpolation_alpha_space = InterpolationAlphaSpace::Unpremultiplied;
                     self.scene.fill(Fill::NonZero, Affine::IDENTITY, &grad, None, &rrect(shape));
@@ -411,17 +417,27 @@ impl Executor {
                 }
                 Op::Glass { spec, .. } if spec.variant == onesim_display::glass::GlassVariant::Identity => {}
                 Op::Glass { .. } | Op::BackdropShadow { .. } | Op::Edge(_) => {
-                    // Close the layers, render what is pending and make it the accumulation.
+                    // Close the layers and render what is pending into `target`.
                     for _ in 0..clips.len() {
                         self.scene.pop_layer();
                     }
-                    if dirty || !rendered {
-                        self.render_vello((w, h), acc_in_scene, true, &mut stats)?;
+                    let copy_to_acc = dirty || !rendered;
+                    if copy_to_acc {
+                        self.render_vello((w, h), acc_in_scene, false, &mut stats)?;
                         rendered = true;
                     }
+                    // Fuse adjacent non-identity Glass + BackdropShadow into one composite pass.
+                    let fused_end = if matches!(op, Op::Glass { .. })
+                        && dl.ops.get(i + 1).is_some_and(|next| matches!(next, Op::BackdropShadow { .. }))
+                    {
+                        i + 1
+                    } else {
+                        i
+                    };
                     // Whatever follows reads the accumulation: this pass's result must reach it.
-                    let copy_back = tail.is_some_and(|t| i < t);
-                    let on_cpu = self.backdrop(op, &clips, dl, copy_back, &mut stats)?;
+                    let copy_back = tail.is_some_and(|t| fused_end < t);
+                    let on_cpu = self.backdrop(&dl.ops[i..=fused_end], &clips, dl, copy_to_acc, copy_back, &mut stats)?;
+                    i = fused_end;
                     self.begin_scene();
                     if let Some(acc) = &self.acc {
                         self.scene.draw_image(&ImageBrush::new(acc.img.clone()).with_quality(ImageQuality::Low), Affine::IDENTITY);
@@ -435,6 +451,7 @@ impl Executor {
                     }
                 }
             }
+            i += 1;
         }
         for _ in 0..clips.len() {
             self.scene.pop_layer();
@@ -447,18 +464,22 @@ impl Executor {
         Ok(stats)
     }
 
-    /// Composite one backdrop op on the GPU, or on the CPU when it cannot.
-    fn backdrop(&mut self, op: &Op, clips: &[RRect], dl: &DisplayList, copy_back: bool, stats: &mut ExecStats) -> Result<bool, RenderError> {
-        let bd = match op {
-            Op::Glass { shape, spec, opacity, halo_radius } => {
-                Backdrop { glass: Some((spec, *shape, *halo_radius)), opacity: *opacity, shadow: None, edge: None }
+    /// Composite one (or a fused pair of) backdrop ops on the GPU, or on the CPU when it cannot.
+    fn backdrop(&mut self, ops: &[Op], clips: &[RRect], dl: &DisplayList, copy_to_acc: bool, copy_back: bool, stats: &mut ExecStats) -> Result<bool, RenderError> {
+        let mut bd = Backdrop { glass: None, opacity: 1.0, shadow: None, edge: None };
+        for op in ops {
+            match op {
+                Op::Glass { shape, spec, opacity, halo_radius } => {
+                    bd.glass = Some((spec, *shape, *halo_radius));
+                    bd.opacity = *opacity;
+                }
+                Op::BackdropShadow { shape, color, sigma, dx, dy } => {
+                    bd.shadow = Some(OwnShadow { shape: *shape, color: *color, sigma: *sigma, dx: *dx, dy: *dy });
+                }
+                Op::Edge(e) => bd.edge = Some(*e),
+                _ => return Ok(false),
             }
-            Op::BackdropShadow { shape, color, sigma, dx, dy } => {
-                Backdrop { glass: None, opacity: 1.0, shadow: Some(OwnShadow { shape: *shape, color: *color, sigma: *sigma, dx: *dx, dy: *dy }), edge: None }
-            }
-            Op::Edge(e) => Backdrop { glass: None, opacity: 1.0, shadow: None, edge: Some(*e) },
-            _ => return Ok(false),
-        };
+        }
         let mut why = if self.glass.is_none() { self.glass_note.clone() } else { String::new() };
         if let (Some(glass), Some(acc), Some(tgt)) = (self.glass.as_mut(), self.acc.as_ref(), self.tgt.as_ref()) {
             let fr = Surfaces {
@@ -471,9 +492,9 @@ impl Executor {
                 gen: self.gen,
                 size: (dl.width, dl.height),
             };
-            match glass.encode(&fr, &bd, clips, dl, copy_back) {
+            match glass.encode(&fr, &bd, clips, dl, copy_to_acc, copy_back) {
                 Ok(()) => {
-                    self.backdrops.0 += 1;
+                    self.backdrops.0 += ops.len() as u64;
                     return Ok(false);
                 }
                 Err(e) => {
@@ -482,20 +503,22 @@ impl Executor {
                 }
             }
         }
-        self.backdrops.1 += 1;
-        self.backdrop_on_cpu(op, clips, dl, &why, stats)?;
+        self.backdrops.1 += ops.len() as u64;
+        self.backdrop_on_cpu(ops, clips, dl, &why, stats)?;
         Ok(true)
     }
 
-    /// Composite a backdrop op on the CPU: read the frame back, `apply_backdrop_op`, upload to the accumulation texture (the caller then re-renders the frame from it).
+    /// Composite backdrop ops on the CPU: read the frame back, `apply_backdrop_op`, upload to the accumulation texture (the caller then re-renders the frame from it).
     #[cfg(feature = "native")]
-    fn backdrop_on_cpu(&mut self, op: &Op, clips: &[RRect], dl: &DisplayList, _why: &str, stats: &mut ExecStats) -> Result<(), RenderError> {
+    fn backdrop_on_cpu(&mut self, ops: &[Op], clips: &[RRect], dl: &DisplayList, _why: &str, stats: &mut ExecStats) -> Result<(), RenderError> {
         let (w, h) = (dl.width, dl.height);
         let Some(tgt) = self.tgt.as_ref() else { return Err(RenderError::Other("no target".into())) };
         let data = self.readback.read(&self.device, &self.queue, &tgt.tex, (w, h), true, &mut stats.fallback).map_err(|m| self.map_error(m))?;
         let size = tiny_skia::IntSize::from_wh(w, h).ok_or_else(|| RenderError::Other("bad size".into()))?;
         let mut pm = tiny_skia::Pixmap::from_vec(data, size).ok_or_else(|| RenderError::Other("readback size mismatch".into()))?;
-        onesim_render::apply_backdrop_op(&mut pm, op, clips, dl.scale, dl.dark, dl.ios);
+        for op in ops {
+            onesim_render::apply_backdrop_op(&mut pm, op, clips, dl.scale, dl.dark, dl.ios);
+        }
         // The pixmap is premultiplied, the textures hold straight alpha.
         let mut data = pm.take();
         for px in data.as_chunks_mut::<4>().0 {
@@ -515,7 +538,7 @@ impl Executor {
     }
 
     #[cfg(not(feature = "native"))]
-    fn backdrop_on_cpu(&mut self, _op: &Op, _clips: &[RRect], _dl: &DisplayList, why: &str, _stats: &mut ExecStats) -> Result<(), RenderError> {
+    fn backdrop_on_cpu(&mut self, _ops: &[Op], _clips: &[RRect], _dl: &DisplayList, why: &str, _stats: &mut ExecStats) -> Result<(), RenderError> {
         Err(RenderError::Unsupported(format!("backdrop op needs the CPU fallback, which this build does not have ({why})")))
     }
 }

@@ -95,7 +95,7 @@ impl GpuRenderer {
         let dl = self.builder.build(scene, fonts, scale);
         self.build_time = start.elapsed();
         let target = self.ensure_target(pw, ph).clone();
-        let stats = self.exec.execute(&dl, &target)?;
+        let stats = self.exec.execute_owned(dl, &target)?;
         self.vello_time = stats.vello;
         timings.gpu += stats.fallback.gpu;
         timings.readback += stats.fallback.readback;

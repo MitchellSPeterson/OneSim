@@ -71,9 +71,17 @@ fn submit(json: &[u8], version: u64) -> Result<(), String> {
     } else {
         raw.get()
     };
-    send_line(&format!(r#"{{"type":"tree","version":{version},"root":{root}}}"#))?;
-    STATE.with(|s| s.borrow_mut().last_version = Some(version));
-    Ok(())
+    STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        let out = s.out.as_mut().ok_or("runtime not initialized")?;
+        write!(out, r#"{{"type":"tree","version":{version},"root":"#)
+            .and_then(|_| out.write_all(root.as_bytes()))
+            .and_then(|_| out.write_all(b"}\n"))
+            .and_then(|_| out.flush())
+            .map_err(|e| format!("write to host failed: {e}"))?;
+        s.last_version = Some(version);
+        Ok(())
+    })
 }
 
 /// Handle one host line. Returns false when the loop should stop.
@@ -169,7 +177,7 @@ pub extern "C" fn simcore_runtime_init() -> i32 {
         // The CRT fd owns a Win32 handle; write to it directly so CRT text mode never turns `\n` into `\r\n`.
         #[cfg(windows)]
         let file: std::fs::File = std::os::windows::io::FromRawHandle::from_raw_handle(libc::get_osfhandle(fd) as _);
-        match init_with(Box::new(file)) {
+        match init_with(Box::new(std::io::BufWriter::new(file))) {
             Ok(()) => 0,
             Err(e) => { set_err(e); 1 }
         }
@@ -356,9 +364,14 @@ fn read_some(fd: i32, carry: &mut Vec<u8>) -> std::io::Result<Option<Vec<String>
     }
     carry.extend_from_slice(&buf[..n as usize]);
     let mut lines = Vec::new();
-    while let Some(i) = carry.iter().position(|&b| b == b'\n') {
-        let raw: Vec<u8> = carry.drain(..=i).collect();
-        lines.push(String::from_utf8_lossy(&raw).into_owned());
+    let mut start = 0;
+    while let Some(rel) = carry[start..].iter().position(|&b| b == b'\n') {
+        let end = start + rel + 1;
+        lines.push(String::from_utf8_lossy(&carry[start..end]).into_owned());
+        start = end;
+    }
+    if start > 0 {
+        carry.drain(..start);
     }
     Ok(Some(lines))
 }

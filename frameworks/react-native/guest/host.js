@@ -409,7 +409,8 @@ class Runtime {
       const root = { kind: 'rn', id: String(ROOT_TAG), component: 'RootView', props: this.rootProps, children: this.rootChildren.flatMap((c) => ser(c, ROOT_TAG)) };
       if (env.SIMCORE_DEBUG) log('emit tree', version + 1);
       // An alert up: the RN root becomes a `presentation`'s content (protocol G/H).
-      send({ type: 'tree', version: ++version, root: this.alerts.length ? { kind: 'presentation', id: 'presentation', content: root, layers: this.alerts.map((a) => a.layer) } : root });
+      const treeRoot = this.alerts.length ? { kind: 'presentation', id: 'presentation', content: root, layers: this.alerts.map((a) => a.layer) } : root;
+      send({ type: '__treeJson', version: ++version, rootJson: JSON.stringify(treeRoot) });
       if (this.navCheck && !this.navSeen) this.navCheck();
       this.navCommit(found, after);
       after.forEach((f) => f());
@@ -1156,6 +1157,12 @@ function mainThread() {
     const sockets = new Map(), fetching = new Map();
     w.on('exit', () => { sockets.forEach((ws) => ws.close()); fetching.forEach((ac) => ac.abort()); fetching.clear(); });
     w.on('message', (m) => {
+      if (m.type === '__treeJson') {
+        if (w !== worker) return; // a worker that was already replaced
+        const v = m.version + base;
+        last = v;
+        return process.stdout.write(`{"type":"tree","version":${v},"root":${m.rootJson}}\n`);
+      }
       if (m.type === 'tree') { m.version += base; last = m.version; }
       if (w !== worker) return; // a worker that was already replaced
       if (m.type === '__reload') return start();

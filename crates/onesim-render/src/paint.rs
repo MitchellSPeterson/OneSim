@@ -219,6 +219,13 @@ impl Gradient {
         }
     }
 
+    pub(crate) fn hash_key<H: std::hash::Hasher>(&self, state: &mut H) {
+        use std::hash::Hash;
+        (std::sync::Arc::as_ptr(&self.data) as usize).hash(state);
+        self.opacity.to_bits().hash(state);
+        (self.space as u8).hash(state);
+    }
+
     pub(crate) fn composite(
         &self,
         target: &mut Pixmap,
@@ -241,6 +248,7 @@ impl Gradient {
                 if stops.is_empty() {
                     return;
                 }
+                let geom = geometry.prepare(area.bounds, *absolute);
                 for (y, (row, cover)) in pixels
                     .data_mut()
                     .chunks_exact_mut(area.w as usize * 4)
@@ -253,7 +261,7 @@ impl Gradient {
                         if cover.alpha() == 0 {
                             continue;
                         }
-                        let t = geometry.parameter(area.point(x, y), area.bounds, *absolute);
+                        let t = geom.parameter(area.point(x, y));
                         out.copy_from_slice(&pixel(
                             sample_stops(stops, t, *options),
                             self.space,
@@ -337,8 +345,45 @@ fn sample_stops(stops: &[(f64, [f64; 4])], t: f64, options: u32) -> [f64; 4] {
     }
 }
 
+enum PreparedGeometry {
+    Linear {
+        ax: f64,
+        ay: f64,
+        dx: f64,
+        dy: f64,
+    },
+    RadialConcentric {
+        cx: f64,
+        cy: f64,
+        a: f64,
+        b: f64,
+        inv_span: f64,
+        inv_w: f64,
+        inv_h: f64,
+        elliptical: bool,
+    },
+    RadialTwoCircle {
+        sx: f64,
+        sy: f64,
+        dx: f64,
+        dy: f64,
+        r0: f64,
+        dr: f64,
+        quad_a: f64,
+    },
+    Angular {
+        cx: f64,
+        cy: f64,
+        start: f64,
+        sign: f64,
+        abs_span: f64,
+        sweep: f64,
+        mid: f64,
+    },
+}
+
 impl Geometry {
-    fn parameter(self, point: [f64; 2], bounds: Rect, absolute: bool) -> f64 {
+    fn prepare(self, bounds: Rect, absolute: bool) -> PreparedGeometry {
         let point_at = |[u, v]: [f64; 2]| {
             if absolute {
                 [u, v]
@@ -351,80 +396,109 @@ impl Geometry {
                 let [ax, ay] = point_at(start);
                 let [bx, by] = point_at(end);
                 let (x, y) = (bx - ax, by - ay);
-                let length = x.hypot(y);
-                if length == 0.0 {
-                    0.0
+                let len_sq = x * x + y * y;
+                if len_sq == 0.0 {
+                    PreparedGeometry::Linear { ax, ay, dx: 0.0, dy: 0.0 }
                 } else {
-                    ((point[0] - ax) * (x / length) + (point[1] - ay) * (y / length)) / length
+                    PreparedGeometry::Linear { ax, ay, dx: x / len_sq, dy: y / len_sq }
                 }
             }
             Self::Radial(center, start, a, b, elliptical) => {
                 let [cx, cy] = point_at(center);
-                let (x, y) = (point[0] - cx, point[1] - cy);
-                let r = if elliptical {
-                    (x / bounds.w).hypot(y / bounds.h)
-                } else {
-                    x.hypot(y)
-                };
                 if let Some(start) = start.filter(|s| *s != center) {
                     let [sx, sy] = point_at(start);
-                    return circle_parameter(
-                        [point[0] - sx, point[1] - sy],
-                        [cx - sx, cy - sy],
+                    let (dx, dy) = (cx - sx, cy - sy);
+                    let dr = b - a;
+                    let quad_a = dx * dx + dy * dy - dr * dr;
+                    PreparedGeometry::RadialTwoCircle { sx, sy, dx, dy, r0: a, dr, quad_a }
+                } else {
+                    PreparedGeometry::RadialConcentric {
+                        cx,
+                        cy,
                         a,
                         b,
-                    );
-                }
-                if a == b {
-                    f64::from(r >= a)
-                } else {
-                    (r - a) / (b - a)
+                        inv_span: if a == b { 0.0 } else { 1.0 / (b - a) },
+                        inv_w: if bounds.w != 0.0 { 1.0 / bounds.w } else { 0.0 },
+                        inv_h: if bounds.h != 0.0 { 1.0 / bounds.h } else { 0.0 },
+                        elliptical,
+                    }
                 }
             }
             Self::Angular(center, start, end) => {
                 let [cx, cy] = point_at(center);
                 let span = end - start;
-                let sweep = span.abs().min(TAU);
-                let start = if span.abs() > TAU {
+                let abs_span = span.abs();
+                let sweep = abs_span.min(TAU);
+                let start = if abs_span > TAU {
                     end - TAU.copysign(span)
                 } else {
                     start
                 };
-                let angle = ((point[1] - cy).atan2(point[0] - cx) - start) * span.signum();
-                let angle = angle.rem_euclid(TAU);
-                if sweep == 0.0 {
-                    return f64::from(angle < TAU * 0.5);
-                }
-                if angle <= sweep {
-                    // For multiple turns the last revolution covers only the final stops.
-                    (span.abs() - sweep + angle) / span.abs()
-                } else {
-                    f64::from(angle < (sweep + TAU) * 0.5)
+                PreparedGeometry::Angular {
+                    cx,
+                    cy,
+                    start,
+                    sign: span.signum(),
+                    abs_span,
+                    sweep,
+                    mid: (sweep + TAU) * 0.5,
                 }
             }
         }
     }
 }
 
-fn circle_parameter([x, y]: [f64; 2], [dx, dy]: [f64; 2], r0: f64, r1: f64) -> f64 {
-    let dr = r1 - r0;
-    let a = dx * dx + dy * dy - dr * dr;
-    let b = -2.0 * (x * dx + y * dy + r0 * dr);
-    let c = x * x + y * y - r0 * r0;
-    if a.abs() < f64::EPSILON {
-        return if b == 0.0 { 0.0 } else { -c / b };
-    }
-    let discriminant = b * b - 4.0 * a * c;
-    if discriminant < 0.0 {
-        return 0.0;
-    }
-    let root = discriminant.sqrt();
-    let first = (-b - root) / (2.0 * a);
-    let second = (-b + root) / (2.0 * a);
-    if r0 + dr * first >= 0.0 {
-        first
-    } else {
-        second
+impl PreparedGeometry {
+    #[inline]
+    fn parameter(&self, point: [f64; 2]) -> f64 {
+        match *self {
+            Self::Linear { ax, ay, dx, dy } => (point[0] - ax) * dx + (point[1] - ay) * dy,
+            Self::RadialConcentric { cx, cy, a, b, inv_span, inv_w, inv_h, elliptical } => {
+                let (x, y) = (point[0] - cx, point[1] - cy);
+                let r = if elliptical {
+                    (x * inv_w).hypot(y * inv_h)
+                } else {
+                    x.hypot(y)
+                };
+                if a == b {
+                    f64::from(r >= a)
+                } else {
+                    (r - a) * inv_span
+                }
+            }
+            Self::RadialTwoCircle { sx, sy, dx, dy, r0, dr, quad_a } => {
+                let (x, y) = (point[0] - sx, point[1] - sy);
+                let b = -2.0 * (x * dx + y * dy + r0 * dr);
+                let c = x * x + y * y - r0 * r0;
+                if quad_a.abs() < f64::EPSILON {
+                    return if b == 0.0 { 0.0 } else { -c / b };
+                }
+                let discriminant = b * b - 4.0 * quad_a * c;
+                if discriminant < 0.0 {
+                    return 0.0;
+                }
+                let root = discriminant.sqrt();
+                let inv_2a = 0.5 / quad_a;
+                let first = (-b - root) * inv_2a;
+                if r0 + dr * first >= 0.0 {
+                    first
+                } else {
+                    (-b + root) * inv_2a
+                }
+            }
+            Self::Angular { cx, cy, start, sign, abs_span, sweep, mid } => {
+                let angle = (((point[1] - cy).atan2(point[0] - cx) - start) * sign).rem_euclid(TAU);
+                if sweep == 0.0 {
+                    return f64::from(angle < TAU * 0.5);
+                }
+                if angle <= sweep {
+                    // For multiple turns the last revolution covers only the final stops.
+                    (abs_span - sweep + angle) / abs_span
+                } else {
+                    f64::from(angle < mid)
+                }
+            }
+        }
     }
 }
 
@@ -536,14 +610,22 @@ impl MeshGrid<'_> {
     }
 }
 
-fn bezier(curve: Curve, t: f64) -> [f64; 2] {
+fn bezier_and_deriv(curve: Curve, t: f64) -> ([f64; 2], [f64; 2]) {
     let s = 1.0 - t;
-    std::array::from_fn(|i| {
-        s * s * s * curve[0][i]
-            + 3.0 * t * s * s * curve[1][i]
-            + 3.0 * t * t * s * curve[2][i]
-            + t * t * t * curve[3][i]
-    })
+    let s2 = s * s;
+    let t2 = t * t;
+    let pt = std::array::from_fn(|i| {
+        s2 * s * curve[0][i]
+            + 3.0 * t * s2 * curve[1][i]
+            + 3.0 * t2 * s * curve[2][i]
+            + t2 * t * curve[3][i]
+    });
+    let d = std::array::from_fn(|i| {
+        3.0 * s2 * (curve[1][i] - curve[0][i])
+            + 6.0 * s * t * (curve[2][i] - curve[1][i])
+            + 3.0 * t2 * (curve[3][i] - curve[2][i])
+    });
+    (pt, d)
 }
 
 fn spline([a, b, c, d]: [[f64; 4]; 4], t: f64) -> [f64; 4] {
@@ -557,36 +639,49 @@ fn spline([a, b, c, d]: [[f64; 4]; 4], t: f64) -> [f64; 4] {
 }
 
 impl Patch {
-    fn point(&self, u: f64, v: f64) -> [f64; 2] {
-        let a = lerp(bezier(self.top, u), bezier(self.bottom, u), v);
-        let b = lerp(bezier(self.left, v), bezier(self.right, v), u);
-        let bilinear = lerp(
-            lerp(self.top[0], self.top[3], u),
-            lerp(self.bottom[0], self.bottom[3], u),
-            v,
-        );
-        [a[0] + b[0] - bilinear[0], a[1] + b[1] - bilinear[1]]
+    /// Evaluate the Coons patch and its analytical partial derivatives `(dP/du, dP/dv)`.
+    fn point_and_jacobian(&self, u: f64, v: f64) -> ([f64; 2], [f64; 2], [f64; 2]) {
+        let (top, dtop) = bezier_and_deriv(self.top, u);
+        let (bot, dbot) = bezier_and_deriv(self.bottom, u);
+        let (left, dleft) = bezier_and_deriv(self.left, v);
+        let (right, dright) = bezier_and_deriv(self.right, v);
+        let (c00, c10, c01, c11) = (self.top[0], self.top[3], self.bottom[0], self.bottom[3]);
+        let a = lerp(top, bot, v);
+        let b = lerp(left, right, u);
+        let bilinear = lerp(lerp(c00, c10, u), lerp(c01, c11, u), v);
+        let p = [a[0] + b[0] - bilinear[0], a[1] + b[1] - bilinear[1]];
+        let du = [
+            (1.0 - v) * dtop[0] + v * dbot[0] + (right[0] - left[0])
+                - ((1.0 - v) * (c10[0] - c00[0]) + v * (c11[0] - c01[0])),
+            (1.0 - v) * dtop[1] + v * dbot[1] + (right[1] - left[1])
+                - ((1.0 - v) * (c10[1] - c00[1]) + v * (c11[1] - c01[1])),
+        ];
+        let dv = [
+            (bot[0] - top[0]) + (1.0 - u) * dleft[0] + u * dright[0]
+                - ((1.0 - u) * (c01[0] - c00[0]) + u * (c11[0] - c10[0])),
+            (bot[1] - top[1]) + (1.0 - u) * dleft[1] + u * dright[1]
+                - ((1.0 - u) * (c01[1] - c00[1]) + u * (c11[1] - c10[1])),
+        ];
+        (p, du, dv)
     }
 
     fn coordinates(&self, point: [f64; 2], mut u: f64, mut v: f64) -> Option<(f64, f64)> {
         let e = 0.00001;
-        // Invert the patch locally. Divergent guesses on folded or degenerate patches are discarded.
+        // Invert the patch locally using the analytical Jacobian. Divergent guesses on folded or degenerate patches are discarded.
         for _ in 0..12 {
-            let [x, y] = self.point(u, v);
+            let ([x, y], [ux, uy], [vx, vy]) = self.point_and_jacobian(u, v);
             let (dx, dy) = (point[0] - x, point[1] - y);
             if dx.abs().max(dy.abs()) <= e {
                 return ((-e..=1.0 + e).contains(&u) && (-e..=1.0 + e).contains(&v))
                     .then_some((u.clamp(0.0, 1.0), v.clamp(0.0, 1.0)));
             }
-            let [ux, uy] = self.point(u + e, v);
-            let [vx, vy] = self.point(u, v + e);
-            let (ux, uy, vx, vy) = (ux - x, uy - y, vx - x, vy - y);
             let det = ux * vy - uy * vx;
             if det.abs() < f64::EPSILON {
                 break;
             }
-            u += e * (dx * vy - dy * vx) / det;
-            v += e * (ux * dy - uy * dx) / det;
+            let inv_det = 1.0 / det;
+            u += (dx * vy - dy * vx) * inv_det;
+            v += (ux * dy - uy * dx) * inv_det;
         }
         None
     }
@@ -633,18 +728,28 @@ impl Patch {
         if area.bounds.w <= 0.0 || area.bounds.h <= 0.0 {
             return;
         }
+        let inv_w = 1.0 / area.bounds.w;
+        let inv_h = 1.0 / area.bounds.h;
+        let span_x = max[0] - min[0];
+        let span_y = max[1] - min[1];
         for y in top..bottom {
+            let mut warm: Option<(f64, f64)> = None;
             for x in left..right {
                 let i = y * area.w as usize + x;
                 let a = coverage.pixels()[i].alpha();
                 if a == 0 {
+                    warm = None;
                     continue;
                 }
                 let [px, py] = area.point(x, y);
-                let point = [px / area.bounds.w, py / area.bounds.h];
-                let u = ((point[0] - min[0]) / (max[0] - min[0])).clamp(0.0, 1.0);
-                let v = ((point[1] - min[1]) / (max[1] - min[1])).clamp(0.0, 1.0);
-                if let Some((u, v)) = self.coordinates(point, u, v) {
+                let point = [px * inv_w, py * inv_h];
+                let hit = warm.and_then(|(wu, wv)| self.coordinates(point, wu, wv)).or_else(|| {
+                    let u = ((point[0] - min[0]) / span_x).clamp(0.0, 1.0);
+                    let v = ((point[1] - min[1]) / span_y).clamp(0.0, 1.0);
+                    self.coordinates(point, u, v)
+                });
+                warm = hit;
+                if let Some((u, v)) = hit {
                     let color = if self.smooth {
                         spline(self.colors.map(|row| spline(row, u)), v)
                     } else {

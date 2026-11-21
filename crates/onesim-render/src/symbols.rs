@@ -71,13 +71,125 @@ pub fn capability() -> &'static str {
     }
 }
 
-type MetricsKey = (String, u32, u16, u8, bool, u8, u8, bool);
-type MaskKey = (MetricsKey, u32, u32, u32, u32);
+use std::borrow::Borrow;
+use std::hash::{Hash, Hasher};
+
+const METRICS_CACHE_MAX: usize = 4096;
+const MASKS_CACHE_MAX: usize = 1024;
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct MetricsMeta {
+    pt_centi: u32,
+    weight: u16,
+    scale: u8,
+    bundled: bool,
+    mode: u8,
+    variable: u8,
+    gradient: bool,
+}
+
+#[derive(PartialEq, Eq, Hash)]
+struct MetricsKey {
+    name: String,
+    meta: MetricsMeta,
+}
+
+trait MetricsLookup {
+    fn key(&self) -> (&str, MetricsMeta);
+}
+
+impl MetricsLookup for MetricsKey {
+    fn key(&self) -> (&str, MetricsMeta) {
+        (&self.name, self.meta)
+    }
+}
+
+impl MetricsLookup for (&str, MetricsMeta) {
+    fn key(&self) -> (&str, MetricsMeta) {
+        *self
+    }
+}
+
+impl<'a> Borrow<dyn MetricsLookup + 'a> for MetricsKey {
+    fn borrow(&self) -> &(dyn MetricsLookup + 'a) {
+        self
+    }
+}
+
+impl PartialEq for dyn MetricsLookup + '_ {
+    fn eq(&self, other: &Self) -> bool {
+        self.key() == other.key()
+    }
+}
+
+impl Eq for dyn MetricsLookup + '_ {}
+
+impl Hash for dyn MetricsLookup + '_ {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let (name, meta) = self.key();
+        name.hash(state);
+        meta.hash(state);
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct MaskMeta {
+    metrics: MetricsMeta,
+    w_px: u32,
+    h_px: u32,
+    scale_centi: u32,
+    color: u32,
+}
+
+#[derive(PartialEq, Eq, Hash)]
+struct MaskKey {
+    name: String,
+    meta: MaskMeta,
+}
+
+trait MaskLookup {
+    fn key(&self) -> (&str, MaskMeta);
+}
+
+impl MaskLookup for MaskKey {
+    fn key(&self) -> (&str, MaskMeta) {
+        (&self.name, self.meta)
+    }
+}
+
+impl MaskLookup for (&str, MaskMeta) {
+    fn key(&self) -> (&str, MaskMeta) {
+        *self
+    }
+}
+
+impl<'a> Borrow<dyn MaskLookup + 'a> for MaskKey {
+    fn borrow(&self) -> &(dyn MaskLookup + 'a) {
+        self
+    }
+}
+
+impl PartialEq for dyn MaskLookup + '_ {
+    fn eq(&self, other: &Self) -> bool {
+        self.key() == other.key()
+    }
+}
+
+impl Eq for dyn MaskLookup + '_ {}
+
+impl Hash for dyn MaskLookup + '_ {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let (name, meta) = self.key();
+        name.hash(state);
+        meta.hash(state);
+    }
+}
 
 #[derive(Default)]
 struct Cache {
-    metrics: HashMap<MetricsKey, Option<SymbolMetrics>>,
-    masks: HashMap<MaskKey, Option<Arc<SymbolMask>>>,
+    tick: u64,
+    metrics: HashMap<MetricsKey, (u64, Option<SymbolMetrics>)>,
+    masks: HashMap<MaskKey, (u64, Option<Arc<SymbolMask>>)>,
 }
 
 static CACHE: Mutex<Option<Cache>> = Mutex::new(None);
@@ -87,8 +199,26 @@ fn with_cache<R>(f: impl FnOnce(&mut Cache) -> R) -> R {
     f(g.get_or_insert_with(Cache::default))
 }
 
-fn key(s: &SymbolSpec) -> MetricsKey {
-    (s.name.clone(), (s.point_size * 100.0).round() as u32, s.weight, s.scale as u8, use_bundled(), s.mode, s.variable, s.gradient)
+fn evict_half<K: Eq + Hash, V>(map: &mut HashMap<K, (u64, V)>, max: usize) {
+    if map.len() < max {
+        return;
+    }
+    let mut ticks: Vec<u64> = map.values().map(|(t, _)| *t).collect();
+    let mid = ticks.len() / 2;
+    let (_, &mut cutoff, _) = ticks.select_nth_unstable(mid);
+    map.retain(|_, (t, _)| *t > cutoff);
+}
+
+fn metrics_meta(s: &SymbolSpec) -> MetricsMeta {
+    MetricsMeta {
+        pt_centi: (s.point_size * 100.0).round() as u32,
+        weight: s.weight,
+        scale: s.scale as u8,
+        bundled: use_bundled(),
+        mode: s.mode,
+        variable: s.variable,
+        gradient: s.gradient,
+    }
 }
 
 fn color_key(spec: &SymbolSpec, color: [u8; 4]) -> u32 {
@@ -109,20 +239,43 @@ fn stabilize(spec: &SymbolSpec, mut m: SymbolMetrics) -> SymbolMetrics {
 
 /// Size of the symbol in points, or `None` when the name is unknown / unsupported on this host.
 pub fn metrics(spec: &SymbolSpec) -> Option<SymbolMetrics> {
-    let k = key(spec);
-    if let Some(m) = with_cache(|c| c.metrics.get(&k).copied()) {
+    let meta = metrics_meta(spec);
+    if let Some(m) = with_cache(|c| {
+        let lookup: (&str, MetricsMeta) = (spec.name.as_str(), meta);
+        let entry = c.metrics.get_mut(&lookup as &dyn MetricsLookup)?;
+        c.tick += 1;
+        entry.0 = c.tick;
+        Some(entry.1)
+    }) {
         return m;
     }
     let m = if use_bundled() { bundled::metrics(spec) } else { sys::metrics(spec).map(|raw| stabilize(spec, raw)) };
-    with_cache(|c| c.metrics.insert(k, m));
+    with_cache(|c| {
+        evict_half(&mut c.metrics, METRICS_CACHE_MAX);
+        c.tick += 1;
+        let tick = c.tick;
+        c.metrics.insert(MetricsKey { name: spec.name.clone(), meta }, (tick, m));
+    });
     m
 }
 
 /// Rasterize `spec` into a `w_px` x `h_px` mask (the symbol is stretched to that box; callers
 /// pass the aspect-correct size).
 pub fn mask(spec: &SymbolSpec, w_px: u32, h_px: u32, device_scale: f64, color: [u8; 4]) -> Option<Arc<SymbolMask>> {
-    let k = (key(spec), w_px, h_px, (device_scale * 100.0).round() as u32, color_key(spec, color));
-    if let Some(m) = with_cache(|c| c.masks.get(&k).cloned()) {
+    let meta = MaskMeta {
+        metrics: metrics_meta(spec),
+        w_px,
+        h_px,
+        scale_centi: (device_scale * 100.0).round() as u32,
+        color: color_key(spec, color),
+    };
+    if let Some(m) = with_cache(|c| {
+        let lookup: (&str, MaskMeta) = (spec.name.as_str(), meta);
+        let entry = c.masks.get_mut(&lookup as &dyn MaskLookup)?;
+        c.tick += 1;
+        entry.0 = c.tick;
+        Some(entry.1.clone())
+    }) {
         return m;
     }
     let m = if use_bundled() {
@@ -131,7 +284,12 @@ pub fn mask(spec: &SymbolSpec, w_px: u32, h_px: u32, device_scale: f64, color: [
         sys::mask(spec, w_px, h_px, device_scale, color)
     }
     .map(Arc::new);
-    with_cache(|c| c.masks.insert(k, m.clone()));
+    with_cache(|c| {
+        evict_half(&mut c.masks, MASKS_CACHE_MAX);
+        c.tick += 1;
+        let tick = c.tick;
+        c.masks.insert(MaskKey { name: spec.name.clone(), meta }, (tick, m.clone()));
+    });
     m
 }
 

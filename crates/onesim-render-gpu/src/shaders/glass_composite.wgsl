@@ -26,6 +26,7 @@ struct C {
 // Two vec4 per ancestor clip (bounds, radius), then one vec4 per scroll-edge row.
 @group(0) @binding(5) var<storage, read> params: array<vec4<f32>>;
 @group(0) @binding(6) var out: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(7) var linear_sampler: sampler;
 
 struct Sd { d: f32, n: vec2<f32> };
 
@@ -50,15 +51,8 @@ fn rr_sdf(p: vec2<f32>, x: f32, y: f32, w: f32, h: f32, r0: f32) -> Sd {
 fn bilinear(t: texture_2d<f32>, w: i32, h: i32, px: f32, py: f32) -> vec3<f32> {
     let x = clamp(px, 0.0, f32(w) - 1.0);
     let y = clamp(py, 0.0, f32(h) - 1.0);
-    let xi = i32(floor(x));
-    let yi = i32(floor(y));
-    let xj = min(xi + 1, w - 1);
-    let yj = min(yi + 1, h - 1);
-    let fx = x - f32(xi);
-    let fy = y - f32(yi);
-    let top = mix(textureLoad(t, vec2<i32>(xi, yi), 0).rgb, textureLoad(t, vec2<i32>(xj, yi), 0).rgb, fx);
-    let bot = mix(textureLoad(t, vec2<i32>(xi, yj), 0).rgb, textureLoad(t, vec2<i32>(xj, yj), 0).rgb, fx);
-    return mix(top, bot, fy);
+    let uv = (vec2<f32>(x, y) + 0.5) / vec2<f32>(textureDimensions(t));
+    return textureSampleLevel(t, linear_sampler, uv, 0.0).rgb;
 }
 
 // Blurred coverage of a shadow grid at pixel centre (x, y).

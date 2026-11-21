@@ -388,6 +388,18 @@ impl Node {
             text_squash: 1.0,
         }
     }
+
+    /// Strip interactive and inspection metadata (used for decoration layers and animation ghosts).
+    pub fn strip_interactive(&mut self) {
+        self.inspect = false;
+        self.action = None;
+        self.field = None;
+        self.tag = None;
+        self.gesture = None;
+        self.scroll = None;
+        self.sheet = None;
+        self.role = Role::None;
+    }
 }
 
 /// Nodes are in paint order (parents before children, backgrounds before content).

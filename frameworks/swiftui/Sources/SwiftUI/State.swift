@@ -7,11 +7,20 @@ final class _Slot<V> { var value: V; init(_ v: V) { value = v } }
 
 protocol _StateProperty { func _bind(_ key: String) }
 
+nonisolated(unsafe) private var _noStateTypes = Set<ObjectIdentifier>()
+
 /// Bind every @State in `view` to the registry slot for (path, type, label).
 func _bindState<V>(_ view: V, _ path: String) {
+    let typeID = ObjectIdentifier(V.self)
+    if _noStateTypes.contains(typeID) { return }
+    var found = false
     for ch in Mirror(reflecting: view).children {
-        if let s = ch.value as? _StateProperty { s._bind("\(path)#\(V.self).\(ch.label ?? "?")") }
+        if let s = ch.value as? _StateProperty {
+            found = true
+            s._bind("\(path)#\(V.self).\(ch.label ?? "?")")
+        }
     }
+    if !found { _noStateTypes.insert(typeID) }
 }
 
 @propertyWrapper
