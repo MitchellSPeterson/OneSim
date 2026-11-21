@@ -85,6 +85,28 @@ pub struct ChromeParams {
     pub keyboard: bool,
     /// Shift state (host-owned: auto-capitalization, shift key and typing update it).
     pub shift: bool,
+    /// Use the numeric keypad's shorter safe-area inset.
+    pub keypad: bool,
+    /// Show the phone pad's alternate symbol keys.
+    pub phone_symbols: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum Keypad {
+    Number,
+    Decimal,
+    Phone,
+}
+
+impl Keypad {
+    pub(crate) fn for_input(input: &onesim_protocol::TextInputOptions) -> Option<Self> {
+        match input.keyboard_type.as_deref()? {
+            "numberPad" | "asciiCapableNumberPad" => Some(Self::Number),
+            "decimalPad" => Some(Self::Decimal),
+            "phonePad" => Some(Self::Phone),
+            _ => None,
+        }
+    }
 }
 
 /// Auto-capitalization: start of text, or after sentence punctuation plus a space.
@@ -155,7 +177,7 @@ impl Builder<'_> {
         self.out.len() - 1
     }
 
-    fn key(&mut self, parent: usize, id: &str, label: &str, r: Rect, glyph: Option<Glyph>, text: Option<(&str, f32)>) {
+    fn key(&mut self, parent: usize, id: &str, label: &str, r: Rect, glyph: Option<Glyph>, text: Option<(&str, f32)>) -> usize {
         let mut n = Node::new(format!("keyboard#key-{id}"), "key");
         n.role = Role::Key;
         n.label = Some(label.to_string());
@@ -172,13 +194,80 @@ impl Builder<'_> {
             let y = r.y + (r.h - lh) / 2.0 - 1.8;
             self.push(tn, k, Rect { x: r.x, y, w: r.w, h: lh });
         }
+        k
+    }
+}
+
+/// Number and phone keyboards share a four-row, three-column grid.
+fn draw_keypad(b: &mut Builder<'_>, root: usize, panel: Rect, top_inset: f64, keypad: Keypad, phone_symbols: bool) {
+    let (leading, trailing, gap) = (4.67, 6.0, 6.0);
+    let width = ((panel.w - leading - trailing - 2.0 * gap) / 3.0).max(0.0);
+    let row_scale = ((panel.h - top_inset - gap) / (3.0 * 54.0 + 48.0)).clamp(0.0, 1.0);
+    let symbols = phone_symbols && keypad == Keypad::Phone;
+    let extra = match keypad {
+        Keypad::Number => "",
+        Keypad::Decimal => ".",
+        Keypad::Phone => "+*#",
+    };
+    let labels = if symbols {
+        ["1", "2", "3", "pause", "5", "wait", "*", "8", "#", "123", "+", "delete"]
+    } else {
+        ["1", "2", "3", "4", "5", "6", "7", "8", "9", extra, "0", "delete"]
+    };
+    let letters = ["", "ABC", "DEF", "GHI", "JKL", "MNO", "PQRS", "TUV", "WXYZ", "", "", ""];
+    for (i, label) in labels.into_iter().enumerate() {
+        if label.is_empty() {
+            continue;
+        }
+        let frame = Rect {
+            x: leading + (i % 3) as f64 * (width + gap),
+            y: panel.y + top_inset + (i / 3) as f64 * 54.0 * row_scale,
+            w: width,
+            h: 48.0 * row_scale,
+        };
+        let digit = label.as_bytes().iter().all(u8::is_ascii_digit) && label.len() == 1;
+        let disabled = symbols && digit;
+        let glyph = (label == "delete").then_some(Glyph::Backspace);
+        let size = match label {
+            "pause" | "wait" => 16.0,
+            "+" | "#" => 28.0,
+            _ => 22.0,
+        };
+        let key = b.key(root, label, label, frame, glyph, glyph.is_none().then_some((label, size * row_scale as f32)));
+        let color = if disabled { Color { a: 0.35, ..b.th.label } } else { b.th.label };
+        b.out[key].radius = 10.0;
+        if i == 9 || i == 11 {
+            b.out[key].fill = None;
+        }
+        if disabled {
+            b.out[key].role = Role::None;
+            b.out[key].disabled = true;
+        }
+        if glyph.is_none() {
+            let text = &mut b.out[key + 1];
+            text.bounds.y += row_scale * if digit { -3.67 } else if label == "*" { 3.0 } else { 0.0 };
+            if let Some(run) = &mut text.text {
+                run.color = color;
+                if label == "+*#" {
+                    run.font.extra = 2.0;
+                }
+            }
+        }
+        if digit && !letters[i].is_empty() {
+            let mut caption = Node::new(format!("keyboard#key-{label}#caption"), "text");
+            caption.inspect = false;
+            let mut run = text_run(letters[i], 9.0 * row_scale as f32, 600, color);
+            run.font.extra = 2.0;
+            caption.text = Some(run);
+            b.push(caption, key, Rect { y: frame.y + 33.0 * row_scale, h: 11.0 * row_scale, ..frame });
+        }
     }
 }
 
 /// Append the keyboard (panel, suggestion bar, keys) for a `w` x `h` screen. Returns the top y.
 /// `shift` is the effective shift state; `kb_h` the total keyboard height.
 #[allow(clippy::too_many_arguments)]
-pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shift: bool, dev: &Device, look: &Look) {
+pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shift: bool, phone_symbols: bool, dev: &Device, look: &Look) {
     // Emoji / dictation stay where the device's iOS 26 keyboard puts them when the panel height changes (iOS 27).
     let kb_shrink = dev.kb_base_h + dev.safe_bottom - kb_h;
     let th = theme(dark, look);
@@ -197,14 +286,7 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
         Some("continue") => Some("Continue"),
         _ => None,
     };
-    let key_type = input.and_then(|i| i.keyboard_type.as_deref());
-    let phone = key_type == Some("phonePad");
-    let keypad = match key_type {
-        Some("numberPad" | "asciiCapableNumberPad") => Some(""),
-        Some("decimalPad") => Some("."),
-        Some("phonePad") => Some("*"),
-        _ => None,
-    };
+    let keypad = input.and_then(Keypad::for_input);
     // Suggestions never use the contents of a secure field.
     let word = focused
         .filter(|_| !hide_suggestions)
@@ -225,6 +307,10 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
         return wide(&mut b, root, w, top, kb_h, &word, shift, look, submit, hide_suggestions);
     }
 
+    if keypad.is_some() && !dark {
+        b.th.panel = c(226, 228, 232, 1.0);
+    }
+
     // Panel: 30pt top corners, ~55pt (device) bottom corners, from two overlapping rounded rects.
     for (id, y, hh, r) in [("top", top, kb_h - 35.0, if dev.home_button { 22.0 } else { 28.0 }), ("bottom", h - 120.0, 120.0, if dev.home_button { 0.0 } else { 55.0 })] {
         let mut n = Node::new(format!("keyboard#panel-{id}"), "panel");
@@ -234,23 +320,8 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
         b.push(n, root, Rect { x: 0.0, y, w, h: hh });
     }
 
-    if let Some(extra) = keypad {
-        let gap = 6.0;
-        let width = (w - 4.0 * gap) / 3.0;
-        let last_key = if phone { "#" } else { "delete" };
-        let rows = if phone { 5.0 } else { 4.0 };
-        let height = (kb_h - dev.safe_bottom - (rows + 1.0) * gap) / rows;
-        for (i, key) in ["1", "2", "3", "4", "5", "6", "7", "8", "9", extra, "0", last_key, "+", "", "delete"]
-            .into_iter().take(if phone { 15 } else { 12 }).enumerate()
-        {
-            if key.is_empty() {
-                continue;
-            }
-            let bounds = Rect { x: gap + (i % 3) as f64 * (width + gap), y: top + gap + (i / 3) as f64 * (height + gap), w: width, h: height };
-            let glyph = (key == "delete").then_some(Glyph::Backspace);
-            b.key(root, key, key, bounds, glyph, glyph.is_none().then_some((key, 24.0)));
-        }
-        return;
+    if let Some(keypad) = keypad {
+        return draw_keypad(&mut b, root, Rect { x: 0.0, y: top, w, h: kb_h }, look.keypad_top_inset, keypad, phone_symbols);
     }
 
     // Static suggestions (no prediction engine), with hairline dividers.

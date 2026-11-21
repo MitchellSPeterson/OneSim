@@ -41,6 +41,7 @@ anim="$guests/animation"
 controls="$guests/controls"
 effects="$guests/effects"
 textinput="$guests/text-input"
+keypads="$guests/keypads"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
 fi
@@ -55,6 +56,7 @@ if want swiftui && [ -z "$smoke" ]; then
   scripts/build-swift-app.sh examples/swiftui-controls "$controls"
   scripts/build-swift-app.sh examples/swiftui-effects "$effects"
   scripts/build-swift-app.sh examples/swiftui-text-input "$textinput"
+  scripts/build-swift-app.sh examples/swiftui-keypads "$keypads"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
 # (docs/compatibility/versions.json): 27.2 on the iPhone 18 Pro in tests/fixtures/ios27/, 26.5 on the iPhone 17 Pro
@@ -206,12 +208,16 @@ for ios in ${SIMCORE_IOS:-27.2}; do
 
     iout=$out/swiftui-text-input; mkdir -p "$iout/onesim"
     ishot() {
-      local name=$1; shift
-      ./target/debug/onesim run "$textinput" "${base[@]}" "$@" --screenshot "$iout/onesim/$name.png" >/dev/null
+      local guest=$1 name=$2; shift 2
+      ./target/debug/onesim run "$guest" "${base[@]}" "$@" --screenshot "$iout/onesim/$name.png" >/dev/null
       if [ ! -f "$fx/swiftui-text-input-ios/$name.png" ]; then echo "Missing iOS reference: $fx/swiftui-text-input-ios/$name.png" >&2; rc=1; fi
     }
-    ishot text-input
-    ishot text-input-focused --click "Full name"
+    ishot "$textinput" text-input
+    ishot "$textinput" text-input-focused --click "Full name"
+    ishot "$keypads" keypad-number --click Number
+    ishot "$keypads" keypad-decimal --click Decimal
+    ishot "$keypads" keypad-phone --click Phone
+    ishot "$keypads" keypad-phone-symbols --click Phone --click '+*#'
     echo "== SwiftUI text input (iOS $ios)"
     python3 scripts/compare_ios.py "$fx/swiftui-text-input-ios" "$iout/onesim" "$iout" || rc=1
   fi

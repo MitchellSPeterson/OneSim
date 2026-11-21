@@ -16,3 +16,12 @@ Retake each state until the Dynamic Island is visible.
 Use iPhone 17 Pro on iOS 26.5 here and iPhone 18 Pro on iOS 27.2 in
 `../ios27/swiftui-text-input-ios/`. The screen shows a rounded field with a custom
 prompt, a plain secure field with masked text, and a multiline editor.
+
+Build the keypad example separately.
+
+```sh
+scripts/build-ios-sim.sh examples/swiftui-keypads /tmp/OneSimKeypads.app dev.onesim.keypads
+```
+
+Tap Number, Decimal, or Phone for the corresponding `keypad-*.png` state.
+For `keypad-phone-symbols.png`, tap Phone, then the `+*#` key.

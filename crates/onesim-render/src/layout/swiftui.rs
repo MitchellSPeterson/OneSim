@@ -702,7 +702,11 @@ fn layout_inner<'a>(root: &ViewNode, params: &'a SceneParams<'a>, fonts: &'a mut
     let (w, h) = params.viewport;
     // Keyboard avoidance: the keyboard top replaces the bottom safe-area inset.
     let kb = params.chrome.keyboard && params.focus.is_some();
-    let kb_h = crate::look::keyboard_height(params.device, params.ios);
+    let kb_h = if params.chrome.keypad {
+        crate::look::keypad_height(params.device, params.ios)
+    } else {
+        crate::look::keyboard_height(params.device, params.ios)
+    };
     let (safe_top, dev_bottom) = (params.device.safe_top, params.device.safe_bottom);
     let safe_bottom = if kb { kb_h } else { dev_bottom };
     let mut cx = ctx(params, fonts);
@@ -778,7 +782,7 @@ fn layout_inner<'a>(root: &ViewNode, params: &'a SceneParams<'a>, fonts: &'a mut
     }
     let dark = params.appearance == Appearance::Dark;
     if kb {
-        crate::chrome::keyboard(&mut nodes, w, h, kb_h, dark, params.chrome.shift, params.device,
+        crate::chrome::keyboard(&mut nodes, w, h, kb_h, dark, params.chrome.shift, params.chrome.phone_symbols, params.device,
             crate::look::look(params.ios));
     }
     if let Some(isl) = params.device.island {

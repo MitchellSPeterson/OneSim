@@ -3,8 +3,8 @@
 //! Owns scroll offsets, text focus, software-keyboard shift and the press target. Feed it pointer
 //! and keyboard events together with the scene they hit; it returns what the transport must do:
 //! the native host sends the effect over the guest wire, the browser calls the Swift callbacks.
-use crate::{autocap, ChromeParams, Role, Scene, SheetPos};
-use onesim_protocol::{GestureTarget, GestureTouch, KeyboardEvent, PointerEvent, PointerKind, TouchPhase};
+use crate::{autocap, chrome::Keypad, ChromeParams, Role, Scene, SheetPos};
+use onesim_protocol::{Axis, GestureTarget, GestureTouch, KeyboardEvent, PointerEvent, PointerKind, TouchPhase};
 use std::collections::HashMap;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -53,6 +53,8 @@ pub struct Interaction {
     /// Time (ms) of the last synthesized touch (`pointer`), so whole gestures never overlap in time.
     clock: f64,
     focus_tree: Option<u64>,
+    keypad: Option<Keypad>,
+    phone_symbols: bool,
 }
 
 /// A touch sequence owned by SwiftUI gesture views.
@@ -294,7 +296,7 @@ impl Interaction {
 
     /// Chrome parameters for the next layout (pair with `focus.as_deref()`).
     pub fn chrome(&self) -> ChromeParams {
-        ChromeParams { keyboard: self.focus.is_some(), shift: self.shift }
+        ChromeParams { keyboard: self.focus.is_some(), shift: self.shift, keypad: self.keypad.is_some(), phone_symbols: self.phone_symbols }
     }
 
     /// Apply guest focus requests once per tree. Unbound inputs keep host-owned focus.
@@ -308,12 +310,19 @@ impl Interaction {
         let next = requested().find(|n| self.focus.as_ref() == Some(&n.id))
             .or_else(|| requested().next())
             .or_else(|| inputs().find(|n| self.focus.as_ref() == Some(&n.id) && n.input.as_ref().and_then(|i| i.focused).is_none()));
-        let focus = next.map(|n| n.id.clone());
-        if self.focus == focus {
+        self.set_text_focus(next)
+    }
+
+    fn set_text_focus(&mut self, node: Option<&crate::Node>) -> bool {
+        let focus = node.map(|n| n.id.clone());
+        let keypad = node.and_then(|n| Keypad::for_input(n.input.as_deref()?));
+        if self.focus == focus && self.keypad == keypad {
             return false;
         }
         self.focus = focus;
-        self.shift = next.is_some_and(|n| input_shift(n, n.value.as_deref().unwrap_or_default()));
+        self.keypad = keypad;
+        self.phone_symbols = false;
+        self.shift = node.is_some_and(|n| input_shift(n, n.value.as_deref().unwrap_or_default()));
         true
     }
 
@@ -391,14 +400,9 @@ impl Interaction {
             let next = hit.filter(|n| n.field.is_some() && !n.disabled);
             // A control can move or clear a bound focus explicitly in its action.
             let retain = fire.is_some() && previous.is_some_and(|n| n.input.as_ref().is_some_and(|i| i.focused.is_some()));
-            if !retain {
-                let new = next.map(|n| n.id.clone());
-                if new != self.focus {
-                    self.shift = next.is_some_and(|n| input_shift(n, n.value.as_deref().unwrap_or_default()));
-                    focus_action = next.and_then(|n| n.input.as_ref()?.focus_action)
-                        .or_else(|| previous.and_then(|n| n.input.as_ref()?.blur_action));
-                    self.focus = new;
-                }
+            if !retain && self.set_text_focus(next) {
+                focus_action = next.and_then(|n| n.input.as_ref()?.focus_action)
+                    .or_else(|| previous.and_then(|n| n.input.as_ref()?.blur_action));
             }
         }
         if let Some(id) = fire.or(focus_action) {
@@ -885,7 +889,7 @@ impl Interaction {
     /// Dismiss the keyboard and clear a SwiftUI focus binding, if present.
     pub fn blur_text(&mut self, scene: &Scene) -> Effect {
         let action = self.focused_field(scene).and_then(|n| n.input.as_ref()?.blur_action);
-        self.focus = None;
+        self.set_text_focus(None);
         action.map_or(Effect::Redraw, |id| Effect::Action { id, version: self.version })
     }
 
@@ -901,9 +905,15 @@ impl Interaction {
                 self.shift = !shifted;
                 Effect::Redraw
             }
+            "+*#" | "123" if self.keypad == Some(Keypad::Phone) => {
+                self.phone_symbols = !self.phone_symbols;
+                Effect::Redraw
+            }
             "return" => self.enter(node),
             "delete" => self.backspace(node),
             "space" => self.append(node, " "),
+            "pause" if self.phone_symbols => self.append(node, ","),
+            "wait" if self.phone_symbols => self.append(node, ";"),
             l if l.chars().count() == 1 => {
                 let text = if shifted { l.to_uppercase() } else { l.to_string() };
                 self.append(node, &text)
@@ -917,14 +927,14 @@ impl Interaction {
             if let Some(id) = input.submit_action {
                 return Effect::Action { id, version: self.version };
             }
-            if input.editor || input.axis == Some(onesim_protocol::Axis::Vertical) {
+            if input.editor || input.axis == Some(Axis::Vertical) {
                 return self.append(node, "\n");
             }
             if input.focused.is_some() {
                 return Effect::None;
             }
         }
-        self.focus = None;
+        self.set_text_focus(None);
         Effect::Redraw
     }
 
@@ -943,7 +953,7 @@ impl Interaction {
     }
 
     fn edit(&mut self, node: &crate::Node, text: String) -> Effect {
-        if node.input.as_ref().is_some_and(|input| input.editor) {
+        if node.input.as_ref().is_some_and(|input| input.editor || input.axis == Some(Axis::Vertical)) {
             self.scroll.remove(&node.id);
             self.motion.remove(&node.id);
         }
@@ -1080,6 +1090,50 @@ mod tests {
         scene.nodes.iter_mut().for_each(|n| n.input.as_mut().unwrap().focused = Some(false));
         assert!(!inter.sync_text_focus(&scene, 6));
         assert!(inter.focus.is_none());
+    }
+
+    #[test]
+    fn editing_a_scrolled_vertical_field_brings_the_caret_back_into_view() {
+        let device = crate::device(crate::DEFAULT_DEVICE).unwrap();
+        let mut input: onesim_protocol::ViewNode = serde_json::from_str(
+            r#"{"kind":"text_field","id":"entry","field":1,"axis":"vertical",
+                "text":"First\nSecond\nThird","modifiers":[{"lineLimit":{"max":2}}]}"#,
+        ).unwrap();
+        let mut fonts = crate::Fonts::with_fallback(true);
+        let mut interaction = Interaction { focus: Some("entry".into()), ..Default::default() };
+        let mut layout = |root: &onesim_protocol::ViewNode, state: &Interaction| {
+            crate::build_scene(root, &crate::SceneParams {
+                viewport: (120.0, 200.0),
+                device,
+                scale: 1.0,
+                appearance: onesim_protocol::Appearance::Light,
+                dynamic_type: Default::default(),
+                ios: Default::default(),
+                scroll: &state.scroll,
+                sheets: &state.sheets,
+                focus: state.focus.as_deref(),
+                overscroll: false,
+                status_bar: false,
+                chrome: ChromeParams::default(),
+            }, &mut fonts)
+        };
+        let caret_visible = |scene: &Scene| {
+            let field = scene.nodes.iter().find(|n| n.id == "entry").unwrap().bounds;
+            let caret = scene.nodes.iter().find(|n| n.id == "entry#caret").unwrap().bounds;
+            field.contains(caret.x, caret.y)
+        };
+        let initial = layout(&input, &interaction);
+        let field = initial.nodes.iter().find(|n| n.id == "entry").unwrap().bounds;
+        let up = PointerEvent::moved(PointerKind::Scroll, field.x + 5.0, field.y + 5.0, 0.0, -100.0);
+        assert_eq!(interaction.pointer(&initial, up), Effect::Redraw);
+        let scrolled = layout(&input, &interaction);
+        assert!(!caret_visible(&scrolled));
+
+        let effect = interaction.keyboard(&scrolled, KeyboardEvent::Text { text: " line".into() }).unwrap();
+        let Effect::TextInput { text, .. } = effect else { panic!("expected text update, got {effect:?}") };
+        let onesim_protocol::ViewKind::TextField { text: value, .. } = &mut input.kind else { unreachable!() };
+        *value = text;
+        assert!(caret_visible(&layout(&input, &interaction)));
     }
 
     #[test]
