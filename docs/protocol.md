@@ -827,3 +827,20 @@ Menu, Link, control styles and Gauge (`frameworks/swiftui/Sources/SwiftUI/Styles
 - `progress` gains `"currentValueLabel"?: ViewNode`, drawn under a linear bar (caption, secondary). `.circular` is sent with `value: null` (the spinner).
 - New kind `gauge`: `{"kind":"gauge","id","style": "automatic"|"linearCapacity"|"accessoryLinear"|"accessoryLinearCapacity"|"accessoryCircular"|"accessoryCircularCapacity","value": fraction 0...1,"label"?,"currentValueLabel"?,"minimumValueLabel"?,"maximumValueLabel"?}` (labels are ViewNodes; `EmptyView` ones are omitted). `automatic` and `linearCapacity`: label centred above a 16 pt accent capacity bar, min/max labels beside it, the current value centred below. `accessoryLinearCapacity`: label leading above a 4 pt bar. `accessoryLinear`: an 8 pt primary bar with a dot at the value, no label. `accessoryCircularCapacity`: a 58 pt ring filled clockwise from the top, the current value inside. `accessoryCircular`: a 58 pt arc open at the bottom with a dot at the value, the current value inside and the label in the opening. Inspection value: the fraction.
 - Slider value labels add no kind: the guest sends an `hstack` of the minimum label, the `slider` (id `<id>/s`) and the maximum label. `onEditingChanged` runs `true` then `false` around each `text_input`.
+
+## R. v1 additions for SwiftUI date and color pickers
+
+The guest owns date selection, calendar navigation, formatting and color bindings. It emits standard buttons,
+text, shapes and sheets for most of the interface. This section adds three wire elements.
+
+- `wheel` draws multiple drums in one selection band. Optional `width` and `height` default to the proposed
+  width and 216 pt. `columns` is an array of objects with `options` (picker options in display order), `selected`
+  (zero-based index), `width` (points), and optional `align` (`leading`, `center`, or `trailing`, default `center`).
+  Optional `inset` and `selectedInset` set the regular and selected text offsets for edge-aligned columns.
+  The host draws the selected row and its nearest neighbours. A tap on an enabled, unselected row runs its
+  action. `disabled` disables the wheel. `popover` chooses the band fill for a wheel over glass.
+- A root presentation layer with `kind: "popover"` contains `content`, optional `anchor` (view id), and
+  optional `dismiss` (guest action). The host positions the card beside the anchor and sends `dismiss` for a
+  tap outside. The underlying view stays visible.
+- A `rowMinHeight` modifier holds a number in points. A list or form uses it as the minimum height of that
+  row alongside its content height and padding. Color picker rows use 58 pt.

@@ -11,10 +11,10 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Button` | 13 | ✅ |  |  |
 | `Canvas` | 15 | ⬜ |  |  |
 | `Color` | 13 | 🟠 |  | `opacity` ignored on semantic colors |
-| `ColorPicker` | 14 | ⬜ |  |  |
+| `ColorPicker` | 14 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Grid, spectrum, RGB sliders, and opacity selection. Localized titles, eyedropper, persistent favorites and native tab appearance are incomplete. CGColor bindings require CoreGraphics. |
 | `ContentUnavailableView` | 17 | ⬜ |  |  |
 | `ControlGroup` | 15 | ⬜ |  |  |
-| `DatePicker` | 13 | ⬜ |  |  |
+| `DatePicker` | 13 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Compact, graphical and wheel styles. Gregorian dates and tap or drag selection. Localized title-key and title-resource overloads, narrow parent layouts and wheel momentum are incomplete. |
 | `DebugReplaceableView` | 26 | ⬜ |  |  |
 | `DefaultButtonLabel` | 26 | ⬜ |  |  |
 | `DefaultDateProgressLabel` | 16 | ⬜ |  |  |
@@ -58,7 +58,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Menu` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | A tap opens it; with `primaryAction` a tap runs that and the menu needs a long press, which OneSim does not offer. A nested `Menu` opens its own card. No section headers, `menuOrder` or `menuIndicator` |
 | `MeshGradient` | 18 | ⬜ |  |  |
 | `ModifiedContent` | 13 | ⬜ |  |  |
-| `MultiDatePicker` | 16 | ⬜ |  |  |
+| `MultiDatePicker` | 16 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Gregorian day selection and range navigation. Localized title-key and title-resource overloads, narrow parent layouts and non-Gregorian dates are incomplete. |
 | `NavigationLink` | 13 | ✅ |  |  |
 | `NavigationSplitView` | 16 | ⬜ |  |  |
 | `NavigationStack` | 16 | ✅ |  |  |

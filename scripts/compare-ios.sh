@@ -39,6 +39,7 @@ layout="$guests/layout"
 typeapp="$guests/type"
 anim="$guests/animation"
 controls="$guests/controls"
+pickers="$guests/pickers"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
 fi
@@ -51,6 +52,7 @@ if want swiftui && [ -z "$smoke" ]; then
   scripts/build-swift-app.sh examples/swiftui-type "$typeapp"
   scripts/build-swift-app.sh examples/swiftui-animation "$anim"
   scripts/build-swift-app.sh examples/swiftui-controls "$controls"
+  scripts/build-swift-app.sh examples/swiftui-pickers "$pickers"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
 # (docs/compatibility/versions.json): 27.2 on the iPhone 18 Pro in tests/fixtures/ios27/, 26.5 on the iPhone 17 Pro
@@ -189,6 +191,29 @@ for ios in ${SIMCORE_IOS:-27.2}; do
     cshot indicators-dark   --dark --click Indicators
     echo "== SwiftUI controls (swiftui-controls, iOS $ios)"
     python3 scripts/compare_ios.py $fx/swiftui-controls-ios "$cout/onesim" "$cout" || rc=1
+    # Date and color pickers. Each recipe must have an Apple SwiftUI reference.
+    pkout=$out/swiftui-pickers
+    pkfx=$fx/swiftui-pickers-ios
+    mkdir -p "$pkout/onesim"
+    pshot() {
+      local name=$1
+      shift
+      if [ ! -f "$pkfx/$name.png" ]; then
+        echo "Missing iOS $ios picker reference: $pkfx/$name.png" >&2
+        rc=1
+        return
+      fi
+      ./target/debug/onesim run "$pickers" "${base[@]}" "$@" --screenshot "$pkout/onesim/$name.png" >/dev/null
+    }
+    pshot pickers
+    pshot pickers-date --click 213,241
+    pshot pickers-time --click 322,241
+    pshot graphical    --click Graphical
+    pshot wheel        --click Wheel
+    pshot multi        --click Multiple
+    pshot colors       --click 352,492
+    echo "== SwiftUI date and color pickers (iOS $ios)"
+    python3 scripts/compare_ios.py "$pkfx" "$pkout/onesim" "$pkout" || rc=1
   fi
   # React Native / Expo showcase: tests/fixtures/rn-showcase-ios (see its README). Needs node + `npm install` in the example.
   if want expo; then

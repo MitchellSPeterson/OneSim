@@ -31,12 +31,12 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `CircularProgressViewStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Always the spinner, as on iOS |
 | `ColumnNavigationViewStyle` | 15 | ⬜ |  | Deprecated |
 | `ColumnsFormStyle` | 16 | ⬜ |  |  |
-| `CompactDatePickerStyle` | 14 | ⬜ |  |  |
+| `CompactDatePickerStyle` | 14 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | iOS 26.5 appearance and native wheel momentum are incomplete. |
 | `CompactMenuControlGroupStyle` | 16.4 | ⬜ |  |  |
 | `ControlGroupStyle` | 15 | ⬜ |  |  |
-| `DatePickerStyle` | 13 | ⬜ |  |  |
+| `DatePickerStyle` | 13 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | iOS 26.5 appearance and native wheel momentum are incomplete. |
 | `DefaultButtonStyle` | 13 | ✅ |  |  |
-| `DefaultDatePickerStyle` | 13 | ⬜ |  |  |
+| `DefaultDatePickerStyle` | 13 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | iOS 26.5 appearance and native wheel momentum are incomplete. |
 | `DefaultGaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `DefaultGroupBoxStyle` | 14 | ⬜ |  |  |
 | `DefaultLabelStyle` | 14 | ⬜ |  |  |
@@ -57,7 +57,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `GaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `GlassButtonStyle` | 26 | ✅ |  |  |
 | `GlassProminentButtonStyle` | 26 | ✅ |  |  |
-| `GraphicalDatePickerStyle` | 14 | ⬜ |  |  |
+| `GraphicalDatePickerStyle` | 14 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | iOS 26.5 appearance and native wheel momentum are incomplete. |
 | `GroupBoxStyle` | 14 | ⬜ |  |  |
 | `GroupedFormStyle` | 16 | ⬜ |  |  |
 | `GroupedListStyle` | 13 | ⬜ |  |  |
@@ -121,6 +121,6 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `TitleOnlyLabelStyle` | 14 | ⬜ |  |  |
 | `ToggleStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `ToolbarLabelStyle` | 18 | ⬜ |  |  |
-| `WheelDatePickerStyle` | 13 | ⬜ |  |  |
+| `WheelDatePickerStyle` | 13 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | iOS 26.5 appearance and native wheel momentum are incomplete. |
 | `WheelPickerStyle` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | A tap on a row selects it (three rows each side are shown); no spinning or momentum |
 | `WindowBackgroundShapeStyle` | 17 | ⬜ |  |  |

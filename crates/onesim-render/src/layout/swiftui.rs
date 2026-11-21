@@ -181,6 +181,27 @@ const WHEEL_PT: f32 = 22.0;
 const WHEEL_BAND: (f64, f64) = (32.0, 16.67);
 const WHEEL_BAND_FILL: ((u8, u8, u8), (u8, u8, u8)) = ((244, 244, 245), (58, 58, 60));
 const WHEEL_DIM_A: f32 = 0.45;
+/// Multi-column wheel (`DatePicker`, section R): a fourth row each side, the band inset from the wheel's edges,
+/// columns this far apart, and out-of-range options at this alpha (measured on iOS 27.2, swiftui-pickers).
+/// Rows sit on a drum: radius `h * k + c` (89.5 pt for a 216 pt wheel, 74 for 172), one row per `pitch` of arc;
+/// a row at angle t is `r sin t` from the centre and squashed to `cos t`. Alpha by distance from the selection.
+/// The selection is 23.5 pt, the other rows 20.5 pt.
+const WHEEL_DRUM: (f64, f64, f64) = (0.352, 12.6, 32.0);
+const WHEEL_COLUMN_ALPHA: [f32; 5] = [1.0, 0.29, 0.265, 0.125, 0.06];
+const WHEEL_COLUMN_PT: (f32, f32) = (23.5, 20.5);
+const WHEEL_POPOVER_BAND_FILL: ((u8, u8, u8), (u8, u8, u8)) = ((229, 229, 231), (70, 70, 74));
+const WHEEL_COLUMN_BAND_INSET: f64 = 9.0;
+const WHEEL_COLUMN_GAP: f64 = 5.0;
+const WHEEL_OUT_OF_RANGE_A: f32 = 0.2;
+/// Popover holding a view (compact `DatePicker`): its top this far under the anchor, at least this far from the
+/// screen's sides, corner radius (iOS 27.2, swiftui-pickers pickers-date / pickers-time).
+const CONTENT_POPOVER_GAP: f64 = 8.67;
+const CONTENT_POPOVER_MARGIN: (f64, f64) = (16.0, 32.33);
+const CONTENT_POPOVER_RADIUS: f64 = 30.0;
+/// Its glass is nearly white: (mul, add) of the backdrop.
+const CONTENT_POPOVER_GLASS: ((f32, f32), (f32, f32)) = ((0.2, 0.795), (0.35, 0.118));
+/// The card's trailing edge lines up with the anchor's (this far past it) when the card fits that way.
+const CONTENT_POPOVER_TRAILING: f64 = 0.67;
 
 // iOS 26 measurements (points).
 const ROW_MIN_H: f64 = 52.0;
@@ -702,6 +723,10 @@ fn layout_inner<'a>(root: &ViewNode, params: &'a SceneParams<'a>, fonts: &'a mut
             }
             Layer::Cover { content } => cx.cover(content, &geo),
             Layer::Alert { title, message, actions } => cx.alert(title, message.as_deref(), actions, &geo),
+            Layer::Popover { anchor, content, dismiss } => {
+                let rect = anchor.as_ref().and_then(|a| nodes.iter().find(|n| &n.id == a)).map(|n| n.bounds);
+                cx.content_popover(&id, content, rect, *dismiss, &geo)
+            }
             Layer::Menu { anchor, items, dismiss, centered } => {
                 let rect = anchor.as_ref().and_then(|a| nodes.iter().find(|n| &n.id == a)).map(|n| n.bounds);
                 cx.menu(items, rect, *dismiss, *centered, &geo)
@@ -1313,6 +1338,11 @@ fn content_margins(mods: &[Modifier]) -> Edges {
     e
 }
 
+/// A row's own minimum height (`rowMinHeight`), else the list default.
+fn row_min_height(row: &ViewNode) -> f64 {
+    row.modifiers.iter().rev().find_map(|m| if let Modifier::RowMinHeight(h) = m { Some(*h) } else { None }).unwrap_or(ROW_MIN_H)
+}
+
 fn cell_columns(cell: &ViewNode) -> usize {
     let mut span = 1usize;
     for m in &cell.modifiers {
@@ -1802,6 +1832,7 @@ impl Ctx<'_> {
             }
             // Read by the owning container (grid columns, scroll margins and snap).
             Modifier::GridCellColumns(_)
+            | Modifier::RowMinHeight(_)
             | Modifier::ContentMargins(_)
             | Modifier::ScrollIndicators(_)
             | Modifier::ScrollTargetBehavior(_)
@@ -2159,6 +2190,7 @@ impl Ctx<'_> {
                     PickerStyle::Menu => self.menu_picker(v, label, options, *selected, *open, *disabled, p, child_env),
                 }
             }
+            ViewKind::Wheel { columns, width, height, disabled, popover } => self.multi_wheel(v, columns, (*width, *height), *disabled, *popover, p),
             ViewKind::Slider { value, min, max, field, disabled, .. } => self.slider(v, *value, (*min, *max), *field, *disabled, p),
             ViewKind::Progress { value, label, current_value_label } => {
                 self.progress(v, *value, label.as_deref(), current_value_label.as_deref(), p, child_env)
@@ -3036,6 +3068,99 @@ impl Ctx<'_> {
         Lay::new(Size { w, h }, Some(root), kids)
     }
 
+    /// Multi-column wheel: the columns centred side by side, one band behind all of them; four rows each side
+    /// of the selection, squashed and dimmed with distance. Tapping a row runs its option's action.
+    fn multi_wheel(&mut self, v: &ViewNode, columns: &[onesim_protocol::WheelColumn], (width, height): (Option<f64>, Option<f64>), disabled: bool, popover: bool, p: Prop) -> Lay {
+        let w = width.or(p.w.filter(|w| w.is_finite())).unwrap_or(320.0);
+        let h = height.unwrap_or(WHEEL_H);
+        let cy = h / 2.0;
+        let mut root = Node::new(&v.id, "picker");
+        root.disabled = disabled;
+        let picked: Vec<&str> = columns.iter().filter_map(|c| c.options.get(c.selected).map(|o| o.text.as_str())).collect();
+        root.label = picked.first().map(|s| s.to_string());
+        root.value = Some(picked.join(" "));
+        root.clip_radius = Some(0.0);
+        let mut band = Node::new(format!("{}#band", v.id), "wheel-band");
+        band.fill = Some(self.pick(if popover { WHEEL_POPOVER_BAND_FILL } else { WHEEL_BAND_FILL }));
+        band.radius = PILL;
+        band.inspect = false;
+        let bh = WHEEL_BAND.0;
+        let (k, c, pitch) = WHEEL_DRUM;
+        let r = h * k + c;
+        let mut kids = vec![(WHEEL_COLUMN_BAND_INSET, cy - bh / 2.0, Lay::new(Size { w: (w - 2.0 * WHEEL_COLUMN_BAND_INSET).max(0.0), h: bh }, Some(band), vec![]))];
+        let primary = self.semantic(Semantic::Primary);
+        let total: f64 = columns.iter().map(|c| c.width).sum::<f64>() + WHEEL_COLUMN_GAP * columns.len().saturating_sub(1) as f64;
+        let mut x = (w - total) / 2.0;
+        for (ci, col) in columns.iter().enumerate() {
+            let farthest = WHEEL_COLUMN_ALPHA.len() - 1;
+            let start = col.selected.saturating_sub(farthest).min(col.options.len());
+            let end = col.selected.saturating_add(farthest + 1).min(col.options.len());
+            for (i, o) in col.options.iter().enumerate().take(end).skip(start) {
+                let distance = i.abs_diff(col.selected);
+                let selected = distance == 0;
+                let t = distance as f64 * pitch / r;
+                let alpha = WHEEL_COLUMN_ALPHA[distance];
+                if t >= std::f64::consts::FRAC_PI_2 {
+                    continue;
+                }
+                let (off, sq) = (r * t.sin(), t.cos());
+                let pt = if selected { WHEEL_COLUMN_PT.0 } else { WHEEL_COLUMN_PT.1 };
+                let a = if o.disabled { WHEEL_OUT_OF_RANGE_A * alpha } else { alpha };
+                let color = Color { a: primary.a * a, ..primary };
+                let spec = FontSpec::new(pt, self.line_h(pt), 400, TextAlign::Leading);
+                let mut t = self.text_lay(&format!("{}#c{ci}#{i}#text", v.id), &o.text, spec, color, None);
+                if let Some(n) = t.node.as_mut() {
+                    n.inspect = false;
+                    n.text_squash = sq as f32;
+                }
+                let rh = pitch * sq;
+                let mut b = Node::new(format!("{}#c{ci}#{i}", v.id), "button");
+                b.role = Role::Button;
+                b.label = Some(o.text.clone());
+                b.action = (!disabled && !o.disabled && !selected && o.action != 0).then_some(o.action);
+                b.disabled = disabled || o.disabled;
+                b.value = (selected).then(|| "selected".into());
+                let (tw, th) = (t.size.w, t.size.h);
+                // The squashed text keeps its line box; the row centres it.
+                let inset = if selected { col.selected_inset.unwrap_or(col.inset) } else { col.inset };
+                let tx = match col.align {
+                    onesim_protocol::WheelAlign::Leading => inset,
+                    onesim_protocol::WheelAlign::Center => (col.width - tw) / 2.0,
+                    onesim_protocol::WheelAlign::Trailing => col.width - tw - inset,
+                };
+                // Away from the front of the drum, the receding rows converge toward its centre.
+                let recede = (1.0 - sq) * 0.075;
+                let tx = tx + (w / 2.0 - x - col.width / 2.0) * recede;
+                let y = cy + if i < col.selected { -off } else { off };
+                let y = y - rh / 2.0;
+                kids.push((x, y, Lay::new(Size { w: col.width, h: rh }, Some(b), vec![(tx, (rh - th) / 2.0 - if selected { 0.83 } else { 0.5 }, t)])));
+            }
+            x += col.width + WHEEL_COLUMN_GAP;
+        }
+        Lay::new(Size { w, h }, Some(root), kids)
+    }
+
+    /// Popover holding a view: a glass card under the anchor (above it when there is no room below),
+    /// centred on it and kept inside the screen margins. A tap outside runs `dismiss`.
+    fn content_popover(&mut self, id: &str, content: &ViewNode, anchor: Option<Rect>, dismiss: Option<u64>, g: &Geo) -> Lay {
+        let (w, h) = (g.w, g.h);
+        let env = Env { size: g.body, ..Env::new() };
+        let inner = self.view(content, Prop { w: None, h: None }, env);
+        let (cw, ch) = (inner.size.w, inner.size.h);
+        let a = anchor.unwrap_or(Rect { x: w / 2.0, y: h / 2.0, w: 0.0, h: 0.0 });
+        let (lo, hi) = (CONTENT_POPOVER_MARGIN.0, (w - cw - CONTENT_POPOVER_MARGIN.1).max(CONTENT_POPOVER_MARGIN.0));
+        let trailing = a.x + a.w + CONTENT_POPOVER_TRAILING - cw;
+        let x = if trailing >= lo { trailing.min((w - cw - lo).max(lo)) } else { (a.center().0 - cw / 2.0).clamp(lo, hi) };
+        let below = a.y + a.h + CONTENT_POPOVER_GAP;
+        let y = if below + ch <= h - g.dev_bottom { below } else { (a.y - CONTENT_POPOVER_GAP - ch).max(g.safe_top) };
+        let mut card = Node::new(format!("{id}#card"), "popover");
+        card.radius = CONTENT_POPOVER_RADIUS;
+        card.clip_radius = Some(CONTENT_POPOVER_RADIUS);
+        card.glass = Some(crate::glass::GlassSpec { blur: Some(PRESENT_BLUR), mix: Some(if self.dark { CONTENT_POPOVER_GLASS.1 } else { CONTENT_POPOVER_GLASS.0 }), shadow: Some(POPOVER_SHADOW), ..self.glass_spec(GlassVariant::Regular, None, false) });
+        let scrim = Lay::new(Size { w, h }, Some(self.scrim(&format!("{id}#scrim"), (w, h), 0.0, dismiss)), vec![]);
+        Lay::new(Size { w, h }, None, vec![(0.0, 0.0, scrim), (x, y, Lay::new(Size { w: cw, h: ch }, Some(card), vec![(0.0, 0.0, inner)]))])
+    }
+
     /// `Grid`: column widths come from the cells. The grid stays content-sized.
     #[allow(clippy::too_many_arguments)]
     fn grid(&mut self, v: &ViewNode, alignment: Alignment, hs: Option<f64>, vs: Option<f64>, rows: &[onesim_protocol::GridLine], _p: Prop, env: Env) -> Lay {
@@ -3356,7 +3481,7 @@ impl Ctx<'_> {
                 let mut c = self.view(row, Prop { w: Some(inner_w), h: None }, row_env);
                 // Measured: 34.3pt buttons and 44pt content get 15pt vertical padding, 32pt steppers 10pt.
                 let vpad = if has_bordered(row) || c.size.h > 33.0 { ROW_VPAD_BORDERED } else { ROW_VPAD };
-                let rh = ROW_MIN_H.max(c.size.h + 2.0 * vpad);
+                let rh = row_min_height(row).max(c.size.h + 2.0 * vpad);
                 let yo = (rh - c.size.h) / 2.0;
                 expand_button(&mut c, 0.0, yo, (-self.row_pad, 0.0, gw - self.row_pad, rh));
                 let tx = first_text_x(&c, 0.0).unwrap_or(0.0);
@@ -4900,6 +5025,28 @@ mod tests {
         assert!(s.hit_test(ux, uy).is_none_or(|i| s.nodes[i].id != "under"), "scrim blocks the presenting screen");
         let (x, y) = ok.center();
         assert_eq!(s.hit_test(x, y).and_then(|i| s.nodes[i].action), Some(2));
+    }
+
+    #[test]
+    fn picker_popover_keeps_passive_content_inert() {
+        let s = phone(r#"{"kind":"presentation","id":"p",
+          "content":{"kind":"text","id":"anchor","text":"Picker"},
+          "layers":[{"kind":"popover","anchor":"anchor","dismiss":7,
+            "content":{"kind":"text","id":"calendar","text":"March 2025"}}]}"#);
+        let (x, y) = by_id(&s, "calendar").bounds.center();
+        assert!(s.hit_test(x, y).is_none());
+        assert_eq!(s.hit_test(2.0, 2.0).and_then(|i| s.nodes[i].action), Some(7));
+    }
+
+    #[test]
+    fn picker_wheel_ignores_a_selection_outside_its_options() {
+        let invalid = (isize::MAX as usize) + 1;
+        let s = phone(&format!(r#"{{"kind":"wheel","id":"wheel","columns":[
+            {{"width":100,"selected":{invalid},"options":[{{"text":"A","action":5}}]}},
+            {{"width":100,"options":[]}}
+        ]}}"#));
+        assert_eq!(by_id(&s, "wheel").value.as_deref(), Some(""));
+        assert!(s.nodes.iter().all(|node| node.action.is_none()));
     }
 
     #[test]

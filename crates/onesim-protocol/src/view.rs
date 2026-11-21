@@ -260,6 +260,8 @@ pub enum Modifier {
     Pin(String),
     /// `.gridCellColumns(_:)`.
     GridCellColumns(u32),
+    /// Minimum height of the list row this view is (section R: a `ColorPicker` row is 58 pt). Read by `list`.
+    RowMinHeight(f64),
     /// `.contentMargins`: the inset already resolved onto each edge.
     ContentMargins(Edges),
     /// `.scrollIndicators(_:axes:)`.
@@ -820,6 +822,15 @@ pub enum Layer {
         #[serde(default)]
         dismiss: Option<u64>,
     },
+    /// A glass card holding `content`, hanging under the anchor (a compact `DatePicker`'s calendar or time wheel,
+    /// section R); `dismiss` closes it (tap outside).
+    Popover {
+        #[serde(default)]
+        anchor: Option<String>,
+        content: Box<ViewNode>,
+        #[serde(default)]
+        dismiss: Option<u64>,
+    },
     /// Menu of a menu-style `Picker` or a `Menu`, anchored to it; `dismiss` closes it (tap outside).
     Menu {
         #[serde(default)]
@@ -874,9 +885,37 @@ pub struct PickerOption {
     /// Menu layers only: a separator (`Divider` or a new `Section`) sits above this item.
     #[serde(default, skip_serializing_if = "is_false")]
     pub divider: bool,
-    /// Menu layers only: drawn dimmed and not tappable (a disabled button).
+    /// Menu layers and wheel columns: drawn dimmed and not tappable (a disabled button, a date out of range).
     #[serde(default, skip_serializing_if = "is_false")]
     pub disabled: bool,
+}
+
+/// One drum of a `wheel` (section R). `options` are the visible rows, `selected` the one in the band; an option
+/// with `disabled` is drawn dimmer and does nothing.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WheelColumn {
+    #[serde(default)]
+    pub options: Vec<PickerOption>,
+    #[serde(default)]
+    pub selected: usize,
+    pub width: f64,
+    #[serde(default)]
+    pub align: WheelAlign,
+    /// Gap between the text and the column edge it is aligned to (leading / trailing alignment only).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub inset: f64,
+    /// `inset` of the selected (magnified) row when it differs.
+    #[serde(default, rename = "selectedInset", skip_serializing_if = "Option::is_none")]
+    pub selected_inset: Option<f64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WheelAlign {
+    Leading,
+    #[default]
+    Center,
+    Trailing,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -1438,6 +1477,21 @@ pub enum ViewKind {
         minimum_value_label: Option<Box<ViewNode>>,
         #[serde(default, rename = "maximumValueLabel", skip_serializing_if = "Option::is_none")]
         maximum_value_label: Option<Box<ViewNode>>,
+    },
+    /// Multi-column wheel (`DatePicker` wheels, section R): drums side by side behind one highlight band.
+    /// `width` / `height` default to the proposal and 216.
+    Wheel {
+        #[serde(default)]
+        columns: Vec<WheelColumn>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        width: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        height: Option<f64>,
+        #[serde(default)]
+        disabled: bool,
+        /// Shown in a popover (a compact picker's time wheel): the band is darker over the glass.
+        #[serde(default, skip_serializing_if = "is_false")]
+        popover: bool,
     },
     /// SF Symbol (host capability).
     Image {

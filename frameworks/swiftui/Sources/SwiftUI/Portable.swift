@@ -93,6 +93,78 @@ public struct Date: Equatable, Hashable, Comparable, Sendable {
 }
 struct NSNull {}  // serialized as null by _json
 
+/// A fixed offset from GMT (WASI has no time zone database). `.current` is GMT.
+public struct TimeZone: Hashable, Sendable {
+    let seconds: Int
+    public init?(secondsFromGMT seconds: Int) {
+        guard (-18 * 3600...18 * 3600).contains(seconds) else { return nil }
+        self.seconds = seconds
+    }
+    /// Only "GMT", "UTC" and "GMT+hh:mm" / "GMT-hhmm" style identifiers.
+    public init?(identifier: String) {
+        guard let s = _gmtOffset(identifier) else { return nil }
+        seconds = s
+    }
+    public init?(abbreviation: String) { self.init(identifier: abbreviation) }
+    public static var current: TimeZone { TimeZone(secondsFromGMT: 0)! }
+    public static var gmt: TimeZone { TimeZone(secondsFromGMT: 0)! }
+    public var identifier: String { seconds == 0 ? "GMT" : "GMT\(seconds < 0 ? "-" : "+")\(_pad2(abs(seconds) / 3600))\(_pad2(abs(seconds) % 3600 / 60))" }
+    public func secondsFromGMT(for date: Date = Date()) -> Int { seconds }
+    public func secondsFromGMT() -> Int { seconds }
+}
+func _gmtOffset(_ id: String) -> Int? {
+    if id == "GMT" || id == "UTC" || id == "Z" { return 0 }
+    guard id.hasPrefix("GMT") || id.hasPrefix("UTC") else { return nil }
+    let rest = Array(id.dropFirst(3))
+    guard let sign = rest.first, sign == "+" || sign == "-" else { return nil }
+    let digits = rest.dropFirst().filter { $0 != ":" }
+    guard !digits.isEmpty, digits.count <= 4, digits.allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
+    let v = Int(String(digits))!
+    let (h, m) = digits.count <= 2 ? (v, 0) : (v / 100, v % 100)
+    guard h <= 18, m < 60, h < 18 || m == 0 else { return nil }
+    return (sign == "-" ? -1 : 1) * (h * 3600 + m * 60)
+}
+
+/// A language-region identifier; WASI formats every locale as `en_US`.
+public struct Locale: Hashable, Sendable {
+    public let identifier: String
+    public init(identifier: String) { self.identifier = identifier }
+    public static var current: Locale { Locale(identifier: "en_US") }
+    public static var autoupdatingCurrent: Locale { current }
+}
+
+/// The Gregorian calendar only (WASI has no ICU).
+public struct Calendar: Hashable, Sendable {
+    public enum Identifier: Hashable, Sendable { case gregorian, iso8601 }
+    public let identifier: Identifier
+    public var timeZone = TimeZone.current
+    public var locale: Locale? = Locale.current
+    /// 1 = Sunday ... 7 = Saturday.
+    public var firstWeekday = 1
+    public init(identifier: Identifier) {
+        self.identifier = identifier
+        if identifier == .iso8601 { firstWeekday = 2 }
+    }
+    public static var current: Calendar { Calendar(identifier: .gregorian) }
+    public static var autoupdatingCurrent: Calendar { current }
+}
+
+/// Calendar fields (`MultiDatePicker` selections). Unset fields are nil.
+public struct DateComponents: Hashable, Sendable {
+    public var calendar: Calendar?, timeZone: TimeZone?
+    public var era: Int?, year: Int?, month: Int?, day: Int?, hour: Int?, minute: Int?, second: Int?, nanosecond: Int?
+    public var weekday: Int?, weekdayOrdinal: Int?, quarter: Int?, weekOfMonth: Int?, weekOfYear: Int?, yearForWeekOfYear: Int?
+    public init(calendar: Calendar? = nil, timeZone: TimeZone? = nil, era: Int? = nil, year: Int? = nil, month: Int? = nil,
+                day: Int? = nil, hour: Int? = nil, minute: Int? = nil, second: Int? = nil, nanosecond: Int? = nil,
+                weekday: Int? = nil, weekdayOrdinal: Int? = nil, quarter: Int? = nil, weekOfMonth: Int? = nil,
+                weekOfYear: Int? = nil, yearForWeekOfYear: Int? = nil) {
+        self.calendar = calendar; self.timeZone = timeZone; self.era = era; self.year = year; self.month = month
+        self.day = day; self.hour = hour; self.minute = minute; self.second = second; self.nanosecond = nanosecond
+        self.weekday = weekday; self.weekdayOrdinal = weekdayOrdinal; self.quarter = quarter; self.weekOfMonth = weekOfMonth
+        self.weekOfYear = weekOfYear; self.yearForWeekOfYear = yearForWeekOfYear
+    }
+}
+
 /// `Link` destinations. Only the string is kept.
 public struct URL: Equatable, Hashable {
     public let absoluteString: String

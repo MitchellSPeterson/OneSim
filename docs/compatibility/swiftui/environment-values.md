@@ -30,7 +30,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.badgeProminence` | 17 | ⬜ |  |  |
 | `\.buttonRepeatBehavior` | 17 | ⬜ |  |  |
 | `\.buttonSizing` | 26 | ⬜ |  |  |
-| `\.calendar` | 13 | ⬜ |  |  |
+| `\.calendar` | 13 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Picker grids use Gregorian dates and honor the first weekday. |
 | `\.colorScheme` | 13 | ✅ |  |  |
 | `\.colorSchemeContrast` | 13 | ⬜ |  |  |
 | `\.contentTransition` | 16 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Read reflects `.contentTransition(_:)`; `.environment(\.contentTransition, _)` is ignored |
@@ -76,7 +76,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.lineHeight` | 26 | ⬜ |  |  |
 | `\.lineLimit` | 13 | ⬜ |  |  |
 | `\.lineSpacing` | 13 | ⬜ |  |  |
-| `\.locale` | 13 | ⬜ |  |  |
+| `\.locale` | 13 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Native picker labels use Foundation formatting. WASI uses US English. |
 | `\.managedObjectContext` | 13 | ⬜ |  |  |
 | `\.materialActiveAppearance` | 18 | ⬜ |  |  |
 | `\.menuIndicatorVisibility` | 15 | ⬜ |  |  |
@@ -112,7 +112,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.tabViewBottomAccessoryPlacement` | 26 | ⬜ |  |  |
 | `\.textCase` | 14 | ⬜ |  |  |
 | `\.textSelectionAffinity` | 18 | ⬜ |  |  |
-| `\.timeZone` | 13 | ⬜ |  |  |
+| `\.timeZone` | 13 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Native uses Foundation time zones. WASI supports fixed offsets. |
 | `\.toolbarLabelStyle` | 18 | ⬜ |  |  |
 | `\.toolbarTitleAlignment` | 13 | ⬜ |  |  |
 | `\.toolbarVerticalEdge` | 13 | ⬜ |  |  |

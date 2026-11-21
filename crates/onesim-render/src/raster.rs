@@ -1228,7 +1228,7 @@ pub fn sprite_key(n: &crate::scene::Node, fonts: &Fonts, scale: f64, layer: Spri
         SpriteLayer::Icons => format!("{:?}", (&n.glyph, &n.symbol)),
         SpriteLayer::Text => format!("{:?}", n.text),
     };
-    (layer as u8, content, fonts.is_sf(), s.to_bits(), n.opacity.to_bits()).hash(&mut h);
+    (layer as u8, content, fonts.is_sf(), s.to_bits(), n.opacity.to_bits(), n.text_squash.to_bits()).hash(&mut h);
     [n.bounds.w as f32, n.bounds.h as f32, px - ax, py - ay].map(f32::to_bits).hash(&mut h);
     Some(SpriteKey { hash: h.finish(), anchor: (ax as i32, ay as i32) })
 }
@@ -1327,12 +1327,23 @@ pub(crate) fn text_sprite(n: &crate::scene::Node, fonts: &mut Fonts, s: f32, cli
     if x1 <= x0 || y1 <= y0 || x1 - x0 > MAX_SPRITE || y1 - y0 > MAX_SPRITE {
         return Ok(None);
     }
-    Ok(Pixmap::new((x1 - x0) as u32, (y1 - y0) as u32).map(|mut pm| {
-        for op in &ops {
-            apply_text_op(&mut pm, op, (x0, y0), None);
-        }
-        Sprite { x: x0, y: y0, pixmap: pm }
-    }))
+    let Some(mut pm) = Pixmap::new((x1 - x0) as u32, (y1 - y0) as u32) else { return Ok(None) };
+    for op in &ops {
+        apply_text_op(&mut pm, op, (x0, y0), None);
+    }
+    let k = n.text_squash;
+    if (k - 1.0).abs() < 1e-4 || k <= 0.0 {
+        return Ok(Some(Sprite { x: x0, y: y0, pixmap: pm }));
+    }
+    // Squash vertically about the node's centre: same width, rows resampled.
+    let cy = (n.bounds.y + n.bounds.h / 2.0) as f32 * s;
+    let top = cy + (y0 as f32 - cy) * k;
+    let ny0 = top.floor() as i32;
+    let nh = (((y1 - y0) as f32 * k + (top - ny0 as f32)).ceil() as u32).max(1);
+    let Some(mut out) = Pixmap::new(pm.width(), nh) else { return Ok(None) };
+    let paint = PixmapPaint { quality: tiny_skia::FilterQuality::Bilinear, ..PixmapPaint::default() };
+    out.draw_pixmap(0, 0, pm.as_ref(), &paint, Transform::from_row(1.0, 0.0, 0.0, k, 0.0, top - ny0 as f32), None);
+    Ok(Some(Sprite { x: x0, y: ny0, pixmap: out }))
 }
 
 /// Composite device-positioned tiles into one pixmap cropped to their non-empty extent.
@@ -1450,7 +1461,14 @@ pub fn render_reusing(scene: &Scene, fonts: &mut Fonts, scale: f64, mut pixels: 
             draw_image(&mut pm, n, im, s, mask.as_deref());
         }
         if let Some(t) = &n.text {
-            let _ = paint_text(n, t, fonts, s, (!bounds_visible).then_some(clip), |op| apply_text_op(&mut pm, &op, (0, 0), mask.as_deref()));
+            if (n.text_squash - 1.0).abs() >= 1e-4 {
+                // Squashed text (date-picker wheel rows) goes through its sprite, which applies the scale.
+                if let Ok(Some(sp)) = text_sprite(n, fonts, s, None) {
+                    pm.draw_pixmap(sp.x, sp.y, sp.pixmap.as_ref(), &PixmapPaint::default(), Transform::identity(), mask.as_deref());
+                }
+            } else {
+                let _ = paint_text(n, t, fonts, s, (!bounds_visible).then_some(clip), |op| apply_text_op(&mut pm, &op, (0, 0), mask.as_deref()));
+            }
         }
         clips.push((children[i] > 0).then(|| {
             let cr = clip_radius(n, s, pw, ph);

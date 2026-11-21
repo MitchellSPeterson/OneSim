@@ -83,6 +83,23 @@ so `@State` persists while a screen is on the stack (hidden screens' slots are k
 (version-gated) sets the bound String via `simcore_text_cb`. `SecureField` and `Slider` reuse this: a slider's new value arrives as `text_input`
 on its `field` and is clamped and snapped to `step` in the guest. A `Picker` registers one action per tagged option (protocol section I).
 
+### Date and color selection
+
+- `DatePicker(selection:displayedComponents:label:)` takes a `Binding<Date>`, an optional closed or one-sided
+  inclusive range, and the `.date` and `.hourAndMinute` components. Use a string title in place of the label closure.
+  `.datePickerStyle(_ :)` accepts `.automatic`, `.compact`, `.graphical`, `.wheel`, and custom `DatePickerStyle`
+  implementations. A custom style can reuse the selection, label and bounds through `DatePicker(configuration)`.
+- `MultiDatePicker(selection:label:)` takes a `Binding<Set<DateComponents>>`. Its range overloads take a
+  half-open range, an inclusive lower bound or an exclusive upper bound. A tap toggles a Gregorian civil day.
+- `ColorPicker(selection:supportsOpacity:label:)` takes a `Binding<Color>`, or a `Binding<CGColor>` on native targets.
+  Grid, spectrum, RGB, hex, opacity and session favorites update the binding. `supportsOpacity: false` hides
+  the opacity control and writes opaque colors.
+
+The pickers use `\.calendar`, `\.timeZone` and `\.locale`. Calendar arithmetic is Gregorian. Native guests
+use Foundation locale formatting and time zones. WASI uses English text and fixed GMT offsets.
+Localized title-key and title-resource overloads, wheel momentum, the eyedropper, and persistent color
+favorites are incomplete. Calendar width still follows the viewport in layouts with narrower parents.
+
 ### Presentation
 
 - `.alert(_:isPresented:actions:message:)`, `.alert(_:isPresented:actions:)` (no actions: an OK button), `.alert(_:isPresented:presenting:actions:message:)` / `presenting:actions:`.
