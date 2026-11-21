@@ -270,7 +270,7 @@ fn main() {
     send(json!({"type": "hello", "protocol": 1}));
     send(json!({"type": "tree", "version": version, "root": tree(count)}));
     send_boot_extras();
-    // Pasteboard (section U): echo what the host sets, and what it seeded at launch, as app copies.
+    // Pasteboard (section V): echo what the host sets, and what it seeded at launch, as app copies.
     if let Ok(pb) = std::env::var("SIMCORE_PASTEBOARD") {
         send(json!({"type": "pasteboard", "items": [format!("launch:{pb}")]}));
     }

@@ -67,7 +67,7 @@ pub(super) fn lifted_copy(nodes: &[Node], i: usize, k: f64, prefix: &str) -> Vec
     out
 }
 
-/// `presentation*` styling of a sheet layer (section U).
+/// `presentation*` styling of a sheet layer (section V).
 #[derive(Default)]
 pub(super) struct SheetStyle<'a> {
     pub background: Option<&'a ViewNode>,

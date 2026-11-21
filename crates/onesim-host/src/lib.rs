@@ -187,7 +187,7 @@ impl Host {
         Self::push_env(s)
     }
 
-    /// SwiftUI: replace the app's pasteboard (protocol section U). It also seeds relaunches. The guest re-renders
+    /// SwiftUI: replace the app's pasteboard (protocol section V). It also seeds relaunches. The guest re-renders
     /// only when that changes what it shows, so this does not wait for a tree.
     pub fn set_pasteboard(&mut self, id: &str, items: Vec<String>) -> Result<(), ApiError> {
         let s = self.get(id)?;

@@ -1,4 +1,4 @@
-//! `ShareLink`'s share sheet (protocol section U), as the Simulator shows it for text: a floating glass card with
+//! `ShareLink`'s share sheet (protocol section V), as the Simulator shows it for text: a floating glass card with
 //! the item (a text tile and its title), an app row (Reminders, More) and an action row (Copy, Save to Files).
 use super::*;
 

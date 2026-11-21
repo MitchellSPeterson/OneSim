@@ -58,7 +58,7 @@ pub(crate) struct State {
     pub(crate) clock_ms: f64,
     pub(crate) guest_clock_ms: f64,
     pub(crate) guest_due_ms: Option<f64>,
-    /// Items the app last put on the pasteboard (section U), until JS takes them (`simcore_web_take_pasteboard`).
+    /// Items the app last put on the pasteboard (section V), until JS takes them (`simcore_web_take_pasteboard`).
     pub(crate) pasteboard_out: Option<Vec<String>>,
     pub(crate) last_anim_ver: Option<u64>,
     /// Set before a guest callback; a tree submit clears it by updating the scene.

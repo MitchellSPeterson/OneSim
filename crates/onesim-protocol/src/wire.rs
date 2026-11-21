@@ -25,7 +25,7 @@ pub enum GuestMessage {
     /// React Native `scrollTo` / `scrollToEnd` commands.
     #[serde(rename = "scroll_to")]
     ScrollTo { tag: u64, x: ScrollTarget, y: ScrollTarget },
-    /// The app replaced the session pasteboard (section U: the share sheet's Copy).
+    /// The app replaced the session pasteboard (section V: the share sheet's Copy).
     Pasteboard { items: Vec<String> },
     /// SwiftUI `ScrollViewProxy.scrollTo` (section M). `anchor` is a unit point; absent means top-leading.
     #[serde(rename = "scroll_to_id")]
@@ -238,7 +238,7 @@ pub enum HostMessage {
         #[serde(default, rename = "dynamicTypeSize", skip_serializing_if = "Option::is_none")]
         dynamic_type_size: Option<DynamicTypeSize>,
     },
-    /// SwiftUI: replace the app's pasteboard (section U).
+    /// SwiftUI: replace the app's pasteboard (section V).
     Pasteboard { items: Vec<String> },
     /// React Native touch: `x`/`y` page points, `lx`/`ly` relative to the target node (`tag`).
     Touch { phase: TouchPhase, tag: u64, x: f64, y: f64, lx: f64, ly: f64, timestamp: f64 },

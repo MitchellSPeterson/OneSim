@@ -1116,29 +1116,42 @@ pub fn resolve_label(tree: &onesim_protocol::UiNode, spec: &str) -> Result<(f64,
         }
         n.children.iter().find_map(|c| find(c, pred))
     }
+    let skipped = |n: &UiNode| n.accessibility.as_ref().is_some_and(|a| a.hidden == Some(true) || a.suppressed);
     let center = |n: &UiNode| (n.frame.x + n.frame.width / 2.0, n.frame.y + n.frame.height / 2.0);
+    let point = |n: &UiNode| {
+        if let Some(p) = n.accessibility.as_ref().and_then(|a| a.activation.as_ref()) {
+            if p.unit {
+                return (n.frame.x + p.x * n.frame.width, n.frame.y + p.y * n.frame.height);
+            }
+            return (n.frame.x + p.x, n.frame.y + p.y);
+        }
+        center(n)
+    };
     if let Some((label, part)) = spec.rsplit_once('#') {
         if matches!(part, "increment" | "decrement") {
-            let st = find(tree, &|n| n.role.as_deref() == Some("stepper") && n.label.as_deref() == Some(label))
+            let st = find(tree, &|n| !skipped(n) && n.role.as_deref() == Some("stepper") && n.label.as_deref() == Some(label))
                 .ok_or_else(|| format!("no stepper labelled {label:?}"))?;
             let b = find(st, &|n| n.id.ends_with(&format!("#{part}"))).ok_or("stepper half not found")?;
             return Ok(center(b));
         }
     }
     // Software keyboard keys (`h`, `space`, `delete`, `shift`, `return`, `123`) win when it is up.
-    let key = find(tree, &|n| n.role.as_deref() == Some("key") && n.label.as_deref().is_some_and(|l| l.eq_ignore_ascii_case(spec)));
+    let key = find(tree, &|n| !skipped(n) && n.role.as_deref() == Some("key") && n.label.as_deref().is_some_and(|l| l.eq_ignore_ascii_case(spec)));
     let n = match key {
         Some(k) => k,
         None => find(tree, &|n| {
-            matches!(n.role.as_deref(), Some("button" | "toggle" | "textfield")) && n.label.as_deref() == Some(spec)
+            !skipped(n) && matches!(n.role.as_deref(), Some("button" | "toggle" | "textfield")) && n.label.as_deref() == Some(spec)
         })
         // A native stack header's back pill is labelled with the previous title; `Back` always finds it.
-        .or_else(|| find(tree, &|n| spec.eq_ignore_ascii_case("back") && n.id.ends_with("#back")))
+        .or_else(|| find(tree, &|n| !skipped(n) && spec.eq_ignore_ascii_case("back") && n.id.ends_with("#back")))
         // Any other view by its text (views with gestures have no control role).
-        .or_else(|| find(tree, &|n| n.role.as_deref() == Some("text") && n.label.as_deref() == Some(spec)))
+        .or_else(|| find(tree, &|n| !skipped(n) && n.role.as_deref() == Some("text") && n.label.as_deref() == Some(spec)))
+        // A combined container has role `none`. Its accessibility label is still a click target.
+        .or_else(|| find(tree, &|n| !skipped(n) && n.accessibility.is_some() && n.label.as_deref() == Some(spec)))
+        .or_else(|| find(tree, &|n| !skipped(n) && n.accessibility.as_ref().and_then(|a| a.identifier.as_deref()) == Some(spec)))
         .ok_or_else(|| format!("no button, toggle, text field, key or text labelled {spec:?}"))?,
     };
-    Ok(center(n))
+    Ok(point(n))
 }
 
 /// A scroller along its axis: (offset, max offset, viewport length, finger coordinate).

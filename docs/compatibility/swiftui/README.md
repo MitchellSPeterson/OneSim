@@ -26,18 +26,18 @@ are the ones that matter most.
 | Area | iOS |
 |---|---|
 | [Views](views.md) | 55% (52/95) |
-| [View modifiers](view-modifiers.md) | 25% (109.5/433) |
+| [View modifiers](view-modifiers.md) | 32% (140.5/433) |
 | [Text and Image methods](text-and-image.md) | 56% (19/34) |
 | [Shapes](shapes.md) | 87% (29.5/34) |
 | [Styles](styles.md) | 69% (82.5/120) |
 | [Gestures](gestures.md) | 79% (11/14) |
 | [Scenes](scenes.md) | 2% (0.5/23) |
-| [Property wrappers](property-wrappers.md) | 55% (11/20) |
+| [Property wrappers](property-wrappers.md) | 58% (11.5/20) |
 | [Environment values](environment-values.md) | 12% (14.5/118) |
-| [Protocols](protocols.md) | 26% (20.5/78) |
-| [Other types](other-types.md) | 29% (120/410) |
+| [Protocols](protocols.md) | 28% (22/78) |
+| [Other types](other-types.md) | 33% (136/410) |
 | [Outside SwiftUI](outside-swiftui.md) | 67% (6/9) |
-| **Total** | **34% (476/1388)** |
+| **Total** | **38% (525/1388)** |
 <!-- coverage:end -->
 
 Refresh with `node scripts/api-coverage.mjs`; CI runs it with `--check`.

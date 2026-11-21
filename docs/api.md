@@ -100,7 +100,7 @@ All input params also carry `"sessionId"`.
 | `render.tree` | `{"sessionId"}` | `{"treeVersion","root": UiNode}` |
 | `render.inspect` | `{"sessionId"}` + `{"element"}` or `{"x","y"}` | `{"node": UiNode (with children), "path":[ids root→node]}` |
 
-`UiNode`: `{"id","kind","role","label"?,"text"?,"value"?,"frame":{x,y,width,height},"action"?,"focused"?,"disabled"?,"children":[...]}`.
+`UiNode`: `{"id","kind","role","label"?,"text"?,"value"?,"frame":{x,y,width,height},"action"?,"focused"?,"disabled"?,"accessibility"?,"children":[...]}`. `accessibility` is the extra semantics from [protocol section U](protocol.md).
 `id` is stable for the life of the element (React Native: the reactTag; SwiftUI: the structural path).
 
 ## Device

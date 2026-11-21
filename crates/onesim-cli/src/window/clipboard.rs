@@ -1,5 +1,5 @@
 //! The host machine's clipboard, through the platform's own command-line tools (no extra dependency).
-//! The window keeps a SwiftUI app's pasteboard in step with it (protocol section U).
+//! The window keeps a SwiftUI app's pasteboard in step with it (protocol section V).
 use std::io::Write;
 use std::process::{Command, Stdio};
 

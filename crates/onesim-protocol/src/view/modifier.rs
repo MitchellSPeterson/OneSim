@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{ForegroundPalette, ShapePaint, VisualOp};
+use super::accessibility::AccessibilityMod;
 use super::animation::{AnimationSpec, ContentTransitionKind, MatchedGeometryMod, TransitionSpec};
 use super::color::Color;
 use super::inf;
@@ -333,4 +334,6 @@ pub enum Modifier {
     MatchedGeometry(Box<MatchedGeometryMod>),
     /// `.contentTransition` (section P), inherited by `text` and `image` descendants.
     ContentTransition(ContentTransitionKind),
+    /// Accessibility semantics (section U). One partial record per call; the host merges them.
+    Accessibility(Box<AccessibilityMod>),
 }

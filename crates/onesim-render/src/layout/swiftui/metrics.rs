@@ -318,12 +318,20 @@ pub(super) struct Lay {
     pub(super) infl: (f64, f64, f64, f64),
     pub(super) embedded: Option<Embedded>,
     pub(super) shared_kids: Option<(f64, Arc<ListContent>)>,
+    /// Child that is the modified view when `kids` also holds a decoration (background, overlay, mask).
+    pub(super) content_child: Option<u8>,
 }
 
 impl Lay {
     pub(super) fn new(size: Size, node: Option<Node>, kids: Vec<(f64, f64, Lay)>) -> Self {
-        Self { size, node: node.map(Box::new), kids, infl: (0.0, 0.0, 0.0, 0.0), embedded: None, shared_kids: None }
+        Self { size, node: node.map(Box::new), kids, infl: (0.0, 0.0, 0.0, 0.0), embedded: None, shared_kids: None, content_child: None }
     }
+}
+
+/// `child` is the modified view; the other children are decoration and paint around it.
+pub(super) fn with_content(mut lay: Lay, child: u8) -> Lay {
+    lay.content_child = Some(child);
+    lay
 }
 
 #[derive(Clone, Copy, PartialEq)]

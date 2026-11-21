@@ -162,7 +162,7 @@ favorites are incomplete. Calendar width still follows the viewport in layouts w
 - `.popover(isPresented:attachmentAnchor:arrowEdge:content:)` and `.popover(item:…)`: a sheet on iPhone, or with `.presentationCompactAdaptation(.popover)` / `.none` a glass bubble whose arrow points at the attachment anchor (`.rect(.bounds)`, `.rect(.rect(_:))`, `.point(_:)`); `.fullScreenCover` / `.sheet` adaptations switch kinds. A tap outside the bubble dismisses it.
 - `.presentationBackground(_:)` / `(alignment:content:)`, `.presentationCornerRadius(_:)`, `.presentationBackgroundInteraction(_:)` (no dim and a live screen below up through the detent), `.presentationContentInteraction(_:)`; `.presentationSizing(_:)` and `.presentationPlacement(_:)` compile and, as on iPhone, change nothing. Presentation modifiers work on any view of the presented content.
 - `.contextMenu(menuItems:)`, `(menuItems:preview:)`, the deprecated `contextMenu(_: ContextMenu?)` and `(forSelectionType:menu:primaryAction:)` (per `ForEach` row of the selection type). A 0.5 s long press opens it; a `Button` it is attached to still taps.
-- `ShareLink` (every initializer) opens the share sheet for text or links; Copy puts the items' text on the pasteboard, other activities report a `module.called` event. `PasteButton(payloadType:onPaste:)` and `PasteButton(supportedContentTypes:…)` paste it through the type's transfer representations (CoreTransferable is declared in the module: Proxy, Codable, Data and File representations). The pasteboard follows the host clipboard in `onesim window` and the browser clipboard on the web; `--pasteboard TEXT` fixes it (protocol section U).
+- `ShareLink` (every initializer) opens the share sheet for text or links; Copy puts the items' text on the pasteboard, other activities report a `module.called` event. `PasteButton(payloadType:onPaste:)` and `PasteButton(supportedContentTypes:…)` paste it through the type's transfer representations (CoreTransferable is declared in the module: Proxy, Codable, Data and File representations). The pasteboard follows the host clipboard in `onesim window` and the browser clipboard on the web; `--pasteboard TEXT` fixes it (protocol section V).
 - Swipe: a sheet follows a downward drag (dismisses past 25% of the way down, settles at the nearest detent otherwise) and an upward drag expands it; content scrolls first at the largest detent. See protocol section G for the gesture rules.
 
 Presented content is evaluated in place (a sheet's `@State` lives at `<view path>/sheet` only while shown) and hoisted by the runtime above the whole tree as a `presentation` node (protocol section G). Any `Button` inside alert/dialog actions dismisses it after its own action. `Button(_:role:action:)` takes `ButtonRole` `.cancel` / `.destructive`.
@@ -220,8 +220,18 @@ SwiftUI apps reach for more than `SwiftUI`. Each of these will be reimplemented 
 - Structural identity is positional (`if`/`else` branches use distinct `/T` and `/F` paths; state is distinguished by path and view type).
 - Whole-root re-evaluation on every state change.
 - `Text` takes `String` (no `LocalizedStringKey`); `foregroundColor(nil)` maps to primary.
+- Accessibility (protocol section U): `.accessibility*` modifiers merge outermost-last. The spoken label replaces the inspection label. The spoken value replaces the inspection value and leaves the control's editable text alone. A modifier after opacity, clip, background, overlay, or mask attaches to the inspectable content. Other semantics are an `accessibility` object on the inspection node (omitted when those are the only ones). `resolve_label` skips hidden and suppressed nodes, then matches an accessibility label or identifier, and uses an activation point when one is set. A finger tap does not run the default accessibility action. Sort priority reorders inspection children only. `LocalizedStringKey` is the key text, including interpolations, with no bundle lookup. There is no VoiceOver UI: rotors, zoom, direct touch, drag and drop points, invert colors, large content, charts, linked groups and the `responds` flag are stored semantics. `AccessibilityFocusState` technologies are stored and not filtered. Modifiers return `some View`, not `ModifiedContent<_, AccessibilityAttachmentModifier>`. `AccessibilityRotorContent.body` supplies rotor entries. A builder block concatenates every entry and has no `ForEach`. `prepare` is not called. Child and representation elements are the texts of those views.
 - `-swift-version 5` language mode is used for the module and apps. macOS/Darwin only for now (autorelease pool, Foundation).
 - `-parse-as-library` is passed only when sources contain `@main`; `@main` must start its line.
+
+### Accessibility
+
+| API | Supported entry points |
+| --- | --- |
+| Modifiers | `.accessibility` through `.accessibilityZoomAction`, including `isEnabled` (false emits nothing). Each returns `some View` |
+| Focus | `@AccessibilityFocusState` for `Bool` and optional values, and `for: AccessibilityTechnologies` (stored, not applied) |
+| Rotors | `AccessibilityRotorContent.body`, concrete `AccessibilityRotorEntry` (id formatted as a string), `AccessibilityRotorContentBuilder` (any number of entries, no `ForEach`) |
+| Chart | `AXChartDescriptorRepresentable.makeChartDescriptor()` title and summary. `updateChartDescriptor` is a no-op |
 
 ### Gradients, Canvas and visual effects
 

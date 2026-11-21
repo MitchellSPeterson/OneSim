@@ -1424,10 +1424,108 @@ for screen in ["Grouped", "Plain", "Inset", "Sidebar", "Boxes", "Columns", "Empt
 finish(p)
 print("forms: list styles, sections, edit mode, swipe actions, disclosure, outline, custom styles, columns, table ok")
 
+# Accessibility modifiers: the guest tree carries the semantics. Actions run by id.
+def ax_node(t, text):
+    return next(m for m in walk(t["root"]) if m.get("kind") == "text" and m.get("text") == text)
+
+def axs(node):
+    return [m["accessibility"] for m in node.get("modifiers") or [] if "accessibility" in m]
+
+def ax_has(node, **kw):
+    return any(all(a.get(k) == v for k, v in kw.items()) for a in axs(node))
+
+p = spawn(sys.argv[24])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+alpha = axs(ax_node(t, "Alpha"))
+assert [(k, a[k]) for a in alpha for k in ("hint", "value", "identifier", "label") if k in a] == [
+    ("hint", "Hint"), ("value", "Val"), ("identifier", "alpha"), ("label", "Outer")], alpha
+assert axs(ax_node(t, "Beta")) == [{"hidden": True}]
+pair = next(m for m in walk(t["root"]) if m.get("kind") == "vstack" and [c.get("text") for c in m.get("children", [])] == ["One", "Two"])
+assert ax_has(pair, children="combine"), axs(pair)
+go = axs(ax_node(t, "Go"))
+assert any(a.get("name") == "Run" and a.get("action") for m in go for a in m.get("actions", [])), go
+off = ax_node(t, "Off")
+assert not any("accessibility" in m for m in off.get("modifiers") or []), off
+focus = ax_node(t, "Focus me")
+assert ax_has(focus, focused=True) and ax_has(focus, defaultFocus=True), axs(focus)
+tech = ax_node(t, "Tech")
+assert ax_has(tech, focused=False, technologies=["voiceOver"]), axs(tech)
+both = ax_node(t, "Both")
+assert ax_has(both, focused=True, defaultFocus=True, technologies=["voiceOver", "switchControl"]), axs(both)
+name = ax_node(t, "Name")
+assert any(a.get("pair", {}).get("role") == "label" and str(a.get("pair", {}).get("id", "")).endswith(":pair") for a in axs(name)), axs(name)
+value = ax_node(t, "Value")
+assert any(a.get("pair", {}).get("role") == "content" and str(a.get("pair", {}).get("id", "")).endswith(":pair") for a in axs(value)), axs(value)
+extra = ax_node(t, "Extra")
+assert ax_has(extra, heading=1), axs(extra)
+assert ax_has(extra, sortPriority=5), axs(extra)
+assert ax_has(extra, textContentType="sourceCode"), axs(extra)
+assert ax_has(extra, scrollStatus="At top"), axs(extra)
+assert ax_has(extra, addTraits=["isButton", "isHeader"]), axs(extra)
+assert ax_has(extra, removeTraits=["isImage"]), axs(extra)
+assert ax_has(extra, inputLabels=["Alpha", "A"]), axs(extra)
+assert ax_has(extra, value="Count 2"), axs(extra)
+assert ax_has(extra, label="Built"), axs(extra)
+assert ax_has(extra, elements=["Rep"], children="ignore"), axs(extra)
+assert ax_has(extra, elements=["KidA", "KidB"]), axs(extra)
+assert ax_has(extra, largeLabel="Big", largeContent=True), axs(extra)
+assert ax_has(extra, chart=True, label="Sales"), axs(extra)
+assert ax_has(extra, directTouch=True, directTouchOptions=["silentOnTouch", "requiresActivation"]), axs(extra)
+assert ax_has(extra, responds=False) and ax_has(extra, responds=True), axs(extra)
+assert ax_has(extra, ignoresInvertColors=True), axs(extra)
+assert any(c.get("key") == "Note" and c.get("value") == "Hello" and c.get("id") == "note" and c.get("importance") == "high" for a in axs(extra) for c in a.get("custom", [])), axs(extra)
+assert any(a.get("customRemove") == ["note"] for a in axs(extra)), axs(extra)
+assert any(str(a.get("linked", "")).endswith(":g1") for a in axs(extra)), axs(extra)
+assert any(a.get("rotorEntry", "").endswith(":re") for a in axs(extra)), axs(extra)
+assert any(a.get("name") == "escape" for m in axs(extra) for a in m.get("actions", [])), axs(extra)
+assert any(a.get("name") == "Labeled" for m in axs(extra) for a in m.get("actions", [])), axs(extra)
+assert any(a.get("name") == "Edit" and a.get("category") == "edit" for m in axs(extra) for a in m.get("actions", [])), axs(extra)
+rotors = [r for a in axs(ax_node(t, "Rotors")) for r in a.get("rotors", [])]
+built = next(r for r in rotors if r["name"] == "Built")
+assert built["entries"][0] == {"label": "Ann", "id": "1"}, built
+assert any(e["label"] == "Bo" and e["id"] == "2" for e in built["entries"]), built
+people = next(r for r in rotors if r["name"] == "People")
+assert people["entries"] == [{"label": "Ann", "id": "7"}], people
+rows = next(r for r in rotors if r["name"] == "Rows")
+assert rows["entries"] == [{"label": "Ada", "id": "a"}], rows
+assert any(r["name"] == "links:visited" for r in rotors), rotors
+assert any(r["name"] == "Empty" and r.get("entries") == [] for r in rotors), rotors
+spans = next(r for r in rotors if r["name"] == "Spans")
+assert spans["entries"] and spans["entries"][0]["label"], spans
+pts = ax_node(t, "Points")
+assert any(a.get("activation") == {"x": 3, "y": 4} for a in axs(pts)), axs(pts)
+assert any(a.get("activation", {}).get("unit") is True and a["activation"]["y"] == 1 for a in axs(pts)), axs(pts)
+assert any(a.get("drag", {}).get("description") == "Drag me" and a["drag"].get("unit") is True for a in axs(pts)), axs(pts)
+assert any(a.get("drop", {}).get("description") == "DropAbs" and "unit" not in a["drop"] for a in axs(pts)), axs(pts)
+old = axs(ax_node(t, "Old"))
+assert any(a.get("label") == "Old" for a in old) and any(a.get("identifier") == "sel" for a in old), old
+count_id = next(a["action"] for m in axs(ax_node(t, "Count 0")) for a in m.get("actions", []) if a["name"] == "default")
+t = act(p, t, count_id)
+assert any(m.get("text") == "Count 1" for m in walk(t["root"]))
+inc = next(a["adjustable"]["increment"] for a in axs(ax_node(t, "Adjust ")) if "adjustable" in a)
+t = act(p, t, inc)
+assert any(m.get("text") == "Adjust inc" for m in walk(t["root"]))
+dec = next(a["adjustable"]["decrement"] for a in axs(ax_node(t, "Adjust inc")) if "adjustable" in a)
+t = act(p, t, dec)
+assert any(m.get("text") == "Adjust dec" for m in walk(t["root"]))
+leading = next(a["scroll"]["leading"] for a in axs(ax_node(t, "Edge ")) if "scroll" in a)
+assert all(next(a["scroll"][side] for a in axs(ax_node(t, "Edge ")) if "scroll" in a) for side in ("top", "bottom", "leading", "trailing"))
+t = act(p, t, leading)
+assert any(m.get("text") == "Edge leading" for m in walk(t["root"]))
+zin = next(a["zoom"]["in"] for a in axs(ax_node(t, "Zoom ")) if "zoom" in a)
+t = act(p, t, zin)
+assert any(m.get("text") == "Zoom in" for m in walk(t["root"]))
+zout = next(a["zoom"]["out"] for a in axs(ax_node(t, "Zoom in")) if "zoom" in a)
+t = act(p, t, zout)
+assert any(m.get("text") == "Zoom out" for m in walk(t["root"]))
+finish(p)
+print("accessibility: labels, actions, focus, rotors, traits ok")
+
 # --- presentation lab: popovers, presentation modifiers, context menus, ShareLink, PasteButton (issue #45)
 def pl_spawn(**extra):
     env = dict(os.environ); env.update(extra)
-    q = spawn(sys.argv[24], env); assert recv(q)["type"] == "hello"; return q, recv(q)
+    q = spawn(sys.argv[25], env); assert recv(q)["type"] == "hello"; return q, recv(q)
 p, t = pl_spawn()
 PL = lambda t: layers(t)
 def pbtn(t, label): return fbtn(tree(t), label)
