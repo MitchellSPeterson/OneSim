@@ -334,7 +334,7 @@ mod bundled {
                 let (off, len) = MAP[k.0].1[k.1];
                 let slice = SYMBOLS_BIN.get(off as usize..(off + len) as usize)?;
                 let path = decode_path(slice)?;
-                let b = path.bounds();
+                let b = path.compute_tight_bounds()?;
                 (b.width() > 0.0 && b.height() > 0.0).then(|| Arc::new(Icon { ink: (b.x(), b.y(), b.width(), b.height()), path }))
             })
             .clone()
@@ -439,6 +439,9 @@ mod tests {
         let mut bold = spec("star", 17.0, ImageScale::Medium);
         bold.weight = 700;
         assert!(bundled::mask(&bold, 51, 51).is_some());
+        // Tight curve bounds exclude Bézier control points outside the visible circle (24..232, width 208).
+        let pc = bundled::icon(&spec("pencil.circle", 17.0, ImageScale::Medium)).expect("pencil.circle");
+        assert!((pc.ink.0 - 24.0).abs() < 1.0 && (pc.ink.2 - 208.0).abs() < 1.0, "expected tight bounds ~24..232, got {:?}", pc.ink);
         assert!(bundled::metrics(&spec("definitely.not.a.symbol", 17.0, ImageScale::Medium)).is_none());
     }
 }
