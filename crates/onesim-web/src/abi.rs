@@ -38,7 +38,8 @@ pub extern "C" fn simcore_runtime_set_layout_callback(on_layout: LayoutCb) {
 #[no_mangle]
 pub extern "C" fn simcore_runtime_set_wake(_fd: i32, _on_wake: WakeCb) {}
 
-/// Guest JSON line (`scroll_to_id` dropped; `schedule` updates the animation tick deadline).
+/// Guest JSON line (`scroll_to_id` dropped; `schedule` updates the animation tick deadline; `pasteboard` is kept
+/// for `simcore_web_take_pasteboard`).
 ///
 /// # Safety
 /// `line` must be NUL-terminated or null.
@@ -46,10 +47,12 @@ pub extern "C" fn simcore_runtime_set_wake(_fd: i32, _on_wake: WakeCb) {}
 pub unsafe extern "C" fn simcore_send_line(line: *const c_char) -> i32 {
     if !line.is_null() {
         if let Ok(text) = CStr::from_ptr(line).to_str() {
-            if let Ok(GuestMessage::Schedule { after_ms }) = serde_json::from_str::<GuestMessage>(text.trim()) {
-                with(|s| {
+            match serde_json::from_str::<GuestMessage>(text.trim()) {
+                Ok(GuestMessage::Schedule { after_ms }) => with(|s| {
                     s.guest_due_ms = after_ms.map(|ms| s.clock_ms + ms.max(0.0));
-                });
+                }),
+                Ok(GuestMessage::Pasteboard { items }) => with(|s| s.pasteboard_out = Some(items)),
+                _ => {}
             }
         }
     }

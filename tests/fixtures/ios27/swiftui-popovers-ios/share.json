@@ -1,0 +1,784 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "hittable": false,
+        "enabled": true,
+        "rect": {
+          "y": 0,
+          "width": 402,
+          "x": 0,
+          "height": 874
+        },
+        "type": "Application",
+        "index": 0,
+        "label": "OneSimPopovers",
+        "depth": 0,
+        "ref": "e1",
+        "kind": "application"
+      },
+      {
+        "hittable": true,
+        "enabled": true,
+        "rect": {
+          "y": 0,
+          "width": 402,
+          "x": 0,
+          "height": 874
+        },
+        "type": "Window",
+        "index": 1,
+        "label": "dismiss popup",
+        "depth": 1,
+        "parentIndex": 0,
+        "ref": "e2",
+        "kind": "window"
+      },
+      {
+        "hittable": true,
+        "enabled": true,
+        "rect": {
+          "y": 0,
+          "width": 402,
+          "x": 0,
+          "height": 874
+        },
+        "type": "Other",
+        "index": 2,
+        "label": "dismiss popup",
+        "depth": 2,
+        "parentIndex": 1,
+        "ref": "e3",
+        "kind": "other"
+      },
+      {
+        "hittable": true,
+        "enabled": true,
+        "rect": {
+          "y": 0,
+          "width": 402,
+          "x": 0,
+          "height": 874
+        },
+        "type": "Other",
+        "index": 3,
+        "label": "dismiss popup",
+        "depth": 3,
+        "parentIndex": 2,
+        "identifier": "PopoverDismissRegion",
+        "ref": "e4",
+        "kind": "other"
+      },
+      {
+        "hittable": true,
+        "rect": {
+          "y": 501,
+          "width": 384,
+          "x": 9,
+          "height": 364
+        },
+        "enabled": true,
+        "type": "Other",
+        "index": 4,
+        "depth": 3,
+        "parentIndex": 2,
+        "identifier": "ActivityListView",
+        "ref": "e5",
+        "kind": "other"
+      },
+      {
+        "hittable": true,
+        "rect": {
+          "y": 501,
+          "width": 384,
+          "x": 9,
+          "height": 364
+        },
+        "enabled": true,
+        "type": "Other",
+        "index": 5,
+        "depth": 4,
+        "parentIndex": 4,
+        "identifier": "ShareSheet.RemoteContainerView",
+        "ref": "e6",
+        "kind": "other"
+      },
+      {
+        "hittable": true,
+        "enabled": true,
+        "rect": {
+          "y": 0,
+          "width": 384,
+          "x": 0,
+          "height": 364
+        },
+        "type": "Other",
+        "index": 6,
+        "label": "Toolbar",
+        "depth": 5,
+        "parentIndex": 5,
+        "ref": "e7",
+        "kind": "other"
+      },
+      {
+        "hittable": true,
+        "enabled": true,
+        "rect": {
+          "y": 0,
+          "width": 384,
+          "x": 0,
+          "height": 364
+        },
+        "type": "Other",
+        "index": 7,
+        "label": "insert text",
+        "depth": 6,
+        "parentIndex": 6,
+        "ref": "e8",
+        "kind": "other"
+      },
+      {
+        "hittable": true,
+        "enabled": true,
+        "rect": {
+          "y": 0,
+          "width": 384,
+          "x": 0,
+          "height": 107.66666666666667
+        },
+        "type": "NavigationBar",
+        "index": 8,
+        "label": "insert text",
+        "depth": 7,
+        "parentIndex": 7,
+        "identifier": "UIActivityContentView",
+        "ref": "e9",
+        "kind": "navigation-bar"
+      },
+      {
+        "hittable": true,
+        "enabled": true,
+        "rect": {
+          "y": 28,
+          "width": 64,
+          "x": 27.666666666666657,
+          "height": 64
+        },
+        "type": "Image",
+        "index": 9,
+        "label": "insert text",
+        "depth": 8,
+        "parentIndex": 8,
+        "identifier": "text.cursor",
+        "ref": "e10",
+        "kind": "image"
+      },
+      {
+        "hittable": true,
+        "enabled": true,
+        "rect": {
+          "y": 49.66666666666667,
+          "width": 249.6666666666667,
+          "x": 106.66666666666666,
+          "height": 20
+        },
+        "type": "Other",
+        "index": 10,
+        "label": "Hello from OneSim",
+        "depth": 8,
+        "parentIndex": 8,
+        "identifier": "LP.CaptionBar.BottomCaption",
+        "ref": "e11",
+        "kind": "other"
+      },
+      {
+        "hittable": true,
+        "enabled": true,
+        "rect": {
+          "y": 0,
+          "width": 384,
+          "x": 0,
+          "height": 364
+        },
+        "type": "Other",
+        "index": 11,
+        "label": "Copy",
+        "depth": 7,
+        "parentIndex": 7,
+        "ref": "e12",
+        "kind": "other"
+      },
+      {
+        "hittable": true,
+        "enabled": true,
+        "rect": {
+          "y": 0,
+          "width": 384,
+          "x": 0,
+          "height": 364
+        },
+        "type": "Other",
+        "index": 12,
+        "label": "Reminders",
+        "depth": 8,
+        "parentIndex": 11,
+        "ref": "e13",
+        "kind": "other"
+      },
+      {
+        "hittable": true,
+        "enabled": true,
+        "rect": {
+          "y": 0,
+          "width": 384,
+          "x": 0,
+          "height": 364
+        },
+        "type": "Other",
+        "index": 13,
+        "label": "Reminders",
+        "depth": 9,
+        "parentIndex": 12,
+        "identifier": "shareSheet.activity.contentView",
+        "ref": "e14",
+        "kind": "other"
+      },
+      {
+        "hittable": true,
+        "enabled": true,
+        "rect": {
+          "y": 0,
+          "width": 384,
+          "x": 0,
+          "height": 364
+        },
+        "type": "CollectionView",
+        "index": 14,
+        "label": "Reminders",
+        "depth": 10,
+        "parentIndex": 13,
+        "identifier": "activityCollectionView",
+        "ref": "e15",
+        "kind": "collection"
+      },
+      {
+        "hittable": true,
+        "enabled": true,
+        "rect": {
+          "y": 107.66666666666667,
+          "width": 344.66666666666674,
+          "x": 19.666666666666657,
+          "height": 121.00000000000001
+        },
+        "type": "ScrollView",
+        "index": 15,
+        "label": "Reminders",
+        "depth": 11,
+        "parentIndex": 14,
+        "ref": "e16",
+        "kind": "scroll-area"
+      },
+      {
+        "hittable": true,
+        "enabled": true,
+        "rect": {
+          "y": 107.66666666666667,
+          "width": 82,
+          "x": 19.66666666666666,
+          "height": 120.33333333333333
+        },
+        "type": "Cell",
+        "index": 16,
+        "label": "Reminders",
+        "depth": 12,
+        "parentIndex": 15,
+        "identifier": "shareCell",
+        "ref": "e17",
+        "kind": "cell"
+      },
+      {
+        "hittable": true,
+        "enabled": true,
+        "rect": {
+          "y": 107.66666666666667,
+          "width": 82,
+          "x": 19.66666666666666,
+          "height": 120.33333333333333
+        },
+        "type": "Other",
+        "index": 17,
+        "label": "Reminders",
+        "depth": 13,
+        "parentIndex": 16,
+        "ref": "e18",
+        "kind": "other"
+      },
+      {
+        "hittable": true,
+        "enabled": true,
+        "rect": {
+          "y": 197.66666666666669,
+          "width": 82,
+          "x": 19.66666666666666,
+          "height": 14.333333333333343
+        },
+        "type": "Other",
+        "index": 18,
+        "label": "Reminders",
+        "depth": 14,
+        "parentIndex": 17,
+        "ref": "e19",
+        "kind": "other"
+      },
+      {
+        "hittable": true,
+        "enabled": true,
+        "rect": {
+          "y": 197.66666666666669,
+          "width": 82,
+          "x": 19.66666666666666,
+          "height": 14.333333333333343
+        },
+        "type": "StaticText",
+        "index": 19,
+        "label": "Reminders",
+        "depth": 15,
+        "parentIndex": 18,
+        "identifier": "cellTitleLabel",
+        "ref": "e20",
+        "kind": "text"
+      },
+      {
+        "hittable": true,
+        "enabled": true,
+        "rect": {
+          "y": 197.66666666666669,
+          "width": 32.66666666666667,
+          "x": 19.66666666666666,
+          "height": 30.333333333333343
+        },
+        "type": "StaticText",
+        "index": 20,
+        "label": "Apple Inc",
+        "depth": 15,
+        "parentIndex": 18,
+        "identifier": "cellTitleLabel",
+        "ref": "e21",
+        "kind": "text"
+      },
+      {
+        "type": "Image",
+        "enabled": true,
+        "hittable": true,
+        "identifier": "activityImageView",
+        "depth": 14,
+        "rect": {
+          "y": 123.66666666666667,
+          "width": 66,
+          "x": 27.66666666666666,
+          "height": 66.00000000000001
+        },
+        "index": 21,
+        "parentIndex": 17,
+        "ref": "e22",
+        "kind": "image"
+      },
+      {
+        "type": "Cell",
+        "enabled": true,
+        "hittable": true,
+        "identifier": "shareCell",
+        "depth": 12,
+        "rect": {
+          "y": 107.66666666666667,
+          "width": 82.00000000000001,
+          "x": 107.3333333333333,
+          "height": 120.33333333333333
+        },
+        "index": 22,
+        "label": "More",
+        "parentIndex": 15,
+        "ref": "e23",
+        "kind": "cell"
+      },
+      {
+        "type": "Other",
+        "enabled": true,
+        "hittable": true,
+        "depth": 13,
+        "rect": {
+          "y": 107.66666666666667,
+          "width": 82.00000000000001,
+          "x": 107.3333333333333,
+          "height": 120.33333333333333
+        },
+        "index": 23,
+        "label": "More",
+        "parentIndex": 22,
+        "ref": "e24",
+        "kind": "other"
+      },
+      {
+        "type": "Other",
+        "enabled": true,
+        "hittable": true,
+        "depth": 14,
+        "rect": {
+          "y": 197.66666666666669,
+          "width": 82.00000000000001,
+          "x": 107.3333333333333,
+          "height": 14.333333333333343
+        },
+        "index": 24,
+        "label": "More",
+        "parentIndex": 23,
+        "ref": "e25",
+        "kind": "other"
+      },
+      {
+        "type": "StaticText",
+        "enabled": true,
+        "hittable": true,
+        "identifier": "cellTitleLabel",
+        "depth": 15,
+        "rect": {
+          "y": 197.66666666666669,
+          "width": 82.00000000000001,
+          "x": 107.3333333333333,
+          "height": 14.333333333333343
+        },
+        "index": 25,
+        "label": "More",
+        "parentIndex": 24,
+        "ref": "e26",
+        "kind": "text"
+      },
+      {
+        "type": "StaticText",
+        "enabled": true,
+        "hittable": true,
+        "identifier": "cellTitleLabel",
+        "depth": 15,
+        "rect": {
+          "y": 197.66666666666669,
+          "width": 32.66666666666667,
+          "x": 107.3333333333333,
+          "height": 30.333333333333343
+        },
+        "index": 26,
+        "label": "Apple Inc",
+        "parentIndex": 24,
+        "ref": "e27",
+        "kind": "text"
+      },
+      {
+        "type": "Image",
+        "enabled": true,
+        "hittable": true,
+        "identifier": "activityImageView",
+        "depth": 14,
+        "rect": {
+          "y": 123.66666666666667,
+          "width": 66.00000000000001,
+          "x": 115.3333333333333,
+          "height": 66.00000000000001
+        },
+        "index": 27,
+        "parentIndex": 23,
+        "ref": "e28",
+        "kind": "image"
+      },
+      {
+        "type": "Cell",
+        "enabled": true,
+        "hittable": true,
+        "identifier": "actionGroupCell",
+        "depth": 11,
+        "rect": {
+          "y": 229.66666666666669,
+          "width": 82,
+          "x": 19.66666666666667,
+          "height": 134.33333333333331
+        },
+        "index": 28,
+        "label": "Copy",
+        "parentIndex": 14,
+        "ref": "e29",
+        "kind": "cell"
+      },
+      {
+        "type": "Other",
+        "enabled": true,
+        "hittable": true,
+        "depth": 12,
+        "rect": {
+          "y": 229.66666666666669,
+          "width": 82,
+          "x": 19.66666666666667,
+          "height": 134.33333333333331
+        },
+        "index": 29,
+        "label": "copy",
+        "parentIndex": 28,
+        "ref": "e30",
+        "kind": "other"
+      },
+      {
+        "type": "Image",
+        "enabled": true,
+        "hittable": true,
+        "identifier": "activityImageView",
+        "depth": 13,
+        "rect": {
+          "y": 259.6666666666667,
+          "width": 32,
+          "x": 44.66666666666667,
+          "height": 38
+        },
+        "index": 30,
+        "label": "copy",
+        "parentIndex": 29,
+        "ref": "e31",
+        "kind": "image"
+      },
+      {
+        "type": "Other",
+        "enabled": true,
+        "hittable": true,
+        "depth": 13,
+        "rect": {
+          "y": 317.6666666666667,
+          "width": 82,
+          "x": 19.66666666666667,
+          "height": 14.333333333333314
+        },
+        "index": 31,
+        "label": "Copy",
+        "parentIndex": 29,
+        "ref": "e32",
+        "kind": "other"
+      },
+      {
+        "type": "StaticText",
+        "enabled": true,
+        "hittable": true,
+        "identifier": "cellTitleLabel",
+        "depth": 14,
+        "rect": {
+          "y": 317.6666666666667,
+          "width": 82,
+          "x": 19.66666666666667,
+          "height": 14.333333333333314
+        },
+        "index": 32,
+        "label": "Copy",
+        "parentIndex": 31,
+        "ref": "e33",
+        "kind": "text"
+      },
+      {
+        "type": "StaticText",
+        "enabled": true,
+        "hittable": true,
+        "identifier": "cellTitleLabel",
+        "depth": 14,
+        "rect": {
+          "width": 32.666666666666664,
+          "y": 317.6666666666667,
+          "height": 30.333333333333314,
+          "x": 19.66666666666667
+        },
+        "index": 33,
+        "label": "Apple Inc",
+        "parentIndex": 31,
+        "ref": "e34",
+        "kind": "text"
+      },
+      {
+        "type": "Other",
+        "enabled": true,
+        "hittable": true,
+        "identifier": "collectionView.footerView",
+        "depth": 11,
+        "rect": {
+          "width": 328.66666666666674,
+          "y": 228.66666666666669,
+          "height": 1,
+          "x": 27.666666666666657
+        },
+        "index": 34,
+        "parentIndex": 14,
+        "ref": "e35",
+        "kind": "other"
+      },
+      {
+        "type": "Cell",
+        "enabled": true,
+        "hittable": true,
+        "identifier": "actionGroupCell",
+        "depth": 11,
+        "rect": {
+          "width": 82,
+          "y": 229.66666666666669,
+          "height": 134.33333333333331,
+          "x": 107.33333333333331
+        },
+        "index": 35,
+        "label": "Save to Files",
+        "parentIndex": 14,
+        "ref": "e36",
+        "kind": "cell"
+      },
+      {
+        "type": "Other",
+        "enabled": true,
+        "hittable": true,
+        "depth": 12,
+        "rect": {
+          "width": 82,
+          "y": 229.66666666666669,
+          "height": 134.33333333333331,
+          "x": 107.33333333333331
+        },
+        "index": 36,
+        "label": "Save to Files",
+        "parentIndex": 35,
+        "ref": "e37",
+        "kind": "other"
+      },
+      {
+        "type": "Image",
+        "enabled": true,
+        "hittable": true,
+        "identifier": "activityImageView",
+        "depth": 13,
+        "rect": {
+          "width": 43.33333333333333,
+          "y": 257,
+          "height": 43.333333333333314,
+          "x": 126.66666666666664
+        },
+        "index": 37,
+        "parentIndex": 36,
+        "ref": "e38",
+        "kind": "image"
+      },
+      {
+        "type": "Other",
+        "enabled": true,
+        "hittable": true,
+        "depth": 13,
+        "rect": {
+          "width": 82,
+          "y": 317.6666666666667,
+          "height": 14.333333333333314,
+          "x": 107.33333333333331
+        },
+        "index": 38,
+        "label": "Save to Files",
+        "parentIndex": 36,
+        "ref": "e39",
+        "kind": "other"
+      },
+      {
+        "type": "StaticText",
+        "enabled": true,
+        "hittable": true,
+        "identifier": "cellTitleLabel",
+        "depth": 14,
+        "rect": {
+          "width": 82,
+          "y": 317.6666666666667,
+          "height": 14.333333333333314,
+          "x": 107.33333333333331
+        },
+        "index": 39,
+        "label": "Save to Files",
+        "parentIndex": 38,
+        "ref": "e40",
+        "kind": "text"
+      },
+      {
+        "type": "StaticText",
+        "enabled": true,
+        "hittable": true,
+        "identifier": "cellTitleLabel",
+        "depth": 14,
+        "rect": {
+          "width": 32.66666666666666,
+          "y": 317.6666666666667,
+          "height": 30.333333333333314,
+          "x": 107.33333333333331
+        },
+        "index": 40,
+        "label": "Apple Inc",
+        "parentIndex": 38,
+        "ref": "e41",
+        "kind": "text"
+      },
+      {
+        "type": "Toolbar",
+        "enabled": true,
+        "hittable": true,
+        "identifier": "Toolbar",
+        "depth": 7,
+        "rect": {
+          "width": 384,
+          "y": 0,
+          "height": 364,
+          "x": 0
+        },
+        "index": 41,
+        "label": "Toolbar",
+        "parentIndex": 7,
+        "ref": "e42",
+        "kind": "toolbar"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.popovers",
+    "appBundleId": "dev.simcore.popovers",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 42,
+      "totalNodeCount": 42,
+      "reasons": []
+    },
+    "keyboard": {
+      "kind": "absent",
+      "treeBound": true
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "unknown",
+    "snapshotQuality": {
+      "state": "healthy",
+      "backend": "tree",
+      "timing": {
+        "acquisitionMs": 46.28098011016846,
+        "presentationMs": 0.23698806762695312
+      }
+    },
+    "warnings": [
+      "Simulator AX snapshot unavailable (circuit-disabled); used XCTest for this app generation."
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 24,
+        "p50Ms": 100,
+        "p95Ms": 165,
+        "maxMs": 318,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "simulator-ax-bridge": 22,
+          "apple-runner": 2
+        }
+      }
+    },
+    "refsGeneration": 936578
+  }
+}

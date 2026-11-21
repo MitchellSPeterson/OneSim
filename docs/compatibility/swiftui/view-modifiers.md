@@ -90,7 +90,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.contentShape` | 13 | ⬜ |  |  |
 | `.contentToolbar` | 18.4 | ⬜ |  |  |
 | `.contentTransition` | 16 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | `identity`, `interpolate`, `opacity`, `numericText`, `symbolEffect`; no per-glyph morphing |
-| `.contextMenu` | 13 | ⬜ |  |  |
+| `.contextMenu` | 13 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Long press lifts the view (or shows `preview:`) over a dimmed screen with the menu under it; buttons (icon, disabled, destructive), toggles, pickers, dividers and sections. `forSelectionType:` gives each `ForEach` row its menu for `[id]` and runs `primaryAction` on a tap. No lift animation |
 | `.contrast` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Contrast around mid-gray in device color space. |
 | `.controlGroupStyle` | 15 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `.controlSize` | 15 | ⬜ |  |  |
@@ -288,19 +288,19 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.persistentSystemOverlays` | 16 | ⬜ |  |  |
 | `.phaseAnimator` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `.pickerStyle` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | No `.tabs` |
-| `.popover` | 13 | ⬜ |  |  |
+| `.popover` | 13 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | A sheet on iPhone unless the content sets `presentationCompactAdaptation`; then a glass bubble with an arrow at the attachment anchor (`.rect`, `.point`) on the `arrowEdge` side. `isPresented:` and `item:`. Settled states only |
 | `.position` | 13 | ⬜ |  |  |
 | `.preference` | 13 | ⬜ |  |  |
 | `.preferredColorScheme` | 13 | ⬜ |  |  |
-| `.presentationBackground` | 16.4 | ⬜ |  |  |
-| `.presentationBackgroundInteraction` | 16.4 | ⬜ |  |  |
-| `.presentationCompactAdaptation` | 16.4 | ⬜ |  |  |
-| `.presentationContentInteraction` | 16.4 | ⬜ |  |  |
-| `.presentationCornerRadius` | 16.4 | ⬜ |  |  |
+| `.presentationBackground` | 16.4 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | `ShapeStyle` and view forms; sheets and popover bubbles |
+| `.presentationBackgroundInteraction` | 16.4 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | `.enabled` / `.enabled(upThrough:)` drop the dim and keep the screen below live at those detents |
+| `.presentationCompactAdaptation` | 16.4 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | `.popover`, `.none`, `.sheet`, `.fullScreenCover`; the two-argument form applies `horizontal` (iPhone portrait) |
+| `.presentationContentInteraction` | 16.4 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | `.scrolls` scrolls sheet content before resizing at any detent |
+| `.presentationCornerRadius` | 16.4 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | `nil` keeps the system radius |
 | `.presentationDetents` | 16 | ✅ |  |  |
 | `.presentationDragIndicator` | 16 | ✅ |  |  |
-| `.presentationPlacement` | 13 | ⬜ |  |  |
-| `.presentationSizing` | 18 | ⬜ |  |  |
+| `.presentationPlacement` | 13 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Regular width only: no effect on iPhone, as on device |
+| `.presentationSizing` | 18 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Regular width only: no effect on iPhone, as on device |
 | `.previewContext` | 14 | ⬜ |  |  |
 | `.previewDevice` | 13 | ⬜ |  |  |
 | `.previewDisplayName` | 13 | ⬜ |  |  |

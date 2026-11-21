@@ -415,6 +415,10 @@ impl Session {
         } else {
             cmd.env("SIMCORE_OS_BUILD", self.ios.build());
         }
+        match &self.params.pasteboard {
+            Some(pb) => cmd.env("SIMCORE_PASTEBOARD", pb),
+            None => cmd.env_remove("SIMCORE_PASTEBOARD"),
+        };
         let mut child = cmd
             .env("SIMCORE_SESSION_ID", &self.id)
             .env("SIMCORE_VIEWPORT", format!("{}x{}", self.viewport.width, self.viewport.height))
@@ -470,6 +474,7 @@ impl Session {
                     }
                     Ok(GuestMessage::Hello { .. }) => sh.lock().restarted = true,
                     Ok(GuestMessage::Modules { modules }) => sh.lock().modules = Some(modules),
+                    Ok(GuestMessage::Pasteboard { items }) => sh.log.emit("pasteboard.changed", json!({"items": items})),
                     Ok(GuestMessage::Event { name, detail }) => match name.as_str() {
                         "bundle.loaded" | "bundle.reloaded" | "bundle.error" | "refresh.applied" | "navigation.changed"
                         | "module.unsupported" | "module.called" => sh.log.emit(&name, detail),

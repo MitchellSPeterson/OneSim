@@ -9,7 +9,7 @@ pub type TextCb = Option<unsafe extern "C" fn(*mut c_void, u64, *const c_char)>;
 pub type EnvCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char, f64, f64)>;
 /// (ctx, phase 0 start / 1 move / 2 end / 3 cancel, time ms, points, point count, keys, frames, target count).
 pub type GestureCb = Option<unsafe extern "C" fn(*mut c_void, i32, f64, *const f64, usize, *const *const c_char, *const f64, usize)>;
-/// (ctx, whole host JSON line for `geometry`, `scroll_position`, `layout`, `tick`, `scene_phase` or `open_url`).
+/// (ctx, whole host JSON line for `geometry`, `scroll_position`, `layout`, `tick`, `scene_phase`, `open_url` or `pasteboard`).
 pub type LayoutCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char)>;
 /// Guest work finished off the runtime thread (an `AsyncImage` HTTP completion). Same ctx as the other callbacks.
 pub type WakeCb = Option<unsafe extern "C" fn(*mut c_void)>;
@@ -124,7 +124,7 @@ fn handle_line(line: &str) -> bool {
                 deliver_gesture(cb, ctx, &v);
             }
         }
-        Some("geometry" | "scroll_position" | "layout" | "tick" | "scene_phase" | "open_url") => {
+        Some("geometry" | "scroll_position" | "layout" | "tick" | "pasteboard" | "scene_phase" | "open_url") => {
             if let Some(cb) = STATE.with(|s| s.borrow().on_layout) {
                 let owned = CString::new(line).unwrap_or_default();
                 unsafe { cb(ctx as *mut c_void, owned.as_ptr()) };
@@ -440,6 +440,7 @@ mod tests {
         assert!(handle_line(r#"{"type":"geometry","frames":{}}"#));
         assert!(handle_line(r#"{"type":"scroll_position","scroll":"0","target":"row"}"#));
         assert!(handle_line(r#"{"type":"tick","time":120.0}"#));
+        assert!(handle_line(r#"{"type":"pasteboard","items":["hi"]}"#));
         assert!(handle_line(r#"{"type":"scene_phase","phase":"inactive"}"#));
         assert!(handle_line(r#"{"type":"open_url","url":"app://x"}"#));
         SEEN.with(|s| {
@@ -449,6 +450,7 @@ mod tests {
                     r#"l{"type":"geometry","frames":{}}"#,
                     r#"l{"type":"scroll_position","scroll":"0","target":"row"}"#,
                     r#"l{"type":"tick","time":120.0}"#,
+                    r#"l{"type":"pasteboard","items":["hi"]}"#,
                     r#"l{"type":"scene_phase","phase":"inactive"}"#,
                     r#"l{"type":"open_url","url":"app://x"}"#,
                 ]

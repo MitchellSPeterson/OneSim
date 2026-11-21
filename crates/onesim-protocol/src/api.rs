@@ -95,6 +95,9 @@ pub struct CreateSessionParams {
     /// Simulated iOS release (`"26.5"` or `"27.2"`, default the newest).
     #[serde(default, alias = "osVersion")]
     pub os_version: Option<IosVersion>,
+    /// SwiftUI: text on the session pasteboard at launch (`SIMCORE_PASTEBOARD`; section W).
+    #[serde(default)]
+    pub pasteboard: Option<String>,
     /// Test hook: skip the Swift build and spawn `app_path` directly.
     #[serde(default)]
     pub prebuilt: bool,

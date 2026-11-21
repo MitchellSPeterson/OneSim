@@ -239,6 +239,8 @@ final class _Runtime {
     var pageIsActive = true   // adjacent pages are laid out for swiping but do not appear or present yet
     var tags: [String: AnyHashable] = [:]   // `.tag(_:)` values by node id, read by `Picker`
     var rowMeta: [String: _RowMeta] = [:]   // list row delete/move/swipe actions by node id, read by `List` (section T)
+    var pasteboard: [String] = []   // the session pasteboard (SIMCORE_PASTEBOARD at launch, then `pasteboard` lines)
+    var rowContextMenu: _RowContextMenu?   // `contextMenu(forSelectionType:)` for the ForEach rows below
     var rowActions = _RowActions()          // `onDelete` / `onMove` for the ForEach being evaluated
     var nav: _NavState?
     // Container modifiers finish after their navigation node has been emitted.
@@ -560,6 +562,7 @@ func _onesimStart(_ render: @escaping () -> Node) -> Never {
         rt.safeTop = ins[0]; rt.safeBottom = ins[1]
     }
     if let d = env["SIMCORE_DYNAMIC_TYPE"], let s = DynamicTypeSize.allCases.first(where: { "\($0)" == d }) { rt.dynamicType = s }
+    if let pb = env["SIMCORE_PASTEBOARD"] { rt.pasteboard = [pb] }
     if let t = env["SIMCORE_TIME"].flatMap(Double.init) { rt.baseEpoch = t } else { rt.baseEpoch = Date().timeIntervalSince1970 }
     rt.render = render
     _onesimRegisterCallbacks()
@@ -669,6 +672,9 @@ func _applyLayout(_ line: String) {
                          safeLeading: _f64(box["safeLeading"]), safeTrailing: _f64(box["safeTrailing"]))
             if rt.geometries[id] != g { rt.geometries[id] = g; rt.dirty = true }
         }
+    } else if type == "pasteboard" {
+        let items = (obj["items"] as? [Any])?.compactMap { $0 as? String } ?? []
+        if rt.pasteboard != items { rt.pasteboard = items; rt.dirty = true }
     } else if type == "scene_phase" {
         _applyScenePhase(obj["phase"] as? String ?? "")
     } else if type == "open_url" {

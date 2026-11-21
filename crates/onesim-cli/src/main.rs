@@ -140,6 +140,9 @@ struct Opts {
     /// Simulated iOS release: 26.5 or 27.2 (default).
     #[arg(long = "ios", value_name = "VERSION")]
     ios: Option<String>,
+    /// SwiftUI: text on the pasteboard at launch (what `PasteButton` pastes).
+    #[arg(long, value_name = "TEXT")]
+    pasteboard: Option<String>,
 }
 
 /// One interaction, in command-line order.
@@ -274,6 +277,7 @@ fn params(framework: &str) -> CreateSessionParams {
         os_version: None,
         prebuilt: false,
         metro_url: None,
+        pasteboard: None,
         launch_url: None,
     }
 }
@@ -299,6 +303,7 @@ fn prepare(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: &mut
         .map(|d| DynamicTypeSize::parse(&d).with_context(|| format!("unknown --dynamic-type {d:?}")))
         .transpose()?;
     p.device = o.device.take();
+    p.pasteboard = o.pasteboard.take();
     p.launch_url = o.launch_url.take();
     p.os_version = o
         .ios
@@ -329,6 +334,8 @@ fn open_window(matches: &ArgMatches, name: &str, p: CreateSessionParams, mut o: 
     // `--renderer` was exported as SIMCORE_RENDERER in `main`; unset or `auto` means GPU first in a window.
     let pref = onesim_render::BackendPref::from_env().map_err(anyhow::Error::msg)?;
     let (rn, dark) = (p.framework == "react-native", o.dark || appearance == Some(Appearance::Dark));
+    // The window follows the host clipboard (SwiftUI) unless `--pasteboard` fixed the app's pasteboard.
+    let clipboard = p.framework == "swiftui" && o.pasteboard.is_none();
     let (mut host, id, steps) = prepare(matches, name, p, &mut o, appearance)?;
     // `drive` starts the session and applies the steps; the window then takes over the running session.
     if let Err(e) = drive(&mut host, &id, None, &steps, false, false) {
@@ -336,7 +343,7 @@ fn open_window(matches: &ArgMatches, name: &str, p: CreateSessionParams, mut o: 
         return Err(e);
     }
     let stats = std::env::var_os("SIMCORE_FRAME_STATS").is_some_and(|v| v != "0");
-    window::run(host, id, window::Config { pref, rn, title, stats, dark })
+    window::run(host, id, window::Config { pref, rn, title, stats, dark, clipboard })
 }
 
 #[cfg(not(feature = "window"))]

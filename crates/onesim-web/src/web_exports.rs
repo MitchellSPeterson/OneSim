@@ -306,6 +306,30 @@ pub extern "C" fn simcore_web_key(kind: i32, len: usize) -> i32 {
     }
 }
 
+/// Replace the pasteboard with the JSON array of strings in the scratch buffer (`len` bytes). Returns 1 if the
+/// guest took it (it re-renders if that changes anything), 0 for bad JSON or a guest without a pasteboard.
+#[no_mangle]
+pub extern "C" fn simcore_web_set_pasteboard(len: usize) -> i32 {
+    let items: Option<Vec<String>> = with(|s| serde_json::from_slice(&s.buf[..len.min(s.buf.len())]).ok());
+    match items {
+        Some(items) if crate::state::send_pasteboard(&items) == 0 => 1,
+        _ => 0,
+    }
+}
+
+/// The items the app put on the pasteboard since the last call, as a JSON array in the scratch buffer.
+/// Returns its length, or 0 when nothing changed.
+#[no_mangle]
+pub extern "C" fn simcore_web_take_pasteboard() -> usize {
+    with(|s| match s.pasteboard_out.take() {
+        Some(items) => {
+            s.buf = serde_json::to_vec(&items).unwrap_or_default();
+            s.buf.len()
+        }
+        None => 0,
+    })
+}
+
 /// 1 while a text field is focused (the software keyboard is showing).
 #[no_mangle]
 pub extern "C" fn simcore_web_focused() -> i32 {

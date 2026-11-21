@@ -63,6 +63,17 @@ impl Ctx<'_> {
                 n.radius = PILL;
                 Lay::new(size, Some(n), vec![(hp, vp, l)])
             }
+            ButtonStyle::PasteButton => {
+                // UIPasteControl: white label on an accent rounded rect (gray under a presented layer), 34.67 tall.
+                let bg = if self.desat { let g = if self.dark { PASTE_DESAT.1 } else { PASTE_DESAT.0 }; rgba(g, g, g, 1.0) } else { accent };
+                let fg = rgba(255, 255, 255, 1.0);
+                let l = self.view(label, Prop { w: None, h: None }, Env { fg: Some(fg), tint: None, ..child_env });
+                let size = Size { w: l.size.w + 2.0 * PASTE_PAD.0, h: PASTE_PAD.1 };
+                n.fill = Some(bg);
+                n.radius = PASTE_RADIUS;
+                let (lw, lh) = (l.size.w, l.size.h);
+                Lay::new(size, Some(n), vec![((size.w - lw) / 2.0, (size.h - lh) / 2.0, l)])
+            }
             ButtonStyle::Glass | ButtonStyle::GlassProminent => {
                 let prominent = style == ButtonStyle::GlassProminent;
                 let fg = match (prominent, disabled) {
@@ -466,6 +477,25 @@ impl Ctx<'_> {
     /// with a separator. A tap outside closes it.
     pub(super) fn menu(&mut self, items: &[PickerOption], anchor: Option<Rect>, dismiss: Option<u64>, centered: bool, g: &Geo) -> Lay {
         let (w, h) = (g.w, g.h);
+        let cardl = self.menu_card(items, w);
+        let (cw, ch) = (cardl.size.w, cardl.size.h);
+        let a = anchor.unwrap_or(Rect { x: w / 2.0, y: h / 2.0, w: 0.0, h: 0.0 });
+        let (x, y) = if centered {
+            // Centred on the button, its top just above the button's centre; kept on screen.
+            let x = (a.center().0 - cw / 2.0).clamp(POPOVER_MARGIN, w - cw - POPOVER_MARGIN);
+            (x, (a.center().1 - MENU_CENTER_DY).min(h - g.dev_bottom - ch).max(g.safe_top))
+        } else {
+            // Trailing and bottom edges line up with the picker's button; it hangs down from it when there is no room above.
+            let x = (a.x + a.w - cw + MENU_DX).clamp(POPOVER_MARGIN, w - cw - POPOVER_MARGIN);
+            let (top, bottom) = (a.center().1 - MENU_DY, a.center().1 + MENU_DY);
+            (x, if bottom - ch >= g.safe_top { bottom - ch } else { top.min(h - g.dev_bottom - ch) })
+        };
+        let scrim = Lay::new(Size { w, h }, Some(self.scrim("menu#scrim", (w, h), 0.0, dismiss)), vec![]);
+        Lay::new(Size { w, h }, None, vec![(0.0, 0.0, scrim), (x, y, cardl)])
+    }
+
+    /// The glass card of a menu: one 42 pt row per item (icon, text, checkmark), separators at dividers.
+    pub(super) fn menu_card(&mut self, items: &[PickerOption], w: f64) -> Lay {
         let primary = self.semantic(Semantic::Primary);
         let red = self.destructive();
         let dim = self.semantic(Semantic::Tertiary);
@@ -518,19 +548,7 @@ impl Ctx<'_> {
         let mut card = Node::new("menu", "menu");
         card.radius = MENU_RADIUS;
         card.glass = Some(crate::glass::GlassSpec { blur: Some(PRESENT_BLUR), mix: Some(if self.dark { MENU_GLASS.1 } else { MENU_GLASS.0 }), shadow: Some(POPOVER_SHADOW), ..self.glass_spec(GlassVariant::Regular, None, false) });
-        let a = anchor.unwrap_or(Rect { x: w / 2.0, y: h / 2.0, w: 0.0, h: 0.0 });
-        let (x, y) = if centered {
-            // Centred on the button, its top just above the button's centre; kept on screen.
-            let x = (a.center().0 - cw / 2.0).clamp(POPOVER_MARGIN, w - cw - POPOVER_MARGIN);
-            (x, (a.center().1 - MENU_CENTER_DY).min(h - g.dev_bottom - ch).max(g.safe_top))
-        } else {
-            // Trailing and bottom edges line up with the picker's button; it hangs down from it when there is no room above.
-            let x = (a.x + a.w - cw + MENU_DX).clamp(POPOVER_MARGIN, w - cw - POPOVER_MARGIN);
-            let (top, bottom) = (a.center().1 - MENU_DY, a.center().1 + MENU_DY);
-            (x, if bottom - ch >= g.safe_top { bottom - ch } else { top.min(h - g.dev_bottom - ch) })
-        };
-        let scrim = Lay::new(Size { w, h }, Some(self.scrim("menu#scrim", (w, h), 0.0, dismiss)), vec![]);
-        Lay::new(Size { w, h }, None, vec![(0.0, 0.0, scrim), (x, y, Lay::new(Size { w: cw, h: ch }, Some(card), kids))])
+        Lay::new(Size { w: cw, h: ch }, Some(card), kids)
     }
 
     /// `.toggleStyle(.button)`: bordered-button metrics, accent label; when on, an accent-tinted capsule.

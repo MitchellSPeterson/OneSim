@@ -187,6 +187,8 @@ enum _ImgCache { static var items: [String: _ImgState] = [:] }
 private final class _ImgBox {
     let lock = NSLock()
     var pending: [(String, _ImgState)] = []
+    /// Completions of other async work (transfer conversions) to run on the guest thread.
+    var work: [() -> Void] = []
 }
 private let _imgBox = _ImgBox()
 private var _imgWrite: Int32 = -1
@@ -209,14 +211,34 @@ func _enqueueImage(_ key: String, _ state: _ImgState) {
     _ = write(_imgWrite, &byte, 1)
 }
 
+/// Runs `f` on the guest thread at its next wake, then sends a tree if it changed anything.
+func _onGuestThread(_ f: @escaping () -> Void) {
+    _imgBox.lock.lock()
+    _imgBox.work.append(f)
+    _imgBox.lock.unlock()
+    _wakeGuest()
+}
+
+/// Wakes the guest thread (it then drains its main run loop and pending work).
+func _wakeGuest() {
+    guard _imgWrite >= 0 else { return }
+    var byte: UInt8 = 1
+    _ = write(_imgWrite, &byte, 1)
+}
+
 func _drainImageWake() {
     _imgBox.lock.lock()
-    let items = _imgBox.pending
+    let items = _imgBox.pending, work = _imgBox.work
     _imgBox.pending.removeAll(keepingCapacity: true)
+    _imgBox.work.removeAll()
     _imgBox.lock.unlock()
-    guard !items.isEmpty else { return }
     for (key, state) in items { _ImgCache.items[key] = state }
-    _Runtime.shared.submitTree()
+    let rt = _Runtime.shared
+    // Main-actor jobs (an async transfer closure hopping to the main actor) wait on the main queue, which the
+    // runtime's poll loop never drains on its own: run it once per wake.
+    _ = RunLoop.main.run(mode: .default, before: .distantPast)
+    if !work.isEmpty { _pool { for f in work { f() } } }
+    if !items.isEmpty || rt.dirty { rt.submitTree() }
 }
 
 /// PNG or JPEG pixel size. Nil if the bytes are neither.
