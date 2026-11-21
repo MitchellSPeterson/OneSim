@@ -179,13 +179,17 @@ pub(super) const WHEEL_OUT_OF_RANGE_A: f32 = 0.2;
 /// Popover holding a view (compact `DatePicker`): its top this far under the anchor, at least this far from the
 /// screen's sides, corner radius (iOS 27.2, swiftui-pickers pickers-date / pickers-time).
 pub(super) const CONTENT_POPOVER_GAP: f64 = 8.67;
+pub(super) const CONTENT_POPOVER_MARGIN: (f64, f64) = (16.0, 32.33);
+pub(super) const CONTENT_POPOVER_RADIUS: f64 = 30.0;
+/// Its glass is nearly white: (mul, add) of the backdrop.
+pub(super) const CONTENT_POPOVER_GLASS: ((f32, f32), (f32, f32)) = ((0.2, 0.795), (0.35, 0.118));
+/// The card's trailing edge lines up with the anchor's (this far past it) when the card fits that way.
+pub(super) const CONTENT_POPOVER_TRAILING: f64 = 0.67;
 /// `.popover` bubble (iOS 27.2 iPhone 18 Pro, `popover-bubble`): content plus 7.83 pt above and below, radius 26,
 /// the arrow's tip 0.33 pt past the anchor.
 pub(super) const BUBBLE_PAD_V: f64 = 7.83;
 pub(super) const BUBBLE_RADIUS: f64 = 26.0;
 pub(super) const BUBBLE_TIP_GAP: f64 = 0.33;
-/// `.contextMenu` (`context-menu`): the view lifts by 1.15 about its centre, the menu card hangs 16 pt under it,
-/// the screen dims (light / dark).
 /// Share sheet (`share`; per-release frames in `look::ShareLook`).
 pub(super) const SHARE_RADIUS: f64 = 44.0;
 pub(super) const SHARE_GLASS: ((f32, f32), (f32, f32)) = ((0.45, 0.55), (0.35, 0.118));
@@ -208,17 +212,13 @@ pub(super) const PASTE_PAD: (f64, f64) = (13.33, 34.67);
 pub(super) const PASTE_RADIUS: f64 = 5.0;
 /// Its gray under a presented layer (light, dark; `popover-bubble`).
 pub(super) const PASTE_DESAT: (u8, u8) = (133, 140);
+/// `.contextMenu` (`context-menu`): the view lifts by 1.15 about its centre, the menu card hangs 16 pt under it,
+/// the screen dims (light / dark).
 pub(super) const CONTEXT_LIFT: f64 = 1.15;
 pub(super) const CONTEXT_MENU_GAP: f64 = 16.0;
 pub(super) const CONTEXT_DIM: (f32, f32) = (0.20, 0.46);
 /// A custom `preview` sits on a system-background platter (`context-preview`).
 pub(super) const CONTEXT_PLATTER_RADIUS: f64 = 28.0;
-pub(super) const CONTENT_POPOVER_MARGIN: (f64, f64) = (16.0, 32.33);
-pub(super) const CONTENT_POPOVER_RADIUS: f64 = 30.0;
-/// Its glass is nearly white: (mul, add) of the backdrop.
-pub(super) const CONTENT_POPOVER_GLASS: ((f32, f32), (f32, f32)) = ((0.2, 0.795), (0.35, 0.118));
-/// The card's trailing edge lines up with the anchor's (this far past it) when the card fits that way.
-pub(super) const CONTENT_POPOVER_TRAILING: f64 = 0.67;
 
 // iOS 26 measurements (points).
 pub(super) const ROW_MIN_H: f64 = 52.0;
