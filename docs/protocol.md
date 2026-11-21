@@ -975,10 +975,12 @@ disclosure state. This section extends `list`, its sections and rows.
 The host merges them outermost-last: a later label, value, hint, identifier, trait edit or flag replaces the earlier
 one; actions, custom content and rotors append. `isEnabled: false` emits no modifier.
 
-The spoken label overwrites `UiNode.label`. The spoken value overwrites `UiNode.value`. Visible `text` stays the
-drawn string. Any other semantics are an `accessibility` object on the inspection node. That object is omitted when
-label and value are the only semantics. Inspect children are sorted by `sortPriority` descending (default 0, stable).
-Paint order is unchanged.
+The spoken label overwrites `UiNode.label`. The spoken value overwrites `UiNode.value` and leaves the scene node's
+editable text alone, so a later keystroke still appends to the control. Visible `text` stays the drawn string.
+A modifier after a layout-only wrapper (opacity, clip, shadow, gesture, transition) or a background, overlay, or
+mask attaches to the inspectable content. Any other semantics are an `accessibility` object on the inspection node.
+That object is omitted when label and value are the only semantics. Inspect children are sorted by `sortPriority`
+descending (default 0, stable). Paint order is unchanged.
 
 `accessibility` fields: `hint`, `identifier`, `hidden`, `suppressed`, `traits`, `sortPriority`, `heading`,
 `inputLabels`, `children` (`ignore`, `contain`, `combine`), `actions` (`{name, action, category?}`),

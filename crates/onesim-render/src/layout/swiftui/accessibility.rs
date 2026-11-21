@@ -7,7 +7,31 @@ use onesim_protocol::AccessibilityMod;
 use super::*;
 use crate::scene::A11y;
 
-pub(super) fn stamp(node: &mut Node, d: &AccessibilityMod) {
+/// Attach `d` to the inspectable content inside `lay`.
+///
+/// Opacity, clip, shadow, and the other layout-only wrappers have `inspect` false, and
+/// `ui_tree` skips them without moving semantics. Background, overlay, and mask keep the
+/// modified view in `content_child` beside a decoration. Stamping `first_node` would put the
+/// record on the wrapper, or drop it when that wrapper has no single node.
+pub(super) fn stamp_on(lay: &mut Lay, d: &AccessibilityMod) {
+    if let Some(n) = target(lay) {
+        stamp(n, d);
+    }
+}
+
+fn target(l: &mut Lay) -> Option<&mut Node> {
+    if l.node.as_ref().is_some_and(|n| n.inspect) {
+        return l.node.as_deref_mut();
+    }
+    let idx = match l.content_child {
+        Some(i) => i as usize,
+        None if l.kids.len() == 1 => 0,
+        None => return None,
+    };
+    target(&mut l.kids.get_mut(idx)?.2)
+}
+
+fn stamp(node: &mut Node, d: &AccessibilityMod) {
     let a = node.a11y.get_or_insert_with(|| Box::new(A11y::default()));
     if let Some(v) = &d.label {
         a.label = Some(v.clone());
@@ -186,9 +210,6 @@ pub(super) fn apply(nodes: &mut [Node]) {
             if let Some(l) = a.label.clone() {
                 n.label = Some(l);
             }
-        }
-        if let Some(v) = a.value.clone() {
-            n.value = Some(v);
         }
     }
 

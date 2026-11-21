@@ -578,6 +578,16 @@ mod tests {
         s.nodes.iter().find(|n| n.id == id).unwrap_or_else(|| panic!("no node {id}"))
     }
 
+    fn ui_by_id<'a>(n: &'a onesim_protocol::UiNode, id: &str) -> &'a onesim_protocol::UiNode {
+        fn walk<'a>(n: &'a onesim_protocol::UiNode, id: &str) -> Option<&'a onesim_protocol::UiNode> {
+            if n.id == id {
+                return Some(n);
+            }
+            n.children.iter().find_map(|c| walk(c, id))
+        }
+        walk(n, id).unwrap_or_else(|| panic!("no ui node {id}"))
+    }
+
     fn near(a: f64, b: f64) {
         assert!((a - b).abs() < 0.2, "{a} != {b}");
     }
@@ -2281,9 +2291,10 @@ mod tests {
         let alpha = by_id(&s, "alpha");
         assert_eq!(alpha.text.as_ref().unwrap().text, "Alpha");
         assert_eq!(alpha.label.as_deref(), Some("Outer"));
-        assert_eq!(alpha.value.as_deref(), Some("1"));
+        assert!(alpha.value.is_none());
         assert!(alpha.action.is_none());
         let ax = alpha.a11y.as_ref().unwrap();
+        assert_eq!(ax.value.as_deref(), Some("1"));
         assert_eq!(ax.hint.as_deref(), Some("Opens"));
         assert_eq!(ax.identifier.as_deref(), Some("alpha"));
         assert_eq!(ax.traits, ["isButton"]);
@@ -2361,5 +2372,82 @@ mod tests {
         assert!(crate::resolve_label(&tree, "Ignored").is_ok());
         assert!(crate::resolve_label(&tree, "書").is_ok());
         assert!(crate::resolve_label(&tree, "X").is_err());
+    }
+
+    #[test]
+    fn accessibility_value_stays_editable_and_wrappers_keep_semantics() {
+        let s = scene(
+            r#"{
+            "kind":"vstack","id":"col","children":[
+                {"kind":"text_field","id":"field","field":1,"text":"abc","modifiers":[
+                    {"accessibility":{"value":"Description","hint":"About the field"}}
+                ]},
+                {"kind":"text_field","id":"mask","field":2,"secure":true,"text":"ab"},
+                {"kind":"text","id":"fade","text":"Visible","modifiers":[
+                    {"opacity":0.5},
+                    {"accessibility":{"label":"Spoken","identifier":"fade-id"}}
+                ]},
+                {"kind":"text","id":"backed","text":"Backed","modifiers":[
+                    {"opacity":0.5},
+                    {"background":{"kind":"color","id":"bg","color":{"r":1,"g":0,"b":0,"a":1}}},
+                    {"accessibility":{"label":"Behind"}}
+                ]},
+                {"kind":"text","id":"over","text":"Over","modifiers":[
+                    {"overlay":{"view":{"kind":"color","id":"ov","color":{"r":0,"g":0,"b":1,"a":1}}}},
+                    {"accessibility":{"label":"Front"}}
+                ]},
+                {"kind":"text","id":"masked","text":"Masked","modifiers":[
+                    {"mask":{"view":{"kind":"color","id":"hole","color":{"r":0,"g":0,"b":0,"a":1}}}},
+                    {"accessibility":{"label":"Cut"}}
+                ]}
+            ]
+        }"#,
+            (200.0, 400.0),
+        );
+
+        let field = by_id(&s, "field");
+        assert_eq!(field.value.as_deref(), Some("abc"));
+        assert_eq!(field.a11y.as_ref().unwrap().value.as_deref(), Some("Description"));
+        assert!(by_id(&s, "field#text").a11y.is_none());
+
+        let mask = by_id(&s, "mask");
+        assert_eq!(mask.value.as_deref(), Some("ab"));
+        assert!(mask.a11y.is_none());
+
+        let fade = by_id(&s, "fade");
+        assert_eq!(fade.text.as_ref().unwrap().text, "Visible");
+        assert_eq!(fade.label.as_deref(), Some("Spoken"));
+        assert_eq!(fade.a11y.as_ref().unwrap().identifier.as_deref(), Some("fade-id"));
+        assert!(by_id(&s, "fade#opacity0").a11y.is_none());
+
+        assert_eq!(by_id(&s, "backed").label.as_deref(), Some("Behind"));
+        assert_eq!(by_id(&s, "backed").text.as_ref().unwrap().text, "Backed");
+        assert!(by_id(&s, "backed#opacity0").a11y.is_none());
+        assert!(by_id(&s, "bg").a11y.is_none());
+
+        assert_eq!(by_id(&s, "over").label.as_deref(), Some("Front"));
+        assert!(by_id(&s, "ov").a11y.is_none());
+
+        assert_eq!(by_id(&s, "masked").label.as_deref(), Some("Cut"));
+        assert!(by_id(&s, "masked#mask0").a11y.is_none());
+        assert!(by_id(&s, "hole").a11y.is_none());
+
+        let tree = s.ui_tree();
+        let field_ui = ui_by_id(&tree, "field");
+        assert_eq!(field_ui.value.as_deref(), Some("Description"));
+        assert_eq!(field_ui.accessibility.as_ref().unwrap().hint.as_deref(), Some("About the field"));
+        assert_eq!(ui_by_id(&tree, "mask").value.as_deref(), Some("\u{2022}\u{2022}"));
+        assert_eq!(ui_by_id(&tree, "fade").label.as_deref(), Some("Spoken"));
+        assert_eq!(ui_by_id(&tree, "fade").text.as_deref(), Some("Visible"));
+        assert!(crate::resolve_label(&tree, "Spoken").is_ok());
+        assert!(crate::resolve_label(&tree, "Visible").is_err());
+        assert!(crate::resolve_label(&tree, "Behind").is_ok());
+        assert!(crate::resolve_label(&tree, "Front").is_ok());
+        assert!(crate::resolve_label(&tree, "Cut").is_ok());
+        fn contains(n: &onesim_protocol::UiNode, id: &str) -> bool {
+            n.id == id || n.children.iter().any(|c| contains(c, id))
+        }
+        assert!(!contains(&tree, "fade#opacity0"));
+        assert!(!contains(&tree, "masked#mask0"));
     }
 }

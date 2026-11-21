@@ -544,6 +544,21 @@ pub struct Scene {
     pub notes: Vec<String>,
 }
 
+/// Inspection value. A spoken accessibility value replaces it. The scene node's `value` stays the
+/// editable string (`append` and `backspace` send that back to the guest). A secure field with no
+/// spoken value is bullet-masked; the spoken value is a description and is not.
+fn inspection_value(n: &Node) -> Option<String> {
+    if let Some(spoken) = n.a11y.as_ref().and_then(|a| a.value.clone()) {
+        return Some(spoken);
+    }
+    let value = n.value.as_ref()?;
+    Some(if n.secure {
+        "\u{2022}".repeat(unicode_segmentation::UnicodeSegmentation::graphemes(value.as_str(), true).count())
+    } else {
+        value.clone()
+    })
+}
+
 impl Scene {
     /// Topmost node with an action (or RN tag) under the point (points, respecting clips).
     pub fn hit_test(&self, x: f64, y: f64) -> Option<usize> {
@@ -690,7 +705,7 @@ impl Scene {
             role: Some(n.role.as_str().to_string()),
             label: n.label.clone(),
             action: n.action,
-            value: n.value.as_ref().map(|value| if n.secure { "\u{2022}".repeat(unicode_segmentation::UnicodeSegmentation::graphemes(value.as_str(), true).count()) } else { value.clone() }),
+            value: inspection_value(n),
             focused: n.focused,
             disabled: n.disabled,
             accessibility: n.a11y.as_ref().and_then(|a| a.ui()),
