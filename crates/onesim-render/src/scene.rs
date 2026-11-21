@@ -97,6 +97,7 @@ pub enum Glyph {
     ShiftFilled,
     Backspace,
     Return,
+    Search,
     Emoji,
     Mic,
     /// Popover arrow (filled triangle) pointing down / up.

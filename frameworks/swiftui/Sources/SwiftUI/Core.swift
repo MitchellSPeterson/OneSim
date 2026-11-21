@@ -128,6 +128,7 @@ final class _Runtime {
     var pageIsActive = true   // adjacent pages are laid out for swiping but do not appear or present yet
     var tags: [String: AnyHashable] = [:]   // `.tag(_:)` values by node id, read by `Picker`
     var nav: _NavState?
+    var navigationPreferences: Node?
     var envObjects: [ObjectIdentifier: Any] = [:]   // `.environmentObject` / `.environment` objects and EnvironmentKey values
     var envLocal = Set<ObjectIdentifier>()   // envObjects keys set inside the enclosing NavigationStack (pushed screens re-apply only these)
     // Presentation layer: set by .alert / .sheet while evaluating; hoisted above the tree by `_evaluate`.

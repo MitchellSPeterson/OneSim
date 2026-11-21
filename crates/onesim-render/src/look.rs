@@ -11,6 +11,10 @@ pub struct Look {
     /// Least horizontal padding inside inset-grouped list cards (row content, headers, separators).
     /// iOS 26 pads by the side margin (16, or 20 on 414pt+ screens); iOS 27 by 20 on every width.
     pub row_pad_min: f64,
+    /// The navigation search drawer's height, including the gap between its pill and the first list row.
+    pub search_drawer_height: f64,
+    /// Search field top padding after presentation replaces the inline navigation bar.
+    pub active_search_top: f64,
     /// Keyboard letters show the shift state (lower case after typing); iOS 26 always shows capitals.
     pub key_case_follows_shift: bool,
     /// The leftmost suggestion is the word being typed, in quotes (iOS 27); iOS 26 keeps "I / The / I'm".
@@ -25,6 +29,8 @@ pub struct Look {
 
 const IOS26: Look = Look {
     row_pad_min: 0.0,
+    search_drawer_height: 60.0,
+    active_search_top: 8.0,
     key_case_follows_shift: false,
     typed_word_suggestion: false,
     always_suggestions: false,
@@ -34,6 +40,8 @@ const IOS26: Look = Look {
 
 const IOS27: Look = Look {
     row_pad_min: 20.0,
+    search_drawer_height: 54.0,
+    active_search_top: 0.0,
     key_case_follows_shift: true,
     typed_word_suggestion: true,
     always_suggestions: true,

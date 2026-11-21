@@ -1093,4 +1093,64 @@ assert picker_button(layers(t)[0]["content"], "21")["disabled"]
 t = act(p, t, picker_button(layers(t)[0]["content"], "20")["action"])
 assert "Jan 20, 2020" in alltexts(tree(t))
 finish(p)
+# --- compact navigation, toolbar actions, and search binding/focus
+p = spawn(sys.argv[20])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+assert title(t) == "Library" and "back" not in tree(t)
+item, = tree(t)["chrome"]["items"]
+assert item["region"] == "trailing" and "About" in alltexts(item["content"]["label"]["title"])
+t = act(p, t, item["content"]["action"])
+assert title(t) == "Detail" and tree(t)["displayMode"] == "inline"
+chrome = tree(t)["chrome"]
+item, = chrome["items"]
+assert item["region"] == "bottom"
+assert chrome["navigationBarBackgroundVisibility"] == chrome["bottomBarBackgroundVisibility"] == "visible"
+assert "navigationBarBackground" in chrome and "bottomBarBackground" in chrome
+t = act(p, t, item["content"]["action"])
+assert "Book marked" in alltexts(tree(t))
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Library"
+t = act(p, t, button(t, "Open detail")["action"])
+assert "Book marked" in alltexts(tree(t)), "compact columns retain their state when hidden"
+t = act(p, t, tree(t)["chrome"]["titleMenu"]["action"])
+menu = layers(t)[0]
+assert menu["kind"] == "menu"
+reset, = menu["items"]
+t = act(p, t, reset["action"])
+assert "Choose a book" in alltexts(tree(t))
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Library"
+
+t = act(p, t, button(t, "Legacy")["action"])
+assert tree(t)["content"]["kind"] == "navigation"
+assert tree(t)["content"]["title"] == "Archive"
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Library"
+
+t = act(p, t, button(t, "Search")["action"])
+assert title(t) == "Search"
+search = lambda t: tree(t)["chrome"]["search"]
+assert search(t)["placement"] == "always"
+assert "cancel" not in search(t) and not search(t)["field"]["focused"]
+assert "Reset search" not in alltexts(tree(t))
+t = act(p, t, search(t)["field"]["focus_action"])
+assert search(t)["field"]["focused"]
+assert "Close" in alltexts(search(t)["cancel"]["label"]["title"])
+assert "Reset search" in alltexts(tree(t))
+for query in ("書📚 مرحبا", "é" * 1024, ""):
+    send(p, type="text_input", field=search(t)["field"]["field"], version=t["version"], text=query)
+    t = recv(p)
+    assert search(t)["field"]["text"] == query
+    assert (query or "All books") in alltexts(tree(t))
+send(p, type="text_input", field=search(t)["field"]["field"], version=t["version"], text="Reset me")
+t = recv(p)
+t = act(p, t, button(t, "Reset search")["action"])
+assert search(t)["field"]["text"] == "" and not search(t)["field"]["focused"]
+assert "cancel" not in search(t) and "Reset search" not in alltexts(tree(t))
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Library" and "search" not in tree(t)["chrome"]
+finish(p)
+print("navigation: compact column changes, toolbar actions, and search binding and dismissal ok")
+
 print("PASS")

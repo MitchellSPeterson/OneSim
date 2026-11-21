@@ -481,6 +481,7 @@ final class _NavState {
     var titles: [Int: String] = [:]   // last evaluated title per depth, for the back label
     var destinations: [ObjectIdentifier: (Any, String) -> Node] = [:]   // kept across evaluations: hidden screens register nothing
     var ext: _NavPath?
+    var rootBack: (() -> Void)?
     var depth: Int { (ext?.count() ?? 0) + stack.count }
     func push(_ s: _NavScreen) { stack.append(s); _Runtime.shared.dirty = true }
     func pushValue(_ v: Any) {
@@ -503,7 +504,7 @@ final class _NavState {
         destinations[ObjectIdentifier(type(of: v))]?(v, path) ?? ["kind": "empty", "id": path]
     }
     func pop() {
-        if !stack.isEmpty { stack.removeLast() } else if let ext, ext.count() > 0 { ext.removeLast() }
+        if !stack.isEmpty { stack.removeLast() } else if let ext, ext.count() > 0 { ext.removeLast() } else { rootBack?() }
         _Runtime.shared.dirty = true
     }
 }
@@ -528,38 +529,50 @@ public struct NavigationStack<Root: View>: View, _Primitive {
     }
 
     func _emit(_ path: String) -> Node {
-        let rt = _Runtime.shared
-        let key = "\(path)#NavigationStack"
-        rt.touched.insert(key)
-        let st = (rt.slots[key] as? _NavState) ?? _NavState()
-        rt.slots[key] = st
-        st.ext = self.path
-        let depth = st.depth
-        // Screens below the top are not evaluated; keep their @State alive.
-        for d in 0..<depth {
-            let prefix = d == 0 ? "\(path)/0" : "\(path)/s\(d)"
-            for k in rt.slots.keys where k.hasPrefix(prefix + "/") || k.hasPrefix(prefix + "#") { rt.touched.insert(k) }
-        }
-        let saved = (rt.nav, rt.disabled, rt.buttonStyle, rt.envLocal, rt.styles.inList)
-        rt.nav = st; rt.disabled = false; rt.buttonStyle = "automatic"; rt.envLocal = []; rt.styles.inList = false
-        defer { (rt.nav, rt.disabled, rt.buttonStyle, rt.envLocal, rt.styles.inList) = saved }
-        var content = depth == 0 ? _eval(root, "\(path)/0") : st.screen(depth - 1, "\(path)/s\(depth)")
-
-        var title: String?, mode = "large"
-        let mods = (content["modifiers"] as? [Node]) ?? []
-        for m in mods {
-            if let t = m["navigationTitle"] as? String { title = t }
-            if let d = m["navigationBarTitleDisplayMode"] as? String { mode = d }
-        }
-        content["modifiers"] = mods.filter { $0["navigationBarTitleDisplayMode"] == nil }
-        st.titles[depth] = title
-        var nav: Node = ["kind": "navigation", "id": path, "displayMode": mode, "content": content]
-        if let title { nav["title"] = title }
-        if depth > 0 {
-            nav["back"] = ["action": rt.registerAction { st.pop() }, "label": st.titles[depth - 1] ?? "Back"] as Node
-        }
-        return nav
+        _navigation(path, externalPath: self.path) { _eval(root, $0) }
     }
+}
+
+func _navigation(_ path: String, externalPath: _NavPath? = nil, rootBack: (() -> Void)? = nil,
+                 backLabel: String = "Back", root: (String) -> Node) -> Node {
+    let rt = _Runtime.shared
+    let key = "\(path)#NavigationStack"
+    rt.touched.insert(key)
+    let st = (rt.slots[key] as? _NavState) ?? _NavState()
+    rt.slots[key] = st
+    st.ext = externalPath
+    st.rootBack = rootBack
+    let depth = st.depth
+    // Screens below the top are not evaluated; keep their @State alive.
+    for d in 0..<depth {
+        let prefix = d == 0 ? "\(path)/0" : "\(path)/s\(d)"
+        for k in rt.slots.keys where k.hasPrefix(prefix + "/") || k.hasPrefix(prefix + "#") { rt.touched.insert(k) }
+    }
+    let saved = (rt.nav, rt.disabled, rt.buttonStyle, rt.envLocal, rt.styles.inList)
+    rt.nav = st; rt.disabled = false; rt.buttonStyle = "automatic"; rt.envLocal = []; rt.styles.inList = false
+    defer { (rt.nav, rt.disabled, rt.buttonStyle, rt.envLocal, rt.styles.inList) = saved }
+    let preferences = rt.navigationPreferences
+    rt.navigationPreferences = [:]
+    defer { rt.navigationPreferences = preferences }
+    var content = depth == 0 ? root("\(path)/0") : st.screen(depth - 1, "\(path)/s\(depth)")
+
+    var title: String?, mode = "large"
+    let mods = (content["modifiers"] as? [Node]) ?? []
+    for m in mods {
+        if let t = m["navigationTitle"] as? String { title = t }
+        if let d = m["navigationBarTitleDisplayMode"] as? String { mode = d }
+    }
+    content["modifiers"] = mods.filter { $0["navigationBarTitleDisplayMode"] == nil }
+    st.titles[depth] = title
+    var nav: Node = ["kind": "navigation", "id": path, "displayMode": mode, "content": content]
+    if let title { nav["title"] = title }
+    if depth > 0 {
+        nav["back"] = ["action": rt.registerAction { st.pop() }, "label": st.titles[depth - 1] ?? "Back"] as Node
+    }
+    if depth == 0, rootBack != nil {
+        nav["back"] = ["action": rt.registerAction { st.pop() }, "label": backLabel] as Node
+    }
+    return _applyNavigationPreferences(rt.navigationPreferences ?? [:], to: nav)
 }
 
 struct _DestinationView<Content: View, T: Hashable, D: View>: View, _Flattenable {

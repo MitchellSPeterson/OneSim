@@ -1,0 +1,304 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "type": "Other",
+        "role": "_TtC7SwiftUIP33_ACC2C5639A7D76F611E170E831FCA49118SwiftUIApplication",
+        "subrole": "UIApplication",
+        "label": "OneSimNavigation",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 0,
+        "pid": 33754,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "other"
+      },
+      {
+        "index": 1,
+        "parentIndex": 0,
+        "type": "NavigationBar",
+        "role": "SwiftUI.UIKitNavigationBar",
+        "subrole": "UINavigationBar",
+        "identifier": "Search",
+        "rect": {
+          "x": 0,
+          "y": 62,
+          "width": 402,
+          "height": 108
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 33754,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "navigation-bar"
+      },
+      {
+        "index": 2,
+        "parentIndex": 1,
+        "type": "Button",
+        "role": "UIAccessibilityBackButtonElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Library",
+        "identifier": "BackButton",
+        "rect": {
+          "x": 16,
+          "y": 62,
+          "width": 44,
+          "height": 44
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 33754,
+        "hittable": true,
+        "ref": "e3",
+        "kind": "button"
+      },
+      {
+        "index": 3,
+        "parentIndex": 1,
+        "type": "StaticText",
+        "role": "UILabel",
+        "label": "Search",
+        "rect": {
+          "x": 173,
+          "y": 73.66666666666666,
+          "width": 55.66666666666666,
+          "height": 20.66666666666667
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 33754,
+        "hittable": true,
+        "ref": "e4",
+        "kind": "text"
+      },
+      {
+        "index": 4,
+        "parentIndex": 1,
+        "type": "SearchField",
+        "role": "UISearchBarTextField",
+        "label": "Search",
+        "value": "Search",
+        "placeholder": "Search",
+        "rect": {
+          "x": 16,
+          "y": 116,
+          "width": 370,
+          "height": 44
+        },
+        "enabled": true,
+        "depth": 2,
+        "password": false,
+        "editable": true,
+        "pid": 33754,
+        "hittable": true,
+        "ref": "e5",
+        "kind": "search"
+      },
+      {
+        "index": 5,
+        "parentIndex": 4,
+        "type": "Image",
+        "role": "UIImageView",
+        "label": "Search",
+        "identifier": "magnifyingglass",
+        "rect": {
+          "x": 28,
+          "y": 128,
+          "width": 20.66666666666667,
+          "height": 19.333333333333343
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 33754,
+        "hittable": true,
+        "ref": "e6",
+        "kind": "image"
+      },
+      {
+        "index": 6,
+        "parentIndex": 0,
+        "type": "CollectionView",
+        "role": "SwiftUI.UpdateCoalescingCollectionView",
+        "subrole": "UICollectionView",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 33754,
+        "hittable": true,
+        "ref": "e7",
+        "kind": "collection"
+      },
+      {
+        "index": 7,
+        "parentIndex": 6,
+        "type": "Cell",
+        "role": "SwiftUI.ListCollectionViewCell",
+        "subrole": "UICollectionViewListCell",
+        "rect": {
+          "x": 16,
+          "y": 205,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 33754,
+        "hittable": true,
+        "ref": "e8",
+        "kind": "cell"
+      },
+      {
+        "index": 8,
+        "parentIndex": 7,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "NSObject",
+        "label": "All books",
+        "rect": {
+          "x": 16,
+          "y": 205,
+          "width": 370,
+          "height": 52
+        },
+        "enabled": true,
+        "depth": 3,
+        "pid": 33754,
+        "hittable": true,
+        "ref": "e9",
+        "kind": "text"
+      },
+      {
+        "index": 9,
+        "parentIndex": 6,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Vertical scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 369,
+          "y": 170,
+          "width": 30,
+          "height": 642
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 33754,
+        "hittable": true,
+        "ref": "e10",
+        "kind": "other"
+      },
+      {
+        "index": 10,
+        "parentIndex": 6,
+        "type": "Other",
+        "role": "_UIScrollViewScrollIndicator",
+        "label": "Vertical scroll bar, 1 page",
+        "value": "0%",
+        "rect": {
+          "x": 369,
+          "y": 170,
+          "width": 30,
+          "height": 642
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 33754,
+        "hittable": true,
+        "ref": "e11",
+        "kind": "other"
+      },
+      {
+        "index": 11,
+        "parentIndex": 0,
+        "type": "Toolbar",
+        "role": "_UIFloatingBarContainerView",
+        "label": "Toolbar",
+        "identifier": "Toolbar",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 33754,
+        "hittable": true,
+        "ref": "e12",
+        "kind": "toolbar"
+      },
+      {
+        "index": 12,
+        "parentIndex": 0,
+        "type": "Toolbar",
+        "role": "_UIFloatingBarContainerView",
+        "label": "Toolbar",
+        "identifier": "Toolbar",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 33754,
+        "hittable": true,
+        "ref": "e13",
+        "kind": "toolbar"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.navigation",
+    "appBundleId": "dev.simcore.navigation",
+    "visibility": {
+      "partial": true,
+      "visibleNodeCount": 13,
+      "totalNodeCount": 13,
+      "reasons": [
+        "scroll-hidden-below"
+      ]
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "absent",
+    "snapshotQualityNotes": [
+      {
+        "code": "regular-geometry-clipped",
+        "clippedNodeCount": 1,
+        "droppedNodeCount": 0
+      }
+    ],
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 64,
+        "p50Ms": 149,
+        "p95Ms": 1248,
+        "maxMs": 6096,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 64
+        }
+      }
+    },
+    "refsGeneration": 626510
+  }
+}

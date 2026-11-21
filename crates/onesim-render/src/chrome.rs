@@ -169,6 +169,13 @@ struct Builder<'a> {
     th: Theme,
 }
 
+#[derive(Clone, Copy)]
+enum ReturnKey<'a> {
+    Return,
+    Label(&'a str),
+    Search { enabled: bool },
+}
+
 impl Builder<'_> {
     fn push(&mut self, mut n: Node, parent: usize, r: Rect) -> usize {
         n.bounds = r;
@@ -196,6 +203,28 @@ impl Builder<'_> {
         }
         k
     }
+
+    fn return_key(&mut self, parent: usize, frame: Rect, key: ReturnKey<'_>) {
+        let (glyph, label) = match key {
+            ReturnKey::Return => (Some(Glyph::Return), None),
+            ReturnKey::Label(label) => (None, Some((label, 16.0))),
+            ReturnKey::Search { .. } => (Some(Glyph::Search), None),
+        };
+        let index = self.key(parent, "return", "return", frame, glyph, label);
+        if let ReturnKey::Search { enabled } = key {
+            let node = &mut self.out[index];
+            node.disabled = !enabled;
+            if enabled {
+                node.fill = Some(c(0, 122, 255, 1.0));
+                node.glyph = Some((Glyph::Search, c(255, 255, 255, 1.0)));
+            } else {
+                node.role = Role::None;
+                node.fill = Some(Color { a: 0.16, ..self.th.label });
+                node.glyph = Some((Glyph::Search, Color { a: 0.24, ..self.th.label }));
+            }
+        }
+    }
+
 }
 
 /// Number and phone keyboards share a four-row, three-column grid.
@@ -275,6 +304,8 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
     let input = focused.and_then(|n| n.input.as_deref());
     let hide_suggestions = focused.is_some_and(|n| n.secure)
         || input.is_some_and(|i| i.autocorrection_disabled == Some(true));
+    let search_field = input.is_some_and(|i| i.search_field);
+    let empty_search = search_field && focused.and_then(|n| n.value.as_deref()).is_none_or(str::is_empty);
     let submit = match input.and_then(|i| i.submit_label.as_deref()) {
         Some("done") => Some("Done"),
         Some("go") => Some("Go"),
@@ -285,6 +316,11 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
         Some("next") => Some("Next"),
         Some("continue") => Some("Continue"),
         _ => None,
+    };
+    let return_key = if search_field {
+        ReturnKey::Search { enabled: !empty_search }
+    } else {
+        submit.map_or(ReturnKey::Return, ReturnKey::Label)
     };
     let keypad = input.and_then(Keypad::for_input);
     // Suggestions never use the contents of a secure field.
@@ -304,7 +340,7 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
     let root = out.len() - 1;
     let mut b = Builder { out, th };
     if dev.wide_keyboard && keypad.is_none() {
-        return wide(&mut b, root, w, top, kb_h, &word, shift, look, submit, hide_suggestions);
+        return wide(&mut b, root, w, top, kb_h, &word, shift, look, return_key, hide_suggestions);
     }
 
     if keypad.is_some() && !dark {
@@ -333,7 +369,7 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
     };
     for (i, s) in words.iter().enumerate() {
         // iOS 27 references were all captured with the suggestion words; iOS 26 only on the 17 Pro.
-        if !hide_suggestions && (dev.suggestions || look.always_suggestions) && !s.is_empty() {
+        if !hide_suggestions && !empty_search && (dev.suggestions || look.always_suggestions) && !s.is_empty() {
             let mut n = Node::new(format!("keyboard#suggestion-{i}"), "suggestion");
             n.role = Role::Text;
             n.label = Some(s.to_string());
@@ -385,12 +421,12 @@ pub fn keyboard(out: &mut Vec<Node>, w: f64, h: f64, kb_h: f64, dark: bool, shif
         put("emoji", 40.0, emoji, None, &mut b);
         put("dictation", 31.0, mic, None, &mut b);
         put("space", space, None, None, &mut b);
-        put("return", 86.0, submit.is_none().then_some(Glyph::Return), submit.map(|label| (label, 16.0)), &mut b);
+        b.return_key(root, Rect { x, y, w: 86.0, h: bh }, return_key);
         return;
     }
     b.key(root, "123", "123", Rect { x: margin, y: ys[3], w: wide, h: kh }, None, Some(("123", 17.0)));
     b.key(root, "space", "space", Rect { x: margin + wide + gap, y: ys[3], w: w - 2.0 * (margin + wide + gap), h: kh }, None, None);
-    b.key(root, "return", "return", Rect { x: w - margin - wide, y: ys[3], w: wide, h: kh }, submit.is_none().then_some(Glyph::Return), submit.map(|label| (label, 16.0)));
+    b.return_key(root, Rect { x: w - margin - wide, y: ys[3], w: wide, h: kh }, return_key);
 
     // Emoji and dictation sit in the panel below the keys, without key caps.
     for (id, g, cx) in [("emoji", Glyph::Emoji, 42.4), ("dictation", Glyph::Mic, w - 42.4)] {
@@ -414,7 +450,7 @@ fn wide(
     word: &Option<String>,
     shift: bool,
     look: &Look,
-    submit: Option<&str>,
+    return_key: ReturnKey<'_>,
     hide_suggestions: bool,
 ) {
     for (id, y, hh, r) in [
@@ -460,7 +496,7 @@ fn wide(
     };
     for (i, s) in words.iter().enumerate() {
         let x = l + 267.0 * i as f64;
-        if !hide_suggestions && !s.is_empty() {
+        if !hide_suggestions && !matches!(return_key, ReturnKey::Search { enabled: false }) && !s.is_empty() {
             let mut n = Node::new(format!("keyboard#suggestion-{i}"), "suggestion");
             n.role = Role::Text;
             n.label = Some(s.to_string());
@@ -571,14 +607,7 @@ fn wide(
         Some(Glyph::Mic),
         None,
     );
-    b.key(
-        root,
-        "return",
-        "return",
-        cap(l + 688.0, rows[3], 111.0),
-        submit.is_none().then_some(Glyph::Return),
-        submit.map(|label| (label, 16.0)),
-    );
+    b.return_key(root, cap(l + 688.0, rows[3], 111.0), return_key);
 }
 
 /// The Dynamic Island: a black capsule drawn above everything.
@@ -659,6 +688,14 @@ pub fn draw_glyph(pm: &mut Pixmap, g: Glyph, col: Color, b: (f32, f32, f32, f32)
             }
             if let Some(path) = poly(&[(cx - 4.2, cy - 0.3), (cx - 8.6, cy + 4.0), (cx - 4.2, cy + 8.3)], false) {
                 pm.stroke_path(&path, &p, &st(1.9), xf, mask);
+            }
+        }
+        Glyph::Search => {
+            if let Some(path) = PathBuilder::from_circle(cx - 1.6, cy - 1.6, 6.0) {
+                pm.stroke_path(&path, &p, &st(1.8), xf, mask);
+            }
+            if let Some(path) = poly(&[(cx + 2.7, cy + 2.7), (cx + 7.5, cy + 7.5)], false) {
+                pm.stroke_path(&path, &p, &st(1.8), xf, mask);
             }
         }
         Glyph::Emoji => {

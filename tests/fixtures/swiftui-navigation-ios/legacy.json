@@ -1,0 +1,154 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "type": "Other",
+        "role": "_TtC7SwiftUIP33_ACC2C5639A7D76F611E170E831FCA49118SwiftUIApplication",
+        "subrole": "UIApplication",
+        "label": "OneSimNavigation",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 0,
+        "pid": 69174,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "other"
+      },
+      {
+        "index": 1,
+        "parentIndex": 0,
+        "type": "NavigationBar",
+        "role": "SwiftUI.UIKitNavigationBar",
+        "subrole": "UINavigationBar",
+        "identifier": "_TtGC7SwiftUI32NavigationStackHosting",
+        "rect": {
+          "x": 0,
+          "y": 62,
+          "width": 402,
+          "height": 106
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 69174,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "navigation-bar"
+      },
+      {
+        "index": 2,
+        "parentIndex": 1,
+        "type": "Button",
+        "role": "UIAccessibilityBackButtonElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Library",
+        "identifier": "BackButton",
+        "rect": {
+          "x": 16,
+          "y": 62,
+          "width": 44,
+          "height": 44
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 69174,
+        "hittable": true,
+        "ref": "e3",
+        "kind": "button"
+      },
+      {
+        "index": 3,
+        "parentIndex": 0,
+        "type": "NavigationBar",
+        "role": "SwiftUI.UIKitNavigationBar",
+        "subrole": "UINavigationBar",
+        "identifier": "Archive",
+        "rect": {
+          "x": 0,
+          "y": 168,
+          "width": 402,
+          "height": 106
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 69174,
+        "hittable": true,
+        "ref": "e4",
+        "kind": "navigation-bar"
+      },
+      {
+        "index": 4,
+        "parentIndex": 3,
+        "type": "StaticText",
+        "role": "UILabel",
+        "label": "Archive",
+        "rect": {
+          "x": 16,
+          "y": 225.66666666666669,
+          "width": 121,
+          "height": 40.666666666666686
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 69174,
+        "hittable": true,
+        "ref": "e5",
+        "kind": "text"
+      },
+      {
+        "index": 5,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Archive",
+        "rect": {
+          "x": 172.5,
+          "y": 546.8333333333333,
+          "width": 57,
+          "height": 20.33333333333337
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 69174,
+        "hittable": true,
+        "ref": "e6",
+        "kind": "text"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.navigation",
+    "appBundleId": "dev.simcore.navigation",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 6,
+      "totalNodeCount": 6,
+      "reasons": []
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "absent",
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 33,
+        "p50Ms": 73,
+        "p95Ms": 223,
+        "maxMs": 299,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 33
+        }
+      }
+    },
+    "refsGeneration": 969887
+  }
+}

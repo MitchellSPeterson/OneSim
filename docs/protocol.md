@@ -169,10 +169,18 @@ Hosts ignore unknown modifier keys. Guests never send kinds a host doesn't list 
 | `divider` | – (hairline, 1px at device scale, separator color; spans the cross axis of the enclosing stack) |
 | `scroll` | `"axis": "vertical"\|"horizontal"`, `"child": ViewNode`. Child is proposed unbounded on the axis. Host keeps the scroll offset per node id across trees; it changes via `scroll` pointer events. Clips. |
 | `list` | `"style": "insetGrouped"\|"plain"`, `"sections": [{"header": String?, "footer": String?, "rows": [ViewNode]}]`. Rows outside any `Section` form their own headerless section. `ForEach`/`if` inside lists are already flattened into rows by the guest. Scrolls like `scroll` (vertical). |
-| `navigation` | `"title": String?`, `"displayMode": "large"\|"inline"`, `"back": {"action": u64, "label": String}?`, `"content": ViewNode`. The top of the stack only. The guest owns the push/pop path. |
+| `navigation` | `"title": String?`, `"displayMode": "large"\|"inline"`, `"back": {"action": u64, "label": String}?`, `"content": ViewNode`. The top of the stack only. The guest owns the push/pop path. Optional `"chrome"` carries the active screen’s toolbar and search configuration. |
 | `toggle` | `"isOn": bool`, `"action": u64` (flips it), `"label": ViewNode`, `"disabled"?: bool` |
 | `stepper` | `"label": ViewNode`, `"decrement": u64?`, `"increment": u64?` (null = at bound, rendered disabled) |
 | `text_field` | `"placeholder": String`, `"text": String`, `"field": u64` |
+
+Navigation `chrome` has an optional `items` array of `{region, content}` records. The `region` is
+`leading`, `principal`, `trailing`, or `bottom` and `content` is a ViewNode. The optional
+`navigationBarVisibility`, `bottomBarVisibility`, `navigationBarBackgroundVisibility`, and
+`bottomBarBackgroundVisibility` fields accept `automatic`, `visible`, or `hidden`.
+`navigationBarBackground` and `bottomBarBackground` accept shape paint. `titleMenu` is an
+optional ViewNode. Optional `search` contains a text-field ViewNode in `field`, a placement string,
+and a `cancel` ViewNode during presentation. Search focus and edits use the text input wire actions. A text field with `"search_field": true` has a search key that enables when the query is nonempty.
 
 ### `button` additions
 

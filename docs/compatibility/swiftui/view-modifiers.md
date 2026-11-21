@@ -250,7 +250,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.navigationSubtitle` | 26 | ⬜ |  |  |
 | `.navigationTitle` | 14 | ✅ |  |  |
 | `.navigationTransition` | 18 | ⬜ |  |  |
-| `.navigationViewStyle` | 13 | ⬜ |  | Deprecated |
+| `.navigationViewStyle` | 13 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Deprecated. Compact stack style only. Column and custom styles are pending. |
 | `.offset` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
 | `.onAppear` | 13 | ✅ |  |  |
 | `.onChange` | 13 | 🟠 |  | `Equatable` values; value forgotten when the view leaves the tree |
@@ -276,7 +276,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.onScrollPhaseChange` | 18 | ⬜ |  |  |
 | `.onScrollTargetVisibilityChange` | 18 | ⬜ |  |  |
 | `.onScrollVisibilityChange` | 18 | ⬜ |  |  |
-| `.onSubmit` | 15 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Return-key actions for text controls. Search submissions are a gap. |
+| `.onSubmit` | 15 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Return-key actions for text controls and text search. |
 | `.onTapGesture` | 13 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | `count: 1` is a plain button node (button accessibility); a double tap does not hold back a single tap on the same view |
 | `.opacity` | 13 | ✅ |  |  |
 | `.overlay` | 13 | ✅ |  |  |
@@ -339,7 +339,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.scrollTargetBehavior` | 17 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | `.paging` and `.viewAligned`. A custom behavior emits nothing and `updateTarget` is not called |
 | `.scrollTargetLayout` | 17 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `.scrollTransition` | 17 | ⬜ |  |  |
-| `.searchable` | 15 | ⬜ |  |  |
+| `.searchable` | 15 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Text, prompt, programmatic presentation, focus, editing, and cancellation in navigation chrome. Tokens, suggestions, scopes, localized resources, and native placement behavior are pending. |
 | `.searchCompletion` | 15 | ⬜ |  |  |
 | `.searchDictationBehavior` | 17 | ⬜ |  |  |
 | `.searchFocused` | 18 | ⬜ |  |  |
@@ -403,21 +403,21 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.textSelectionAffinity` | 18 | ⬜ |  |  |
 | `.tint` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Tint style resolves within the subtree. Native-style controls do not all inherit it. |
 | `.toggleStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
-| `.toolbar` | 14 | ⬜ |  |  |
-| `.toolbarBackground` | 16 | ⬜ |  |  |
-| `.toolbarBackgroundVisibility` | 18 | ⬜ |  |  |
-| `.toolbarColorScheme` | 16 | ⬜ |  |  |
-| `.toolbarMinimizationBehavior` | 13 | ⬜ |  |  |
-| `.toolbarMinimizationRestoration` | 13 | ⬜ |  |  |
-| `.toolbarMinimizationSafeAreaAdjustment` | 13 | ⬜ |  |  |
-| `.toolbarOverflowMenu` | 27 | ⬜ |  |  |
-| `.toolbarRole` | 16 | ⬜ |  |  |
-| `.toolbarTitleAlignment` | 27.2 | ⬜ |  |  |
-| `.toolbarTitleDisplayMode` | 17 | ⬜ |  |  |
-| `.toolbarTitleMenu` | 16 | ⬜ |  |  |
-| `.toolbarVerticalBehavior` | 13 | ⬜ |  |  |
-| `.toolbarVerticalCompressionBehavior` | 13 | ⬜ |  |  |
-| `.toolbarVisibility` | 18 | ⬜ |  |  |
+| `.toolbar` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Renders view and ToolbarContent builders in navigation chrome. Customization, overflow, default-item removal, and non-navigation bars are pending. |
+| `.toolbarBackground` | 16 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Shape paint and background visibility for navigation and bottom bars. Tab and window toolbars are pending. |
+| `.toolbarBackgroundVisibility` | 18 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Navigation and bottom bars. Tab and window toolbars are pending. |
+| `.toolbarColorScheme` | 16 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Bar-specific appearance overrides are unavailable. |
+| `.toolbarMinimizationBehavior` | 13 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Scroll-driven toolbar minimization is unavailable. |
+| `.toolbarMinimizationRestoration` | 13 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Toolbar minimization restoration is unavailable. |
+| `.toolbarMinimizationSafeAreaAdjustment` | 13 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Minimized toolbar safe-area adjustment is unavailable. |
+| `.toolbarOverflowMenu` | 27 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Native overflow routing and custom overflow menus are unavailable. |
+| `.toolbarRole` | 16 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Role-specific toolbar layouts and customization are unavailable. |
+| `.toolbarTitleAlignment` | 27.2 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Custom title alignment is unavailable. |
+| `.toolbarTitleDisplayMode` | 17 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Inline and large titles. Automatic inheritance and the distinct inline-large appearance are pending. |
+| `.toolbarTitleMenu` | 16 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Opens a menu from the navigation title. Native menu alignment and the transition during title collapse are pending. |
+| `.toolbarVerticalBehavior` | 13 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Toolbar-specific vertical behavior is unavailable. |
+| `.toolbarVerticalCompressionBehavior` | 13 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Pending. Toolbar-specific vertical compression is unavailable. |
+| `.toolbarVisibility` | 18 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Navigation and bottom bars. Tab and window toolbars are pending. |
 | `.tracking` | 16 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Added to the font's fitted tracking |
 | `.transaction` | 13 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `.transformAnchorPreference` | 13 | ⬜ |  |  |
