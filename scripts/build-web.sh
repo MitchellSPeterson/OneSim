@@ -255,7 +255,12 @@ KT
 
   if [ "$FAST" -ne 1 ] && command -v wasm-opt >/dev/null; then
     echo "wasm-opt -Oz (guest)"
-    if wasm-opt -Oz --all-features --disable-compact-imports "$OUT/guest/guest.wasm" -o "$OUT/guest/guest.opt.wasm" >>"$LOG" 2>&1; then
+    # Explicit WasmGC feature set: avoid --all-features so Binaryen does not emit experimental proposals
+    # (e.g. stringref / stringview_wtf16 or compact-imports) that Node/Chrome reject without flags.
+    if wasm-opt -Oz --enable-gc --enable-reference-types --enable-exception-handling \
+        --enable-nontrapping-float-to-int --enable-bulk-memory --enable-sign-ext \
+        --enable-mutable-globals --enable-multivalue --enable-simd --enable-tail-call \
+        "$OUT/guest/guest.wasm" -o "$OUT/guest/guest.opt.wasm" >>"$LOG" 2>&1; then
       mv "$OUT/guest/guest.opt.wasm" "$OUT/guest/guest.wasm"
     else
       rm -f "$OUT/guest/guest.opt.wasm"
