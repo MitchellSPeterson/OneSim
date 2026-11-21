@@ -196,6 +196,33 @@ pub(super) const SECTION_GAP: f64 = 17.7;
 /// Extra gap above a header-less section that follows another (35pt in total).
 pub(super) const HEADERLESS_EXTRA_GAP: f64 = 17.3;
 pub(super) const HEADER_PAD: f64 = 20.0;
+/// Footer text this far under its section, and the footer cell this far under the text (29.67pt for one line).
+pub(super) const FOOTER_TOP: f64 = 8.0;
+pub(super) const FOOTER_BOTTOM: f64 = 6.0;
+/// Plain and inset lists: gap above each section (and below the last) (iOS 27.2, swiftui-forms plain / inset).
+pub(super) const PLAIN_SECTION_GAP: f64 = 22.0;
+/// Collapsible (sidebar) section header chevron: point size and weight (iOS 27.2, swiftui-forms sidebar).
+pub(super) const SECTION_CHEVRON: (f64, u16) = (15.0, 600);
+/// Section footer text size.
+pub(super) const FOOTER_PT: f32 = 13.0;
+/// Edit mode: width of the reorder strip at a row's trailing edge (over the handle).
+pub(super) const REORDER_STRIP: f64 = 56.0;
+/// Swipe actions (iOS 27.2, swiftui-forms swipe-trailing / swipe-leading): pills inset 4.33pt from the row's top and
+/// bottom, 10.33pt from the card's edge and apart, labels 13pt medium; every pill on an edge is as wide as the widest
+/// label plus 13.17pt a side.
+pub(super) const SWIPE_PILL_INSET: f64 = 4.33;
+pub(super) const SWIPE_EDGE: f64 = 10.33;
+pub(super) const SWIPE_GAP: f64 = 10.33;
+pub(super) const SWIPE_FONT: f32 = 13.0;
+pub(super) const SWIPE_PILL_PAD: f64 = 13.17;
+pub(super) const SWIPE_PILL_RADIUS: f64 = 16.0;
+/// Gap between a swipe action's symbol and its title.
+pub(super) const SWIPE_ICON_GAP: f64 = 5.0;
+/// Swipe action fills without a `.tint` (light, dark): `Color.red` for a destructive role, else `Color.gray`.
+pub(super) const SWIPE_DESTRUCTIVE: ((u8, u8, u8), (u8, u8, u8)) = ((255, 56, 60), (255, 66, 69));
+pub(super) const SWIPE_DEFAULT: ((u8, u8, u8), (u8, u8, u8)) = ((142, 142, 147), (142, 142, 147));
+/// A swiped row's highlight (light, dark).
+pub(super) const SWIPED_ROW: ((u8, u8, u8), (u8, u8, u8)) = ((229, 229, 234), (44, 44, 46));
 pub(super) const NAV_INLINE_H: f64 = 54.0;
 /// Scroll distance over which the inline title fades in as the large title finishes collapsing.
 pub(super) const INLINE_FADE: f64 = 12.0;
@@ -545,8 +572,29 @@ pub(super) fn has_bordered(v: &ViewNode) -> bool {
     }
 }
 
+/// Lists drawn on the grouped background (the navigation bar matches it).
 pub(super) fn is_list(v: &ViewNode) -> bool {
-    matches!(v.kind, ViewKind::List { style: ListStyle::InsetGrouped, .. })
+    matches!(v.kind, ViewKind::List { style, .. } if on_grouped_background(style))
+}
+
+/// List styles drawn on the grouped background (the others on the plain one).
+pub(super) fn on_grouped_background(style: ListStyle) -> bool {
+    matches!(style, ListStyle::InsetGrouped | ListStyle::Grouped | ListStyle::Sidebar)
+}
+
+/// First SF Symbol name inside a view (a swipe action's `Label` icon).
+pub(super) fn first_symbol(v: &ViewNode) -> Option<String> {
+    match &v.kind {
+        ViewKind::Image { system_name, .. } if !system_name.is_empty() => Some(system_name.clone()),
+        ViewKind::Label { icon, .. } => first_symbol(icon),
+        ViewKind::HStack { children, .. } | ViewKind::VStack { children, .. } | ViewKind::ZStack { children, .. } => children.iter().find_map(first_symbol),
+        _ => None,
+    }
+}
+
+/// A list row's `listRow` modifier (section T).
+pub(super) fn list_row(row: &ViewNode) -> Option<&onesim_protocol::ListRowMod> {
+    row.modifiers.iter().rev().find_map(|m| if let Modifier::ListRow(l) = m { Some(&**l) } else { None })
 }
 
 pub(super) fn is_scroller(v: &ViewNode) -> bool {

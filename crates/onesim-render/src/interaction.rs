@@ -50,6 +50,9 @@ pub struct Interaction {
     motion: HashMap<String, (f64, Option<f64>)>,
     /// Fingers on SwiftUI gesture views (section L).
     touch: Option<Touch>,
+    /// A finger down on a control inside an axis-locked pan (a list row's swipe): the control keeps a tap, the pan
+    /// takes the touch once the finger leaves the slop along its axis.
+    armed: Option<Armed>,
     /// Time (ms) of the last synthesized touch (`pointer`), so whole gestures never overlap in time.
     clock: f64,
     focus_tree: Option<u64>,
@@ -63,6 +66,10 @@ struct Touch {
     targets: Vec<GestureTarget>,
     /// Whether any target follows a moving finger; if none does, a scroller under it takes a moving touch.
     pans: bool,
+    /// The panning targets follow only this axis (a list row's swipe): a finger first moving mostly along the other
+    /// axis goes to the scroller under it. Settled once the finger leaves the slop.
+    axis: Option<onesim_protocol::Axis>,
+    decided: bool,
     start: (f64, f64),
     points: Vec<[f64; 2]>,
     time: f64,
@@ -71,6 +78,16 @@ struct Touch {
     /// First caller timestamp seen and the touch time it maps to: a touch begun by `pointer` (wall clock) and
     /// continued by `drag` (the transport's clock) keeps one time line.
     base: Option<(f64, f64)>,
+}
+
+/// See `Interaction::armed`.
+#[derive(Debug)]
+struct Armed {
+    start: (f64, f64),
+    time: f64,
+    axis: onesim_protocol::Axis,
+    /// The scroller under the finger and its offset at the down, restored if the pan takes over.
+    scroll: Option<(String, Option<(f64, f64)>)>,
 }
 
 impl Touch {
@@ -575,15 +592,24 @@ impl Interaction {
     /// control (button, field, slider, key) above the innermost one takes the touch, as a `Button` inside a view with
     /// gestures does on iOS. Sets `hit` to the innermost gesture view.
     fn touch_at(&mut self, scene: &Scene, x: f64, y: f64, time: f64) -> Option<Touch> {
+        self.touch_through(scene, x, y, time, false)
+    }
+
+    /// `touch_at`, optionally past a control above the gesture views (an armed pan taking over).
+    fn touch_through(&mut self, scene: &Scene, x: f64, y: f64, time: f64, over_controls: bool) -> Option<Touch> {
         let targets = scene.gesture_targets(x, y);
         let &inner = targets.first()?;
-        if scene.hit_test(x, y).is_some_and(|c| c > inner) {
+        if !over_controls && scene.hit_test(x, y).is_some_and(|c| c > inner) {
             return None;
         }
         self.hit = Some(scene.nodes[inner].id.clone());
         let nodes = targets.iter().map(|&i| &scene.nodes[i]);
+        let panning: Vec<_> = nodes.clone().filter_map(|n| n.gesture.as_ref().filter(|g| g.pans)).collect();
+        let axis = panning.first().and_then(|g| g.axis).filter(|a| panning.iter().all(|g| g.axis == Some(*a)));
         Some(Touch {
-            pans: nodes.clone().any(|n| n.gesture.as_ref().is_some_and(|g| g.pans)),
+            axis,
+            decided: false,
+            pans: !panning.is_empty(),
             targets: nodes
                 .map(|n| GestureTarget { key: n.gesture.as_ref().map(|g| g.key.clone()).unwrap_or_default(), frame: [n.bounds.x, n.bounds.y, n.bounds.w, n.bounds.h] })
                 .collect(),
@@ -593,6 +619,59 @@ impl Interaction {
             held: time,
             base: Some((time, time)),
         })
+    }
+
+    /// Arm the pan under a control at (x, y) when every panning gesture view there follows one axis.
+    fn arm(&self, scene: &Scene, x: f64, y: f64, time: f64) -> Option<Armed> {
+        let targets = scene.gesture_targets(x, y);
+        let &inner = targets.first()?;
+        scene.hit_test(x, y).filter(|&c| c > inner)?;
+        let mut panning = targets.iter().filter_map(|&i| scene.nodes[i].gesture.as_ref().filter(|g| g.pans));
+        let axis = panning.next()?.axis?;
+        if !panning.all(|g| g.axis == Some(axis)) {
+            return None;
+        }
+        let scroll = scene.scroll_target(x, y).map(|i| {
+            let id = scene.nodes[i].id.clone();
+            let offset = self.scroll.get(&id).copied();
+            (id, offset)
+        });
+        Some(Armed { start: (x, y), time, axis, scroll })
+    }
+
+    /// An armed pan whose finger moved to (x, y): past the slop along its axis it takes the touch from the control
+    /// and the scroller (which go back to how they were at the down); across the axis it disarms.
+    fn take_armed(&mut self, scene: &Scene, x: f64, y: f64, t: f64) -> Option<Effect> {
+        let a = self.armed.as_ref()?;
+        let (sx, sy) = a.start;
+        if (x - sx).hypot(y - sy) <= PAN_SLOP {
+            return None;
+        }
+        let along = match a.axis {
+            onesim_protocol::Axis::Horizontal => (x - sx).abs() >= (y - sy).abs(),
+            onesim_protocol::Axis::Vertical => (y - sy).abs() >= (x - sx).abs(),
+        };
+        let a = self.armed.take()?;
+        if !along {
+            return None;
+        }
+        let mut touch = self.touch_through(scene, sx, sy, a.time, true)?;
+        touch.decided = true;
+        self.pressed = None;
+        self.drag = None;
+        if let Some((id, offset)) = a.scroll {
+            self.motion.remove(&id);
+            match offset {
+                Some(o) => self.scroll.insert(id, o),
+                None => self.scroll.remove(&id),
+            };
+        }
+        let start = Self::touch_event(&touch, TouchPhase::Start);
+        touch.points = vec![[x, y]];
+        touch.at(t);
+        let moved = Self::touch_event(&touch, TouchPhase::Move);
+        self.touch = Some(touch);
+        Some(Effect::Gesture(vec![start, moved]))
     }
 
     fn touch_event(t: &Touch, phase: TouchPhase) -> GestureTouch {
@@ -610,7 +689,11 @@ impl Interaction {
                     return Some(Effect::None);
                 }
                 self.touch = None;
-                let touch = self.touch_at(scene, x, y, t)?;
+                self.armed = None;
+                let Some(touch) = self.touch_at(scene, x, y, t) else {
+                    self.armed = self.arm(scene, x, y, t);
+                    return None;
+                };
                 self.pressed = None;
                 self.drag = None;
                 self.pending = None;
@@ -621,9 +704,19 @@ impl Interaction {
                 Some(Effect::Gesture(vec![e]))
             }
             DragPhase::Move => {
+                if self.touch.is_none() {
+                    return self.take_armed(scene, x, y, t);
+                }
                 let touch = self.touch.as_mut()?;
                 let (sx, sy) = touch.start;
-                if !touch.pans && scene.scroll_target(sx, sy).is_some() && (x - sx).hypot(y - sy) > PAN_SLOP {
+                let out = (x - sx).hypot(y - sy) > PAN_SLOP;
+                // An axis-locked pan gives a finger moving mostly across its axis to the scroller.
+                let crosses = !touch.decided && out && touch.axis.is_some_and(|a| match a {
+                    onesim_protocol::Axis::Horizontal => (y - sy).abs() > (x - sx).abs(),
+                    onesim_protocol::Axis::Vertical => (x - sx).abs() > (y - sy).abs(),
+                });
+                touch.decided |= out;
+                if (!touch.pans || crosses) && scene.scroll_target(sx, sy).is_some() && out {
                     // The scroller takes over from where the finger came down; the gesture views see a cancel.
                     let mut touch = self.touch.take()?;
                     touch.at(t);
@@ -636,6 +729,7 @@ impl Interaction {
                 Some(Effect::Gesture(vec![Self::touch_event(touch, TouchPhase::Move)]))
             }
             DragPhase::End => {
+                self.armed = None;
                 let mut touch = self.touch.take()?;
                 touch.points = vec![[x, y]];
                 touch.at(t);
@@ -671,6 +765,7 @@ impl Interaction {
         match ev.kind {
             PointerKind::Down => return self.touch_drag(scene, DragPhase::Begin, x, y, t0),
             PointerKind::Up => {
+                self.armed = None;
                 let touch = self.touch.as_mut()?;
                 touch.base = Some((t0, t0)); // wall clock again, as at the down
                 let e = self.touch_drag(scene, DragPhase::End, x, y, t0);
@@ -709,8 +804,14 @@ impl Interaction {
                 out.push(Self::touch_event(&touch, TouchPhase::End));
             }
             PointerKind::Drag => {
-                let Some(Effect::Gesture(start)) = self.touch_drag(scene, DragPhase::Begin, x, y, t0) else { return None };
-                out.extend(start);
+                match self.touch_drag(scene, DragPhase::Begin, x, y, t0) {
+                    Some(Effect::Gesture(start)) => out.extend(start),
+                    // A control over an axis-locked pan: the scroller starts as usual; the pan may take over.
+                    _ if self.armed.is_some() => {
+                        self.drag(scene, DragPhase::Begin, x, y, t0);
+                    }
+                    _ => return None,
+                }
                 let mut t = t0;
                 for i in 1..=GESTURE_STEPS {
                     let f = f64::from(i) / f64::from(GESTURE_STEPS);
@@ -727,6 +828,11 @@ impl Interaction {
                     // This synthesized touch was handed to a pager. The guest has not seen its start.
                     Effect::Action { .. } => return Some(e),
                     _ => {}
+                }
+                if out.is_empty() {
+                    // An armed pan that stayed with the scroller: an ordinary scroll drag.
+                    self.pressed = None;
+                    return Some(if self.hit.is_some() { Effect::Redraw } else { Effect::None });
                 }
             }
             PointerKind::Scroll => return None,
@@ -1147,6 +1253,91 @@ mod tests {
         let onesim_protocol::ViewKind::TextField { text: value, .. } = &mut input.kind else { unreachable!() };
         *value = text;
         assert!(caret_visible(&layout(&input, &interaction)));
+    }
+
+    #[test]
+    fn axis_locked_pan_hands_cross_axis_drags_to_the_scroller() {
+        use crate::scene::{Node, Rect, ScrollInfo};
+        // A list (vertical scroller) holding a row whose swipe follows only horizontal movement.
+        let mut list = Node::new("list", "list");
+        list.bounds = Rect { x: 0.0, y: 0.0, w: 400.0, h: 800.0 };
+        list.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, 0.0), max: (0.0, 500.0), snap: None, content: None, page: None, aligned: false });
+        let mut row = Node::new("row", "row");
+        row.parent = Some(0);
+        row.bounds = Rect { x: 16.0, y: 100.0, w: 370.0, h: 52.0 };
+        row.gesture = Some(Box::new(onesim_protocol::GestureMod { key: "row#swipe".into(), pans: true, axis: Some(onesim_protocol::Axis::Horizontal) }));
+        let scene = Scene { size: (400.0, 800.0), appearance: onesim_protocol::Appearance::Light, ios: Default::default(),
+            nodes: vec![list, row], unsupported_symbols: vec![], notes: vec![] };
+        let phases = |e: Effect| match e { Effect::Gesture(g) => g.into_iter().map(|t| t.phase).collect::<Vec<_>>(), other => panic!("{other:?}") };
+
+        // Vertical: the row sees a cancel and the list scrolls.
+        let mut it = Interaction::default();
+        assert_eq!(phases(it.drag(&scene, DragPhase::Begin, 200.0, 126.0, 0.0)), vec![TouchPhase::Start]);
+        assert_eq!(phases(it.drag(&scene, DragPhase::Move, 202.0, 96.0, 16.0)), vec![TouchPhase::Cancel]);
+        it.drag(&scene, DragPhase::Move, 202.0, 66.0, 32.0);
+        assert!(it.scroll.get("list").is_some_and(|o| o.1 > 30.0), "list scrolled: {:?}", it.scroll);
+
+        // Horizontal: the row keeps the touch.
+        let mut it = Interaction::default();
+        it.drag(&scene, DragPhase::Begin, 200.0, 126.0, 0.0);
+        assert_eq!(phases(it.drag(&scene, DragPhase::Move, 170.0, 128.0, 16.0)), vec![TouchPhase::Move]);
+        assert_eq!(phases(it.drag(&scene, DragPhase::Move, 120.0, 160.0, 32.0)), vec![TouchPhase::Move], "decided once");
+        assert_eq!(phases(it.drag(&scene, DragPhase::End, 120.0, 160.0, 48.0)), vec![TouchPhase::End]);
+        assert!(it.scroll.get("list").is_none_or(|o| o.1 == 0.0));
+
+        // Within the slop nothing is decided yet.
+        let mut it = Interaction::default();
+        it.drag(&scene, DragPhase::Begin, 200.0, 126.0, 0.0);
+        assert_eq!(phases(it.drag(&scene, DragPhase::Move, 201.0, 129.0, 16.0)), vec![TouchPhase::Move]);
+    }
+
+    #[test]
+    fn row_swipe_takes_horizontal_drags_from_a_button_in_the_row() {
+        use crate::scene::{Node, Rect, ScrollInfo};
+        // A list row (NavigationLink / Button) whose button spans the row, under the row's horizontal swipe.
+        let mut list = Node::new("list", "list");
+        list.bounds = Rect { x: 0.0, y: 0.0, w: 400.0, h: 800.0 };
+        list.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, 0.0), max: (0.0, 500.0), snap: None, content: None, page: None, aligned: false });
+        let mut row = Node::new("row", "row");
+        row.parent = Some(0);
+        row.bounds = Rect { x: 16.0, y: 100.0, w: 370.0, h: 52.0 };
+        row.gesture = Some(Box::new(onesim_protocol::GestureMod { key: "row#swipe".into(), pans: true, axis: Some(onesim_protocol::Axis::Horizontal) }));
+        let mut button = Node::new("button", "link");
+        button.parent = Some(1);
+        button.bounds = row.bounds;
+        button.action = Some(7);
+        let scene = Scene { size: (400.0, 800.0), appearance: onesim_protocol::Appearance::Light, ios: Default::default(),
+            nodes: vec![list, row, button], unsupported_symbols: vec![], notes: vec![] };
+        let phases = |e: Effect| match e { Effect::Gesture(g) => g.into_iter().map(|t| t.phase).collect::<Vec<_>>(), other => panic!("{other:?}") };
+        let down = |kind| PointerEvent::new(kind, 300.0, 126.0);
+
+        // A tap still fires the button.
+        let mut it = Interaction::default();
+        assert!(matches!(it.pointer(&scene, down(PointerKind::Click)), Effect::Action { id: 7, .. }));
+
+        // A live horizontal drag: the press is dropped and the swipe sees the whole touch from where it came down.
+        let mut it = Interaction::default();
+        assert!(matches!(it.pointer(&scene, down(PointerKind::Down)), Effect::None));
+        assert!(!matches!(it.drag(&scene, DragPhase::Begin, 300.0, 126.0, 0.0), Effect::Gesture(_)));
+        assert!(!matches!(it.drag(&scene, DragPhase::Move, 296.0, 127.0, 8.0), Effect::Gesture(_)), "within the slop");
+        assert_eq!(phases(it.drag(&scene, DragPhase::Move, 260.0, 128.0, 16.0)), vec![TouchPhase::Start, TouchPhase::Move]);
+        assert!(it.scroll.get("list").is_none_or(|o| o.1 == 0.0), "the list stays put: {:?}", it.scroll);
+        assert_eq!(phases(it.drag(&scene, DragPhase::Move, 200.0, 160.0, 32.0)), vec![TouchPhase::Move]);
+        assert_eq!(phases(it.drag(&scene, DragPhase::End, 200.0, 160.0, 48.0)), vec![TouchPhase::End]);
+        assert!(!matches!(it.pointer(&scene, PointerEvent::new(PointerKind::Up, 200.0, 160.0)), Effect::Action { .. }));
+
+        // A vertical drag on the button scrolls the list and never reaches the swipe.
+        let mut it = Interaction::default();
+        it.drag(&scene, DragPhase::Begin, 300.0, 126.0, 0.0);
+        assert!(!matches!(it.drag(&scene, DragPhase::Move, 302.0, 96.0, 16.0), Effect::Gesture(_)));
+        assert!(!matches!(it.drag(&scene, DragPhase::Move, 260.0, 66.0, 32.0), Effect::Gesture(_)), "decided once");
+        assert!(it.scroll.get("list").is_some_and(|o| o.1 > 30.0), "list scrolled: {:?}", it.scroll);
+
+        // A whole synthesized drag swipes the row too.
+        let mut it = Interaction::default();
+        let e = it.pointer(&scene, PointerEvent::moved(PointerKind::Drag, 300.0, 126.0, -120.0, 0.0));
+        let p = phases(e);
+        assert_eq!((p.first(), p.last()), (Some(&TouchPhase::Start), Some(&TouchPhase::End)), "{p:?}");
     }
 
     #[test]

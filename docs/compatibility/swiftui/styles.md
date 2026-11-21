@@ -11,10 +11,10 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `AnyShapeStyle` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Erases supported shape styles and preserves their paint. Apple custom style resolution is a gap. |
 | `ArrangementViewStyle` | 13 | ⬜ |  |  |
 | `AutomaticArrangementViewStyle` | 13 | ⬜ |  |  |
-| `AutomaticControlGroupStyle` | 15 | ⬜ |  |  |
-| `AutomaticDisclosureGroupStyle` | 16 | ⬜ |  |  |
-| `AutomaticFormStyle` | 16 | ⬜ |  |  |
-| `AutomaticLabeledContentStyle` | 16 | ⬜ |  |  |
+| `AutomaticControlGroupStyle` | 15 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
+| `AutomaticDisclosureGroupStyle` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
+| `AutomaticFormStyle` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
+| `AutomaticLabeledContentStyle` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `AutomaticNavigationSplitViewStyle` | 16 | ⬜ |  |  |
 | `AutomaticTableStyle` | 16 | ⬜ |  |  |
 | `AutomaticTextEditorStyle` | 17 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) |  |
@@ -30,17 +30,17 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ButtonToggleStyle` | 15 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `CircularProgressViewStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Always the spinner, as on iOS |
 | `ColumnNavigationViewStyle` | 15 | ⬜ |  | Deprecated |
-| `ColumnsFormStyle` | 16 | ⬜ |  |  |
+| `ColumnsFormStyle` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `CompactDatePickerStyle` | 14 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | iOS 26.5 appearance and native wheel momentum are incomplete. |
-| `CompactMenuControlGroupStyle` | 16.4 | ⬜ |  |  |
-| `ControlGroupStyle` | 15 | ⬜ |  |  |
+| `CompactMenuControlGroupStyle` | 16.4 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
+| `ControlGroupStyle` | 15 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `DatePickerStyle` | 13 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | iOS 26.5 appearance and native wheel momentum are incomplete. |
 | `DefaultButtonStyle` | 13 | ✅ |  |  |
 | `DefaultDatePickerStyle` | 13 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | iOS 26.5 appearance and native wheel momentum are incomplete. |
 | `DefaultGaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
-| `DefaultGroupBoxStyle` | 14 | ⬜ |  |  |
+| `DefaultGroupBoxStyle` | 14 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `DefaultLabelStyle` | 14 | ⬜ |  |  |
-| `DefaultListStyle` | 13 | ⬜ |  |  |
+| `DefaultListStyle` | 13 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `DefaultMenuStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `DefaultNavigationViewStyle` | 13 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Deprecated. Uses the compact stack presentation. Adaptive layout is pending. |
 | `DefaultPickerStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
@@ -48,48 +48,48 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `DefaultTabViewStyle` | 14 | ✅ | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | iPhone tab bar |
 | `DefaultTextFieldStyle` | 13 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) |  |
 | `DefaultToggleStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
-| `DisclosureGroupStyle` | 16 | ⬜ |  |  |
+| `DisclosureGroupStyle` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `DoubleColumnNavigationViewStyle` | 13 | ⬜ |  | Deprecated |
 | `FillShapeStyle` | 17 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Fill levels with light and dark colors. UIKit fill colors are approximated. |
 | `FillStyle` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `ForegroundStyle` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Inherits solid or gradient paint for shapes and text. Symbol palette rendering is a gap. |
-| `FormStyle` | 16 | ⬜ |  |  |
+| `FormStyle` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `GaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `GlassButtonStyle` | 26 | ✅ |  |  |
 | `GlassProminentButtonStyle` | 26 | ✅ |  |  |
 | `GraphicalDatePickerStyle` | 14 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | iOS 26.5 appearance and native wheel momentum are incomplete. |
-| `GroupBoxStyle` | 14 | ⬜ |  |  |
-| `GroupedFormStyle` | 16 | ⬜ |  |  |
-| `GroupedListStyle` | 13 | ⬜ |  |  |
+| `GroupBoxStyle` | 14 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
+| `GroupedFormStyle` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
+| `GroupedListStyle` | 13 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `HierarchicalShapeStyle` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | All five levels for solid and gradient foreground paints. Symbol palette rendering is a gap. |
 | `IconOnlyLabelStyle` | 14 | ⬜ |  |  |
 | `IndexViewStyle` | 14 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Built-in style only |
 | `InlinePickerStyle` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | No label row in a list |
-| `InsetGroupedListStyle` | 14 | ⬜ |  |  |
-| `InsetListStyle` | 14 | ⬜ |  |  |
+| `InsetGroupedListStyle` | 14 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
+| `InsetListStyle` | 14 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `InsetTableStyle` | 16 | ⬜ |  |  |
-| `LabeledContentStyle` | 16 | ⬜ |  |  |
+| `LabeledContentStyle` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `LabelStyle` | 14 | ⬜ |  |  |
 | `LinearCapacityGaugeStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `LinearProgressViewStyle` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Without a value it draws the spinner |
 | `LinkShapeStyle` | 17 | ✅ | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Appearance-specific link color. |
-| `ListStyle` | 13 | ⬜ |  |  |
-| `MenuControlGroupStyle` | 16.4 | ⬜ |  |  |
+| `ListStyle` | 13 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
+| `MenuControlGroupStyle` | 16.4 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `MenuPickerStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `MenuStyle` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
-| `NavigationControlGroupStyle` | 15 | ⬜ |  |  |
+| `NavigationControlGroupStyle` | 15 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `NavigationLinkPickerStyle` | 16 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `NavigationSplitViewStyle` | 16 | ⬜ |  |  |
 | `NavigationViewStyle` | 13 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Deprecated. Compact stack style only. Custom and column styles are pending. |
 | `OverlayArrangementViewStyle` | 13 | ⬜ |  |  |
 | `PageIndexViewStyle` | 14 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Indicator taps, automatic, always and never backgrounds. Interactive background and scrubbing are unsupported. |
 | `PageTabViewStyle` | 14 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Horizontal drag and selection binding. Release and programmatic changes snap. Whole simulated swipes that turn the page bypass child tap gesture callbacks. |
-| `PaletteControlGroupStyle` | 17 | ⬜ |  |  |
+| `PaletteControlGroupStyle` | 17 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `PalettePickerStyle` | 17 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Drawn as a segmented control (as outside a menu); no palette row inside a `Menu` |
 | `PickerStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `PlaceholderTextShapeStyle` | 17 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Uses the semantic tertiary color. |
 | `PlainButtonStyle` | 13 | ✅ |  |  |
-| `PlainListStyle` | 13 | ⬜ |  |  |
+| `PlainListStyle` | 13 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `PlainTextEditorStyle` | 17 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Uses the same appearance as the automatic style. |
 | `PlainTextFieldStyle` | 13 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) |  |
 | `PrimitiveButtonStyle` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
@@ -104,7 +104,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ShadowStyle` | 16 | ⬜ |  |  |
 | `ShapeStyle` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Solid and gradient paint, type erasure, semantic styles and hierarchy. Material, style shadows and custom resolution are gaps. |
 | `SidebarAdaptableTabViewStyle` | 18 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Compact iPhone tab bar. Sidebar layout is unsupported. |
-| `SidebarListStyle` | 14 | ⬜ |  |  |
+| `SidebarListStyle` | 14 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `SplitArrangementViewStyle` | 13 | ⬜ |  |  |
 | `StackNavigationViewStyle` | 13 | ✅ | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Deprecated. Compact stack presentation. |
 | `StrokeStyle` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |

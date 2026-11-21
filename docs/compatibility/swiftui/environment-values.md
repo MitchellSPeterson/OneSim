@@ -46,7 +46,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.displayScale` | 13 | ⬜ |  |  |
 | `\.documentConfiguration` | 17 | ⬜ |  |  |
 | `\.dynamicTypeSize` | 15 | 🟠 |  | Read once at launch |
-| `\.editMode` | 13 | ⬜ |  |  |
+| `\.editMode` | 13 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | Per NavigationStack screen (and root) unless set with `.environment`. |
 | `\.findContext` | 26 | ⬜ |  |  |
 | `\.font` | 13 | ⬜ |  |  |
 | `\.fontResolutionContext` | 15 | ⬜ |  |  |

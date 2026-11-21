@@ -67,6 +67,7 @@ struct ListLayoutKey {
     dynamic_type: DynamicTypeSize,
     ios: IosVersion,
     system_fonts: bool,
+    under_inline_bar: bool,
 }
 
 #[derive(Clone)]
@@ -85,6 +86,10 @@ fn cacheable_list(v: &ViewNode, sections: &[Section]) -> bool {
     }
     let mut bytes = 0;
     for section in sections {
+        // Header and footer views may hold host state (a nested scroll offset) the retained layout would freeze.
+        if section.header_view.is_some() || section.footer_view.is_some() {
+            return false;
+        }
         bytes += section.header.as_ref().map_or(0, String::len) + section.footer.as_ref().map_or(0, String::len);
         for row in &section.rows {
             let ViewKind::Text { text, runs } = &row.kind else { return false };
@@ -127,6 +132,9 @@ struct Ctx<'a> {
     elevated: bool,
     /// Inside a floating (non-large) sheet: lists are transparent over its glass.
     floating: bool,
+    /// Laying out a list right under an inline navigation bar: a header-less first section starts 35pt down. Under a
+    /// large title (its band holds that gap), in a sheet or on its own it starts flush.
+    under_inline_bar: bool,
     /// An alert is up: prominent tints in the presenter turn gray.
     desat: bool,
     /// A sheet is up over this screen: its back button loses the glass circle (alerts keep it).
@@ -159,6 +167,7 @@ fn ctx<'a>(params: &'a SceneParams, fonts: &'a mut Fonts) -> Ctx<'a> {
         unsupported: BTreeSet::new(),
         elevated: false,
         floating: false,
+        under_inline_bar: false,
         desat: false,
         sheet_up: false,
         anims: Vec::new(),
@@ -738,6 +747,125 @@ mod tests {
         assert_eq!((lower.red(), lower.green(), lower.blue()), (0, 255, 0));
     }
 
+    fn list_json(style: &str, extra_sections: &str) -> String {
+        format!(r#"{{"kind":"list","id":"l","style":"{style}","sections":[
+            {{"header":"Fruit","footer":"Two fruits.","rows":[{{"kind":"text","id":"a","text":"Apple"}},{{"kind":"text","id":"b","text":"Banana"}}]}}
+            {extra_sections}]}}"#)
+    }
+
+    #[test]
+    fn grouped_list_sections_span_the_width_with_hairlines() {
+        let s = scene(&list_json("grouped", ""), (402.0, 600.0));
+        let sec = by_id(&s, "l#s0");
+        assert_eq!((sec.bounds.x, sec.bounds.w, sec.radius), (0.0, 402.0, 0.0));
+        assert!(sec.fill.is_some(), "white section on the grouped background");
+        let top = by_id(&s, "l#s0#top");
+        assert_eq!((top.bounds.x, top.bounds.w, top.bounds.y), (0.0, 402.0, sec.bounds.y));
+        // The last row's bottom line runs to the screen edge; rows between are inset by the margin.
+        let mid = by_id(&s, "l#s0#r0#sep");
+        assert!(mid.bounds.x >= 16.0 && mid.bounds.x + mid.bounds.w <= 386.0 + 0.01, "{:?}", mid.bounds);
+        assert_eq!(by_id(&s, "l#s0#r1#sep").bounds.x + by_id(&s, "l#s0#r1#sep").bounds.w, 402.0);
+        assert!(s.nodes[0].fill.is_some());
+    }
+
+    #[test]
+    fn plain_list_puts_footers_in_rows_and_gaps_between_sections() {
+        let s = scene(&list_json("plain", r#",{"header":"Veg","rows":[{"kind":"text","id":"c","text":"Carrot"}]}"#), (402.0, 600.0));
+        let sec0 = by_id(&s, "l#s0");
+        assert!(sec0.fill.is_none() && sec0.radius == 0.0);
+        // Header 22pt below the top (40.33pt header cell), rows full width with a separator under every row.
+        near(by_id(&s, "l#s0#header").bounds.y - sec0.bounds.y, -(40.33 - (40.33 - by_id(&s, "l#s0#header").bounds.h) / 2.0));
+        assert!(s.nodes.iter().any(|n| n.id == "l#s0#r1#sep"), "last row separated too");
+        let footer = by_id(&s, "l#s0#footer");
+        near(footer.text.as_ref().unwrap().font.size as f64, 17.0);
+        let sep = by_id(&s, "l#s0#footer#sep");
+        let next = by_id(&s, "l#s1#header");
+        assert!(next.bounds.y - (sep.bounds.y + 1.0) > PLAIN_SECTION_GAP, "a 22pt gap before the next header");
+    }
+
+    #[test]
+    fn inset_grouped_spacing_follows_empty_headers_and_footers() {
+        // Footer cell 29.67pt, then a header-less section's empty 17.3pt header; 35pt above the first under an inline
+        // bar.
+        let s = scene(r#"{"kind":"navigation","id":"n","title":"T","displayMode":"inline","content":{"kind":"list","id":"l","sections":[
+            {"rows":[{"kind":"text","id":"a","text":"A"}],"footer":"Note"},
+            {"rows":[{"kind":"text","id":"b","text":"B"}]},
+            {"rows":[{"kind":"text","id":"c","text":"C"}]}]}}"#, (402.0, 600.0));
+        let (s0, s1, s2) = (by_id(&s, "l#s0").bounds, by_id(&s, "l#s1").bounds, by_id(&s, "l#s2").bounds);
+        near(s0.y, NAV_INLINE_H + SECTION_GAP + HEADERLESS_EXTRA_GAP);
+        let fh = by_id(&s, "l#s0#footer").bounds.h;
+        near(s1.y - (s0.y + s0.h), FOOTER_TOP + fh + FOOTER_BOTTOM + HEADERLESS_EXTRA_GAP);
+        near(s2.y - (s1.y + s1.h), SECTION_GAP + HEADERLESS_EXTRA_GAP);
+    }
+
+    #[test]
+    fn collapsible_section_header_toggles_and_hides_rows() {
+        let s = scene(r#"{"kind":"list","id":"l","style":"sidebar","sections":[
+            {"header":"Fruit","expanded":true,"toggle":7,"rows":[{"kind":"text","id":"a","text":"Apple"}]},
+            {"header":"Veg","expanded":false,"toggle":8,"rows":[]}]}"#, (402.0, 600.0));
+        let open = by_id(&s, "l#s0#toggle");
+        assert_eq!((open.action, open.value.as_deref(), open.label.as_deref()), (Some(7), Some("expanded"), Some("Fruit")));
+        assert_eq!(by_id(&s, "l#s1#toggle").value.as_deref(), Some("collapsed"));
+        assert!(by_id(&s, "l#s0#chevron").symbol.as_ref().is_some_and(|r| r.spec.name == "chevron.down"));
+        assert!(by_id(&s, "l#s1#chevron").symbol.as_ref().is_some_and(|r| r.spec.name == "chevron.right"));
+        assert_eq!(by_id(&s, "l#s1").bounds.h, 0.0);
+        assert!(by_id(&s, "l#s0").radius > 0.0, "sidebar sections are cards");
+    }
+
+    #[test]
+    fn swiped_row_moves_its_content_and_lays_out_its_actions() {
+        let row = |swipe: &str| format!(r#"{{"kind":"list","id":"l","sections":[{{"rows":[
+            {{"kind":"text","id":"a","text":"Lunch","modifiers":[{{"listRow":{{"swipe":{swipe},
+                "gesture":{{"key":"a#swipe","pans":true,"axis":"horizontal"}}}}}}]}},
+            {{"kind":"text","id":"b","text":"Invoice"}}]}}]}}"#);
+        let acts = r#""trailing":[{"label":{"kind":"text","id":"d","text":"Delete"},"action":1,"role":"destructive"},
+                                  {"label":{"kind":"text","id":"f","text":"Flag"},"action":2,"tint":{"r":1,"g":0.5,"b":0,"a":1}}],
+                      "leading":[{"label":{"kind":"label","id":"r","title":{"kind":"text","id":"rt","text":"Read"},
+                                  "icon":{"kind":"image","id":"ri","systemName":"envelope"}},"action":3}]"#;
+        // Closed: no actions drawn, the row carries the swipe gesture.
+        let closed = scene(&row(&format!("{{{acts}}}")), (402.0, 600.0));
+        assert!(!closed.nodes.iter().any(|n| n.id.starts_with("l#s0#r0#t")));
+        assert_eq!(by_id(&closed, "l#s0#r0").gesture.as_ref().map(|g| g.key.as_str()), Some("a#swipe"));
+        // Open trailing: Delete outermost (rightmost), both pills one width, content moved left by their span.
+        let open = scene(&row(&format!(r#"{{{acts},"open":"trailing"}}"#)), (402.0, 600.0));
+        let (del, flag) = (by_id(&open, "l#s0#r0#t0"), by_id(&open, "l#s0#r0#t1"));
+        assert_eq!((del.action, flag.action), (Some(1), Some(2)));
+        near(del.bounds.w, flag.bounds.w);
+        assert!(flag.bounds.x + flag.bounds.w < del.bounds.x);
+        let card = by_id(&open, "l#s0").bounds;
+        near(card.x + card.w - (del.bounds.x + del.bounds.w), SWIPE_EDGE);
+        let cell = by_id(&open, "l#s0#r0#cell").bounds;
+        near(cell.x + cell.w, flag.bounds.x - SWIPE_GAP);
+        assert_eq!(by_id(&open, "l#s0#r0#cell").clip_radius, Some(0.0));
+        assert!(by_id(&open, "a").bounds.x < card.x, "content moved under the clip");
+        assert!(by_id(&open, "l#s0#r0#revealed").fill.is_some());
+        // Open leading: a Label action shows its symbol before its title.
+        let lead = scene(&row(&format!(r#"{{{acts},"open":"leading"}}"#)), (402.0, 600.0));
+        let read = by_id(&lead, "l#s0#r0#l0");
+        assert!(by_id(&lead, "l#s0#r0#l0#i").bounds.x < by_id(&lead, "l#s0#r0#l0#t").bounds.x);
+        near(read.bounds.x, card.x + SWIPE_EDGE);
+        // Dragging further adds the finger's offset; a full swipe stretches the outermost action.
+        let full = scene(&row(&format!(r#"{{{acts},"open":"trailing","offset":-150,"full":true}}"#)), (402.0, 600.0));
+        assert!(by_id(&full, "l#s0#r0#t0").bounds.w > 200.0);
+        assert!(!full.nodes.iter().any(|n| n.id == "l#s0#r0#t1"), "only the full-swipe action shows");
+    }
+
+    #[test]
+    fn reorder_strip_spans_the_row_and_a_lifted_row_draws_on_top() {
+        let s = scene(r#"{"kind":"list","id":"l","sections":[{"rows":[
+            {"kind":"text","id":"a","text":"Anna","modifiers":[{"listRow":{"reorder":{"key":"a#reorder","pans":true,"axis":"vertical"},"lift":30}}]},
+            {"kind":"text","id":"b","text":"Ben"}]}]}"#, (402.0, 600.0));
+        let strip = by_id(&s, "l#s0#r0#reorder");
+        let row = by_id(&s, "l#s0#r0").bounds;
+        assert_eq!(strip.gesture.as_ref().map(|g| g.key.as_str()), Some("a#reorder"));
+        near(strip.bounds.h, row.h);
+        near(strip.bounds.x + strip.bounds.w, row.x + row.w);
+        let ben = by_id(&s, "l#s0#r1").bounds;
+        near(row.y - (ben.y - row.h), 30.0);
+        let order: Vec<_> = s.nodes.iter().map(|n| n.id.as_str()).filter(|id| *id == "l#s0#r0" || *id == "l#s0#r1").collect();
+        assert_eq!(order, ["l#s0#r1", "l#s0#r0"], "lifted row drawn last");
+    }
+
     #[test]
     fn retained_list_reuses_scroll_layout_and_matches_a_fresh_pass() {
         let tree: ViewNode = serde_json::from_str(r#"{"kind":"list","id":"list","sections":[{"header":"Rows","rows":[
@@ -769,6 +897,25 @@ mod tests {
         assert_ne!(cache.list.as_ref().unwrap().1.kids.as_ptr(), retained_kids);
         assert_eq!(dark.ui_tree(), fresh.ui_tree());
         assert_eq!(crate::render(&dark, &mut fonts, params.scale).data(), crate::render(&fresh, &mut fonts, params.scale).data());
+    }
+
+    #[test]
+    fn lists_with_section_views_are_not_retained() {
+        // Header and footer views can hold host state (a nested scroll offset), so their layout is never reused.
+        let mut fonts = Fonts::with_fallback(true);
+        let params = SceneParams {
+            viewport: (180.0, 100.0), device: crate::device::device("iphone-17-pro").unwrap(), scale: 2.0,
+            appearance: Appearance::Light, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios27,
+            scroll: &HashMap::new(), sheets: &HashMap::new(), focus: None, overscroll: false, status_bar: false, chrome: Default::default(),
+        };
+        for field in ["headerView", "footerView"] {
+            let tree: ViewNode = serde_json::from_str(&format!(r#"{{"kind":"list","id":"list","sections":[{{"{field}":
+                {{"kind":"scroll","id":"h","axis":"horizontal","child":{{"kind":"text","id":"ht","text":"Wide header"}}}},
+                "rows":[{{"kind":"text","id":"a","text":"Row"}}]}}]}}"#)).unwrap();
+            let mut cache = SwiftUiLayoutCache::default();
+            layout_with_cache(&tree, &params, &mut fonts, &mut cache);
+            assert!(cache.list.is_none(), "{field} list was retained");
+        }
     }
 
     #[test]

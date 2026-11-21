@@ -44,6 +44,7 @@ textinput="$guests/text-input"
 keypads="$guests/keypads"
 pickers="$guests/pickers"
 navigation="$guests/navigation"
+forms="$guests/forms"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
 fi
@@ -61,6 +62,7 @@ if want swiftui && [ -z "$smoke" ]; then
   scripts/build-swift-app.sh examples/swiftui-keypads "$keypads"
   scripts/build-swift-app.sh examples/swiftui-pickers "$pickers"
   scripts/build-swift-app.sh examples/swiftui-navigation "$navigation"
+  scripts/build-swift-app.sh examples/swiftui-forms "$forms"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
 # (docs/compatibility/versions.json): 27.2 on the iPhone 18 Pro in tests/fixtures/ios27/, 26.5 on the iPhone 17 Pro
@@ -268,6 +270,46 @@ for ios in ${SIMCORE_IOS:-27.2}; do
     nshot search-active --click Search --click 100,138
     echo "== SwiftUI navigation (iOS $ios)"
     python3 scripts/compare_ios.py "$nfx" "$nout/onesim" "$nout" || rc=1
+    # Forms and containers (tests/fixtures/ios27/swiftui-forms-ios/README.md). Screens below the fold are reached
+    # after a scroll; toggles and swipes animate, so those states wait for them to settle.
+    fmout=$out/swiftui-forms
+    fmfx=$fx/swiftui-forms-ios
+    mkdir -p "$fmout/onesim"
+    fshot() {
+      local name=$1
+      shift
+      if [ ! -f "$fmfx/$name.png" ]; then
+        echo "Missing iOS $ios forms reference: $fmfx/$name.png" >&2
+        rc=1
+        return
+      fi
+      ./target/debug/onesim run "$forms" "${base[@]}" "$@" --screenshot "$fmout/onesim/$name.png" >/dev/null
+    }
+    down=(--scroll 200,500,0,400)
+    fshot forms
+    fshot forms-dark       --dark
+    fshot forms-expanded   --click Advanced --wait 1000
+    fshot grouped          --click Grouped
+    fshot plain            --click Plain
+    fshot inset            --click Inset
+    fshot sidebar          --click Sidebar
+    fshot sidebar-dark     --dark --click Sidebar
+    fshot sidebar-expanded --click Sidebar --click 200,298 --wait 1000
+    fshot boxes            --click Boxes
+    fshot boxes-dark       --dark --click Boxes
+    fshot columns          "${down[@]}" --click Columns
+    fshot empty            "${down[@]}" --click Empty
+    fshot empty-search     "${down[@]}" --click Empty --click Search
+    fshot outline          "${down[@]}" --click Outline
+    fshot outline-expanded "${down[@]}" --click Outline --click Documents --wait 1000
+    fshot edit             "${down[@]}" --click Edit
+    fshot edit-active      "${down[@]}" --click Edit --click Edit --wait 1000
+    fshot edit-delete      "${down[@]}" --click Edit --click Edit --wait 1000 --click 47,177 --wait 1000
+    fshot swipe-trailing   "${down[@]}" --click Swipe --drag 300,177,-150,0
+    fshot swipe-leading    "${down[@]}" --click Swipe --drag 100,177,100,0
+    fshot table            "${down[@]}" --click Table
+    echo "== SwiftUI forms and containers (iOS $ios)"
+    python3 scripts/compare_ios.py "$fmfx" "$fmout/onesim" "$fmout" || rc=1
   fi
   # React Native / Expo showcase: tests/fixtures/rn-showcase-ios (see its README). Needs node + `npm install` in the example.
   if want expo; then

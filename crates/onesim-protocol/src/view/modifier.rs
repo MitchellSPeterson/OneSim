@@ -4,7 +4,7 @@ use crate::{ForegroundPalette, ShapePaint, VisualOp};
 use super::animation::{AnimationSpec, ContentTransitionKind, MatchedGeometryMod, TransitionSpec};
 use super::color::Color;
 use super::inf;
-use super::node::ViewNode;
+use super::node::{Axis, ListRowMod, ViewNode};
 use super::shape::ContainerShapeSpec;
 use super::text::{
     Font, FontDesign, FontWidth, LineLimit, LineStyle, TextCase, TextScale, Truncation, Weight,
@@ -99,6 +99,10 @@ pub struct GestureMod {
     pub key: String,
     #[serde(default)]
     pub pans: bool,
+    /// The pan follows only this axis (a list row's swipe): a finger moving mostly along the other axis goes to the
+    /// scroller under it instead (section T).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub axis: Option<Axis>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -269,6 +273,8 @@ pub enum Modifier {
     GridCellColumns(u32),
     /// Minimum height of the list row this view is (section S: a `ColorPicker` row is 58 pt). Read by `list`.
     RowMinHeight(f64),
+    /// List row state (section T): swipe actions. Read by `list`.
+    ListRow(Box<ListRowMod>),
     /// `.contentMargins`: the inset already resolved onto each edge.
     ContentMargins(Edges),
     /// `.scrollIndicators(_:axes:)`.

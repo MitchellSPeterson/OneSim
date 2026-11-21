@@ -79,7 +79,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ContentToolbarPlacement` | 18.4 | ⬜ |  |  |
 | `ContentTransition` | 16 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | `identity`, `interpolate`, `opacity`, `numericText`, `symbolEffect`; no per-glyph morphing |
 | `ContextMenu` | 13 | ⬜ |  | Deprecated |
-| `ControlGroupStyleConfiguration` | 15 | ⬜ |  |  |
+| `ControlGroupStyleConfiguration` | 15 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `ControlSize` | 15 | ⬜ |  |  |
 | `ControlWidgetConfigurationBuilder` | 18 | ⬜ |  |  |
 | `ControlWidgetTemplateBuilder` | 18 | ⬜ |  |  |
@@ -94,7 +94,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `DeviceHingeContext` | 13 | ⬜ |  |  |
 | `DialogSeverity` | 17 | ⬜ |  |  |
 | `DisabledTextSelectability` | 15 | ⬜ |  |  |
-| `DisclosureGroupStyleConfiguration` | 16 | ⬜ |  |  |
+| `DisclosureGroupStyleConfiguration` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `DisclosureTableRow` | 17 | ⬜ |  |  |
 | `DismissAction` | 15 | ✅ |  |  |
 | `DismissBehavior` | 17 | ⬜ |  |  |
@@ -117,7 +117,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Edge` | 13 | ✅ |  |  |
 | `EdgeInsets` | 13 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `EditActions` | 16 | ⬜ |  |  |
-| `EditMode` | 13 | ⬜ |  |  |
+| `EditMode` | 13 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `EmptyAnimatableData` | 13 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `EmptyCommands` | 14 | ⬜ |  |  |
 | `EmptyControlWidgetConfiguration` | 18 | ⬜ |  |  |
@@ -151,7 +151,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ForEachSectionCollection` | 18 | ⬜ |  |  |
 | `ForEachSubviewCollection` | 18 | ⬜ |  |  |
 | `FormPresentationSizing` | 18 | ⬜ |  |  |
-| `FormStyleConfiguration` | 16 | ⬜ |  |  |
+| `FormStyleConfiguration` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `GaugeStyleConfiguration` | 16 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | No `markedValueLabels` |
 | `GeometryProxy` | 13 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | `size` and `safeAreaInsets` from the host frame. `frame(in: .local)` origin is zero; `.global` and a named space are the host screen frame |
 | `GestureInputKinds` | 13 | ⬜ |  |  |
@@ -163,13 +163,13 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `GraphicsContext` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Draw commands, context copying, clip layers and common filters. Resolved metrics, CG contexts, tiled images, shader, shadow and matrix filters, linear filter options and blur dithering are gaps. |
 | `GridItem` | 14 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `GridLayout` | 16 | ⬜ |  |  |
-| `GroupBoxStyleConfiguration` | 14 | ⬜ |  |  |
+| `GroupBoxStyleConfiguration` | 14 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `HandGestureShortcut` | 18 | ⬜ |  |  |
 | `HierarchicalShapeStyleModifier` | 17 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Solid foreground and fill hierarchy. Gradients and multi-style symbol levels are gaps. |
 | `HighlightHoverEffect` | 18 | ⬜ |  |  |
 | `HorizontalAlignment` | 13 | ✅ |  |  |
 | `HorizontalDirection` | 18 | ⬜ |  |  |
-| `HorizontalEdge` | 15 | ⬜ |  |  |
+| `HorizontalEdge` | 15 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `HoverEffect` | 13.4 | ⬜ |  |  |
 | `HoverPhase` | 16 | ⬜ |  |  |
 | `HStackLayout` | 16 | ⬜ |  |  |
@@ -187,7 +187,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `KeyframeTrack` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `KeyframeTrackContentBuilder` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `KeyPress` | 17 | ⬜ |  |  |
-| `LabeledContentStyleConfiguration` | 16 | ⬜ |  |  |
+| `LabeledContentStyleConfiguration` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `LabelStyleConfiguration` | 14 | ⬜ |  |  |
 | `LayoutDirection` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `LayoutDirectionBehavior` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
@@ -325,9 +325,9 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `TabBarPlacement` | 18 | ⬜ |  |  |
 | `TabContentBuilder` | 18 | ⬜ |  |  |
 | `TabCustomizationBehavior` | 18 | ⬜ |  |  |
-| `TableColumn` | 16 | ⬜ |  |  |
+| `TableColumn` | 16 | 🟠 | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | `(_:value:)`, `(_:content:)` and `(_:value:comparator:)`; only the first column shows (compact width). |
 | `TableColumnAlignment` | 17 | ⬜ |  |  |
-| `TableColumnBuilder` | 16 | ⬜ |  |  |
+| `TableColumnBuilder` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `TableColumnCustomization` | 17 | ⬜ |  |  |
 | `TableColumnCustomizationBehavior` | 17 | ⬜ |  |  |
 | `TableColumnForEach` | 17.4 | ⬜ |  |  |

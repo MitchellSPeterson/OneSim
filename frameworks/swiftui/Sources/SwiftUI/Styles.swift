@@ -46,6 +46,15 @@ struct _Styles {
     var labelsHidden = false
     /// Inside a `List` / `Form`: inline pickers become rows.
     var inList = false
+    /// Forms and containers (section T).
+    var listStyle: String?
+    var form: _NamedOr<FormStyleConfiguration>?
+    var columnsForm = false
+    var labeledContent: _StyleBody<LabeledContentStyleConfiguration>?
+    var disclosureGroup: _StyleBody<DisclosureGroupStyleConfiguration>?
+    var groupBox: _StyleBody<GroupBoxStyleConfiguration>?
+    var groupBoxDepth = 0
+    var controlGroup: _NamedOr<ControlGroupStyleConfiguration>?
 }
 
 /// Run `f` with one style cleared (a custom style's own body draws its controls unstyled).

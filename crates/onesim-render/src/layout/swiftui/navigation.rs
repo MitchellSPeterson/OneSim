@@ -80,7 +80,9 @@ impl Ctx<'_> {
         let mut offset = 0.0;
         if scroller {
             // Content scrolls under the bar: the scroller spans the screen with the bar as a top inset.
+            let saved = std::mem::replace(&mut self.under_inline_bar, !large && bar_h > 0.0);
             let mut c = self.view(content, Prop { w: Some(w), h: Some(h) }, Env { safe_top: ctop, ..cenv });
+            self.under_inline_bar = saved;
             if let Some(s) = c.node.as_mut().and_then(|n| n.scroll.as_mut()).filter(|_| large) {
                 s.snap = Some(band);
             }

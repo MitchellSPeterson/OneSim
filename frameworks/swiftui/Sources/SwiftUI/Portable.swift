@@ -165,6 +165,27 @@ public struct DateComponents: Hashable, Sendable {
     }
 }
 
+/// Foundation's `IndexSet` (onDelete / onMove offsets): a sorted set of non-negative positions.
+public struct IndexSet: Equatable, Hashable, Sequence, ExpressibleByArrayLiteral, Sendable {
+    private var items: [Int] = []
+    public init() {}
+    public init(integer: Int) { items = [integer] }
+    public init<S: Sequence>(_ s: S) where S.Element == Int { for i in s { insert(i) } }
+    public init(arrayLiteral elements: Int...) { self.init(elements) }
+    public var count: Int { items.count }
+    public var isEmpty: Bool { items.isEmpty }
+    public var first: Int? { items.first }
+    public var last: Int? { items.last }
+    public func contains(_ i: Int) -> Bool { items.contains(i) }
+    @discardableResult public mutating func insert(_ i: Int) -> (inserted: Bool, memberAfterInsert: Int) {
+        if items.contains(i) { return (false, i) }
+        items.insert(i, at: items.firstIndex { $0 > i } ?? items.count)
+        return (true, i)
+    }
+    public mutating func remove(_ i: Int) { items.removeAll { $0 == i } }
+    public func makeIterator() -> IndexingIterator<[Int]> { items.makeIterator() }
+}
+
 /// `Link` destinations. Only the string is kept.
 public struct URL: Equatable, Hashable {
     public let absoluteString: String

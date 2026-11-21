@@ -318,6 +318,7 @@ impl Ctx<'_> {
             // Read by the owning container (grid columns, scroll margins and snap).
             Modifier::GridCellColumns(_)
             | Modifier::RowMinHeight(_)
+            | Modifier::ListRow(_)
             | Modifier::ContentMargins(_)
             | Modifier::ScrollIndicators(_)
             | Modifier::ScrollTargetBehavior(_)

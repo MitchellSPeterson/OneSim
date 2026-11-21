@@ -238,6 +238,8 @@ final class _Runtime {
     var pageIndexStyle = PageIndexViewStyle()
     var pageIsActive = true   // adjacent pages are laid out for swiping but do not appear or present yet
     var tags: [String: AnyHashable] = [:]   // `.tag(_:)` values by node id, read by `Picker`
+    var rowMeta: [String: _RowMeta] = [:]   // list row delete/move/swipe actions by node id, read by `List` (section T)
+    var rowActions = _RowActions()          // `onDelete` / `onMove` for the ForEach being evaluated
     var nav: _NavState?
     // Container modifiers finish after their navigation node has been emitted.
     var emittedNavigationStates: [String: _NavState] = [:]
@@ -383,7 +385,7 @@ final class _Runtime {
         let previousFocus = textFocus
         textFocus.removeAll(keepingCapacity: true)
         textInput = _TextInputContext()
-        disabled = false; buttonStyle = "automatic"; pickerStyle = "menu"; styles = _Styles(); tags = [:]; nav = nil; envObjects = [:]; envLocal = []
+        disabled = false; buttonStyle = "automatic"; pickerStyle = "menu"; styles = _Styles(); tags = [:]; rowMeta = [:]; rowActions = _RowActions(); nav = nil; envObjects = [:]; envLocal = []
         pageTabStyle = nil; pageIndexStyle = .init(); pageIsActive = true
         #if !os(WASI)
         imageSession = nil
@@ -503,7 +505,7 @@ func _pool(_ f: () -> Void) {
 /// onesim-web pushes the environment (simcore_web_init); the browser is the event loop.
 public func _onesimRun<V: View>(_ root: V) {
     let rt = _Runtime.shared
-    rt.render = { _eval(root, "0") }
+    rt.render = { _withEditMode("0") { _eval(root, "0") } }
     _onesimRegisterCallbacks()
 }
 #else
@@ -524,7 +526,7 @@ public func _onesimRun<V: View>(_ root: V) -> Never {
     }
     if let d = env["SIMCORE_DYNAMIC_TYPE"], let s = DynamicTypeSize.allCases.first(where: { "\($0)" == d }) { rt.dynamicType = s }
     if let t = env["SIMCORE_TIME"].flatMap(Double.init) { rt.baseEpoch = t } else { rt.baseEpoch = Date().timeIntervalSince1970 }
-    rt.render = { _eval(root, "0") }
+    rt.render = { _withEditMode("0") { _eval(root, "0") } }
     _onesimRegisterCallbacks()
     #if !os(WASI)
     _installImageWake()

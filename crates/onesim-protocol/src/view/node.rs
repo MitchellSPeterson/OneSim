@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::{ShapePaint, VisualOp};
 use super::color::Color;
 use super::modifier::{
-    Alignment, ContentMode, DynamicRange, ImageScale, Interpolation, Modifier, SymbolColorMode,
+    Alignment, ContentMode, DynamicRange, GestureMod, ImageScale, Interpolation, Modifier, SymbolColorMode,
     SymbolMode, SymbolVariable, TemplateMode,
 };
 use super::shape::{ShapeExtra, ShapeKind};
@@ -265,17 +265,93 @@ pub enum FitAxes {
 pub enum ListStyle {
     #[default]
     InsetGrouped,
+    Grouped,
     Plain,
+    Inset,
+    Sidebar,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Section {
+    /// Plain-text header, drawn in the list style's header font.
     #[serde(default)]
     pub header: Option<String>,
     #[serde(default)]
     pub footer: Option<String>,
+    /// Any other header or footer view (section T). Takes the place of `header` / `footer`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub header_view: Option<Box<ViewNode>>,
+    /// Any other footer view, in place of `footer`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub footer_view: Option<Box<ViewNode>>,
+    /// `Section(isExpanded:)`: collapsible. `false` hides the rows; the header shows a chevron and runs `toggle`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expanded: Option<bool>,
+    /// Guest action the collapsible header runs (flips `expanded`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toggle: Option<u64>,
     #[serde(default)]
     pub rows: Vec<ViewNode>,
+}
+
+/// `listRow` modifier on a list row (section T).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ListRowMod {
+    /// Swipe actions and where the row rests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub swipe: Option<RowSwipe>,
+    /// Gesture on the whole row (its frame is the row's, padding included): the swipe pan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gesture: Option<GestureMod>,
+    /// Edit mode: gesture on a strip at the row's trailing edge, the row's height, over its reorder handle.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reorder: Option<GestureMod>,
+    /// A row being reordered is drawn this far (pt) below its place, above the other rows.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub lift: f64,
+}
+
+/// `.swipeActions` (and swipe-to-delete) state of a row. `open` is the edge whose actions show at rest (the row moved
+/// by their width); `offset` is the finger's movement on top of that (negative = towards leading). `full`: dragged
+/// past the full-swipe point, the outermost action stretches across the row.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct RowSwipe {
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub offset: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open: Option<HEdge>,
+    /// Outermost (leftmost) first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub leading: Vec<SwipeAction>,
+    /// Outermost (rightmost) first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trailing: Vec<SwipeAction>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub full: bool,
+}
+
+/// `HorizontalEdge`: a row's leading or trailing side.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HEdge {
+    Leading,
+    Trailing,
+}
+
+/// One swipe action button: its label (text and/or symbol), tint (`role: destructive` is red, otherwise gray when unset).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SwipeAction {
+    /// The button's label: its text, and a `label`'s symbol drawn before it.
+    pub label: Box<ViewNode>,
+    /// Runs the button (the guest also closes the row).
+    pub action: u64,
+    /// `.tint` on the button: the pill's fill.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tint: Option<Color>,
+    /// `destructive` fills the pill red when there is no tint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<ButtonRole>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -2058,12 +2134,53 @@ mod tests {
         let n: ViewNode = serde_json::from_value(j).unwrap();
         assert_eq!(n.modifiers[0], Modifier::ImageScale(ImageScale::Large));
         let g: ViewNode = serde_json::from_value(json!({"kind":"empty","id":"0","modifiers":[{"offset":{"x":3,"y":-4}},{"gesture":{"key":"0","pans":true}}]})).unwrap();
-        assert_eq!(g.modifiers, vec![Modifier::Offset(Offset { x: 3.0, y: -4.0 }), Modifier::Gesture(GestureMod { key: "0".into(), pans: true })]);
+        assert_eq!(g.modifiers, vec![Modifier::Offset(Offset { x: 3.0, y: -4.0 }), Modifier::Gesture(GestureMod { key: "0".into(), pans: true, axis: None })]);
         assert_eq!(n.modifiers[1], Modifier::Font(Font::Style { style: TextStyle::Footnote, weight: Some(Weight::Semibold) }));
         let ViewKind::Label { icon, .. } = &n.kind else { panic!() };
         assert!(matches!(&icon.kind, ViewKind::Image { resizable: true, content_mode: Some(ContentMode::Fit), scale: None, .. }));
         let again: ViewNode = serde_json::from_value(serde_json::to_value(&n).unwrap()).unwrap();
         assert_eq!(n, again);
+    }
+
+    #[test]
+    fn section_t_lists_round_trip() {
+        let t = |id: &str, s: &str| json!({"kind": "text", "id": id, "text": s});
+        let list: ViewNode = serde_json::from_value(json!({
+            "kind": "list", "id": "l", "style": "sidebar", "sections": [
+                {"header": "Fruit", "expanded": false, "toggle": 4, "rows": []},
+                {"headerView": t("h", "Custom"), "footerView": t("f", "Foot"), "rows": [
+                    {"kind": "text", "id": "r", "text": "Row", "modifiers": [{"listRow": {
+                        "swipe": {"offset": -12.5, "open": "trailing", "trailing": [
+                            {"label": t("d", "Delete"), "action": 7, "role": "destructive"},
+                            {"label": t("p", "Flag"), "action": 8, "tint": {"r": 1, "g": 0.5, "b": 0, "a": 1}}
+                        ], "leading": [{"label": t("x", "Read"), "action": 9}], "full": true},
+                        "gesture": {"key": "r#swipe", "pans": true, "axis": "horizontal"},
+                        "reorder": {"key": "r#move", "pans": true, "axis": "vertical"}, "lift": 30
+                    }}]}
+                ]}
+            ]
+        })).unwrap();
+        let ViewKind::List { style, sections } = &list.kind else { panic!() };
+        assert_eq!(*style, ListStyle::Sidebar);
+        assert_eq!((sections[0].expanded, sections[0].toggle), (Some(false), Some(4)));
+        assert!(sections[1].header_view.is_some() && sections[1].footer_view.is_some() && sections[1].header.is_none());
+        let row = &sections[1].rows[0];
+        let Modifier::ListRow(lr) = &row.modifiers[0] else { panic!() };
+        let swipe = lr.swipe.as_ref().unwrap();
+        assert_eq!((swipe.offset, swipe.open, swipe.trailing.len(), swipe.leading.len(), swipe.full), (-12.5, Some(HEdge::Trailing), 2, 1, true));
+        assert_eq!(swipe.trailing[0].role, Some(ButtonRole::Destructive));
+        assert!(swipe.trailing[1].tint.is_some() && swipe.leading[0].tint.is_none());
+        assert_eq!(lr.gesture.as_ref().unwrap().axis, Some(Axis::Horizontal));
+        assert_eq!((lr.reorder.as_ref().unwrap().axis, lr.lift), (Some(Axis::Vertical), 30.0));
+        for style in ["insetGrouped", "grouped", "plain", "inset", "sidebar"] {
+            let l: ViewNode = serde_json::from_value(json!({"kind": "list", "id": "l", "style": style})).unwrap();
+            assert_eq!(serde_json::to_value(&l).unwrap()["style"], style);
+        }
+        let again: ViewNode = serde_json::from_value(serde_json::to_value(&list).unwrap()).unwrap();
+        assert_eq!(list, again);
+        // Older guests: no axis, string headers only.
+        let g: GestureMod = serde_json::from_value(json!({"key": "k", "pans": true})).unwrap();
+        assert_eq!(g.axis, None);
     }
 
     #[test]

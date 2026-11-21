@@ -168,7 +168,7 @@ Hosts ignore unknown modifier keys. Guests never send kinds a host doesn't list 
 | `shape` | `"shape": "rectangle"\|"circle"\|"capsule"\|"roundedRectangle"`, `"cornerRadius"?`, `"fill"?: Color`, `"stroke"?: {"color": Color, "lineWidth"}`. Greedy like `rectangle`. Neither fill nor stroke means fill with the current foreground style. Section R extends both paint fields. (`rectangle` kind stays accepted.) |
 | `divider` | – (hairline, 1px at device scale, separator color; spans the cross axis of the enclosing stack) |
 | `scroll` | `"axis": "vertical"\|"horizontal"`, `"child": ViewNode`. Child is proposed unbounded on the axis. Host keeps the scroll offset per node id across trees; it changes via `scroll` pointer events. Clips. |
-| `list` | `"style": "insetGrouped"\|"plain"`, `"sections": [{"header": String?, "footer": String?, "rows": [ViewNode]}]`. Rows outside any `Section` form their own headerless section. `ForEach`/`if` inside lists are already flattened into rows by the guest. Scrolls like `scroll` (vertical). |
+| `list` | `"style": "insetGrouped"\|"grouped"\|"plain"\|"inset"\|"sidebar"`, `"sections": [{"header": String?, "footer": String?, "rows": [ViewNode]}]` (view headers, collapsible sections and row state: section T). Rows outside any `Section` form their own headerless section. `ForEach`/`if` inside lists are already flattened into rows by the guest. Scrolls like `scroll` (vertical). |
 | `navigation` | `"title": String?`, `"displayMode": "large"\|"inline"`, `"back": {"action": u64, "label": String}?`, `"content": ViewNode`. The top of the stack only. The guest owns the push/pop path. Optional `"chrome"` carries the active screen’s toolbar and search configuration. |
 | `toggle` | `"isOn": bool`, `"action": u64` (flips it), `"label": ViewNode`, `"disabled"?: bool` |
 | `stepper` | `"label": ViewNode`, `"decrement": u64?`, `"increment": u64?` (null = at bound, rendered disabled) |
@@ -596,7 +596,7 @@ JS-driven push/pop needs no message. The guest spaces appear events by 350 ms
 - New layer `menu` (in `presentation.layers`, section G): `{"kind":"menu","anchor": picker id,"items":[{"text","action","checked"?: bool}],"dismiss": u64}`, present while a menu picker is open. The host draws a glass card at the anchor; an item's action selects and closes, `dismiss` (tap outside) only closes.
 - New kind `slider`: `{"kind":"slider","id","value","min","max","step"?,"field"?: u64,"disabled"}`. The host sets the value by sending `text_input` (section B) to `field` with the number as decimal text; the guest clamps it to `min...max` and snaps it to `step`. A tap on the slider or a `drag` pointer gesture that starts on it sends the value under the point where the finger ends (thumb centre travels between half a thumb width from each end). Disabled sliders have no `field`.
 - New kind `progress`: `{"kind":"progress","id","value": fraction 0...1 | null,"label"?: ViewNode}` (`ProgressView`). With a value: a linear capsule bar (label above it). Null: the activity indicator, drawn as a static frame (label below it).
-- `LabeledContent` and `Form` add no wire kinds: they are an `hstack` (label, spacer, content with `foregroundColor` secondary) and an inset-grouped `list`.
+- `LabeledContent` and `Form` add no wire kinds: they are an `hstack` (label, spacer, content with `foregroundColor` secondary) and an inset-grouped `list` (a columns form: section T).
 - Inspection: the picker row is a `button` labelled with the picker label (its `value` is the selected text), segments and menu items are `button`s labelled with their text, a slider has role `slider` and its value as `value`.
 
 ## J. v1 additions: tab views (additive, protocol version stays 1)
@@ -943,3 +943,28 @@ text, shapes and sheets for most of the interface. This section adds three wire 
   tap outside. The underlying view stays visible.
 - A `rowMinHeight` modifier holds a number in points. A list or form uses it as the minimum height of that
   row alongside its content height and padding. Color picker rows use 58 pt.
+
+## T. v1 additions for SwiftUI forms and containers
+
+The guest builds `GroupBox`, `DisclosureGroup`, `LabeledContent`, `ControlGroup`, `ContentUnavailableView`,
+`OutlineGroup`, `Table` (a plain list of its first column, as on every iPhone) and the columns `Form` (a
+`viewThatFits` of a centred `grid` and a scrolling one) from existing kinds, and owns edit mode, swipe state and
+disclosure state. This section extends `list`, its sections and rows.
+
+- `list` `style` is one of `insetGrouped` (default; also `.automatic` and every grouped `Form`), `grouped`
+  (full-width white sections with hairlines on the grouped background), `plain` and `inset` (rows on the plain
+  background, a separator under each row, 22 pt between sections; a `plain` footer is drawn as one more row) and
+  `sidebar` (inset grouped, with collapsible section headers).
+- A section may carry `headerView` / `footerView` (any `ViewNode`, drawn in the header / footer style) in place of
+  the text `header` / `footer`. `expanded` (Bool) makes it collapsible: the header is a button running `toggle`
+  (guest action) with a chevron, and the guest sends no rows while it is collapsed.
+- A row's `listRow` modifier holds its state:
+  - `swipe`: `leading` / `trailing` actions (`{label, action, tint?, role?}`, outermost first), `open`
+    (`"leading"` / `"trailing"`: that edge's actions show at rest), `offset` (the finger's movement on top, points)
+    and `full` (past the full-swipe point: the outermost action stretches across the row). The host draws the
+    moved row as a clipped, highlighted cell over the list background with the actions as pills beside it.
+  - `gesture`: a gesture (section L) on the whole row, the swipe pan.
+  - `reorder`: a gesture on a strip at the row's trailing edge, as tall as the row (edit mode's reorder handle).
+  - `lift`: points a row being reordered is drawn below its place, above the other rows.
+- A gesture's optional `axis` (`"horizontal"` / `"vertical"`) locks its pan to that axis: a finger that first leaves
+  the touch slop mostly along the other axis is handed to the scroller under it (the gesture sees `cancel`).

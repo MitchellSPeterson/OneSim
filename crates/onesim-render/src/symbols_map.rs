@@ -226,6 +226,8 @@ pub static MAP: &[(&str, [&str; 3])] = &[
     row!("crop", "crop"),
     row!("wand.and.stars", "magic-wand"),
     row!("leaf", "leaf"),
+    row!("apple.logo", "apple-logo"),
+    row!("carrot", "carrot"),
     row!("pawprint", "paw-print"),
     row!("car", "car"),
     row!("bus", "bus"),
