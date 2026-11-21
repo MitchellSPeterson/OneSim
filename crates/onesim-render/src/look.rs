@@ -19,6 +19,8 @@ pub struct Look {
     pub always_suggestions: bool,
     /// Dark keyboard colors of iOS 27 (panel 32, keys 68; iOS 26: 23 / 61).
     pub kb_dark_27: bool,
+    /// Gap between the numeric keyboard panel and its first row.
+    pub keypad_top_inset: f64,
 }
 
 const IOS26: Look = Look {
@@ -27,6 +29,7 @@ const IOS26: Look = Look {
     typed_word_suggestion: false,
     always_suggestions: false,
     kb_dark_27: false,
+    keypad_top_inset: 23.0,
 };
 
 const IOS27: Look = Look {
@@ -35,6 +38,7 @@ const IOS27: Look = Look {
     typed_word_suggestion: true,
     always_suggestions: true,
     kb_dark_27: true,
+    keypad_top_inset: 24.0,
 };
 
 pub fn look(v: IosVersion) -> &'static Look {
@@ -48,4 +52,10 @@ pub fn look(v: IosVersion) -> &'static Look {
 pub fn keyboard_height(dev: &crate::Device, v: IosVersion) -> f64 {
     let base = if dev.android { dev.kb_base_h } else { dev.kb_base_for(v) };
     base + dev.safe_bottom
+}
+
+/// Numeric and phone keyboards reserve less space than the alphabetic keyboard.
+pub(crate) fn keypad_height(dev: &crate::Device, v: IosVersion) -> f64 {
+    let reduction = match v { IosVersion::Ios26 => 28.0, IosVersion::Ios27 => 26.0 };
+    keyboard_height(dev, v) - reduction
 }

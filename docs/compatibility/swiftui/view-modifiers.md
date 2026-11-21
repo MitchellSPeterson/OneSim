@@ -55,8 +55,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.assistiveAccessNavigationIcon` | 26 | ⬜ |  |  |
 | `.asyncImageURLSession` | 13 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | The session is used for HTTP. The transaction is ignored |
 | `.attributedTextFormattingDefinition` | 26 | ⬜ |  |  |
-| `.autocapitalization` | 13 | ⬜ |  | Deprecated |
-| `.autocorrectionDisabled` | 13 | ⬜ |  |  |
+| `.autocapitalization` | 13 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Deprecated. Same keyboard shift behavior as `.textInputAutocapitalization`. |
+| `.autocorrectionDisabled` | 13 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Hides the simulated suggestion bar. The keyboard does not correct spelling. |
 | `.background` | 13 | ✅ |  |  |
 | `.backgroundExtensionEffect` | 26 | ⬜ |  |  |
 | `.backgroundPreferenceValue` | 13 | ⬜ |  |  |
@@ -109,7 +109,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.deleteDisabled` | 13 | ⬜ |  |  |
 | `.dialogIcon` | 17 | ⬜ |  |  |
 | `.dialogSuppressionToggle` | 17 | ⬜ |  |  |
-| `.disableAutocorrection` | 13 | ⬜ |  | Deprecated |
+| `.disableAutocorrection` | 13 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Deprecated. Same behavior as `.autocorrectionDisabled`. |
 | `.disabled` | 13 | ✅ |  |  |
 | `.disclosureGroupStyle` | 16 | ⬜ |  |  |
 | `.dismissalConfirmationDialog` | 27 | ⬜ |  |  |
@@ -145,7 +145,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.fixedSize` | 13 | ⬜ |  |  |
 | `.flipsForRightToLeftLayoutDirection` | 13 | ⬜ |  |  |
 | `.focusable` | 17 | ⬜ |  |  |
-| `.focused` | 15 | ⬜ |  |  |
+| `.focused` | 15 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Tracks user and programmatic focus for text controls. Other focusable views are a gap. |
 | `.focusedObject` | 16 | ⬜ |  |  |
 | `.focusedSceneObject` | 16 | ⬜ |  |  |
 | `.focusedSceneValue` | 15 | ⬜ |  |  |
@@ -195,7 +195,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.itemProvider` | 13 | ⬜ |  |  |
 | `.kerning` | 16 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Added to tracking in points |
 | `.keyboardShortcut` | 14 | ⬜ |  |  |
-| `.keyboardType` | 13 | ⬜ |  |  |
+| `.keyboardType` | 13 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Number, ASCII number, decimal and phone pads. Pad chrome and alternate keys approximate iOS. Other types use the default keyboard. |
 | `.keyframeAnimator` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `.labeledContentStyle` | 16 | ⬜ |  |  |
 | `.labelIconToTitleSpacing` | 26 | ⬜ |  |  |
@@ -276,7 +276,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.onScrollPhaseChange` | 18 | ⬜ |  |  |
 | `.onScrollTargetVisibilityChange` | 18 | ⬜ |  |  |
 | `.onScrollVisibilityChange` | 18 | ⬜ |  |  |
-| `.onSubmit` | 15 | ⬜ |  |  |
+| `.onSubmit` | 15 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Return-key actions for text controls. Search submissions are a gap. |
 | `.onTapGesture` | 13 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | `count: 1` is a plain button node (button accessibility); a double tap does not hold back a single tap on the same view |
 | `.opacity` | 13 | ✅ |  |  |
 | `.overlay` | 13 | ✅ |  |  |
@@ -367,8 +367,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.statusBar` | 13 | ⬜ |  | Deprecated |
 | `.statusBarHidden` | 13 | ⬜ |  | Deprecated |
 | `.strikethrough` | 16 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Pattern and color use `strikethroughStyle`. The bool overload is unchanged |
-| `.submitLabel` | 15 | ⬜ |  |  |
-| `.submitScope` | 15 | ⬜ |  |  |
+| `.submitLabel` | 15 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | English return-key labels. Localized labels and native glyphs are gaps. |
+| `.submitScope` | 15 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Blocks ancestor submit handlers. |
 | `.swipeActions` | 15 | ⬜ |  |  |
 | `.swipeActionsContainer` | 27 | ⬜ |  |  |
 | `.symbolColorRenderingMode` | 26 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Gradient is an AppKit bitmap. The Phosphor fallback stays a mask |
@@ -391,11 +391,11 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.tag` | 13 | ✅ |  |  |
 | `.task` | 15 | ⬜ |  |  |
 | `.textCase` | 14 | ✅ | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Uppercase and lowercase. The stored label is folded |
-| `.textContentType` | 13 | ⬜ |  |  |
-| `.textEditorStyle` | 17 | ⬜ |  |  |
-| `.textFieldStyle` | 13 | ⬜ |  |  |
-| `.textInputAutocapitalization` | 15 | ⬜ |  |  |
-| `.textInputBorderShape` | 13 | ⬜ |  |  |
+| `.textContentType` | 13 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Carries the content type through the view tree. Autofill is a gap. |
+| `.textEditorStyle` | 17 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Built-in and custom styles. The plain style shares the automatic appearance. |
+| `.textFieldStyle` | 13 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Built-in and custom styles. See `BorderedTextFieldStyle` for appearance gaps. |
+| `.textInputAutocapitalization` | 15 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Sets the shift state of the simulated keyboard. Locale-aware rules and hardware input are gaps. |
+| `.textInputBorderShape` | 27 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Capsule and rounded rectangle presets for bordered text fields. Radii approximate iOS. |
 | `.textInputFormattingControlVisibility` | 26 | ⬜ |  |  |
 | `.textRenderer` | 18 | ⬜ |  |  |
 | `.textScale` | 17 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Secondary glyphs are 0.86 of the size. The line box stays the body's |

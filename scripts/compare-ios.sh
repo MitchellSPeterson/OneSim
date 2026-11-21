@@ -40,6 +40,8 @@ typeapp="$guests/type"
 anim="$guests/animation"
 controls="$guests/controls"
 effects="$guests/effects"
+textinput="$guests/text-input"
+keypads="$guests/keypads"
 pickers="$guests/pickers"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
@@ -54,6 +56,8 @@ if want swiftui && [ -z "$smoke" ]; then
   scripts/build-swift-app.sh examples/swiftui-animation "$anim"
   scripts/build-swift-app.sh examples/swiftui-controls "$controls"
   scripts/build-swift-app.sh examples/swiftui-effects "$effects"
+  scripts/build-swift-app.sh examples/swiftui-text-input "$textinput"
+  scripts/build-swift-app.sh examples/swiftui-keypads "$keypads"
   scripts/build-swift-app.sh examples/swiftui-pickers "$pickers"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
@@ -203,6 +207,21 @@ for ios in ${SIMCORE_IOS:-27.2}; do
     eshot effects-dark --dark
     echo "== SwiftUI gradients, Canvas and visual effects (iOS $ios)"
     python3 scripts/compare_ios.py "$fx/swiftui-effects-ios" "$eout/onesim" "$eout" || rc=1
+
+    iout=$out/swiftui-text-input; mkdir -p "$iout/onesim"
+    ishot() {
+      local guest=$1 name=$2; shift 2
+      ./target/debug/onesim run "$guest" "${base[@]}" "$@" --screenshot "$iout/onesim/$name.png" >/dev/null
+      if [ ! -f "$fx/swiftui-text-input-ios/$name.png" ]; then echo "Missing iOS reference: $fx/swiftui-text-input-ios/$name.png" >&2; rc=1; fi
+    }
+    ishot "$textinput" text-input
+    ishot "$textinput" text-input-focused --click "Full name"
+    ishot "$keypads" keypad-number --click Number
+    ishot "$keypads" keypad-decimal --click Decimal
+    ishot "$keypads" keypad-phone --click Phone
+    ishot "$keypads" keypad-phone-symbols --click Phone --click '+*#'
+    echo "== SwiftUI text input (iOS $ios)"
+    python3 scripts/compare_ios.py "$fx/swiftui-text-input-ios" "$iout/onesim" "$iout" || rc=1
     # Date and color pickers. Each recipe must have an Apple SwiftUI reference.
     pkout=$out/swiftui-pickers
     pkfx=$fx/swiftui-pickers-ios

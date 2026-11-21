@@ -23,7 +23,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.allowedDynamicRange` | 17 | ⬜ |  |  |
 | `\.allowsTightening` | 13 | ⬜ |  |  |
 | `\.appearsActive` | 18 | ⬜ |  |  |
-| `\.autocorrectionDisabled` | 13 | ⬜ |  |  |
+| `\.autocorrectionDisabled` | 13 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) |  |
 | `\.backgroundMaterial` | 15 | ⬜ |  |  |
 | `\.backgroundProminence` | 17 | ⬜ |  |  |
 | `\.backgroundStyle` | 16 | ⬜ |  |  |
@@ -39,7 +39,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.defaultMinListHeaderHeight` | 13 | ⬜ |  |  |
 | `\.defaultMinListRowHeight` | 13 | ⬜ |  |  |
 | `\.description` | 13 | ⬜ |  |  |
-| `\.disableAutocorrection` | 13 | ⬜ |  | Deprecated |
+| `\.disableAutocorrection` | 13 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Deprecated |
 | `\.dismiss` | 15 | ✅ |  |  |
 | `\.dismissSearch` | 15 | ⬜ |  |  |
 | `\.dismissWindow` | 17 | ⬜ |  |  |

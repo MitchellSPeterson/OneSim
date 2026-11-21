@@ -196,9 +196,19 @@ Text styles and weights follow Apple's iOS Dynamic Type "Large" defaults (body 1
 ### Input additions
 
 - Pointer event kind `"scroll"`: `{"kind":"scroll","x","y","dx","dy"}` in points. Scrolls the innermost scroll or list under the point, clamped.
-- Tapping a `text_field` focuses it. The host tracks focus by node id. Tapping elsewhere unfocuses.
-- `send_keyboard_event` is now supported: `{"kind":"text","text":"abc"}` inserts at the end, and `{"kind":"key","key":"backspace"|"enter"}` edits or ends editing (enter unfocuses). It returns `unsupported` only for unknown keys, and `invalid_state` when nothing is focused.
+- Tapping a `text_field` focuses it. The host tracks focus by node ID. A SwiftUI field with a `FocusState` binding publishes `"focused": bool` and versioned `"focus_action"` and `"blur_action"` callback IDs. On a new tree the host applies the focused field, if any. A tap that moves focus invokes the destination's focus action or the previous field's blur action. The destination's action also clears the other bindings.
+- `send_keyboard_event` is now supported: `{"kind":"text","text":"abc"}` inserts at the end, and `{"kind":"key","key":"backspace"|"enter"}` deletes the last grapheme or performs the Return behavior below. It returns `unsupported` only for unknown keys, and `invalid_state` when nothing is focused.
 - Guest wire, host → guest: `{"type":"text_input","field": u64, "version": u64, "text": "<full new text>"}`. The guest sets the bound String, re-evaluates, and sends a tree. It is version-gated like `action`.
+
+SwiftUI text fields accept optional flat keys on `text_field`. `input_style` is
+`automatic`, `plain`, `bordered`, or `rounded_border`. The optional
+`input_border_shape` is `automatic`, `capsule`, or `rounded_rectangle`. A `prompt`
+is a Text node and supersedes the placeholder visually. `axis: "vertical"`
+enables multiline editing, and `editor: true` selects the flexible-height
+TextEditor layout. `keyboard_type`, `autocapitalization`, `submit_label`, and
+`content_type` are strings. `autocorrection_disabled` is a boolean. All fields
+are optional and the legacy wire format still works. Secure input is passed to
+the guest's binding as typed and is masked in the inspection tree and on screen.
 
 ### Device profile and platform chrome (host)
 
@@ -242,7 +252,7 @@ host draws a rounded-square outline placeholder and records one `get_errors` ent
 
 When a `text_field` is focused, the host draws the iOS keyboard for the device profile (light or dark). The keyboard rises from the bottom, so the bottom safe-area inset becomes the keyboard height (keyboard avoidance), and focused content stays above it. Key taps are ordinary pointer clicks on the keyboard:
 - Letter, space and backspace keys edit the text through `text_input`.
-- Return is `enter`: it unfocuses and the keyboard hides.
+- Return is `enter`: it sends the versioned `"submit_action"` (when present) so the guest can submit or move focus. Without a submit action a multiline field inserts a newline, a bound single-line field keeps focus, and a legacy unbound single-line field dismisses the keyboard.
 - Shift toggles case. Auto-capitalization turns shift on at the start of the text and after ". ".
 
 `send_keyboard_event` keeps working and bypasses the keys. `inspect_ui_tree` includes the keyboard as `kind: "keyboard"` with a child per key (`role: "key"`, `label`). The CLI `--click q` matches a key label when the keyboard is up.

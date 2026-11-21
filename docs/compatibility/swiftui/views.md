@@ -78,7 +78,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ScrollView` | 13 | ✅ |  |  |
 | `ScrollViewReader` | 14 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | `scrollTo` only. Anchor is a unit point. No animation |
 | `Section` | 13 | ✅ |  |  |
-| `SecureField` | 13 | 🟠 |  | No reveal toggle or `prompt:` |
+| `SecureField` | 13 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | String binding, masked text, prompts and submit callbacks. Localization and some custom labels are gaps. The caret stays at the end. |
 | `ShareLink` | 16 | ⬜ |  |  |
 | `Slider` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Moves on tap or whole drag, not live; no tint or ticks |
 | `Spacer` | 13 | ✅ |  |  |
@@ -90,8 +90,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Table` | 16 | ⬜ |  |  |
 | `TabView` | 13 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | iPhone tab bar and pager. Sidebar, `TabSection` and stack reset on reselect are unsupported. |
 | `Text` | 13 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | `String` only (no `LocalizedStringKey`, date or format interpolation). Runs carry kerning, tracking, baseline, design, width, and underline or strikethrough pattern and color |
-| `TextEditor` | 14 | ⬜ |  |  |
-| `TextField` | 13 | ✅ |  |  |
+| `TextEditor` | 14 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Multiline editing with a String binding. Selection bindings, caret placement and attributed text are gaps. |
+| `TextField` | 13 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | String bindings, prompts and horizontal or vertical axes. Formatter and selection overloads, caret placement and editing-change callbacks are gaps. |
 | `TimelineView` | 15 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `Toggle` | 13 | ✅ |  |  |
 | `TupleContent` | 26 | ⬜ |  |  |

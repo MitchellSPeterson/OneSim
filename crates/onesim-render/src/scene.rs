@@ -312,6 +312,8 @@ pub struct Node {
     pub tag: Option<u64>,
     /// Text field id: tapping focuses the node.
     pub field: Option<u64>,
+    pub input: Option<Box<onesim_protocol::TextInputOptions>>,
+    pub secure: bool,
     pub value: Option<String>,
     /// Slider: (min, max, thumb width); a tap or drag at x sets the value through `field`.
     pub range: Option<(f64, f64, f64)>,
@@ -377,6 +379,8 @@ impl Node {
             action: None,
             tag: None,
             field: None,
+            input: None,
+            secure: false,
             value: None,
             range: None,
             focused: false,
@@ -552,7 +556,7 @@ impl Scene {
             role: Some(n.role.as_str().to_string()),
             label: n.label.clone(),
             action: n.action,
-            value: n.value.clone(),
+            value: n.value.as_ref().map(|value| if n.secure { "\u{2022}".repeat(unicode_segmentation::UnicodeSegmentation::graphemes(value.as_str(), true).count()) } else { value.clone() }),
             focused: n.focused,
             disabled: n.disabled,
             children: kids[i].iter().map(|&k| self.ui_node(k, kids)).collect(),

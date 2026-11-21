@@ -885,7 +885,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     // With no KeyboardAvoidingView, the iOS keyboard covers the screen's bottom.
     } else if params.chrome.keyboard && nodes.iter().any(|n| n.field.is_some() && Some(n.id.as_str()) == params.focus) {
         let kb_h = crate::look::keyboard_height(params.device, params.ios);
-        crate::chrome::keyboard(&mut nodes, w, h, kb_h, dark, params.chrome.shift, params.device,
+        crate::chrome::keyboard(&mut nodes, w, h, kb_h, dark, params.chrome.shift, false, params.device,
             crate::look::look(params.ios));
     } else if params.device.safe_bottom > 0.0 && !dark
         && params.ios < IosVersion::Ios27 && !nodes.iter().any(|n| n.kind == "tabbar") {
@@ -1539,7 +1539,7 @@ mod tests {
         let params = SceneParams {
             viewport: (402.0, 874.0), device: dev, scale: 3.0, appearance: Appearance::Light, dynamic_type: Default::default(),
             ios: Default::default(),
-            scroll: &scroll, focus: Some("2"), overscroll: false, status_bar: true, chrome: crate::ChromeParams { keyboard: true, shift: false }, sheets: &HashMap::new(),
+            scroll: &scroll, focus: Some("2"), overscroll: false, status_bar: true, chrome: crate::ChromeParams { keyboard: true, shift: false, ..Default::default() }, sheets: &HashMap::new(),
         };
         let scene = build_scene(&tree, &params, &mut Fonts::new());
         assert!(scene.notes.is_empty(), "{:?}", scene.notes);
@@ -1634,7 +1634,7 @@ mod tests {
         let params = SceneParams {
             viewport: (402.0, 874.0), device: dev, scale: 3.0, appearance: Appearance::Light, dynamic_type: Default::default(),
             ios: Default::default(),
-            scroll: &scroll, focus: None, overscroll: false, status_bar: true, chrome: crate::ChromeParams { keyboard: false, shift: false }, sheets: &HashMap::new(),
+            scroll: &scroll, focus: None, overscroll: false, status_bar: true, chrome: crate::ChromeParams { keyboard: false, shift: false, ..Default::default() }, sheets: &HashMap::new(),
         };
         let scene = build_scene(&tree, &params, &mut Fonts::new());
         assert!(scene.notes.is_empty(), "{:?}", scene.notes);
