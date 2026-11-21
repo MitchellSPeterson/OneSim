@@ -109,6 +109,8 @@ struct _RowMeta {
     var leading: [Node] = [], trailing: [Node] = []
     var fullLeading = true, fullTrailing = true
     var hasLeading = false, hasTrailing = false
+    /// Registered under `.disabled(true)`: no delete control, Delete action, reorder or swipe.
+    var disabled = false
 }
 
 /// Views whose elements a List can delete and move (`ForEach`).
@@ -156,6 +158,7 @@ func _registerElementRows(_ nodes: [Node], index: Int, count: Int) {
         var meta = rt.rowMeta[id] ?? _RowMeta()
         if let d = actions.delete { meta.delete = { d(IndexSet(integer: index)) } }
         if let m = actions.move { meta.move = (index, count, m) }
+        if rt.disabled { meta.disabled = true }
         rt.rowMeta[id] = meta
     }
 }
@@ -179,6 +182,7 @@ struct _SwipeActionsView<Content: View, Actions: View>: View, _Flattenable {
             var meta = rt.rowMeta[id] ?? _RowMeta()
             if edge == .leading { meta.leading += buttons; meta.fullLeading = allowsFullSwipe; meta.hasLeading = true }
             else { meta.trailing += buttons; meta.fullTrailing = allowsFullSwipe; meta.hasTrailing = true }
+            if rt.disabled { meta.disabled = true }
             rt.rowMeta[id] = meta
         }
         return nodes
@@ -323,10 +327,11 @@ func _decorateRow(_ row: Node, editing: Bool) -> Node {
     rt.touched.insert(swipeKey)
     let st = (rt.slots[swipeKey] as? _SwipeState) ?? _SwipeState()
     rt.slots[swipeKey] = st
-    // Entering or leaving edit mode closes the row.
-    if st.editing != editing { st.open = nil; st.offset = 0; st.full = false; st.editing = editing }
+    // Entering or leaving edit mode closes the row, and so does disabling it.
+    let off = meta.disabled || rt.disabled
+    if st.editing != editing || off { st.open = nil; st.offset = 0; st.full = false; st.editing = editing }
     let close = { st.open = nil; st.offset = 0; st.full = false; if _openSwipe === st { _openSwipe = nil }; rt.markDirty() }
-    let deleteButton: Node? = meta.delete.map { del in
+    let deleteButton: Node? = off ? nil : meta.delete.map { del in
         ["kind": "button", "id": id + "#delete", "action": rt.registerAction { withAnimation { del() } }, "role": "destructive",
          "label": _eval(Label("Delete", systemImage: "trash"), id + "#delete/l")]
     }
@@ -342,8 +347,8 @@ func _decorateRow(_ row: Node, editing: Bool) -> Node {
                 Circle().fill(Color.red).frame(width: _editControl.disc, height: _editControl.disc)
                 Capsule().fill(Color.white).frame(width: _editControl.bar.0, height: _editControl.bar.1)
             }.frame(width: _editControl.minus, height: _editControl.minus), id + "#minus/i")
-            kids.append(["kind": "button", "id": id + "#minus", "style": "plain", "disabled": false, "label": minus,
-                         "action": rt.registerAction { st.open = st.open == nil ? .trailing : nil; _openSwipe = st.open == nil ? nil : st; rt.markDirty() }])
+            kids.append(["kind": "button", "id": id + "#minus", "style": "plain", "disabled": off, "label": minus,
+                         "action": off ? 0 : rt.registerAction { st.open = st.open == nil ? .trailing : nil; _openSwipe = st.open == nil ? nil : st; rt.markDirty() }])
         }
         kids.append(row)
         if let move = meta.move {
@@ -354,18 +359,20 @@ func _decorateRow(_ row: Node, editing: Bool) -> Node {
             rt.touched.insert(rk)
             let rs = (rt.slots[rk] as? _ReorderState) ?? _ReorderState()
             rt.slots[rk] = rs
-            let key = id + "#reorder"
-            rt.gestures[key] = _GestureEntry(kind: .normal) { _ in _ReorderR(rs, move.index, move.count, move.perform) }
-            lr["reorder"] = ["key": key, "pans": true, "axis": "vertical"] as Node
-            if rs.lift != 0 { lr["lift"] = rs.lift }
+            if off { rs.lift = 0 } else {
+                let key = id + "#reorder"
+                rt.gestures[key] = _GestureEntry(kind: .normal) { _ in _ReorderR(rs, move.index, move.count, move.perform) }
+                lr["reorder"] = ["key": key, "pans": true, "axis": "vertical"] as Node
+                if rs.lift != 0 { lr["lift"] = rs.lift }
+            }
         }
         n = ["kind": "hstack", "id": id + "#edit", "spacing": _editControl.gap, "alignment": "center", "children": kids]
-    } else {
+    } else if !off {
         leading = meta.hasLeading ? meta.leading : []
         trailing = meta.hasTrailing ? meta.trailing : (deleteButton.map { [$0] } ?? [])
         if leading.isEmpty && st.open == .leading { st.open = nil }
         if trailing.isEmpty && st.open == .trailing { st.open = nil }
-        if !(leading.isEmpty && trailing.isEmpty) && !rt.disabled {
+        if !(leading.isEmpty && trailing.isEmpty) {
             let full = { (a: [Node], allowed: Bool) -> (() -> Void)? in
                 guard allowed, let first = a.first, let act = rt.actions[(first["action"] as? UInt64) ?? 0] else { return nil }
                 return act

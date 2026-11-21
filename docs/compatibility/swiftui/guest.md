@@ -116,7 +116,9 @@ Lists and forms (protocol section T):
 - `.swipeActions` collects buttons per edge, outermost first (several modifiers on one edge add up). Without
   trailing actions, `.onDelete` supplies a Delete action. A horizontal drag moves the row, opens an edge past 30 pt,
   and runs the outermost action past 55% of the row's width when `allowsFullSwipe`. A tap on an open row, an
-  action, or opening another row closes it. Vertical drags scroll the list.
+  action, or opening another row closes it. Vertical drags scroll the list. On a row holding a `Button` or
+  `NavigationLink`, a tap runs the control and a horizontal drag swipes the row. A disabled list or `ForEach` has no
+  delete control action, Delete action, reorder or swipe.
 - `DisclosureGroup` in a list is a row with a chevron; its content rows follow, indented 20 pt. Elsewhere it is an
   accent button above its content. Without `isExpanded:` it keeps its own state. `OutlineGroup` and
   `List(_:children:)` nest disclosure groups per element.

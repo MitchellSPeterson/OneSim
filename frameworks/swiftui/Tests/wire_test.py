@@ -1400,6 +1400,17 @@ t = back(t)
 # An `.environment(\.editMode, _)` around a NavigationStack puts its lists in edit mode.
 t = go(t, "Override")
 assert any(m.get("id", "").endswith("#minus") for m in fwalk(row_with(t, "p")))
+t = back(t)
+
+# A disabled list: the delete control is disabled and inert, and no row reorders or swipes.
+t = go(t, "Disabled")
+for text in ["e1", "e2"]:
+    r = row_with(t, text)
+    minus = next(m for m in fwalk(r) if m.get("id", "").endswith("#minus"))
+    assert minus["disabled"] is True and minus["action"] == 0, minus
+    assert "reorder" not in lrow(r) and "swipe" not in lrow(r), lrow(r)
+for text in ["s1", "s2"]:
+    assert not lrow(row_with(t, text)), lrow(row_with(t, text))
 finish(p)
 
 # The forms example runs and pushes every screen.

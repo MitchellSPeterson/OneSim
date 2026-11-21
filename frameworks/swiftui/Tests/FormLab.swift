@@ -15,6 +15,7 @@ struct FormLab: View {
                 NavigationLink("Custom") { CustomStylesLab() }
                 NavigationLink("Misc") { MiscLab() }
                 NavigationLink("Override") { OverrideLab() }
+                NavigationLink("Disabled") { DisabledLab() }
             }
             .navigationTitle("Lab")
         }
@@ -208,5 +209,29 @@ struct OverrideLab: View {
             }
         }
         .environment(\.editMode, .constant(.active))
+    }
+}
+
+/// A disabled list offers no delete control, Delete action, reorder or swipe, in edit mode or not.
+struct DisabledLab: View {
+    var body: some View {
+        VStack {
+            List {
+                ForEach(["e1", "e2"], id: \.self) { Text($0) }
+                    .onDelete { _ in }
+                    .onMove { _, _ in }
+            }
+            .disabled(true)
+            .environment(\.editMode, .constant(.active))
+            List {
+                ForEach(["s1"], id: \.self) { m in
+                    Text(m).swipeActions { Button("Act") {} }
+                }
+                .onDelete { _ in }
+                ForEach(["s2"], id: \.self) { Text($0) }
+                    .onDelete { _ in }
+            }
+            .disabled(true)
+        }
     }
 }

@@ -421,6 +421,10 @@ fn cacheable_list(v: &ViewNode, sections: &[Section]) -> bool {
     }
     let mut bytes = 0;
     for section in sections {
+        // Header and footer views may hold host state (a nested scroll offset) the retained layout would freeze.
+        if section.header_view.is_some() || section.footer_view.is_some() {
+            return false;
+        }
         bytes += section.header.as_ref().map_or(0, String::len) + section.footer.as_ref().map_or(0, String::len);
         for row in &section.rows {
             let ViewKind::Text { text, runs } = &row.kind else { return false };
@@ -5580,6 +5584,25 @@ mod tests {
         assert_ne!(cache.list.as_ref().unwrap().1.kids.as_ptr(), retained_kids);
         assert_eq!(dark.ui_tree(), fresh.ui_tree());
         assert_eq!(crate::render(&dark, &mut fonts, params.scale).data(), crate::render(&fresh, &mut fonts, params.scale).data());
+    }
+
+    #[test]
+    fn lists_with_section_views_are_not_retained() {
+        // Header and footer views can hold host state (a nested scroll offset), so their layout is never reused.
+        let mut fonts = Fonts::with_fallback(true);
+        let params = SceneParams {
+            viewport: (180.0, 100.0), device: crate::device::device("iphone-17-pro").unwrap(), scale: 2.0,
+            appearance: Appearance::Light, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios27,
+            scroll: &HashMap::new(), sheets: &HashMap::new(), focus: None, overscroll: false, status_bar: false, chrome: Default::default(),
+        };
+        for field in ["headerView", "footerView"] {
+            let tree: ViewNode = serde_json::from_str(&format!(r#"{{"kind":"list","id":"list","sections":[{{"{field}":
+                {{"kind":"scroll","id":"h","axis":"horizontal","child":{{"kind":"text","id":"ht","text":"Wide header"}}}},
+                "rows":[{{"kind":"text","id":"a","text":"Row"}}]}}]}}"#)).unwrap();
+            let mut cache = SwiftUiLayoutCache::default();
+            layout_with_cache(&tree, &params, &mut fonts, &mut cache);
+            assert!(cache.list.is_none(), "{field} list was retained");
+        }
     }
 
     #[test]
