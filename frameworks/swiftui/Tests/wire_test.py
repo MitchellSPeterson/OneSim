@@ -1010,18 +1010,36 @@ red = next(n for n in walk(layers(t)[0]["content"]) if n["kind"] == "slider")
 send(p, type="text_input", field=red["field"], version=t["version"], text="0")
 t = recv(p)
 assert picker_button(tree(t), "Tint")["value"] == "#00FFFF"
-hex_field = next(n for n in walk(layers(t)[0]["content"]) if n["kind"] == "text_field")
-send(p, type="text_input", field=hex_field["field"], version=t["version"], text="##bad")
-send(p, type="environment", appearance="light", viewport={"width": 402, "height": 874})
-t = recv(p)
-assert picker_button(tree(t), "Tint")["value"] == "#00FFFF"
-hex_field = next(n for n in walk(layers(t)[0]["content"]) if n["kind"] == "text_field")
-send(p, type="text_input", field=hex_field["field"], version=t["version"], text="#A103FD")
-t = recv(p)
-assert picker_button(tree(t), "Tint")["value"] == "#A103FD"
+def hex_input(t):
+    return next(n for n in walk(layers(t)[0]["content"]) if n["kind"] == "text_field")
+
+def edit_hex(t, text, expected_color):
+    send(p, type="text_input", field=hex_input(t)["field"], version=t["version"], text=text)
+    t = recv(p)
+    assert hex_input(t)["text"] == text
+    assert picker_button(tree(t), "Tint")["value"] == expected_color
+    return t
+
+draft = hex_input(t)["text"]
+assert draft == "#00FFFF"
+while draft:
+    draft = draft[:-1]
+    t = edit_hex(t, draft, "#00FFFF")
+t = edit_hex(t, "##bad", "#00FFFF")
+t = edit_hex(t, "", "#00FFFF")
+for char in "a103fd":
+    draft += char
+    t = edit_hex(t, draft, "#A103FD" if len(draft) == 6 else "#00FFFF")
 favorite = next(n for n in walk(layers(t)[0]["content"]) if n.get("value") == "Add favorite")
 t = act(p, t, favorite["action"])
 assert any(n.get("value") == "#A103FD" for n in walk(layers(t)[0]["content"]))
+
+# An RGB slider change replaces a partial draft with the new selection.
+t = edit_hex(t, "a103f", "#A103FD")
+red = next(n for n in walk(layers(t)[0]["content"]) if n["kind"] == "slider")
+send(p, type="text_input", field=red["field"], version=t["version"], text="0")
+t = recv(p)
+assert hex_input(t)["text"] == "#0003FD"
 
 t = act(p, t, picker_button(layers(t)[0]["content"], "Spectrum")["action"])
 spectrum = next(n for n in walk(layers(t)[0]["content"]) if n["id"].endswith("/spectrum"))
@@ -1051,5 +1069,28 @@ assert not picker_button(tree(t), "31")["disabled"]
 t = act(p, t, picker_button(tree(t), "Mar 8, 2025")["action"])
 t = act(p, t, picker_button(layers(t)[0]["content"], "9")["action"])
 assert "Mar 9, 2025" in alltexts(tree(t)) and "3:30\u202fAM" in alltexts(tree(t))
+t = act(p, t, layers(t)[0]["dismiss"])
+
+# The selection starts before the range. Both calendars can reach the first
+# allowed month without writing a new date through the binding.
+header = picker_button(tree(t), "March 2030")
+next_id = header["id"][:-len("/title")] + "/next"
+t = act(p, t, next(n["action"] for n in walk(tree(t)) if n["id"] == next_id))
+assert "April 2030" in alltexts(tree(t))
+t = act(p, t, picker_button(tree(t), "Mar 14, 2025")["action"])
+assert "March 2030" in alltexts(layers(t)[0]["content"])
+assert picker_button(layers(t)[0]["content"], "4")["disabled"]
+assert not picker_button(layers(t)[0]["content"], "5")["disabled"]
+t = act(p, t, layers(t)[0]["dismiss"])
+
+# Changing the range leaves the binding alone and clamps both the cached
+# graphical month and the compact popover to the new upper bound's month.
+t = act(p, t, picker_button(tree(t), "Change range")["action"])
+assert "January 2020" in alltexts(tree(t))
+t = act(p, t, picker_button(tree(t), "Mar 14, 2025")["action"])
+assert "January 2020" in alltexts(layers(t)[0]["content"])
+assert picker_button(layers(t)[0]["content"], "21")["disabled"]
+t = act(p, t, picker_button(layers(t)[0]["content"], "20")["action"])
+assert "Jan 20, 2020" in alltexts(tree(t))
 finish(p)
 print("PASS")

@@ -121,6 +121,17 @@ struct _DateBounds {
         }
         return true
     }
+    func calendarMonth(containing day: Int, _ tz: TimeZone) -> (y: Int, m: Int) {
+        var day = day
+        if let lo { day = max(day, _Wall(lo, tz).day) }
+        if let hi {
+            let upper = _Wall(hi, tz)
+            let lastDay = excludesUpper && upper.seconds == 0 ? upper.day - 1 : upper.day
+            day = min(day, lastDay)
+        }
+        let date = _Civil.ymd(day)
+        return (date.y, date.m)
+    }
     func allows(month y: Int, _ m: Int, _ tz: TimeZone) -> Bool {
         let first = _Civil.days(y, m, 1), last = first + _Civil.monthDays(y, m) - 1
         if let lo, last < _Wall(lo, tz).day { return false }
@@ -509,7 +520,9 @@ struct _MultiSelection {
 func _calendar(_ ctx: _DPContext, _ path: String, width: Double, inset: Double, headerX: Double, navTrailing: Double, rowH: Double?,
                rows: Int, navTint: Color, multi: _MultiSelection?) -> Node {
     let rt = _Runtime.shared, st = ctx.state, tz = ctx.tz, sel = ctx.wall
-    let shown = st.month ?? (sel.ymd.y, sel.ymd.m)
+    let day = st.month.map { _Civil.days($0.y, $0.m, 1) } ?? sel.day
+    let shown = ctx.bounds.calendarMonth(containing: day, tz)
+    if st.month != nil { st.month = shown }
     let (y, m) = shown
     let text = ctx.text
     let accent = Color.accentColor
@@ -924,6 +937,7 @@ final class _ColorPickerState {
     var open = false
     enum Tab: String, CaseIterable { case grid = "Grid", spectrum = "Spectrum", sliders = "Sliders" }
     var tab = Tab.grid
+    var hexDraft: (text: String, rgb: String)?
     var favorites = _colorFavorites.map { _hex($0) }
 }
 
@@ -942,6 +956,7 @@ public struct ColorPicker<Label: View>: View, _Flattenable {
         let rt = _Runtime.shared
         let st = _slot("\(path)#ColorPicker") { _ColorPickerState() }
         if !rt.pageIsActive || rt.disabled { st.open = false }
+        if !st.open { st.hexDraft = nil }
         let color = get()
         let labelNode = rt.styles.labelsHidden ? nil : _optionalNode(label, path + "/0")
         let well = _colorWell(path + "/well", color)
@@ -1062,7 +1077,11 @@ func _colorSheet(_ path: String, title: String, color: Color, set setColor: @esc
             label["modifiers"] = (label["modifiers"] as! [Node]) + [["background": ["kind": "shape", "id": "\(path)/seg/\(i)/bg", "shape": "capsule",
                                                                                    "fill": _CP.control.json] as Node]]
         }
-        segKids.append(_frame(_plainButton("\(path)/seg/\(i)", rt.registerAction { st.tab = tab; rt.dirty = true }, label, value: tab == st.tab ? "selected" : nil),
+        segKids.append(_frame(_plainButton("\(path)/seg/\(i)", rt.registerAction {
+            if st.tab != tab { st.hexDraft = nil }
+            st.tab = tab
+            rt.dirty = true
+        }, label, value: tab == st.tab ? "selected" : nil),
                               w: segW, h: _CP.segmentH))
     }
     let seg: [Node] = [_frame(["kind": "shape", "id": path + "/seg/bg", "shape": "capsule", "fill": _CP.segmentFill.json], w: inner, h: _CP.segmentH),
@@ -1075,7 +1094,7 @@ func _colorSheet(_ path: String, title: String, color: Color, set setColor: @esc
     switch st.tab {
     case .grid: palette = _colorPalette(path, color: color, width: inner + 2.2, cellHeight: cell, set: set)
     case .spectrum: palette = _colorSpectrum(path + "/spectrum", width: inner, height: paletteHeight, alpha: a, set: set)
-    case .sliders: palette = _colorSliders(path + "/sliders", color: color, width: inner, set: set)
+    case .sliders: palette = _colorSliders(path + "/sliders", color: color, width: inner, state: st, set: set)
     }
     kids.append((_CP.margin, _CP.gridTop, palette))
     var y = _CP.gridTop + cell * Double(_CP.gridRows)
@@ -1155,7 +1174,7 @@ func _colorPalette(_ path: String, color: Color, width: Double, cellHeight: Doub
     return grid
 }
 
-func _colorSliders(_ path: String, color: Color, width: Double, set: @escaping (Color) -> Void) -> Node {
+func _colorSliders(_ path: String, color: Color, width: Double, state: _ColorPickerState, set: @escaping (Color) -> Void) -> Node {
     let (r, g, b, a) = _rgba(color)
     let channels = [("Red", r), ("Green", g), ("Blue", b)]
     let controls = channels.enumerated().map { index, channel -> Node in
@@ -1170,9 +1189,14 @@ func _colorSliders(_ path: String, color: Color, width: Double, set: @escaping (
             Slider(value: binding, in: 0...255, step: 1)
         }, "\(path)/\(index)")
     }
-    let hex = Binding(get: { _colorName(Color(red: r, green: g, blue: b)) }, set: { input in
+    let rgb = _colorName(Color(red: r, green: g, blue: b))
+    if state.hexDraft?.rgb != rgb { state.hexDraft = nil }
+    let hex = Binding(get: { state.hexDraft?.text ?? rgb }, set: { input in
+        state.hexDraft = (input, rgb)
+        _Runtime.shared.dirty = true
         let raw = input.first == "#" ? input.dropFirst() : input[...]
         guard raw.count == 6, raw.allSatisfy({ $0.isHexDigit }), let value = UInt32(raw, radix: 16) else { return }
+        state.hexDraft = (input, _colorName(_hex(value)))
         set(_hex(value, a))
     })
     let kids = controls + [_eval(TextField("Hex color", text: hex), path + "/hex")]
