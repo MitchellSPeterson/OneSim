@@ -47,7 +47,7 @@ python3 -m http.server 8000 -d target/web
 
 Open [http://localhost:8000/](http://localhost:8000/). For SwiftUI `@main App` examples (such as `examples/swiftui-showcase`) or Compose `ComponentActivity` examples (`examples/compose-counter`, `examples/compose-showcase`, `examples/compose-input`), omit the root view argument. Pass a second argument to launch a specific SwiftUI `View` or Compose `@Composable` function.
 
-To try every example that has a web build, run `scripts/serve-web.sh`. It builds each one into `target/web-all/` and serves an index page at [http://localhost:8000/](http://localhost:8000/).
+To try the unified **Prism** showcase site (see [showcase-spec.md](showcase-spec.md)), run `scripts/serve-web.sh`. It builds the SwiftUI, Jetpack Compose, and Expo Prism apps into `target/web-all/` and serves an index page at [http://localhost:8000/](http://localhost:8000/).
 
 <p align="center">
   <img src="web/counter-in-browser.png" width="260" alt="The SwiftUI counter running in a browser canvas">
