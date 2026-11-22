@@ -12,8 +12,11 @@ pub mod display;
 mod display_build;
 mod effects;
 pub mod glass;
-mod image;
+pub mod image;
 pub use image::put as put_image;
+pub mod live;
+pub mod guest_request;
+pub use live::Live;
 mod interaction;
 pub mod look;
 mod raster;
@@ -32,8 +35,8 @@ pub use chrome::{autocap, ChromeParams};
 pub use device::{device, Device, StatusBar, DEFAULT_ANDROID_DEVICE, DEFAULT_DEVICE, DEVICES};
 pub use interaction::{resolve_label, scroll_anchor_offset, DragPhase, Effect, Interaction};
 pub use layout::swiftui::{SceneParams, SwiftUiLayoutCache};
-pub use scene::{Color, Glyph, Gradient, ImageRun, Node, NodeAnim, Rect, Role, Scene, ScrollInfo, SheetInfo, SheetPos, Shadow, SymbolRun, TextRun};
-pub use text::{fonts_capability, inter_tracking_em, tracking_em, FontSpec, Fonts, Span, TextAlign};
+pub use scene::{Color, Glyph, Gradient, ImageFrames, ImageRun, Node, NodeAnim, Rect, Role, Scene, ScrollInfo, SheetInfo, SheetPos, Shadow, SymbolRun, TextRun};
+pub use text::{fonts_capability, inter_tracking_em, put_font, tracking_em, CustomFace, FontSpec, Fonts, Span, TextAlign};
 
 use onesim_protocol::ViewNode;
 

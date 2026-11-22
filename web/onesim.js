@@ -150,7 +150,8 @@ export class OneSim {
     if (r < 0) throw new Error(dec.decode(this.#take()));
     return r === 1;
   }
-  /** An image file the guest wrote (PNG/JPEG bytes at the path its tree names). True if it decoded (frame redrawn). */
+  /** An image (PNG, JPEG, GIF, WebP) or font file the guest wrote, at the path its tree names. True if it decoded (frame
+   *  redrawn). */
   putImage(path, bytes) {
     const p = enc.encode(path), ptr = this.wasm.simcore_web_buf(p.length + 1 + bytes.length), b = new Uint8Array(this.mem, ptr, p.length + 1 + bytes.length);
     b.set(p); b[p.length] = 0; b.set(bytes, p.length + 1);

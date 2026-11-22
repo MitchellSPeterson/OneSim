@@ -163,7 +163,7 @@ const stub = new Proxy(() => ({}), { get: (t, p) => (p === 'modules' ? { Worklet
 const createRegistry = createRequire(import.meta.url)(root + 'frameworks/react-native/guest/modules.js');
 const dataDir = mkdtempSync(join(tmpdir(), 'onesim-coverage-')); // the file-system / secure-store modules need a sandbox dir
 const registry = (platform) => createRegistry(stub, new Proxy({
-  expo: { NativeModule: class {}, SharedObject: class {} },
+  expo: { NativeModule: class {}, SharedObject: class {}, SharedRef: class {} },
   cfg: { dataDir, platform },
 }, { get: (t, p) => t[p] ?? stub })).list();
 const iosModules = registry('ios');

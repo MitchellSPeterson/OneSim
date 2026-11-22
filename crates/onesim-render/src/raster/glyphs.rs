@@ -310,14 +310,17 @@ pub(super) fn draw_glyph(pm: &mut Pixmap, g: Glyph, c: Color, b: (f32, f32, f32,
                 .collect();
             stroke_pts(pm, &pts, c, sw, xf, mask);
         }
-        Glyph::Spinner | Glyph::SpinnerLarge => {
+        Glyph::Spinner { step, .. } | Glyph::SpinnerLarge { step, .. } => {
             let s = w.min(h);
-            let k = if g == Glyph::Spinner { SPINNER_SPOKE } else { SPINNER_SPOKE_LARGE };
-            for i in 0..8 {
+            let k = if matches!(g, Glyph::Spinner { .. }) { SPINNER_SPOKE } else { SPINNER_SPOKE_LARGE };
+            // UIActivityIndicatorView turns clockwise: the brightest spoke leads (top-left at step 0), the trail fades
+            // behind it counter-clockwise.
+            let lead = (7 + u32::from(step)) % 8;
+            for i in 0..8u32 {
                 let a = (i as f32 * 45.0).to_radians();
                 let (dx, dy) = (a.sin(), -a.cos());
                 let (r0, r1) = (k.0 * s, k.1 * s);
-                let alpha = 1.0 - (i as f32 / 8.0) * SPINNER_FADE;
+                let alpha = 1.0 - ((lead + 8 - i) % 8) as f32 / 8.0 * SPINNER_FADE;
                 stroke_pts(pm, &[(cx + dx * r0, cy + dy * r0), (cx + dx * r1, cy + dy * r1)], Color { a: c.a * alpha, ..c }, k.2 * s, xf, mask);
             }
         }

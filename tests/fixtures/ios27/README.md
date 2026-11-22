@@ -17,6 +17,7 @@ lists only what differs. `scripts/compare-ios.sh` renders every state with `--io
 | `swiftui-popovers-ios` | `examples/swiftui-popovers` | 11 states: popover as sheet and bubble, styled sheet, context menus, share sheet, PasteButton (see its README) |
 | `swiftui-forms-ios` | `examples/swiftui-forms` | 22 states: list and form styles, containers, edit mode, swipes (see its README) |
 | `rn-showcase-ios` | `examples/expo-showcase` in Expo Go 58.0.7 | the 18 states of `../rn-showcase-ios` |
+| `rn-apis-ios` | `examples/expo-apis` in Expo Go 58.0.7 | the 13 states of `../rn-apis-ios` (LayoutAnimation, ActionSheetIOS and share sheet, GIF / WebP, expo-font) |
 | `rn-router-ios` | `examples/expo-default`, `examples/expo-router-stack` in Expo Go 58.0.7 | the 9 states of `../rn-router-ios` |
 | `devices` | `examples/swiftui-showcase` `home` + `keyboard-shift` | iPhone 18 Pro Max, 17e, Duo |
 

@@ -460,7 +460,7 @@ impl Ctx<'_> {
             let lw = ll.as_ref().map_or(0.0, |l| l.size.w);
             let w = SPINNER.max(lw);
             let mut sp = Node::new(format!("{}#spinner", v.id), "spinner");
-            sp.glyph = Some((Glyph::Spinner, self.semantic(Semantic::Secondary)));
+            sp.glyph = Some((Glyph::Spinner { step: 0, spins: false }, self.semantic(Semantic::Secondary)));
             sp.inspect = false;
             kids.push(((w - SPINNER) / 2.0, 0.0, Lay::new(Size { w: SPINNER, h: SPINNER }, Some(sp), vec![])));
             if let Some(l) = ll {

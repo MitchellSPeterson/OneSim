@@ -13,6 +13,8 @@ pub(super) struct ShareSheet<'a> {
     pub copy: Option<u64>,
     pub activities: &'a std::collections::BTreeMap<String, u64>,
     pub dismiss: Option<u64>,
+    /// A link iOS has no preview for (React Native `showShareActionSheetWithOptions`): the compass tile.
+    pub link_glyph: bool,
 }
 
 impl Ctx<'_> {
@@ -28,7 +30,10 @@ impl Ctx<'_> {
         let tile_fill = self.pick(SHARE_TILE);
         let mut kids: Vec<(f64, f64, Lay)> = vec![];
         // Header: the item's tile and title.
-        let tile = if s.url || s.preview.is_some() {
+        let tile = if s.link_glyph && s.preview.is_none() {
+            let (r, g2, b) = SHARE_LINK_GLYPH_FG;
+            self.share_tile(&format!("{id}#tile"), SHARE_TILE_SIZE, SHARE_TILE_RADIUS, rgba(255, 255, 255, 1.0), None, "safari", SHARE_TILE_GLYPH, 400, rgba(r, g2, b, 1.0))
+        } else if s.url || s.preview.is_some() {
             let mut t = self.share_tile(&format!("{id}#tile"), SHARE_TILE_SIZE, SHARE_TILE_RADIUS, tile_fill, None, "", 0.0, 400, primary);
             if let Some(v) = s.preview.filter(|v| matches!(&v.kind, ViewKind::Image { bitmap: Some(_), .. })) {
                 let il = self.view(v, Prop { w: Some(SHARE_TILE_SIZE), h: Some(SHARE_TILE_SIZE) }, Env { size: g.body, ..Env::new() });
@@ -55,6 +60,10 @@ impl Ctx<'_> {
         }
         // App row, then action row: one cell per activity (icon, label under it).
         let (apps, actions): (&[&str], &[&str]) = if s.url { (m.url_apps, m.url_actions) } else { (&["Reminders", "More"], &["Copy", "Save to Files"]) };
+        // An activity the guest left out (React Native `excludedActivityTypes`) has no cell; the rest close up. A guest
+        // that sends no activities at all gets every cell (running `dismiss`).
+        let offered = |n: &&str| s.activities.is_empty() || if *n == "Copy" { s.copy.is_some() } else { s.activities.contains_key(*n) };
+        let (apps, actions): (Vec<&str>, Vec<&str>) = (apps.iter().copied().filter(offered).collect(), actions.iter().copied().filter(offered).collect());
         let cells = apps.iter().enumerate().map(|(i, n)| (i, *n, true)).chain(actions.iter().enumerate().map(|(i, n)| (i, *n, false)));
         let (isz, ix, iy) = m.app_icon;
         for (k, (col, label, app)) in cells.enumerate() {
@@ -64,7 +73,7 @@ impl Ctx<'_> {
             let icon = match label {
                 "Reminders" => self.reminders_icon(&iid, isz),
                 "Safari" => self.safari_icon(&iid, isz),
-                "More" => self.share_tile(&iid, isz, SHARE_APP_RADIUS, tile_fill, None, "ellipsis", SHARE_MORE_GLYPH, 700, self.pick(SHARE_MORE_FG)),
+                "More" => self.share_tile(&iid, isz, SHARE_APP_RADIUS, self.pick(SHARE_MORE_TILE), None, "ellipsis", SHARE_MORE_GLYPH, 700, self.pick(SHARE_MORE_FG)),
                 _ => {
                     let (sym, pt) = match label {
                         "Copy" => ("doc.on.doc", SHARE_ACTION_GLYPH),

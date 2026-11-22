@@ -97,6 +97,7 @@ struct SpanStyle {
     weight: Option<u16>,
     size: Option<f32>,
     mono: bool,
+    family: Option<&'static str>,
 }
 
 /// Cut `text` at every styled-range edge: one run per piece, styled by the (last) range covering it, else the paragraph's.
@@ -112,7 +113,7 @@ fn runs(text: &str, ranges: &[(usize, usize, SpanStyle)], spec: &FontSpec, base:
         .map(|w| {
             let st = ranges.iter().rfind(|r| r.0 <= w[0] && w[1] <= r.1).map(|r| r.2).unwrap_or_default();
             let color = st.color.map_or(base, |c| Color::rgba(c[0] as f32 / 255.0, c[1] as f32 / 255.0, c[2] as f32 / 255.0, base.a));
-            Span { pt: st.size.unwrap_or(spec.pt), weight: st.weight.unwrap_or(spec.weight), color, mono: st.mono, ..Span::basic(text[w[0]..w[1]].to_string(), 0.0, 0, color) }
+            Span { pt: st.size.unwrap_or(spec.pt), weight: st.weight.unwrap_or(spec.weight), color, mono: st.mono, family: st.family.or(spec.family), ..Span::basic(text[w[0]..w[1]].to_string(), 0.0, 0, color) }
         })
         .collect()
 }
@@ -158,6 +159,7 @@ fn viewport_insets(params: &SceneParams) -> (f64, f64) {
 
 /// CSS color strings (`#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()`, a few names).
 mod controls;
+mod layout_animation;
 mod style;
 
 use controls::{android_blur_tint, android_switch, blur_spec, image_dest, text_field, ANDROID_ACCENT, REFRESH_H, REFRESH_SPINNER, REFRESH_TINT};
@@ -187,6 +189,8 @@ struct Cx<'a, 'f> {
     span_lh: f32,
     /// Core `SafeAreaView`s: padded by the part of the safe-area insets they overlap (after a first layout pass).
     safe: Vec<NodeId>,
+    /// Fonts the app loaded (expo-font), from the root's `__simcoreFonts`: alias -> font file paths.
+    loaded_fonts: Vec<(String, Vec<String>)>,
 }
 
 impl<'a, 'f> Cx<'a, 'f> {
@@ -196,7 +200,34 @@ impl<'a, 'f> Cx<'a, 'f> {
         Self { tree, notes: BTreeSet::new(), scale: params.scale.max(1.0), dark: params.appearance == Appearance::Dark,
             android: params.device.android, fonts, modals: vec![], embedded_modals: ModalLayers::default(),
             viewport_insets: viewport_insets(params), insets, inset_top: 0.0, rot: 0.0, stack: None,
-            parent_row: false, span_lh: 0.0, safe: vec![] }
+            parent_row: false, span_lh: 0.0, safe: vec![], loaded_fonts: vec![] }
+    }
+
+    /// The loaded font a `fontFamily` names, as iOS resolves it once expo-font registered the files: an alias (its
+    /// face nearest the asked weight and style), or a family or PostScript name inside any loaded file. `None`: the
+    /// system font.
+    fn custom_family(&mut self, p: &Value) -> Option<&'static str> {
+        let name = p.get("fontFamily").and_then(Value::as_str)?;
+        if self.loaded_fonts.is_empty() {
+            return None;
+        }
+        let (w, italic) = (i32::from(weight(p)), p.get("fontStyle").and_then(Value::as_str) == Some("italic"));
+        let fonts = std::mem::take(&mut self.loaded_fonts);
+        let mut found = None;
+        if let Some((_, paths)) = fonts.iter().find(|(alias, _)| alias == name) {
+            found = paths
+                .iter()
+                .flat_map(|path| self.fonts.custom_faces(path).to_vec())
+                .min_by_key(|f| (i32::from(f.weight) - w).abs() + if f.italic == italic { 0 } else { 1000 })
+                .map(|f| f.family);
+        }
+        if found.is_none() {
+            found = fonts.iter().flat_map(|(_, paths)| paths).find_map(|path| {
+                self.fonts.custom_faces(path).iter().find(|f| f.family == name || f.postscript == name).map(|f| f.family)
+            });
+        }
+        self.loaded_fonts = fonts;
+        found
     }
     /// `RNCSafeAreaView` / `RNSSafeAreaView` `edges` set to `additive` (or `true`) add the inset to the padding.
     fn safe_padding(&self, p: &Value, st: &mut Style) {
@@ -255,6 +286,9 @@ impl<'a, 'f> Cx<'a, 'f> {
             if props.get("fontFamily").and_then(Value::as_str).is_some_and(|f| f.contains("mono")) {
                 inh.mono = true;
             }
+            if let Some(f) = self.custom_family(props) {
+                inh.family = Some(f);
+            }
         }
         if component == "RCTRawText" {
             let t = props.get("text").and_then(Value::as_str).unwrap_or("");
@@ -305,6 +339,7 @@ impl<'a, 'f> Cx<'a, 'f> {
             }
         }
         spec.mono = p.get("fontFamily").and_then(Value::as_str).is_some_and(|f| f.contains("mono"));
+        spec.family = self.custom_family(p);
         spec.pitch = spec.line_height; // RN lines are one font line height apart (SwiftUI's 22/17 leading does not apply)
         // A nested span's lineHeight replaces the paragraph's for the lines it sits on; applied to the whole paragraph (ponytail).
         if let Some(lh) = Some(self.span_lh as f64).filter(|l| *l > 0.0).or(num(p, "lineHeight").filter(|l| *l > 0.0)) {
@@ -611,6 +646,12 @@ fn expo_embed(
     }
 }
 
+/// `__simcoreFonts` on the root: `{alias: [path, ...]}` for every font the app loaded (protocol section H).
+fn loaded_fonts(root_props: &Value) -> Vec<(String, Vec<String>)> {
+    let Some(m) = root_props.get("__simcoreFonts").and_then(Value::as_object) else { return vec![] };
+    m.iter().map(|(alias, paths)| (alias.clone(), paths.as_array().into_iter().flatten().filter_map(Value::as_str).map(str::to_owned).collect())).collect()
+}
+
 fn is_text_input(component: &str) -> bool {
     matches!(component, "RCTSinglelineTextInputView" | "RCTMultilineTextInputView" | "AndroidTextInput")
 }
@@ -624,6 +665,9 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     let dark = params.appearance == Appearance::Dark;
     let android = params.device.android;
     let mut cx = Cx::new(params, fonts, viewport_insets(params));
+    if let ViewKind::Rn { props, .. } = &root.kind {
+        cx.loaded_fonts = loaded_fonts(props);
+    }
     let bg = if dark { 0.0 } else { 1.0 };
     let mut screen = Node::new("root", "screen");
     screen.bounds = Rect { x: 0.0, y: 0.0, w, h };
@@ -635,6 +679,13 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         paint(&mut cx, &item, (0.0, 0.0), 0, 1.0, params, &mut nodes);
     }
     cx.paint_modals(params, &mut nodes);
+    // LayoutAnimation configured for this commit: every view of the app animates with it (not alerts or chrome).
+    if let Some(a) = match &root.kind { ViewKind::Rn { props, .. } => layout_animation::node_anim(props), _ => None } {
+        let a = Box::new(a);
+        for n in nodes.iter_mut().skip(1).filter(|n| n.anim.is_none()) {
+            n.anim = Some(a.clone());
+        }
+    }
     crate::layout::swiftui::rn_alerts(params, cx.fonts, layers, &mut nodes);
     if android {
         if let ViewKind::Rn { props, .. } = &root.kind {
@@ -810,10 +861,10 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
             let stopped = p.get("animating").and_then(Value::as_bool) == Some(false);
             if !(stopped && p.get("hidesWhenStopped").and_then(Value::as_bool) != Some(false)) {
                 let c = cx.color(p.get("color")).unwrap_or(Color::rgba(0.6, 0.6, 0.6, 1.0));
-                n.glyph = Some((Glyph::Spinner, c));
+                n.glyph = Some((Glyph::Spinner { step: 0, spins: !stopped }, c));
                 if prop_str(p, "size").as_deref() == Some("large") {
                     // UIKit's large indicator is 33 pt, pinned to the top-left of RN's 36 pt frame (measured on iOS 26.5).
-                    n.glyph = Some((Glyph::SpinnerLarge, c));
+                    n.glyph = Some((Glyph::SpinnerLarge { step: 0, spins: !stopped }, c));
                     n.bounds = Rect { x, y, w: 33.0, h: 33.0 };
                 }
             }
@@ -824,7 +875,7 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
             if p.get("refreshing").and_then(Value::as_bool) == Some(true) {
                 let c = cx.color(p.get("tintColor")).unwrap_or(if cx.dark { REFRESH_TINT.1 } else { REFRESH_TINT.0 });
                 n.bounds = Rect { x: x + (w - REFRESH_SPINNER) / 2.0, y: y - (REFRESH_H + REFRESH_SPINNER) / 2.0, w: REFRESH_SPINNER, h: REFRESH_SPINNER };
-                n.glyph = Some((Glyph::SpinnerLarge, c));
+                n.glyph = Some((Glyph::SpinnerLarge { step: 0, spins: true }, c));
             }
             n.kind = "refresh";
         }
@@ -861,7 +912,16 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
                         // Template images (`tintColor`) draw their alpha in the tint color.
                         let tint = p.get("tintColor").and_then(|t| t.as_str().and_then(css_color).or_else(|| cx.color(Some(t))));
                         let pixmap = tint.and_then(|c| tinted(&pixmap, c)).unwrap_or(pixmap);
-                        n.image = Some(ImageRun { pixmap, dest: Rect { x: x + dest.x, y: y + dest.y, ..dest }, rotation: cx.rot + spin, filter: 2 });
+                        // `repeat`: tiles at the bitmap's natural size (device pixels) over the whole box.
+                        let tile = (component == "RCTImageView" && p.get("resizeMode").and_then(Value::as_str) == Some("repeat"))
+                            .then(|| ((w * params.scale).round() as u32, (h * params.scale).round() as u32));
+                        let pixmap = tile.and_then(|(tw, th)| crate::layout::common::tiled(&pixmap, tw, th)).unwrap_or(pixmap);
+                        // Animated GIF / WebP play from when the view appears; expo-image holds them with `autoplay={false}`
+                        // until `startAnimating`, and `stopAnimating` holds them (`__simcoreAnimating` from the guest).
+                        let autoplay = component != "ViewManagerAdapter_ExpoImage" || p.get("autoplay").and_then(Value::as_bool) != Some(false);
+                        let paused = !p.get("__simcoreAnimating").and_then(Value::as_bool).unwrap_or(autoplay);
+                        let frames = crate::image::animation(path).map(|animation| crate::scene::ImageFrames { source: std::sync::Arc::from(path), animation, tint, tile, paused });
+                        n.image = Some(ImageRun { pixmap, dest: Rect { x: x + dest.x, y: y + dest.y, ..dest }, rotation: cx.rot + spin, filter: 2, frames });
                     }
                     None => cx.note(format!("image_decode_failed: {path}")),
                 }
@@ -1271,4 +1331,197 @@ mod tests {
         assert!(tabs[1].fill.is_some() && tabs[0].fill.is_none(), "selected tab has the capsule");
         assert!(tabs.iter().all(|n| n.action == Some(3)), "items are hit-testable (the host maps them to SelectTab)");
     }
+
+    /// RN `LayoutAnimation`: the configured commit animates frames (update), fades the inserted view in (create) and
+    /// the removed one out (delete); the next, unconfigured commit snaps.
+    #[test]
+    fn layout_animation_drives_the_animator() {
+        let dev = device(DEFAULT_DEVICE).unwrap();
+        let scroll = HashMap::new();
+        let sheets = HashMap::new();
+        let params = SceneParams {
+            viewport: (402.0, 874.0), device: dev, scale: 3.0, appearance: Appearance::Light, dynamic_type: Default::default(),
+            ios: Default::default(), scroll: &scroll, focus: None, overscroll: false, status_bar: true, chrome: Default::default(), sheets: &sheets,
+        };
+        let tree = |top: f64, extra: Option<&str>, anim: Option<Value>| -> ViewNode {
+            let mut kids = vec![json!({"kind":"rn","id":"3","component":"RCTView","props":{"marginTop":top,"width":100,"height":50,"backgroundColor":0xFFFF0000u64},"children":[]})];
+            if let Some(id) = extra {
+                kids.push(json!({"kind":"rn","id":id,"component":"RCTView","props":{"width":40,"height":40,"backgroundColor":0xFF00FF00u64},"children":[]}));
+            }
+            let mut props = json!({});
+            if let Some(a) = anim { props["__simcoreLayoutAnimation"] = a; }
+            serde_json::from_value(json!({"kind":"rn","id":"1","component":"RootView","props":props,"children":[
+                {"kind":"rn","id":"2","component":"RCTView","props":{"flex":1},"children":kids}]})).unwrap()
+        };
+        let cfg = |token| json!({"duration": 400, "token": token, "create": {"type": "linear", "property": "opacity"},
+            "update": {"type": "linear"}, "delete": {"type": "linear", "property": "opacity"}});
+        let mut fonts = Fonts::new();
+        let mut anim = crate::Animator::new();
+        let find = |s: &Scene, id: &str| s.nodes.iter().find(|n| n.id == id).cloned();
+        anim.update(&build_scene(&tree(0.0, Some("old"), None), &params, &mut fonts));
+        let moved = build_scene(&tree(100.0, Some("new"), Some(cfg(1))), &params, &mut fonts);
+        anim.update(&moved);
+        assert!(anim.is_animating());
+        anim.tick(0.2);
+        let mid = anim.render_scene(&moved);
+        let b = find(&mid, "3").unwrap().bounds;
+        assert!((b.y - (find(&moved, "3").unwrap().bounds.y - 50.0)).abs() < 0.5, "halfway down: {b:?}");
+        let new = find(&mid, "new").unwrap();
+        assert!((new.opacity - 0.5).abs() < 0.05, "fading in: {}", new.opacity);
+        let old = find(&mid, "old").expect("removed view still drawn while it fades out");
+        assert!((old.opacity - 0.5).abs() < 0.05, "fading out: {}", old.opacity);
+        anim.tick(0.25);
+        assert!(!anim.is_animating());
+        let end = anim.render_scene(&moved);
+        assert_eq!(find(&end, "3").unwrap().bounds, find(&moved, "3").unwrap().bounds);
+        assert!(find(&end, "old").is_none());
+        // An unconfigured commit jumps, and removes at once.
+        let back = build_scene(&tree(0.0, None, None), &params, &mut fonts);
+        anim.update(&back);
+        assert!(!anim.is_animating(), "no LayoutAnimation for this commit");
+        // The same token again (a later tree of the same commit) does not restart it.
+        let again = build_scene(&tree(100.0, None, Some(cfg(2))), &params, &mut fonts);
+        anim.update(&again);
+        assert!(anim.is_animating());
+        anim.tick(0.5);
+        anim.update(&build_scene(&tree(100.0, None, Some(cfg(2))), &params, &mut fonts));
+        assert!(!anim.is_animating());
+    }
+
+    #[test]
+    fn layout_animation_without_delete_removes_at_once_and_scales_in() {
+        let dev = device(DEFAULT_DEVICE).unwrap();
+        let (scroll, sheets) = (HashMap::new(), HashMap::new());
+        let params = SceneParams {
+            viewport: (402.0, 874.0), device: dev, scale: 3.0, appearance: Appearance::Light, dynamic_type: Default::default(),
+            ios: Default::default(), scroll: &scroll, focus: None, overscroll: false, status_bar: true, chrome: Default::default(), sheets: &sheets,
+        };
+        let tree = |id: &str, anim: Value| -> ViewNode {
+            serde_json::from_value(json!({"kind":"rn","id":"1","component":"RootView","props":{"__simcoreLayoutAnimation": anim},"children":[
+                {"kind":"rn","id":id,"component":"RCTView","props":{"width":100,"height":100,"backgroundColor":0xFF0000FFu64},"children":[]}]})).unwrap()
+        };
+        let mut fonts = Fonts::new();
+        let mut anim = crate::Animator::new();
+        anim.update(&build_scene(&tree("a", json!(null)), &params, &mut fonts));
+        let next = build_scene(&tree("b", json!({"duration": 300, "token": 7, "create": {"type": "linear", "property": "scaleXY"}})), &params, &mut fonts);
+        anim.update(&next);
+        anim.tick(0.15);
+        let mid = anim.render_scene(&next);
+        assert!(mid.nodes.iter().all(|n| n.id != "a"), "no delete configured");
+        let b = mid.nodes.iter().find(|n| n.id == "b").unwrap().bounds;
+        assert!((b.w - 50.0).abs() < 0.5 && (b.x - 25.0).abs() < 0.5, "half size about its centre: {b:?}");
+    }
+
+
+    fn presented(layers: Value) -> Scene {
+        let dev = device(DEFAULT_DEVICE).unwrap();
+        let (scroll, sheets) = (HashMap::new(), HashMap::new());
+        let params = SceneParams {
+            viewport: (402.0, 874.0), device: dev, scale: 3.0, appearance: Appearance::Light, dynamic_type: Default::default(),
+            ios: IosVersion::Ios27, scroll: &scroll, focus: None, overscroll: false, status_bar: true, chrome: Default::default(), sheets: &sheets,
+        };
+        let tree: ViewNode = serde_json::from_value(json!({"kind":"presentation","id":"presentation","layers":layers,
+            "content":{"kind":"rn","id":"1","component":"RootView","props":{},"children":[
+                {"kind":"rn","id":"5","component":"RCTView","props":{"position":"absolute","top":700,"left":20,"width":80,"height":40},"children":[]}]}})).unwrap();
+        build_scene(&tree, &params, &mut Fonts::new())
+    }
+
+    fn sheet_layer(extra: Value) -> Value {
+        let b = |i: u64, t: &str, role: Option<&str>| {
+            let mut v = json!({"kind":"button","id":format!("s#{i}"),"action":1000 + i,"label":{"kind":"text","id":format!("s#{i}#l"),"text":t}});
+            if let Some(r) = role { v["role"] = json!(r); }
+            v
+        };
+        let mut l = json!({"kind":"dialog","title":"Photo","titleVisible":true,"message":{"kind":"text","id":"m","text":"Choose"},
+            "actions":[b(0, "Cancel", Some("cancel")), b(1, "Delete", Some("destructive")), b(2, "Save", None)],"dismiss":1999});
+        for (k, v) in extra.as_object().unwrap() { l[k] = v.clone(); }
+        json!([l])
+    }
+
+    /// `ActionSheetIOS` without an anchor: the alert-sized card in the middle, buttons stacked with cancel last,
+    /// a dim whose tap is the cancel.
+    #[test]
+    fn action_sheet_is_a_centred_card_with_cancel_last() {
+        let s = presented(sheet_layer(json!({})));
+        let card = s.nodes.iter().find(|n| n.kind == "sheet" && n.id == "dialog").expect("card");
+        assert!((card.bounds.w - 320.0).abs() < 0.01 && (card.bounds.x - 41.0).abs() < 0.01, "{:?}", card.bounds);
+        assert!((card.bounds.y + card.bounds.h / 2.0 - (437.0 + 14.0)).abs() < 0.5, "centred 14 pt low: {:?}", card.bounds);
+        let ys: Vec<(String, f64)> = s.nodes.iter().filter(|n| n.action.is_some_and(|a| (1000..1003).contains(&a))).map(|n| (n.label.clone().unwrap_or_default(), n.bounds.y)).collect();
+        assert_eq!(ys.iter().map(|(l, _)| l.as_str()).collect::<Vec<_>>(), ["Delete", "Save", "Cancel"]);
+        assert!(ys.windows(2).all(|w| (w[1].1 - w[0].1 - 56.0).abs() < 0.01), "stacked 48 + 8: {ys:?}");
+        let save = s.nodes.iter().find(|n| n.text.as_ref().is_some_and(|t| t.text == "Save")).unwrap().text.as_ref().unwrap();
+        assert_eq!(save.font.weight, 400, "regular weight");
+        assert_eq!((save.color.r, save.color.g, save.color.b), (0.0, 0.0, 0.0), "plain buttons in the label color");
+        assert!(s.nodes.iter().any(|n| n.id == "dialog#scrim" && n.action == Some(1999)));
+    }
+
+    #[test]
+    fn action_sheet_style_and_anchor() {
+        let dark = presented(sheet_layer(json!({"appearance": "dark"})));
+        let save = dark.nodes.iter().find(|n| n.text.as_ref().is_some_and(|t| t.text == "Save")).unwrap().text.as_ref().unwrap();
+        assert!(save.color.r > 0.9, "userInterfaceStyle dark: white labels on a light screen");
+        let root = dark.nodes.iter().find(|n| n.id == "root").unwrap();
+        assert_eq!(root.fill.map(|c| c.r), Some(1.0), "the screen stays light");
+        // iPhone ignores the anchor (iOS 27.2: the same centred card).
+        let anchored = presented(sheet_layer(json!({"anchor": "5"})));
+        let card = anchored.nodes.iter().find(|n| n.id == "dialog").unwrap();
+        assert_eq!((card.kind, card.bounds.x), ("sheet", 41.0));
+        assert!(!anchored.nodes.iter().any(|n| n.kind == "arrow"));
+    }
+
+    #[test]
+    fn share_sheet_leaves_out_excluded_activities() {
+        let share = |acts: Value| presented(json!([{"kind":"share","items":["https://expo.dev"],"url":true,"dismiss":9,"copy":8,"activities":acts}]));
+        let labels = |s: &Scene| s.nodes.iter().filter(|n| n.id.starts_with("layer0#cell") && n.kind == "button").filter_map(|n| n.label.clone()).collect::<Vec<_>>();
+        let all = share(json!({"Reminders":1,"Safari":2,"More":3,"Save to Files":4,"Open in Safari":5,"Add to Reading List":6}));
+        assert_eq!(labels(&all), ["Reminders", "Safari", "More", "Copy", "Open in Safari", "Add to Reading List"]);
+        let some = share(json!({"Safari":2,"More":3,"Save to Files":4,"Add to Reading List":6}));
+        assert_eq!(labels(&some), ["Safari", "More", "Copy", "Add to Reading List"]);
+        let first = some.nodes.iter().find(|n| n.label.as_deref() == Some("Safari") && n.kind == "button").unwrap().bounds.x;
+        let was = all.nodes.iter().find(|n| n.label.as_deref() == Some("Reminders") && n.kind == "button").unwrap().bounds.x;
+        assert!((first - was).abs() < 0.01, "cells close up");
+    }
+
+
+    #[test]
+    fn share_sheet_for_an_unpreviewed_link_shows_its_host() {
+        let s = presented(json!([{"kind":"share","items":["https://user@onesim.invalid:8443/share?x=1"],"url":true,"dismiss":9,"copy":8,"activities":{"Safari":2}}]));
+        assert!(s.nodes.iter().any(|n| n.text.as_ref().is_some_and(|t| t.text == "onesim.invalid")), "host as the title");
+        let text = presented(json!([{"kind":"share","items":["hello"],"dismiss":9,"copy":8,"activities":{"More":3}}]));
+        assert!(text.nodes.iter().any(|n| n.text.as_ref().is_some_and(|t| t.text == "hello")), "text items keep their text");
+    }
+
+
+    /// `resizeMode="repeat"`: the bitmap tiles from the top-left at one pixel per device pixel over the whole box.
+    #[test]
+    fn image_repeat_tiles_at_natural_size() {
+        let png = std::env::temp_dir().join(format!("onesim-rn-tile-{}.png", std::process::id()));
+        let mut pm = tiny_skia::Pixmap::new(2, 1).unwrap();
+        pm.pixels_mut()[0] = tiny_skia::PremultipliedColorU8::from_rgba(255, 0, 0, 255).unwrap();
+        pm.pixels_mut()[1] = tiny_skia::PremultipliedColorU8::from_rgba(0, 0, 255, 255).unwrap();
+        pm.save_png(&png).unwrap();
+        let s = presented_tree(json!({"kind":"rn","id":"1","component":"RootView","props":{},"children":[
+            {"kind":"rn","id":"4","component":"RCTImageView","props":{"position":"absolute","top":100,"left":10,"width":10,"height":5,"resizeMode":"repeat",
+                "__simcoreImage":{"path":png.to_str().unwrap(),"width":2,"height":1}},"children":[]}]}));
+        let img = s.nodes.iter().find(|n| n.id == "4").unwrap().image.as_ref().unwrap();
+        assert_eq!((img.dest.x, img.dest.y, img.dest.w, img.dest.h), (10.0, 100.0, 10.0, 5.0), "fills the box");
+        assert_eq!((img.pixmap.width(), img.pixmap.height()), (30, 15), "device pixels of the box");
+        let px = |x, y| { let p = img.pixmap.pixel(x, y).unwrap(); (p.red(), p.blue()) };
+        assert_eq!([px(0, 0), px(1, 0), px(2, 0), px(29, 14)], [(255, 0), (0, 255), (255, 0), (0, 255)]);
+        let cover = presented_tree(json!({"kind":"rn","id":"1","component":"RootView","props":{},"children":[
+            {"kind":"rn","id":"4","component":"RCTImageView","props":{"width":10,"height":5,
+                "__simcoreImage":{"path":png.to_str().unwrap(),"width":2,"height":1}},"children":[]}]}));
+        assert_eq!(cover.nodes.iter().find(|n| n.id == "4").unwrap().image.as_ref().unwrap().pixmap.width(), 2, "other modes keep the bitmap");
+    }
+
+    fn presented_tree(root: Value) -> Scene {
+        let dev = device(DEFAULT_DEVICE).unwrap();
+        let (scroll, sheets) = (HashMap::new(), HashMap::new());
+        let params = SceneParams {
+            viewport: (402.0, 874.0), device: dev, scale: 3.0, appearance: Appearance::Light, dynamic_type: Default::default(),
+            ios: IosVersion::Ios27, scroll: &scroll, focus: None, overscroll: false, status_bar: true, chrome: Default::default(), sheets: &sheets,
+        };
+        build_scene(&serde_json::from_value(root).unwrap(), &params, &mut Fonts::new())
+    }
+
 }

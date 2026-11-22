@@ -107,10 +107,11 @@ pub enum Glyph {
     ArrowUp,
     ArrowLeft,
     ArrowRight,
-    /// Activity indicator (static frame).
-    Spinner,
+    /// Activity indicator: 8 spokes, the brightest at `step` eighths of a turn clockwise from the top-left one, the
+    /// rest fading counter-clockwise behind it. `spins`: the live pass ([`crate::live`]) advances `step` with time.
+    Spinner { step: u8, spins: bool },
     /// Large activity indicator / refresh control: thicker spokes.
-    SpinnerLarge,
+    SpinnerLarge { step: u8, spins: bool },
     /// Android circular activity indicator in a settled frame.
     AndroidSpinner,
     /// Stroked arc with round caps, centred in the box and touching its edges: degrees clockwise from the top,
@@ -136,6 +137,21 @@ pub struct ImageRun {
     pub rotation: f32,
     /// 0 nearest, 1 bilinear, 2 bicubic.
     pub filter: u8,
+    /// Animated GIF / WebP playing in this view: the live pass ([`crate::live`]) swaps `pixmap` for the frame due.
+    pub frames: Option<ImageFrames>,
+}
+
+/// The frames an animated [`ImageRun`] plays, and the template tint applied to each.
+#[derive(Debug, Clone)]
+pub struct ImageFrames {
+    /// The file the frames come from: a view whose source changes starts the new animation from its first frame.
+    pub source: std::sync::Arc<str>,
+    pub animation: std::sync::Arc<crate::image::Animation>,
+    pub tint: Option<Color>,
+    /// `resizeMode="repeat"`: each frame tiled over this many device pixels.
+    pub tile: Option<(u32, u32)>,
+    /// Held on the frame it reached (expo-image `stopAnimating`; `autoplay={false}` holds the first).
+    pub paused: bool,
 }
 
 /// Linear gradient fill over a node's bounds: CSS `angle` (0 = up, 90 = right), evenly spaced stops.
@@ -202,6 +218,11 @@ pub struct NodeAnim {
     pub transition: Option<onesim_protocol::TransitionSpec>,
     pub matched: Option<onesim_protocol::MatchedGeometryMod>,
     pub content_transition: onesim_protocol::ContentTransitionKind,
+    /// React Native LayoutAnimation: `animation` animates this node's frame, `transition` is the commit's create /
+    /// delete effect for every view it inserts or removes (not a per-view `.transition`); `transition.animation` is
+    /// the create timing and `removal` the delete timing.
+    pub layout: bool,
+    pub removal: Option<onesim_protocol::AnimationSpec>,
 }
 
 /// Fill configuration for a [`VectorShape`].

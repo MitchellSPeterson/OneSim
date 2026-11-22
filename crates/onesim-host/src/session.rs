@@ -8,7 +8,7 @@ use onesim_protocol::{
 };
 use onesim_render::rn_input::{focus_change, Out, RnInput, Wait};
 pub use onesim_render::{device, Device, DEFAULT_DEVICE, DEVICES};
-use onesim_render::{Animator, Effect, Interaction, Scene, SwiftUiLayoutCache};
+use onesim_render::{Animator, Effect, Interaction, Live, Scene, SwiftUiLayoutCache};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -160,6 +160,8 @@ struct CachedScene {
     epoch: u64,
     version: u64,
     scene: Arc<Scene>,
+    /// React Native: the scene before the live pass, and the clock the live pass last ran at.
+    base: Option<(Arc<Scene>, f64)>,
 }
 
 pub struct Session {
@@ -186,6 +188,10 @@ pub struct Session {
     pub guest_due_ms: Option<f64>,
     /// Tree generation last ingested by `anim.update`.
     pub last_anim_gen: u64,
+    /// React Native: spinners and animated images that run on the session clock.
+    pub live: Live,
+    /// Whether the last live pass left something moving (the session needs ticks).
+    pub live_moving: bool,
     /// React Native: touch in progress and frames the guest already has (shared with the browser backend).
     pub rn: RnInput,
     /// SwiftUI: last `scroll_position` target sent per scroll-node id.
@@ -206,7 +212,10 @@ pub struct Session {
     /// When the host last wrote to the guest: its reaction (new trees) is due within the quiet window.
     last_sent: Instant,
     child: Option<Child>,
-    stdin: Option<ChildStdin>,
+    /// Shared with the stdout reader, which answers the guest's `request`s.
+    stdin: Arc<Mutex<Option<ChildStdin>>>,
+    /// The host's fonts (answering `text.render`).
+    fonts: Arc<Mutex<Option<onesim_render::Fonts>>>,
     shared: Arc<Shared>,
 }
 
@@ -220,12 +229,19 @@ impl Drop for Session {
     }
 }
 
+/// One line to the guest's stdin (shared by the API thread and the stdout reader).
+fn write_line(stdin: &Mutex<Option<ChildStdin>>, line: &str) -> Result<(), ApiError> {
+    let mut g = stdin.lock().unwrap_or_else(|e| e.into_inner());
+    let w = g.as_mut().ok_or_else(|| err(ErrorCode::InvalidState, "guest not running"))?;
+    w.write_all(line.as_bytes()).and_then(|_| w.flush()).map_err(|e| err(ErrorCode::RuntimeError, format!("guest pipe closed: {e}")))
+}
+
 fn err(code: ErrorCode, msg: impl Into<String>) -> ApiError {
     ApiError::new(code, msg)
 }
 
 impl Session {
-    pub fn new(id: String, p: CreateSessionParams, log: Arc<EventLog>) -> Self {
+    pub fn new(id: String, p: CreateSessionParams, log: Arc<EventLog>, fonts: Arc<Mutex<Option<onesim_render::Fonts>>>) -> Self {
         let dev = *device(p.device.as_deref().unwrap_or(DEFAULT_DEVICE)).expect("device validated by create_session");
         Self {
             id,
@@ -242,6 +258,8 @@ impl Session {
             guest_clock_ms: 0.0,
             guest_due_ms: None,
             last_anim_gen: 0,
+            live: Live::new(),
+            live_moving: false,
             rn: RnInput::default(),
             sent_positions: BTreeMap::new(),
             sent_geometry: BTreeMap::new(),
@@ -253,20 +271,36 @@ impl Session {
             last_sent: Instant::now(),
             params: p,
             child: None,
-            stdin: None,
+            stdin: Arc::new(Mutex::new(None)),
+            fonts,
             shared: Arc::new(Shared::new(log)),
         }
     }
 
-    pub fn cached_scene(&self, generation: u64) -> Option<(Arc<Scene>, u64)> {
-        self.cached_scene
-            .as_ref()
-            .filter(|c| c.generation == generation && c.epoch == self.layout_epoch)
-            .map(|c| (c.scene.clone(), c.version))
+    pub fn cached_scene(&mut self, generation: u64) -> Option<(Arc<Scene>, u64)> {
+        let epoch = self.layout_epoch;
+        let c = self.cached_scene.as_mut().filter(|c| c.generation == generation && c.epoch == epoch)?;
+        // Spinners and animated images move on with the clock without a new layout.
+        if let Some((base, clock)) = c.base.as_mut().filter(|(_, at)| self.live_moving && *at != self.clock_ms) {
+            let mut scene = Scene::clone(base);
+            self.live_moving = self.live.apply(&mut scene, self.clock_ms);
+            *clock = self.clock_ms;
+            c.scene = Arc::new(scene);
+        }
+        Some((c.scene.clone(), c.version))
     }
 
     pub fn cache_scene(&mut self, generation: u64, version: u64, scene: Arc<Scene>) {
-        self.cached_scene = Some(CachedScene { generation, epoch: self.layout_epoch, version, scene });
+        self.cached_scene = Some(CachedScene { generation, epoch: self.layout_epoch, version, scene, base: None });
+    }
+
+    /// React Native: cache `base` (the laid-out scene) and what the live pass makes of it at the session clock.
+    pub fn cache_live_scene(&mut self, generation: u64, version: u64, base: Scene) -> Arc<Scene> {
+        let mut scene = base.clone();
+        self.live_moving = self.live.apply(&mut scene, self.clock_ms);
+        let scene = Arc::new(scene);
+        self.cached_scene = Some(CachedScene { generation, epoch: self.layout_epoch, version, scene: scene.clone(), base: Some((Arc::new(base), self.clock_ms)) });
+        scene
     }
 
     pub fn invalidate_scene(&mut self) {
@@ -353,7 +387,7 @@ impl Session {
 
     fn kill(&mut self) {
         self.shared.lock().stopping = true;
-        self.stdin = None;
+        *self.stdin.lock().unwrap_or_else(|e| e.into_inner()) = None;
         if let Some(mut c) = self.child.take() {
             signal(&c, SIGCONT);
             let _ = c.kill();
@@ -376,6 +410,10 @@ impl Session {
             let mut c = Command::new("node");
             c.arg(onesim_home().join("frameworks/react-native/guest/host.js"))
                 .env("SIMCORE_METRO_URL", self.params.metro_url.as_deref().unwrap_or("http://localhost:8081"));
+            match &self.params.launch_url {
+                Some(u) => c.env("SIMCORE_LAUNCH_URL", u),
+                None => c.env_remove("SIMCORE_LAUNCH_URL"),
+            };
             c
         } else if is_prebuilt(&self.params) {
             Command::new(&self.params.app_path)
@@ -434,11 +472,12 @@ impl Session {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| err(ErrorCode::RuntimeError, format!("cannot launch {what}: {e}")))?;
-        self.stdin = child.stdin.take();
+        *self.stdin.lock().unwrap_or_else(|e| e.into_inner()) = child.stdin.take();
         let (stdout, stderr) = (child.stdout.take().expect("piped"), child.stderr.take().expect("piped"));
         self.child = Some(child);
 
         let sh = self.shared.clone();
+        let (fonts, stdin) = (self.fonts.clone(), self.stdin.clone());
         std::thread::spawn(move || {
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 match serde_json::from_str::<GuestMessage>(&line) {
@@ -474,6 +513,19 @@ impl Session {
                     }
                     Ok(GuestMessage::Hello { .. }) => sh.lock().restarted = true,
                     Ok(GuestMessage::Modules { modules }) => sh.lock().modules = Some(modules),
+                    // Answered here, off the API thread: the guest awaits it while the host may be waiting for a tree.
+                    Ok(GuestMessage::Request { id, method, params }) => {
+                        let answer = {
+                            let mut g = fonts.lock().unwrap_or_else(|e| e.into_inner());
+                            onesim_render::guest_request::handle(g.get_or_insert_with(onesim_render::Fonts::new), &method, &params)
+                        };
+                        let (result, error) = match answer { Ok(v) => (Some(v), None), Err(e) => (None, Some(e)) };
+                        let mut line = serde_json::to_string(&HostMessage::Response { id, result, error }).expect("serialize");
+                        line.push('\n');
+                        if let Err(e) = write_line(&stdin, &line) {
+                            log::debug!("response {id}: {}", e.message);
+                        }
+                    }
                     Ok(GuestMessage::Pasteboard { items }) => sh.log.emit("pasteboard.changed", json!({"items": items})),
                     Ok(GuestMessage::Event { name, detail }) => match name.as_str() {
                         "bundle.loaded" | "bundle.reloaded" | "bundle.error" | "refresh.applied" | "navigation.changed"
@@ -510,10 +562,7 @@ impl Session {
         self.last_sent = Instant::now();
         let mut line = serde_json::to_string(msg).expect("serialize");
         line.push('\n');
-        let w = self.stdin.as_mut().ok_or_else(|| err(ErrorCode::InvalidState, "guest not running"))?;
-        w.write_all(line.as_bytes())
-            .and_then(|_| w.flush())
-            .map_err(|e| err(ErrorCode::RuntimeError, format!("guest pipe closed: {e}")))
+        write_line(&self.stdin, &line)
     }
 
     /// React Native: send the frames that changed since the last `layout` message.
@@ -725,7 +774,7 @@ impl Session {
             signal(c, SIGCONT); // a suspended guest could not read the shutdown message
         }
         let _ = self.send(&HostMessage::Shutdown);
-        self.stdin = None; // EOF also makes the guest exit
+        *self.stdin.lock().unwrap_or_else(|e| e.into_inner()) = None; // EOF also makes the guest exit
         if let Some(mut c) = self.child.take() {
             let deadline = Instant::now() + Duration::from_secs(2);
             while matches!(c.try_wait(), Ok(None)) && Instant::now() < deadline {

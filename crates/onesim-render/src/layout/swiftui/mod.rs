@@ -222,17 +222,46 @@ pub(crate) fn rn_tab_bar(params: &SceneParams, fonts: &mut Fonts, t: &TabBar, ho
     }
 }
 
-/// `alert` layers over a React Native screen (`Alert.alert`): the same scrim and card as `.alert`.
+/// Presentation layers over a React Native screen: `alert` (`Alert.alert`, the scrim and card of `.alert`), `dialog`
+/// without an anchor (`ActionSheetIOS.showActionSheetWithOptions`) and `share` (`showShareActionSheetWithOptions`, the
+/// share sheet of `ShareLink`).
 pub(crate) fn rn_alerts(params: &SceneParams, fonts: &mut Fonts, layers: &[Layer], out: &mut Vec<Node>) {
-    let mut cx = ctx(params, fonts);
     let (w, h) = params.viewport;
     let geo = Geo { w, h, safe_top: params.device.safe_top, safe_bottom: params.device.safe_bottom, dev_bottom: params.device.safe_bottom, body: 17.0 };
-    for layer in layers {
-        if let Layer::Alert { title, message, actions } = layer {
-            let lay = cx.alert(title, message.as_deref(), actions, &geo);
-            flatten(lay, 0.0, 0.0, Some(0), 1.0, out);
-        }
+    for (i, layer) in layers.iter().enumerate() {
+        let own = match layer {
+            Layer::Dialog { appearance, .. } | Layer::Share { appearance, .. } => *appearance,
+            _ => None,
+        };
+        // `userInterfaceStyle`: this layer alone in the other appearance.
+        let p = SceneParams { appearance: own.unwrap_or(params.appearance), ..params.reborrow() };
+        let mut cx = ctx(&p, fonts);
+        let lay = match layer {
+            Layer::Alert { title, message, actions } => cx.alert(title, message.as_deref(), actions, &geo),
+            // iPhone draws the centred card whatever the `anchor` (an iPad would point a popover at it).
+            Layer::Dialog { title, title_visible, message, actions, dismiss, .. } => {
+                cx.action_sheet(title_visible.then_some(title.as_str()), message.as_deref(), actions, *dismiss, &geo)
+            }
+            Layer::Share { items, title, dismiss, copy, activities, image, icon, url, .. } => {
+                let t = title.clone().unwrap_or_else(|| if items.len() == 1 { items[0].clone() } else { format!("{} Items", items.len()) });
+                // A link iOS has no page preview for (the guest does not fetch one) shows its host by a compass tile.
+                let t = if *url && title.is_none() && image.is_none() && icon.is_none() { url_host(&t).unwrap_or(t) } else { t };
+                let sheet = share::ShareSheet { title: &t, titled: title.is_some(), url: *url, preview: icon.as_deref().or(image.as_deref()),
+                    copy: *copy, activities, dismiss: *dismiss, link_glyph: *url };
+                cx.share_sheet(&format!("layer{i}"), &sheet, &geo)
+            }
+            _ => continue,
+        };
+        flatten(lay, 0.0, 0.0, Some(0), 1.0, out);
     }
+}
+
+/// `https://host:port/path` -> `host`.
+fn url_host(url: &str) -> Option<String> {
+    let rest = url.split_once("://")?.1;
+    let host = rest.split(['/', '?', '#']).next()?.rsplit('@').next()?;
+    let host = host.split(':').next()?;
+    (!host.is_empty()).then(|| host.to_string())
 }
 
 pub(super) fn embedded(
@@ -364,10 +393,10 @@ fn layout_inner<'a>(root: &ViewNode, params: &'a SceneParams<'a>, fonts: &'a mut
                 // The header names the item (or the preview's title, drawn darker); several items are counted.
                 let t = title.clone().unwrap_or_else(|| if items.len() == 1 { items[0].clone() } else { format!("{} Items", items.len()) });
                 let sheet = share::ShareSheet { title: &t, titled: title.is_some(), url: *url, preview: icon.as_deref().or(image.as_deref()),
-                    copy: *copy, activities, dismiss: *dismiss };
+                    copy: *copy, activities, dismiss: *dismiss, link_glyph: false };
                 cx.share_sheet(&id, &sheet, &geo)
             }
-            Layer::Dialog { title, title_visible, message, actions, anchor, dismiss } => {
+            Layer::Dialog { title, title_visible, message, actions, anchor, dismiss, .. } => {
                 // The popover points at the anchor's label (its first text), not the whole row.
                 let rect = anchor.as_ref().and_then(|a| nodes.iter().position(|n| &n.id == a)).map(|i| {
                     let under = |mut j: usize| loop {
@@ -1888,7 +1917,7 @@ mod tests {
         near(by_id(&s, "sd#thumb").bounds.x, 0.25 * (300.0 - SLIDER_THUMB.0));
         near(by_id(&s, "pv#bar").bounds.w, 150.0);
         near(by_id(&s, "pv").bounds.h, PROGRESS_H);
-        assert!(matches!(by_id(&s, "sp#spinner").glyph, Some((Glyph::Spinner, _))));
+        assert!(matches!(by_id(&s, "sp#spinner").glyph, Some((Glyph::Spinner { .. }, _))));
 
         // A tap at the track's end sets max; a drag ends where the finger lifts.
         let mut it = Interaction::default();

@@ -1128,6 +1128,7 @@ mod tests {
             dest: img_node.bounds,
             rotation: 0.0,
             filter: 1,
+            frames: None,
         });
         let img_scene = test_scene(100.0, 100.0, vec![
             effect_node("wrap", None, img_node.bounds, VisualOp::Opacity { amount: 0.8 }),

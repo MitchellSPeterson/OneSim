@@ -49,6 +49,10 @@ enum Cmd {
         #[command(flatten)]
         opts: Opts,
     },
+    /// Answer one guest `request` line from stdin with a `response` line on stdout (protocol section H; for guest
+    /// tests that run the React Native guest without a host).
+    #[command(hide = true)]
+    GuestRequest,
     /// Run an Expo / React Native app served by Metro headlessly (same options as `run`).
     Expo {
         /// Metro dev server (default http://localhost:8081).
@@ -105,16 +109,19 @@ struct Opts {
     /// Turn two fingers centred on "X,Y" or a labelled view by DEGREES (clockwise). Repeatable.
     #[arg(long = "rotate", value_name = "LABEL_OR_X,Y,DEGREES")]
     rotations: Vec<String>,
-    /// Advance SwiftUI animations, transitions, and timelines by MS milliseconds. Repeatable.
+    /// Advance animations by MS milliseconds: SwiftUI animations, transitions and timelines, React Native
+    /// LayoutAnimation, spinners and animated GIF / WebP. Repeatable.
     #[arg(long = "wait", value_name = "MS")]
     waits: Vec<String>,
     /// Move a SwiftUI app to a scene phase (through inactive, as iOS does). Repeatable.
     #[arg(long = "scene-phase", value_name = "active|inactive|background")]
     scene_phases: Vec<String>,
-    /// Open a URL in a SwiftUI app (`onOpenURL`); a backgrounded app comes to the front first. Repeatable.
+    /// Open a URL in the app: SwiftUI `onOpenURL` (a backgrounded app comes to the front first), React Native
+    /// `Linking`'s `url` event (iOS). Repeatable.
     #[arg(long = "open-url", value_name = "URL")]
     open_urls: Vec<String>,
-    /// Launch a SwiftUI app to open this URL (it reaches `onOpenURL` after the first frame).
+    /// Launch the app to open this URL: SwiftUI gets it in `onOpenURL` after the first frame, React Native (iOS) from
+    /// `Linking.getInitialURL` (Expo Router starts at its route).
     #[arg(long = "launch-url", value_name = "URL")]
     launch_url: Option<String>,
     /// Print the UI tree as JSON on stdout.
@@ -219,6 +226,17 @@ fn main() -> Result<()> {
             let listener = std::net::TcpListener::bind(&addr).with_context(|| format!("listen on {addr}"))?;
             eprintln!("listening on ws://{}/", listener.local_addr()?);
             onesim_host::serve_ws(listener, onesim_host::Server::new())?;
+            Ok(())
+        }
+        Cmd::GuestRequest => {
+            let mut line = String::new();
+            std::io::stdin().read_line(&mut line)?;
+            let Ok(onesim_protocol::GuestMessage::Request { id, method, params }) = serde_json::from_str(&line) else { bail!("not a guest request: {line}") };
+            let (result, error) = match onesim_render::guest_request::handle(&mut onesim_render::Fonts::new(), &method, &params) {
+                Ok(v) => (Some(v), None),
+                Err(e) => (None, Some(e)),
+            };
+            println!("{}", serde_json::to_string(&onesim_protocol::HostMessage::Response { id, result, error })?);
             Ok(())
         }
         Cmd::Serve { listen: None } => {

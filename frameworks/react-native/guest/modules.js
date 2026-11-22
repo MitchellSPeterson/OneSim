@@ -28,7 +28,8 @@ const HIDDEN = new Set(['getConstants', 'addListener', 'removeListeners']);
 const ABSENT = new Set(['NativeAnimatedModule', 'NativeAnimatedTurboModule', 'NativeCPUTime', 'ReactDevToolsRuntimeSettingsModule', 'NativeReactDevToolsSettingsManager', 'NativeIdleCallbacksCxx', 'NativeIdleCallbacks', 'JSCExecutor', 'IntentAndroid', 'SoundManager', 'Performance', 'HeadlessJsTaskSupport', 'PerformanceObserver', 'IntersectionObserver', 'MutationObserver', 'ResizeObserver', 'FrameRateLogger', 'UIManager', 'I18nManagerAndroid']);
 
 module.exports = function createRegistry(rt, h) {
-  const { node, log, sendError, sendEvent, unsupported, cfg, ver, insetsFor, loadImage, imageDone, expo: { NativeModule, SharedObject } } = h;
+  const { node, log, sendError, sendEvent, unsupported, cfg, ver, insetsFor, loadImage, forgetImage, imageDone, readUri, expo: { NativeModule, SharedObject, SharedRef } } = h;
+  const images = require('./images.js')(rt, { node, loadImage, forgetImage, imageDone, readUri, SharedRef });
   const android = cfg.platform === 'android';
   const androidVersion = android ? (process.env.SIMCORE_OS_VERSION || ANDROID_RELEASE) : null;
   const androidModel = 'Pixel 10a';
@@ -37,6 +38,7 @@ module.exports = function createRegistry(rt, h) {
   const listener = { addListener: noop, removeListeners: noop };
   const reportException = (d) => sendError(`${d.message}\n${(d.stack || []).map((f) => `  at ${f.methodName || '?'} (${f.file}:${f.lineNumber}:${f.column})`).join('\n')}`);
   const all = (names, v = UNSUP) => Object.fromEntries(names.map((n) => [n, v]));
+  const coded = (code, message) => Object.assign(new Error(message), { code }); // an expo CodedError / RN rejection
 
   // ---- simulated platform state (host control: `simulate`) ----
   const sim = {
@@ -87,6 +89,149 @@ module.exports = function createRegistry(rt, h) {
     },
   };
 
+  // Linking (iOS): the launch URL (`SIMCORE_LAUNCH_URL`, `create_session` `launch_url`) and URLs opened later (host
+  // `open_url`, or the app opening one of its own schemes) reach RN's `url` event and expo-linking's `onURLReceived`.
+  // URLs for other apps (Safari, Phone, Mail, Settings, ...) are handed to the simulated system: `module.called`
+  // {module: 'Linking', method: 'openURL', args: [url]}. A scheme no app handles is refused, as on iOS.
+  const link = { initial: cfg.launchURL || null, latest: cfg.launchURL || null };
+  const SYSTEM_SCHEMES = new Set(['http', 'https', 'tel', 'telprompt', 'sms', 'mailto', 'facetime', 'facetime-audio', 'maps', 'itms-apps', 'itms-appss', 'app-settings', 'shortcuts', 'music', 'calshow', 'x-apple-reminderkit']);
+  const ownSchemes = () => {
+    const c = (rt.manifest && rt.manifest.extra && rt.manifest.extra.expoClient) || {};
+    // An Expo Go / dev-client experience also answers to exp(s):// (its `experienceUrl`).
+    return new Set([...[].concat(c.scheme || []), ...(c.ios && c.ios.bundleIdentifier ? [c.ios.bundleIdentifier] : []), ...(rt.manifest ? ['exp', 'exps'] : [])].map((x) => String(x).toLowerCase()));
+  };
+  // NSURL(string:) refuses what is not a URL (no scheme, spaces, ...): openURL / canOpenURL reject then.
+  const opener = (u, method) => {
+    const url = String(u ?? '');
+    const m = /^([a-z][a-z0-9+.-]*):\S*$/i.exec(url);
+    if (!m) throw coded('EUNSPECIFIED', `Unable to open URL: ${url}`);
+    const scheme = m[1].toLowerCase();
+    return ownSchemes().has(scheme) ? 'self' : SYSTEM_SCHEMES.has(scheme) ? 'system' : null;
+  };
+  const receiveURL = (url) => {
+    link.latest = url;
+    rt.emit('url', { url });
+    rt.guard(() => instance(byName.get('ExpoLinking')).emit('onURLReceived', { url }))();
+  };
+  const open = (u) => {
+    const to = opener(u, 'openURL');
+    if (!to) throw coded('EUNSPECIFIED', `Unable to open URL: ${u}`);
+    if (to === 'self') node.setImmediate(() => receiveURL(String(u))); // iOS hands the app its own URL right back
+    else {
+      // The other app comes to the front (this one resigns active and goes to the background) and the user comes
+      // straight back: AppState runs inactive, background, inactive, active.
+      sendEvent('module.called', { module: 'Linking', method: 'openURL', args: [String(u)] });
+      const steps = ['inactive', 'background', 'inactive', 'active'];
+      const next = () => { if (rt.dead || !steps.length) return; rt.setAppState(steps.shift()); node.setImmediate(next); };
+      node.setImmediate(next);
+    }
+    return true;
+  };
+
+  // ActionSheetIOS: the sheet is a `dialog` layer (the centred card iOS 26+ shows on iPhone, `anchor` or not), the share
+  // sheet a `share` layer (protocol W). The host draws them; taps come back as `action`.
+  const processed = (c) => (typeof c === 'number' ? { r: ((c >>> 16) & 255) / 255, g: ((c >>> 8) & 255) / 255, b: (c & 255) / 255, a: ((c >>> 24) & 255) / 255 } : null);
+  const styleOf = (o) => (o.userInterfaceStyle === 'light' || o.userInterfaceStyle === 'dark' ? { appearance: o.userInterfaceStyle } : {});
+  // UIActivityType of each share-sheet cell (`look::ShareLook`).
+  const ACTIVITY = { Copy: 'com.apple.UIKit.activity.CopyToPasteboard', Reminders: 'com.apple.reminders.sharingextension', Safari: 'com.apple.mobilesafari.activity.openInSafari',
+    'Open in Safari': 'com.apple.mobilesafari.activity.openInSafari', 'Add to Reading List': 'com.apple.UIKit.activity.AddToReadingList', 'Save to Files': 'com.apple.CloudDocsUI.AddToiCloudDrive' };
+  const actionSheets = () => ({
+    showActionSheetWithOptions: (o, cb) => {
+      o = o || {};
+      const n = ++alertSeq, run = new Map(), done = (i) => () => cb && cb(i);
+      const opts = Array.isArray(o.options) ? o.options : [];
+      const destructive = new Set([].concat(o.destructiveButtonIndices ?? o.destructiveButtonIndex ?? []));
+      const disabled = new Set([].concat(o.disabledButtonIndices ?? []));
+      const cancel = Number.isInteger(o.cancelButtonIndex) && o.cancelButtonIndex >= 0 && o.cancelButtonIndex < opts.length ? o.cancelButtonIndex : null;
+      const actions = opts.map((text, i) => {
+        const action = n * 1000 + i, id = `sheet${n}#${i}`;
+        run.set(action, done(i));
+        const role = i === cancel ? 'cancel' : destructive.has(i) ? 'destructive' : undefined;
+        // `tintColor` colours the plain buttons (and cancel, unless `cancelButtonTintColor`); destructive stays red.
+        const tint = role === 'destructive' ? null : processed(role === 'cancel' && o.cancelButtonTintColor != null ? o.cancelButtonTintColor : o.tintColor);
+        const label = { kind: 'text', id: `${id}#label`, text: String(text), ...(tint && { modifiers: [{ foregroundColor: tint }] }) };
+        return { kind: 'button', id, action, ...(role && { role }), ...(disabled.has(i) && { disabled: true }), label };
+      });
+      // A tap outside the card cancels, when there is a cancel button; without one only a button closes it.
+      const dismiss = cancel != null ? n * 1000 + 999 : undefined;
+      if (dismiss) run.set(dismiss, done(cancel));
+      const title = o.title == null ? '' : String(o.title);
+      const layer = { kind: 'dialog', title, titleVisible: title !== '', actions, ...(dismiss && { dismiss }), ...styleOf(o),
+        ...(o.message != null && { message: { kind: 'text', id: `sheet${n}#message`, text: String(o.message) } }),
+        ...(Number.isInteger(o.anchor) && { anchor: String(o.anchor) }) };
+      rt.alerts.push({ layer, run, kind: 'sheet' });
+      rt.scheduleEmit();
+    },
+    showShareActionSheetWithOptions: (o, failure, success) => {
+      o = o || {};
+      const items = [o.message, o.url].filter((x) => typeof x === 'string' && x !== '');
+      if (!items.length) { if (failure) failure({ message: 'No `url` or `message` to share' }); return; }
+      const n = ++alertSeq, run = new Map(), excluded = new Set(o.excludedActivityTypes || []);
+      const finish = (completed, type) => () => { if (success) success(completed, type); };
+      const activities = {};
+      let next = n * 1000;
+      for (const name of ['Reminders', 'Safari', 'More', 'Save to Files', 'Open in Safari', 'Add to Reading List']) {
+        if (ACTIVITY[name] && excluded.has(ACTIVITY[name])) continue; // no action: the host leaves the cell out
+        const action = ++next;
+        activities[name] = action;
+        // Handed to the system (another app or the More list): reported like openURL; More shares nothing yet.
+        run.set(action, () => { sendEvent('module.called', { module: 'ShareSheet', method: name, args: items }); finish(name !== 'More', name === 'More' ? null : ACTIVITY[name])(); });
+      }
+      const copy = excluded.has(ACTIVITY.Copy) ? undefined : ++next;
+      if (copy) run.set(copy, () => { setClip(o.url || o.message); finish(true, ACTIVITY.Copy)(); });
+      const dismiss = ++next;
+      run.set(dismiss, finish(false, null));
+      const layer = { kind: 'share', items, ...(o.subject != null && { subject: String(o.subject) }), ...(o.message != null && { message: String(o.message) }),
+        url: items.length === 1 && typeof o.url === 'string' && /^[a-z][a-z0-9+.-]*:/i.test(o.url), dismiss, ...(copy && { copy }), activities, ...styleOf(o),
+        ...(Number.isInteger(o.anchor) && { anchor: String(o.anchor) }) };
+      rt.alerts.push({ layer, run, kind: 'sheet' });
+      rt.scheduleEmit();
+    },
+    // The topmost action / share sheet goes away without calling back (RCTActionSheetManager); none up: a warning.
+    dismissActionSheet: () => {
+      const i = rt.alerts.map((a) => a.kind).lastIndexOf('sheet');
+      if (i < 0) return log('OneSim: ActionSheetIOS.dismissActionSheet: no action sheet is shown');
+      rt.alerts.splice(i, 1);
+      rt.scheduleEmit();
+    },
+  });
+
+  // expo-asset: assets download into Caches as ExponentAsset-<md5>.<type> (AssetModule.swift); a cached file is reused
+  // while its md5 matches.
+  // The browser guest has no md5 (browser-worker.js): there the URL's sha1 names the file and a cached file is trusted.
+  const md5 = (b) => { try { return crypto.createHash('md5').update(b).digest('hex'); } catch (_) { return null; } };
+  const assetDownload = async (url, hash, type) => {
+    url = String(url);
+    if (/^file:/.test(url)) return url;
+    const id = hash || md5(url) || crypto.createHash('sha1').update(url).digest('hex');
+    const caches = path.join(cfg.dataDir, 'Caches'), file = path.join(caches, `ExponentAsset-${id}.${type}`);
+    const sum = hash && fs.existsSync(file) ? md5(fs.readFileSync(file)) : null;
+    const have = fs.existsSync(file) && (!hash || sum === null || sum === hash);
+    if (!have) {
+      let buf;
+      try { buf = await readUri(url); } catch (e) { throw coded('ERR_UNABLE_TO_DOWNLOAD_ASSET', `Unable to download asset from url: '${url}'`); }
+      fs.mkdirSync(caches, { recursive: true });
+      fs.writeFileSync(file, buf);
+    }
+    return require('node:url').pathToFileURL(file).href;
+  };
+  // expo-font: alias -> font files. The host registers the files and resolves `fontFamily` (alias, or a family /
+  // PostScript name in a file) from the root's `__simcoreFonts`.
+  const fonts = new Map();
+  const FONT_MAGIC = ['00010000', '4f54544f', '74727565', '74746366']; // TrueType, OTTO, 'true', 'ttcf'
+  const fontFile = (uri) => {
+    const u = String(uri ?? ''), p = /^file:/.test(u) ? require('node:url').fileURLToPath(u) : u;
+    let head = '';
+    try { head = fs.readFileSync(p).subarray(0, 4).toString('hex'); } catch (_) { /* missing */ }
+    if (!FONT_MAGIC.includes(head)) throw coded('ERR_FONT_CREATION_FAILED', `Could not create font from loaded data for '${u}'`);
+    return p;
+  };
+  const setFonts = (alias, paths) => {
+    fonts.set(String(alias), paths);
+    rt.rootProps.__simcoreFonts = Object.fromEntries(fonts);
+    rt.scheduleEmit();
+  };
+
   const entries = [
     // ---- React Native core (TurboModules) ----
     { name: 'PlatformConstants', status: 'implemented', constants: () => ({
@@ -113,7 +258,9 @@ module.exports = function createRegistry(rt, h) {
           rt.scheduleEmit();
         }, setNetworkActivityIndicatorVisible: noop } },
     { name: 'ExceptionsManager', status: 'implemented', methods: { reportException, reportFatalException: (m, s) => reportException({ message: m, stack: s }), reportSoftException: (m) => log('OneSim soft exception:', m), updateExceptionMessage: noop, dismissRedbox: noop } },
-    { name: 'AppState', status: 'implemented', constants: { initialAppState: 'active' }, methods: { getCurrentAppState: (cb) => cb({ app_state: 'active' }), ...listener } },
+    // Host `scene_phase` moves it (`Runtime.setAppState`); events `appStateDidChange`.
+    { name: 'AppState', status: 'implemented', constants: () => ({ initialAppState: rt.appState }), events: ['appStateDidChange', 'memoryWarning'],
+      methods: { getCurrentAppState: (cb) => cb({ app_state: rt.appState }), ...listener } },
     { name: 'SettingsManager', status: 'implemented', constants: { settings: { AppleLocale: 'en_US', AppleLanguages: ['en'] } }, methods: { setValues: noop, deleteValues: noop } },
     { name: 'AccessibilityInfo', status: 'implemented', constants: {}, methods: {
       ...Object.fromEntries(['isReduceMotionEnabled', 'isReduceTransparencyEnabled', 'isBoldTextEnabled', 'isGrayscaleEnabled', 'isInvertColorsEnabled', 'isDarkerSystemColorsEnabled', 'isScreenReaderEnabled', 'getCurrentReduceMotionState', 'getCurrentReduceTransparencyState',
@@ -145,7 +292,9 @@ module.exports = function createRegistry(rt, h) {
       prefetchImageWithMetadata: (uri) => loadImage(uri).then(() => true, () => false),
       queryCache: (uris) => Promise.resolve(Object.fromEntries(uris.filter((u) => imageDone.has(u)).map((u) => [u, 'disk']))),
       abortRequest: noop } },
-    { name: 'LinkingManager', status: 'implemented', async: true, methods: { getInitialURL: () => Promise.resolve(null), canOpenURL: () => Promise.resolve(false), openURL: UNSUP, openSettings: UNSUP, ...listener } },
+    { name: 'LinkingManager', status: android ? 'implemented' : 'simulated', async: true, events: ['url'], methods: android
+      ? { getInitialURL: () => Promise.resolve(null), canOpenURL: () => Promise.resolve(false), openURL: UNSUP, openSettings: UNSUP, ...listener }
+      : { getInitialURL: async () => link.initial, canOpenURL: async (u) => !!opener(u, 'canOpenURL'), openURL: async (u) => open(u), openSettings: async () => open('app-settings:'), ...listener } },
     ...(android ? [{ name: 'IntentAndroid', status: 'implemented', async: true,
       methods: { getInitialURL: async () => null, canOpenURL: async () => false, openURL: UNSUP, openSettings: UNSUP, sendIntent: UNSUP } }] : []),
     // JS defaults apply for every flag when the native getter returns undefined.
@@ -162,21 +311,21 @@ module.exports = function createRegistry(rt, h) {
     { name: 'NativeDOMCxx', status: 'implemented', make: () => rt.domModule() },
     { name: 'EventDispatcher', status: 'implemented' },
     // RN modules with platform behaviour we do not implement: every call is a diagnostic (and an error for the caller).
-    { name: 'ActionSheetManager', status: 'unsupported', methods: all(['showActionSheetWithOptions', 'showShareActionSheetWithOptions', 'dismissActionSheet']) },
+    ...(android ? [] : [{ name: 'ActionSheetManager', status: 'implemented', strict: true, methods: actionSheets() }]),
     // Alert.alert: an `alert` presentation layer the Rust host draws like SwiftUI's `.alert`; a button tap comes back as `action`.
     { name: 'AlertManager', status: 'implemented', strict: true, methods: { alertWithArgs: (a, cb) => {
       // ponytail: Alert.prompt (text fields) is not drawn; add a text-field layer when apps need it.
       if (a.type && a.type !== 'default') throw unsupported('AlertManager', `alertWithArgs (type: ${a.type}, Alert.prompt)`);
-      const n = ++alertSeq, keys = new Map();
+      const n = ++alertSeq, run = new Map();
       const destructive = a.destructiveButtonKeys || [a.destructiveButtonKey];
       const actions = (a.buttons && a.buttons.length ? a.buttons : [{ 0: 'OK' }]).map((b, i) => {
         const [k, text] = Object.entries(b)[0], action = n * 1000 + i, id = `alert${n}#${k}`;
-        keys.set(action, k);
+        run.set(action, () => cb(+k));
         const role = k === a.cancelButtonKey ? 'cancel' : destructive.includes(k) ? 'destructive' : undefined;
         return { kind: 'button', id, action, ...(role && { role }), label: { kind: 'text', id: `${id}#label`, text } };
       });
       const layer = { kind: 'alert', title: a.title || '', actions, ...(a.message && { message: { kind: 'text', id: `alert${n}#message`, text: a.message } }) };
-      rt.alerts.push({ layer, keys, cb });
+      rt.alerts.push({ layer, run, kind: 'alert' });
       rt.scheduleEmit();
     } } },
     { name: 'ShareModule', status: 'unsupported', async: true, methods: all(['share']) },
@@ -195,8 +344,18 @@ module.exports = function createRegistry(rt, h) {
       methods: { ...files.methods, ...all(['downloadFileAsync', 'cancelDownloadAsync', 'pickDirectoryAsync', 'pickFileAsync', 'canPreview', 'preview']) } },
     { name: 'ExponentFileSystem', package: 'expo-file-system', kind: 'expo', status: 'implemented', async: true, events: ['expo-file-system.downloadProgress', 'expo-file-system.uploadProgress'], constants: files.legacyConstants,
       methods: { ...files.legacy, ...all(['downloadAsync', 'uploadAsync', 'uploadTaskStartAsync', 'downloadResumableStartAsync', 'downloadResumablePauseAsync', 'networkTaskCancelAsync']) } },
-    { name: 'ExpoAsset', package: 'expo-asset', kind: 'expo', status: 'implemented', methods: { downloadAsync: async (uri) => { unsupported('ExpoAsset', 'downloadAsync', 'expo-asset'); return uri; } } },
-    { name: 'ExpoFontLoader', package: 'expo-font', kind: 'expo', status: 'implemented', methods: { getLoadedFonts: () => [], isLoaded: () => false, loadAsync: async (name) => { unsupported('ExpoFontLoader', `loadAsync(${name})`, 'expo-font'); } } },
+    { name: 'ExpoAsset', package: 'expo-asset', kind: 'expo', status: 'implemented', methods: { downloadAsync: assetDownload } },
+    // iOS registers no isLoaded / unloadAsync natively (expo-font's JS answers isLoaded from getLoadedFonts).
+    { name: 'ExpoFontLoader', package: 'expo-font', kind: 'expo', status: 'implemented', strict: true, methods: {
+      getLoadedFonts: () => [...fonts.keys()],
+      loadAsync: async (alias, localUri) => { setFonts(alias, [fontFile(localUri)]); },
+      loadFontFamilyAsync: async (alias, faces) => {
+        if (!Array.isArray(faces) || !faces.length) throw coded('ERR_FONT_FAMILY_EMPTY_FACES', `Font family '${alias}' has no faces`);
+        setFonts(alias, [...new Set(faces.map((f) => {
+          if (!f || !f.localUri) throw coded('ERR_FONT_FACE_MISSING_URI', `A face of font family '${alias}' has no local URI`);
+          return fontFile(f.localUri);
+        }))]);
+      } } },
     // Screen-awake is a no-op in a simulator surface; accepted, not rendered.
     { name: 'ExpoKeepAwake', package: 'expo-keep-awake', kind: 'expo', status: 'implemented', methods: { activate: async () => {}, deactivate: async () => {}, isActivated: async () => false } },
     // expo-splash-screen: the native launch screen is not part of the OneSim surface, so hiding it has nothing to do.
@@ -212,14 +371,24 @@ module.exports = function createRegistry(rt, h) {
         : { isDevice: false, brand: 'Apple', manufacturer: 'Apple', modelId: MODEL_ID, modelName: MODEL_NAME, deviceYearClass: YEAR_CLASS, totalMemory: 12 * 1024 ** 3,
           osName: 'iOS', osVersion: OS_VERSION, osBuildId: OS_BUILD, osInternalBuildId: OS_BUILD, deviceName: 'iPhone', deviceType: 1, supportedCpuArchitectures: ['arm64e', 'arm64'] },
       methods: { getDeviceTypeAsync: async () => 1, getUptimeAsync: async () => node.performance.now(), isRootedExperimentalAsync: async () => false } },
-    // expo-linking: no launch URL, so Expo Router falls back to the scheme root and lands on `index`. Opening URLs is unsupported.
-    { name: 'ExpoLinking', package: 'expo-linking', kind: 'expo', status: 'implemented', methods: { getLinkingURL: () => null, clearInitialURL: () => {} } },
+    // expo-linking (iOS): the launch URL, then the last URL received (see `link` above); Expo Router starts there.
+    { name: 'ExpoLinking', package: 'expo-linking', kind: 'expo', status: android ? 'implemented' : 'simulated', events: ['onURLReceived'],
+      methods: { getLinkingURL: () => (android ? null : link.latest), clearInitialURL: () => { link.latest = null; } } },
     { name: 'ExpoWebBrowser', package: 'expo-web-browser', kind: 'expo', status: 'unsupported', methods: all(['openBrowserAsync', 'dismissBrowser', 'openAuthSessionAsync', 'dismissAuthSession', 'warmUpAsync', 'coolDownAsync', 'mayInitWithUrlAsync', 'getCustomTabsSupportingBrowsers']) },
-    // expo-image: ImageLoader shares the guest's image cache; the rest of the cache API is not backed by anything.
-    { name: 'ExpoImage', package: 'expo-image', kind: 'expo', status: 'implemented', constants: { ViewPrototypes: {} },
-      methods: { configureCache: () => {}, clearMemoryCache: async () => false, clearDiskCache: async () => false,
-        prefetch: async (urls) => (await Promise.all(urls.map((u) => loadImage(u).then(() => true, () => false)))).every(Boolean),
-        ...all(['generateBlurhashAsync', 'generateThumbhashAsync', 'getCachePathAsync', 'writeToCacheAsync', 'readFromCacheAsync', 'loadAsync']) } },
+    // expo-image (images.js): the guest's image cache (shared with ImageLoader), image refs, placeholders, view functions.
+    { name: 'ExpoImage', package: 'expo-image', kind: 'expo', status: 'implemented', constants: () => ({ ViewPrototypes: images.viewPrototypes }), events: ['imageLoaded'],
+      methods: () => images.methods((event, payload) => emitOn('ExpoImage', event, payload)) },
+    // expo-font's renderToImageAsync: the host draws the string (`text.render`); the PNG lands in the session's tmp dir.
+    { name: 'ExpoFontUtils', package: 'expo-font', kind: 'expo', status: 'implemented', strict: true, methods: {
+      renderToImageAsync: async (glyphs, o) => {
+        o = o || {};
+        const r = await rt.request('text.render', { text: String(glyphs ?? ''), family: o.fontFamily || '', fonts: [...fonts.values()].flat(),
+          size: Number(o.size) > 0 ? Number(o.size) : 24, color: typeof o.color === 'number' ? o.color >>> 0 : 0xff000000, lineHeight: o.lineHeight ?? null, scale: cfg.scale });
+        const dir = path.join(cfg.dataDir, 'tmp'), file = path.join(dir, `${crypto.randomUUID().toUpperCase()}.png`);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(file, Buffer.from(r.png, 'base64'));
+        return { uri: require('node:url').pathToFileURL(file).href, width: r.width, height: r.height, scale: r.scale };
+      } } },
     { name: 'SymbolModule', package: 'expo-symbols', kind: 'expo', status: 'implemented', constants: { ViewPrototypes: {} } },
     { name: 'ExpoGlassEffect', package: 'expo-glass-effect', kind: 'expo', status: 'implemented', constants: { isLiquidGlassAvailable: true, isGlassEffectAPIAvailable: true, ViewPrototypes: {} } },
     // expo-constants: the manifest is the same one Metro hands a real Expo client; expo-asset uses it to build dev-server asset URLs.
@@ -358,6 +527,9 @@ module.exports = function createRegistry(rt, h) {
       methods: Object.entries(e.make ? {} : implsOf(e)).filter(([k, v]) => typeof v === 'function' || v === UNSUP).map(([k]) => k).filter((k) => !HIDDEN.has(k)),
       events: e.events || [], permissions: e.permissions || [],
     })),
+    images,
+    // Host `open_url`: the system opens `url` in the app.
+    openURL(url) { if (!android) receiveURL(String(url)); else log('OneSim: open_url is iOS-only for React Native'); },
     simulate(module, state, replay) {
       const f = simulators[String(module).toLowerCase()];
       if (f) f(state || {}, replay); else log(`OneSim: simulate: no simulated module "${module}" (have: ${Object.keys(simulators).join(', ')})`);

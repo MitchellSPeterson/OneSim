@@ -545,7 +545,7 @@ fn launch_url_arrives_after_the_first_tree() {
 }
 
 #[test]
-fn scene_phase_is_swiftui_only() {
+fn react_native_takes_scene_phases_and_urls() {
     let dir = std::env::temp_dir().join(format!("onesim-rn-phase-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let rn = alias(dir.join("fake-rn-guest"));
@@ -553,9 +553,29 @@ fn scene_phase_is_swiftui_only() {
     let p = serde_json::json!({"framework": "expo", "app_path": rn, "prebuilt": true, "metroUrl": "http://localhost:1"});
     let id = host.create_session(serde_json::from_value(p).unwrap()).unwrap();
     host.start_session(&id).unwrap();
-    assert_eq!(host.set_scene_phase(&id, ScenePhase::Background).unwrap_err().code, ErrorCode::Unsupported);
-    assert_eq!(host.open_url(&id, "app://x").unwrap_err().code, ErrorCode::Unsupported);
+    // React Native: AppState follows the scene phase (through inactive, as iOS does).
+    host.set_scene_phase(&id, ScenePhase::Background).unwrap();
+    assert_eq!(host.scene_phase(&id).unwrap(), ScenePhase::Background);
+    // A URL brings it forward first.
+    host.open_url(&id, "app://y").unwrap();
+    assert_eq!(host.scene_phase(&id).unwrap(), ScenePhase::Active);
+    // React Native (iOS) takes URLs through Linking: the guest gets `open_url`; a non-URL is refused before it.
+    host.open_url(&id, "app://x").unwrap();
+    assert_eq!(host.open_url(&id, "nope").unwrap_err().code, ErrorCode::BadRequest);
     host.stop_session(&id).unwrap();
+}
+
+#[test]
+fn launch_url_is_for_swiftui_and_ios_react_native() {
+    let mut host = Host::new();
+    let rn = |platform: &str| serde_json::from_value::<CreateSessionParams>(serde_json::json!({"framework": "expo", "platform": platform,
+        "app_path": "x", "prebuilt": true, "metroUrl": "http://localhost:1", "launch_url": "app://deep/link"})).unwrap();
+    assert!(host.create_session(rn("ios")).is_ok());
+    assert_eq!(host.create_session(rn("android")).unwrap_err().code, ErrorCode::Unsupported);
+    let mut compose = params(GUEST);
+    compose.framework = "compose".into();
+    compose.launch_url = Some("app://x".into());
+    assert_eq!(host.create_session(compose).unwrap_err().code, ErrorCode::Unsupported);
 }
 
 #[test]

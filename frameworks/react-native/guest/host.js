@@ -109,6 +109,7 @@ const cfg = {
   hmr: process.env.SIMCORE_HMR !== '0' && !env.SIMCORE_BUNDLE_URL, // Fast Refresh via Metro's /hot; SIMCORE_HMR=0 turns it off
   generation: (workerData && workerData.generation) || 0, // 0 = first load, >0 = after a reload
   dataDir: workerData && workerData.dataDir, // per-session sandbox (documents, caches, secure store): survives reloads, removed on exit
+  launchURL: env.SIMCORE_LAUNCH_URL || null, // the URL the app was launched to open (Linking.getInitialURL)
 };
 {
   const android = cfg.platform === 'android';
@@ -138,19 +139,26 @@ function unsupported(mod, method, pkg) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Image cache: $TMPDIR/onesim-images/<sha1(uri)>.<ext>. Shared by RCTImageView and ImageLoader.
+// Image cache: $TMPDIR/onesim-images/<sha1(key)>-<sha1(bytes)>.<ext>. Shared by RCTImageView and ImageLoader. The
+// content hash gives changed bytes a new file, so the host (which caches decodes by path) draws the new image after
+// a reload.
 // ---------------------------------------------------------------------------------------------
 const imageCache = new Map(); // uri -> Promise<{path,width,height}> (pixels)
 const imageDone = new Map(); // uri -> info, once loaded (queryCache)
 // Pixel size + extension from the file header (PNG, JPEG, GIF, WebP); null if unrecognised.
 function imageInfo(b) {
   if (b.length > 24 && b.readUInt32BE(0) === 0x89504e47) return { ext: 'png', width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
-  if (b.length > 10 && b.toString('latin1', 0, 4) === 'GIF8') return { ext: 'gif', width: b.readUInt16LE(6), height: b.readUInt16LE(8) };
+  if (b.length > 10 && b.toString('latin1', 0, 4) === 'GIF8') {
+    // Animated: more than one graphic control extension (one per frame).
+    let n = 0;
+    for (let i = b.indexOf(0x21); i >= 0 && n < 2; i = b.indexOf(0x21, i + 1)) if (b[i + 1] === 0xf9 && b[i + 2] === 4) n++;
+    return { ext: 'gif', width: b.readUInt16LE(6), height: b.readUInt16LE(8), animated: n > 1 };
+  }
   if (b.length > 30 && b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP') {
     const k = b.toString('latin1', 12, 16);
     if (k === 'VP8 ') return { ext: 'webp', width: b.readUInt16LE(26) & 0x3fff, height: b.readUInt16LE(28) & 0x3fff };
     if (k === 'VP8L') { const v = b.readUInt32LE(21); return { ext: 'webp', width: (v & 0x3fff) + 1, height: ((v >> 14) & 0x3fff) + 1 }; }
-    if (k === 'VP8X') return { ext: 'webp', width: 1 + b.readUIntLE(24, 3), height: 1 + b.readUIntLE(27, 3) };
+    if (k === 'VP8X') return { ext: 'webp', width: 1 + b.readUIntLE(24, 3), height: 1 + b.readUIntLE(27, 3), animated: (b[20] & 2) !== 0 };
   }
   if (b.length > 4 && b[0] === 0xff && b[1] === 0xd8) {
     for (let i = 2; i + 9 < b.length;) {
@@ -171,24 +179,36 @@ async function readUri(uri, headers) {
   if (r.status < 200 || r.status >= 300) throw new Error(`HTTP ${r.status} for ${uri}`);
   return r.done;
 }
-function loadImage(uri, headers) {
-  let p = imageCache.get(uri);
+// `blurhash:/` and `thumbhash:/` (expo-image placeholders and sources) are decoded by the host (`image.decode_hash`).
+const HASH_URI = /^(blurhash|thumbhash):\//;
+// `o.key`: the cache key (expo-image `cacheKey`; default the URI, with the size for a blurhash).
+function loadImage(uri, headers, o = {}) {
+  const key = o.key || (/^blurhash:/.test(uri) ? `${uri}#${o.width || 16}x${o.height || 16}` : uri);
+  let p = imageCache.get(key);
   if (!p) {
-    p = readUri(uri, headers).then((buf) => {
+    const bytes = HASH_URI.test(uri)
+      ? rt.request('image.decode_hash', { uri, width: o.width, height: o.height }).then((r) => node.Buffer.from(r.png, 'base64'))
+      : readUri(uri, headers);
+    p = bytes.then((buf) => {
       const i = imageInfo(buf);
       if (!i) throw new Error(`not a PNG/JPEG/GIF/WebP image: ${uri.slice(0, 120)}`);
       const dir = path.join(os.tmpdir(), 'onesim-images');
       fs.mkdirSync(dir, { recursive: true });
-      const file = path.join(dir, `${crypto.createHash('sha1').update(uri).digest('hex')}.${i.ext}`);
+      const sha1 = (v) => crypto.createHash('sha1').update(v).digest('hex');
+      const file = path.join(dir, `${sha1(key)}-${sha1(buf).slice(0, 16)}.${i.ext}`);
       fs.writeFileSync(file, buf);
-      const info = { path: file, width: i.width, height: i.height };
-      imageDone.set(uri, info);
+      const info = { path: file, width: i.width, height: i.height, animated: !!i.animated };
+      imageDone.set(key, info);
       return info;
     });
-    imageCache.set(uri, p);
-    p.catch(() => imageCache.delete(uri)); // failures are not cached
+    imageCache.set(key, p);
+    p.catch(() => imageCache.delete(key)); // failures are not cached
   }
   return p;
+}
+// The cache forgets `key` (all keys without one): the next load reads the source again. Files stay for views showing them.
+function forgetImage(key) {
+  if (key === undefined) { imageCache.clear(); imageDone.clear(); } else { imageCache.delete(key); imageDone.delete(key); }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -212,10 +232,19 @@ class Runtime {
     this.inputs = new Map(); // tag -> {text, eventCount} (TextInput state; the guest owns the text)
     this.focused = null; // tag of the focused TextInput
     this.kbFrame = null; // software keyboard frame while the host shows it (KeyboardObserver)
-    this.images = new Map(); // tag -> {uri, info?, err?}
+    this.images = new Map(); // tag -> {uri, key, info?, err?, ph?: placeholder {uri, info}}
+    this.imageViews = new Map(); // expo-image tag -> {animating?, locked?} (view functions)
+    this.reqs = new Map(); // host requests in flight: id -> {res, rej}
+    this.reqSeq = 0;
     this.scrolled = new Map(); // tag -> last reported [x,y]
     this.shown = new Set(); // Modal tags that got topShow
-    this.alerts = []; // Alert.alert: [{layer, keys: action id -> button key, cb}], bottom to top
+    this.alerts = []; // presentation layers (Alert.alert, ActionSheetIOS): [{layer, run: Map(action id -> handler), kind}], bottom to top
+    this.nextLayoutAnim = null; // LayoutAnimation.configureNext waiting for its commit: {config, total ms, done}
+    this.layoutAnim = null; // ... committed, rides on the next emitted tree
+    this.layoutAnimSeq = 0;
+    this.appState = 'active'; // AppState: active | inactive | background
+    this.liveTouch = null; // the finger down (last start / move), cancelled when the app resigns active
+    this.touchGone = false;
     this.blobs = new Map(); // BlobModule store: blobId -> Buffer
     this.eventHandler = null;
     this.simQueue = [];
@@ -295,7 +324,13 @@ class Runtime {
       createChildSet: () => [],
       appendChild: (parent, child) => { parent.children.push(child); return parent; },
       appendChildToSet: (set, child) => { set.push(child); },
-      completeRoot: (rootTag, childSet) => { env.SIMCORE_DEBUG && log('completeRoot', rootTag, childSet.length); self.rootChildren = childSet; self.scheduleEmit(); },
+      completeRoot: (rootTag, childSet) => {
+        env.SIMCORE_DEBUG && log('completeRoot', rootTag, childSet.length);
+        self.rootChildren = childSet;
+        // LayoutAnimation.configureNext applies to the next commit: this one.
+        if (self.nextLayoutAnim) { self.layoutAnim = self.nextLayoutAnim; self.nextLayoutAnim = null; }
+        self.scheduleEmit();
+      },
       registerEventHandler: (h) => { self.eventHandler = h; },
       // Frames come from the Rust host's layout engine; zeros until the first `layout` message.
       measure: (n, cb) => {
@@ -311,7 +346,16 @@ class Runtime {
         if (!f || !r) return node.queueMicrotask(self.guard(() => (onFail && onFail())));
         node.queueMicrotask(self.guard(() => onSuccess(f[0] - r[0], f[1] - r[1], f[2], f[3])));
       },
-      configureNextLayoutAnimation: diag('configureNextLayoutAnimation'),
+      // The host animates the commit (protocol H: `__simcoreLayoutAnimation`); `onEnd` runs once it has played.
+      configureNextLayoutAnimation: (config, onEnd, onFail) => {
+        if (!config || typeof config !== 'object') { if (typeof onFail === 'function') node.queueMicrotask(self.guard(onFail)); return; }
+        if (self.nextLayoutAnim) self.nextLayoutAnim.done(); // replaced before any commit: the earlier one ends unplayed
+        const part = (k) => config[k] && typeof config[k] === 'object' ? config[k] : null;
+        const ms = [part('create'), part('update'), part('delete')].filter(Boolean)
+          .map((p) => (Number.isFinite(p.duration) ? p.duration : Number(config.duration) || 0) + (Number(p.delay) || 0));
+        const total = Math.max(0, ...ms);
+        self.nextLayoutAnim = { config: JSON.parse(JSON.stringify(config)), total, done: typeof onEnd === 'function' ? self.guard(() => onEnd()) : () => {} };
+      },
       sendAccessibilityEvent: diag('sendAccessibilityEvent'),
       findShadowNodeByTag_DEPRECATED: (tag) => self.nodes.get(tag) || null,
       setNativeProps: (n, p) => {
@@ -406,7 +450,14 @@ class Runtime {
         if (n.viewName === expoUI.HOST) view.children = [expoUI.nativeTree(view, cfg.platform === 'android', this.appearance)];
         return view;
       };
-      const root = { kind: 'rn', id: String(ROOT_TAG), component: 'RootView', props: this.rootProps, children: this.rootChildren.flatMap((c) => ser(c, ROOT_TAG)) };
+      let rootProps = this.rootProps;
+      const la = this.layoutAnim;
+      if (la) { // once: later trees of the same commit (or unrelated ones) do not animate
+        this.layoutAnim = null;
+        rootProps = { ...rootProps, __simcoreLayoutAnimation: { ...la.config, token: ++this.layoutAnimSeq } };
+        node.setTimeout(la.done, la.total);
+      }
+      const root = { kind: 'rn', id: String(ROOT_TAG), component: 'RootView', props: rootProps, children: this.rootChildren.flatMap((c) => ser(c, ROOT_TAG)) };
       if (env.SIMCORE_DEBUG) log('emit tree', version + 1);
       // An alert up: the RN root becomes a `presentation`'s content (protocol G/H).
       const treeRoot = this.alerts.length ? { kind: 'presentation', id: 'presentation', content: root, layers: this.alerts.map((a) => a.layer) } : root;
@@ -569,6 +620,10 @@ class Runtime {
       // above has sent js_responder by now).
       case 'touch_ask': send({ type: 'touch_answer', ask: m.ask, captured: this.gestures.captured() }); break;
       case 'touch': {
+        // A touch the system cancelled (the app resigned active) gets nothing more until the next finger.
+        if (m.phase === 'start') this.touchGone = false;
+        else if (this.touchGone) break;
+        this.liveTouch = m.phase === 'start' || m.phase === 'move' ? m : null;
         const n = this.nodes.get(m.tag);
         if (!n) return log(`OneSim: touch for unknown tag ${m.tag}`);
         const ts = m.timestamp ?? Date.now();
@@ -589,16 +644,25 @@ class Runtime {
         break;
       }
       case 'simulate': if (this.registry) this.registry.simulate(m.module, m.state, m.replay); else this.simQueue.push(m); break; // before boot: applied once the registry exists
-      case 'action': { // an alert button: drop the alert, then run Alert.alert's callback with the button key
+      case 'action': { // a button of an alert / action sheet / share sheet: drop that layer, then run its handler
         const n = this.parents.has(m.id) && this.nodes.get(m.id);
         if (n && expoUI.viewName(n.viewName) && expoUI.action(n, cfg.platform, (event, payload) => this.dispatch(n, event, payload, 2))) break;
-        const i = this.alerts.findIndex((a) => a.keys.has(m.id));
+        const i = this.alerts.findIndex((a) => a.run.has(m.id));
         if (i < 0) return log(`OneSim: action ${m.id} matches no alert`);
         const [a] = this.alerts.splice(i, 1);
         this.scheduleEmit();
-        this.guard(a.cb)(+a.keys.get(m.id));
+        this.guard(a.run.get(m.id))();
         break;
       }
+      case 'open_url': if (this.registry) this.registry.openURL(m.url); break;
+      case 'response': {
+        const r = this.reqs.get(m.id);
+        if (!r) break;
+        this.reqs.delete(m.id);
+        if (m.error != null) r.rej(new Error(m.error)); else r.res(m.result);
+        break;
+      }
+      case 'scene_phase': this.setAppState(m.phase); break;
       case 'native_back': this.nativeBack(m.tag); break;
       case 'select_tab': this.selectTab(m); break;
       case 'focus': this.focus(m.tag); break;
@@ -688,6 +752,20 @@ class Runtime {
       }
     }
   }
+  // AppState (UIApplication.State): host `scene_phase`, and the round trip through another app on a hand-off. iOS cancels
+  // the app's touches as it resigns active. A tree follows every change, so the host knows the guest has it.
+  setAppState(state) {
+    if (!['active', 'inactive', 'background'].includes(state) || state === this.appState) return;
+    this.appState = state;
+    if (state !== 'active' && this.liveTouch) { const t = this.liveTouch; this.onMessage({ ...t, phase: 'cancel' }); this.touchGone = true; }
+    this.emit('appStateDidChange', { app_state: state });
+    this.scheduleEmit();
+  }
+  // Work only the host can do (image hashes, text rendering): `request` -> `response` (protocol section H).
+  request(method, params) {
+    const id = ++this.reqSeq;
+    return new Promise((res, rej) => { this.reqs.set(id, { res, rej }); send({ type: 'request', id, method, params }); });
+  }
   input(n) {
     let st = this.inputs.get(n.reactTag);
     if (!st) this.inputs.set(n.reactTag, (st = { text: String(n.props.text ?? n.props.value ?? n.props.defaultValue ?? ''), eventCount: 0 }));
@@ -753,29 +831,47 @@ class Runtime {
     unsupported('FabricUIManager', `dispatchCommand:${name} on ${n.viewName}`);
   }
 
-  // Image: download once per uri (shared with ImageLoader), expose the cached file to the host.
+  // Image: download once per source (shared with ImageLoader), expose the cached file to the host. expo-image adds image
+  // refs and hash sources (images.js), `cacheKey`, a `placeholder` drawn until the source is in, and its view functions.
   imageProps(n, props, after) {
-    const tag = n.reactTag, src = [].concat(props.source || [])[0], uri = src && src.uri;
-    if (!uri) return;
+    const tag = n.reactTag, expo = n.viewName === EXPO_IMAGE, lib = this.registry.images, v = this.imageViews.get(tag) || {};
+    if (expo && v.animating !== undefined) props.__simcoreAnimating = v.animating; // startAnimating / stopAnimating
+    const src = lib.resolve([].concat(props.source ?? [])[0]), uri = src && src.uri;
+    if (!uri && !expo) return;
+    // No source (`source={null}` while data loads): expo-image still draws its placeholder.
+    const key = !uri ? null : src.ref ? `ref:${src.ref.__expo_shared_object_id__}` : src.cacheKey || uri;
     let st = this.images.get(tag);
-    if (!st || st.uri !== uri) {
-      const mine = (st = { uri });
+    if (!uri) {
+      if (!st || (st.key !== null && !(v.locked && st.info))) this.images.set(tag, (st = { uri: null, key: null }));
+    } else if (!st || (st.key !== key && !(v.locked && st.info))) {
+      const mine = (st = { uri, key });
       this.images.set(tag, st);
       const done = (type, ev) => { if (this.images.get(tag) !== mine) return; this.dispatch(this.nodes.get(tag) || n, type, { target: tag, ...ev }); };
       after.push(() => {
         done('topLoadStart', {});
-        loadImage(uri, src.headers).then((info) => {
+        const loaded = src.ref ? Promise.resolve(src.ref.__simcore.info) : loadImage(uri, src.headers, { key: src.cacheKey, width: src.width, height: src.height });
+        loaded.then((info) => {
           mine.info = info;
           const s = src.scale || 1;
-          if (n.viewName === EXPO_IMAGE) { // expo-image's events: pixel size, cacheType, then onDisplay once drawn
-            done('topLoad', { cacheType: 'none', source: { url: uri, width: info.width, height: info.height, mediaType: `image/${info.path.split('.').pop()}`, isAnimated: false } });
+          if (expo) { // expo-image's events: pixel size, cacheType, then onDisplay once drawn
+            done('topLoad', { cacheType: src.ref ? 'memory' : 'none', source: { url: uri, width: info.width, height: info.height, mediaType: lib.media(info), isAnimated: !!info.animated } });
             done('topDisplay', {});
           } else { done('topLoad', { source: { uri, width: info.width / s, height: info.height / s } }); done('topLoadEnd', {}); }
           if (this.images.get(tag) === mine) this.scheduleEmit();
-        }, (e) => { mine.err = e; done('topError', { error: String(e && e.message || e) }); if (n.viewName !== EXPO_IMAGE) done('topLoadEnd', {}); });
+        }, (e) => { mine.err = e; done('topError', { error: String(e && e.message || e) }); if (!expo) done('topLoadEnd', {}); if (this.images.get(tag) === mine) this.scheduleEmit(); });
       });
     }
-    if (st.info) props.__simcoreImage = st.info;
+    if (st.info) { props.__simcoreImage = st.info; return; }
+    // expo-image `placeholder` (an image, a blurhash or a thumbhash): drawn with `placeholderContentFit` until the
+    // source is in, and kept when it fails.
+    const ph = expo && lib.resolve([].concat(props.placeholder ?? [])[0]);
+    if (!ph || !ph.uri) return;
+    if (!st.ph || st.ph.uri !== ph.uri) {
+      const mine = (st.ph = { uri: ph.uri });
+      const p = ph.ref ? Promise.resolve(ph.ref.__simcore.info) : loadImage(ph.uri, ph.headers, { key: ph.cacheKey, width: ph.width, height: ph.height });
+      p.then((info) => { mine.info = info; this.scheduleEmit(); }, () => {});
+    }
+    if (st.ph.info) { props.__simcoreImage = st.ph.info; props.contentFit = props.placeholderContentFit || 'scale-down'; }
   }
 
   // Tab bar icons are image sources (Metro asset URLs): download them like images and hand the host the cached file.
@@ -829,7 +925,7 @@ class Runtime {
   // ---- native modules: the registry in modules.js (TurboModules, expo modules, simulated state) ----
   makeRegistry(bundleSource) {
     const ver = /ReactNativeVersion\.major = (\d+);\s*ReactNativeVersion\.minor = (\d+);\s*ReactNativeVersion\.patch = (\d+)/.exec(bundleSource) || [0, 0, 0, 0];
-    this.registry = require('./modules.js')(this, { node, log, sendError, sendEvent, unsupported, cfg, ver, insetsFor, loadImage, imageDone, expo: this.expoClasses() });
+    this.registry = require('./modules.js')(this, { node, log, sendError, sendEvent, unsupported, cfg, ver, insetsFor, loadImage, forgetImage, imageDone, readUri, expo: this.expoClasses() });
     for (const m of this.simQueue.splice(0)) this.registry.simulate(m.module, m.state, m.replay);
     return this.registry;
   }

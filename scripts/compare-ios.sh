@@ -376,8 +376,8 @@ for ios in ${SIMCORE_IOS:-27.2}; do
       echo "== skipping React Native comparison (run npm install in $rn, needs node)"
     fi
     # Expo Router: tests/fixtures/rn-router-ios (see its README). One Metro per app; each group compares only the states it rendered.
-    rr_group() { # app-dir label; states are produced by the rr_states_* function named by $3
-      local app=$1 label=$2 o=$out/$2
+    rr_group() { # app-dir label states-fn [fixtures]; states are produced by the rr_states_* function named by $3
+      local app=$1 label=$2 o=$out/$2 fixtures=${4:-rn-router-ios}
       if ! { [ -d "$app/node_modules" ] && command -v npx >/dev/null; }; then echo "== skipping $label comparison (run npm install in $app, needs node)"; return; fi
       rm -rf "$o"; mkdir -p "$o/onesim"
       local pt; pt=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
@@ -387,8 +387,8 @@ for ios in ${SIMCORE_IOS:-27.2}; do
       rrshot() { local n=$1; shift; ./target/debug/onesim expo --url "http://localhost:$pt" "${base[@]}" "$@" --screenshot "$o/onesim/$n.png" >/dev/null || echo "onesim expo failed: $n"; }
       "$3"
       pkill -P $m 2>/dev/null; kill $m 2>/dev/null
-      echo "== Expo Router ($label, iOS $ios)"
-      python3 scripts/compare_ios.py $fx/rn-router-ios "$o/onesim" "$o" || rc=1
+      echo "== Expo ($label, iOS $ios)"
+      python3 scripts/compare_ios.py "$fx/$fixtures" "$o/onesim" "$o" || rc=1
     }
     rr_states_tabs() {
       rrshot tabs-home
@@ -403,7 +403,24 @@ for ios in ${SIMCORE_IOS:-27.2}; do
       rrshot stack-back        --click 200,192 --click 64,84
       rrshot stack-detail-dark --dark --click 200,192
     }
+    # examples/expo-apis: tests/fixtures/rn-apis-ios (see its README). LayoutAnimation is shown settled (--wait).
+    rr_states_apis() {
+      rrshot home
+      rrshot home-dark          --dark
+      rrshot layout-expanded    --click Layout --click Toggle --wait 1000
+      rrshot actionsheet        --click Sheet --click "Show sheet"
+      rrshot actionsheet-dark   --dark --click Sheet --click Share --click 200,400 --click "Show sheet"
+      rrshot actionsheet-picked --click Sheet --click "Show sheet" --click "Save to Files"
+      rrshot actionsheet-anchored --click Sheet --click "Show sheet" --click "Save to Files" --click Anchored
+      rrshot share              --click Sheet --click "Show sheet" --click Cancel --click Share
+      rrshot share-dark         --dark --click Sheet --click Share
+      rrshot images             --click Images
+      rrshot images-dark        --dark --click Images
+      rrshot fonts              --click Fonts
+      rrshot fonts-dark         --dark --click Fonts
+    }
     [ -z "$smoke" ] || continue
+    rr_group examples/expo-apis apis rr_states_apis rn-apis-ios
     rr_group examples/expo-default tabs rr_states_tabs
     rr_group examples/expo-router-stack stack rr_states_stack
     if [ -d examples/expo-ui/node_modules ]; then

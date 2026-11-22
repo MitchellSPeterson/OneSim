@@ -1,7 +1,7 @@
 use crate::rn::{deliver, deliver_coalesced, queue_scroll_events, rn_pointer, with_rn};
 use crate::state::{
     dispatch, push_environment, send_layout, set_err, submit, sync_guest_clock,
-    update_animation_frame, update_scene, with,
+    update_animation_frame, update_live_frame, update_scene, with,
 };
 #[cfg(all(target_family = "wasm", not(feature = "js-guest")))]
 use crate::state::__main_argc_argv;
@@ -252,12 +252,16 @@ pub extern "C" fn simcore_web_tick(dt_ms: f64) -> i32 {
         if anim_moved {
             s.anim.tick(dt);
         }
-        if scroll_moved {
+        let live_moved = if scroll_moved {
             update_scene(s);
+            false
         } else if anim_moved {
             update_animation_frame(s);
-        }
-        scroll_moved || anim_moved
+            false
+        } else {
+            dt > 0.0 && update_live_frame(s)
+        };
+        scroll_moved || anim_moved || live_moved
     });
     if redrew {
         send_layout();
@@ -267,7 +271,7 @@ pub extern "C" fn simcore_web_tick(dt_ms: f64) -> i32 {
     if held {
         dispatch(with(|s| s.inter.hold(dt)));
     }
-    let more = with(|s| s.anim.is_animating() || s.guest_due_ms.is_some());
+    let more = with(|s| s.anim.is_animating() || s.guest_due_ms.is_some() || s.live_moving);
     // Return 1 if we redrew (including the final settling frame) so the browser presents it; the next tick returns 0.
     (redrew || held || more || tick_guest.is_some()) as i32
 }
@@ -383,14 +387,16 @@ pub extern "C" fn simcore_web_find(len: usize) -> i32 {
     })
 }
 
-/// An image file the guest wrote (React Native `Image` sources are cached as files): the scratch buffer holds the path,
-/// a NUL byte, then the PNG or JPEG bytes (`len` in all). Redraws so the image shows. 1 if it decoded, else 0.
+/// An image or font file the guest wrote (React Native `Image` sources and expo-font / expo-asset downloads are cached
+/// as files): the scratch buffer holds the path, a NUL byte, then the file's bytes (`len` in all). Redraws so it shows.
+/// 1 if it decoded as an image (PNG, JPEG, GIF, WebP) or a font, else 0.
 #[no_mangle]
 pub extern "C" fn simcore_web_put_image(len: usize) -> i32 {
     let ok = with(|s| {
         let b = &s.buf[..len.min(s.buf.len())];
         let Some(nul) = b.iter().position(|&c| c == 0) else { return false };
-        onesim_render::put_image(&String::from_utf8_lossy(&b[..nul]), &b[nul + 1..])
+        let path = String::from_utf8_lossy(&b[..nul]);
+        onesim_render::put_image(&path, &b[nul + 1..]) || onesim_render::put_font(&path, &b[nul + 1..])
     });
     if ok {
         with(update_scene);

@@ -9,7 +9,7 @@
 use crate::scene::{Color, Node, Rect, Scene};
 use onesim_protocol::{
     AnimationCurve, AnimationSpec, ContentTransitionKind, MatchedProps, RepeatCount, TransitionEdge,
-    TransitionEffect,
+    TransitionEffect, TransitionSpec,
 };
 use std::borrow::{Borrow, Cow};
 use std::collections::{HashMap, HashSet};
@@ -310,16 +310,22 @@ fn shift_nodes(nodes: &mut [Node], indices: &[usize], dx: f64, dy: f64) {
 
 /// Scale every node in `indices` about `(ax, ay)` by `s`.
 fn scale_nodes(nodes: &mut [Node], indices: &[usize], ax: f64, ay: f64, s: f64) {
-    if (s - 1.0).abs() < 1e-4 {
+    scale_nodes_xy(nodes, indices, ax, ay, s, s);
+}
+
+/// Scale about `(ax, ay)` by `sx` / `sy`; sizes that cannot stretch on one axis (text, strokes, radii) take the smaller.
+fn scale_nodes_xy(nodes: &mut [Node], indices: &[usize], ax: f64, ay: f64, sx: f64, sy: f64) {
+    if (sx - 1.0).abs() < 1e-4 && (sy - 1.0).abs() < 1e-4 {
         return;
     }
-    let sf = s.max(0.0);
+    let (sx, sy) = (sx.max(0.0), sy.max(0.0));
+    let sf = sx.min(sy);
     for &i in indices {
         let n = &mut nodes[i];
-        n.bounds.x = ax + (n.bounds.x - ax) * sf;
-        n.bounds.y = ay + (n.bounds.y - ay) * sf;
-        n.bounds.w *= sf;
-        n.bounds.h *= sf;
+        n.bounds.x = ax + (n.bounds.x - ax) * sx;
+        n.bounds.y = ay + (n.bounds.y - ay) * sy;
+        n.bounds.w *= sx;
+        n.bounds.h *= sy;
         n.radius *= sf;
         if let Some((_, w)) = n.stroke.as_mut() {
             *w *= sf;
@@ -338,10 +344,10 @@ fn scale_nodes(nodes: &mut [Node], indices: &[usize], ax: f64, ay: f64, s: f64) 
             sym.size.1 *= sf;
         }
         if let Some(im) = n.image.as_mut() {
-            im.dest.x = ax + (im.dest.x - ax) * sf;
-            im.dest.y = ay + (im.dest.y - ay) * sf;
-            im.dest.w *= sf;
-            im.dest.h *= sf;
+            im.dest.x = ax + (im.dest.x - ax) * sx;
+            im.dest.y = ay + (im.dest.y - ay) * sy;
+            im.dest.w *= sx;
+            im.dest.h *= sy;
         }
         if sf < 0.005 {
             n.opacity = 0.0;
@@ -396,11 +402,14 @@ fn apply_transition_effect(nodes: &mut [Node], indices: &[usize], root_bounds: R
     if let Some(op) = effect.opacity {
         mul_opacity(nodes, indices, lerp(1.0, op, k) as f32);
     }
-    if let Some(sc) = effect.scale {
+    if effect.scale.is_some() || effect.scale_x.is_some() || effect.scale_y.is_some() {
         let a = effect.anchor.unwrap_or([0.5, 0.5]);
         let ax = root_bounds.x + root_bounds.w * a[0];
         let ay = root_bounds.y + root_bounds.h * a[1];
-        scale_nodes(nodes, indices, ax, ay, lerp(1.0, sc, k).max(0.0));
+        let s = effect.scale.unwrap_or(1.0);
+        let sx = lerp(1.0, s * effect.scale_x.unwrap_or(1.0), k).max(0.0);
+        let sy = lerp(1.0, s * effect.scale_y.unwrap_or(1.0), k).max(0.0);
+        scale_nodes_xy(nodes, indices, ax, ay, sx, sy);
     }
     let mut dx = 0.0;
     let mut dy = 0.0;
@@ -812,6 +821,13 @@ impl Animator {
         }
 
         // 4. Removal transitions for disappeared nodes.
+        // React Native LayoutAnimation: the commit's delete effect and timing (none configured: removals are immediate).
+        let layout_delete = target.nodes.iter().find_map(|n| n.anim.as_ref().filter(|a| a.layout)).map(|a| TransitionSpec {
+            removal: a.transition.as_ref().map(|t| t.removal.clone()).unwrap_or_default(),
+            animation: a.removal.clone(),
+            ..TransitionSpec::default()
+        });
+        let layout_delete = layout_delete.as_ref();
         let mut remove_covered: HashSet<usize> = matched_handled_prev;
         for (i, n) in prev.nodes.iter().enumerate() {
             if remove_covered.contains(&i) || n.kind == "screen" || is_chrome(n) {
@@ -820,12 +836,18 @@ impl Animator {
             if target_map.contains_key(&key_ref(n)) {
                 continue;
             }
-            let explicit = n.anim.as_ref().and_then(|a| a.transition.as_ref());
+            // A React Native view leaves with the delete effect of the commit that removed it (if it animates), never
+            // with an earlier commit's.
+            let explicit = match layout_delete {
+                Some(d) => Some(d),
+                None if n.anim.as_ref().is_some_and(|a| a.layout) => continue,
+                None => n.anim.as_ref().and_then(|a| a.transition.as_ref()),
+            };
             // Check if the new tree has an active animation on the parent or root (or on the transition itself).
             let parent_anim = n
                 .parent
                 .and_then(|p| target_map.get(&key_ref(&prev.nodes[p])))
-                .and_then(|&ti| target.nodes[ti].anim.as_ref().and_then(|a| a.animation.clone()));
+                .and_then(|&ti| target.nodes[ti].anim.as_ref().filter(|a| !a.layout).and_then(|a| a.animation.clone()));
             let anim = explicit
                 .and_then(|t| t.animation.clone())
                 .or(parent_anim)
@@ -1111,7 +1133,7 @@ fn apply_matched_morph(nodes: &mut [Node], sub: &[usize], from: Rect, to: Rect, 
 }
 
 fn find_root_animation(scene: &Scene) -> Option<AnimationSpec> {
-    scene.nodes.iter().skip(1).find_map(|n| n.anim.as_ref()?.animation.clone())
+    scene.nodes.iter().skip(1).find_map(|n| n.anim.as_ref().filter(|a| !a.layout)?.animation.clone())
 }
 
 fn parent_bounds(scene: &Scene, idx: usize) -> Rect {
@@ -1125,7 +1147,7 @@ fn is_chrome(n: &Node) -> bool {
 }
 
 fn is_identity_effect(e: &TransitionEffect) -> bool {
-    e.opacity.is_none() && e.scale.is_none() && e.offset.is_none() && e.edge.is_none()
+    e.opacity.is_none() && e.scale.is_none() && e.scale_x.is_none() && e.scale_y.is_none() && e.offset.is_none() && e.edge.is_none()
 }
 
 fn extract_ghost_subtree(nodes: &[Node], root: usize) -> (Vec<Node>, Vec<usize>) {

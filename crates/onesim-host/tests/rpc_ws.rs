@@ -222,5 +222,6 @@ fn scene_phase_and_open_url_over_websocket() {
     assert_eq!(c.code("app.openURL", json!({"sessionId": sid, "url": "nope"})), "bad_request");
     assert_eq!(c.code("app.openURL", json!({"sessionId": "s99", "url": "app://x"})), "not_found");
     assert_eq!(c.code("session.create", json!({"framework": "swiftui", "appPath": GUEST, "launchURL": "x"})), "bad_request");
-    assert_eq!(c.code("session.create", json!({"framework": "expo", "launchURL": "app://x"})), "unsupported");
+    // React Native takes a launch URL on iOS only (Linking.getInitialURL).
+    assert_eq!(c.code("session.create", json!({"framework": "expo", "platform": "android", "launchURL": "app://x"})), "unsupported");
 }

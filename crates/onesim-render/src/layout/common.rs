@@ -62,6 +62,13 @@ pub struct SceneParams<'a> {
     pub chrome: crate::chrome::ChromeParams,
 }
 
+impl<'a> SceneParams<'a> {
+    /// The same parameters (struct update syntax needs a value, and `SceneParams` holds borrows).
+    pub(crate) fn reborrow(&self) -> SceneParams<'a> {
+        SceneParams { focus: self.focus, chrome: self.chrome, ..*self }
+    }
+}
+
 pub(crate) struct NavBack {
     pub action: Option<u64>,
     pub label: String,
@@ -94,6 +101,16 @@ pub(crate) fn tinted(pm: &tiny_skia::Pixmap, c: Color) -> Option<std::sync::Arc<
         let ch = |v: f32| ((v * a * 255.0).round() as u8).min((a * 255.0).round() as u8);
         *o = tiny_skia::PremultipliedColorU8::from_rgba(ch(c.r), ch(c.g), ch(c.b), (a * 255.0).round() as u8)?;
     }
+    Some(std::sync::Arc::new(out))
+}
+
+/// `resizeMode="repeat"`: `pm` tiled from the top-left corner at one bitmap pixel per device pixel (its natural size)
+/// over a `w` x `h` device-pixel canvas.
+pub(crate) fn tiled(pm: &tiny_skia::Pixmap, w: u32, h: u32) -> Option<std::sync::Arc<tiny_skia::Pixmap>> {
+    let mut out = tiny_skia::Pixmap::new(w.max(1), h.max(1))?;
+    let pattern = tiny_skia::Pattern::new(pm.as_ref(), tiny_skia::SpreadMode::Repeat, tiny_skia::FilterQuality::Nearest, 1.0, tiny_skia::Transform::identity());
+    let paint = tiny_skia::Paint { shader: pattern, ..tiny_skia::Paint::default() };
+    out.fill_rect(tiny_skia::Rect::from_xywh(0.0, 0.0, w as f32, h as f32)?, &paint, tiny_skia::Transform::identity(), None);
     Some(std::sync::Arc::new(out))
 }
 
