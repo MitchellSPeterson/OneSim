@@ -451,8 +451,16 @@ impl Host {
         Ok(f(&scene, fonts, version))
     }
 
+    /// Current deterministic animation clock in milliseconds (starts at `0.0`).
+    pub fn clock_ms(&mut self, id: &str) -> Result<f64, ApiError> {
+        Ok(self.get(id)?.clock_ms)
+    }
+
     /// Whether the session has active SwiftUI animations, a scheduled guest tick, or a held gesture.
     pub fn is_animating(&mut self, id: &str) -> bool {
+        if self.sessions.get(id).is_some_and(|s| s.state() == State::Running) {
+            let _ = self.scene(id);
+        }
         let Some(s) = self.sessions.get_mut(id) else { return false };
         s.sync_schedule();
         s.anim.is_animating() || s.guest_due_ms.is_some() || s.inter.holding() || s.live_moving

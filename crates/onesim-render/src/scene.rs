@@ -725,6 +725,7 @@ impl Scene {
             id: n.id.clone(),
             kind: n.kind.to_string(),
             frame: UiFrame { x: n.bounds.x, y: n.bounds.y, width: n.bounds.w, height: n.bounds.h },
+            opacity: n.opacity,
             text: n.text.as_ref().map(|t| t.text.clone()),
             role: Some(n.role.as_str().to_string()),
             label: n.label.clone(),

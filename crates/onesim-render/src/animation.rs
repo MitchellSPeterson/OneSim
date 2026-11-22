@@ -381,10 +381,10 @@ fn subtree_indices(nodes: &[Node], root: usize) -> Vec<usize> {
     out
 }
 
-/// Resolve an edge move offset in points for a subtree inside `container`.
+/// Resolve an edge move offset in points for a subtree (SwiftUI `.move(edge:)` shifts by the view's own extent).
 fn edge_offset(edge: TransitionEdge, sub: Rect, container: Rect) -> (f64, f64) {
-    let w = if container.w > 1.0 { container.w } else { sub.w.max(40.0) };
-    let h = if container.h > 1.0 { container.h } else { sub.h.max(40.0) };
+    let w = if sub.w > 1.0 { sub.w } else if container.w > 1.0 { container.w } else { 40.0 };
+    let h = if sub.h > 1.0 { sub.h } else if container.h > 1.0 { container.h } else { 40.0 };
     match edge {
         TransitionEdge::Leading => (-w, 0.0),
         TransitionEdge::Trailing => (w, 0.0),
@@ -501,6 +501,43 @@ impl PropTrack {
     }
 }
 
+/// Project an in-flight track's normalized velocity onto a retargeted track's delta so physical
+/// velocity is continuous in both magnitude and sign (e.g. reversing mid-flight yields negative
+/// normalized velocity that smoothly turns around).
+fn retarget_init_vel(
+    old: &PropTrack,
+    new_bounds: Option<(Rect, Rect)>,
+    new_opacity: Option<(f32, f32)>,
+    new_radius: Option<(f64, f64)>,
+) -> f64 {
+    let old_v = old.progress().1;
+    if old_v.abs() < 1e-6 {
+        return 0.0;
+    }
+    if let (Some((oa, ob)), Some((na, nb))) = (old.bounds, new_bounds) {
+        let od = [ob.x - oa.x, ob.y - oa.y, ob.w - oa.w, ob.h - oa.h];
+        let nd = [nb.x - na.x, nb.y - na.y, nb.w - na.w, nb.h - na.h];
+        let nd_sq: f64 = nd.iter().map(|v| v * v).sum();
+        if nd_sq > 1e-6 {
+            let dot: f64 = od.iter().zip(nd).map(|(o, n)| o * n).sum();
+            return (old_v * dot / nd_sq).clamp(-12.0, 12.0);
+        }
+    }
+    if let (Some((oa, ob)), Some((na, nb))) = (old.opacity, new_opacity) {
+        let nd = f64::from(nb - na);
+        if nd.abs() > 1e-6 {
+            return (old_v * f64::from(ob - oa) / nd).clamp(-12.0, 12.0);
+        }
+    }
+    if let (Some((oa, ob)), Some((na, nb))) = (old.radius, new_radius) {
+        let nd = nb - na;
+        if nd.abs() > 1e-6 {
+            return (old_v * (ob - oa) / nd).clamp(-12.0, 12.0);
+        }
+    }
+    old_v.clamp(-8.0, 8.0)
+}
+
 #[derive(Debug, Clone)]
 struct InsertTrack {
     spec: AnimationSpec,
@@ -515,6 +552,7 @@ struct MatchInsertTrack {
     spec: AnimationSpec,
     elapsed: f64,
     from: Rect,
+    from_opacity: f32,
     props: MatchedProps,
     anchor: [f64; 2],
 }
@@ -636,6 +674,7 @@ impl Animator {
                     spec: spec.clone(),
                     elapsed: 0.0,
                     from: old_rect,
+                    from_opacity: prev.nodes[pi].opacity,
                     props: m.properties,
                     anchor: m.anchor,
                 },
@@ -720,21 +759,28 @@ impl Animator {
                 // `prev` already holds the displayed frame; let the new PropTrack take over smoothly.
                 self.match_inserts.remove(&kref as &dyn KeyLike);
                 let spec = anim.unwrap().clone();
-                // Preserve normalized spring velocity if retargeting an in-flight track.
-                let init_vel = self.props.get(&kref as &dyn KeyLike).map_or(0.0, |old| old.progress().1.clamp(-8.0, 8.0));
+                // Preserve physical velocity when retargeting an in-flight track (projecting onto the new delta
+                // so reversing mid-flight decelerates smoothly instead of inverting velocity instantaneously).
+                let new_bounds = bounds_chg.then_some((pn.bounds, n.bounds));
+                let new_opacity = op_chg.then_some((pn.opacity, n.opacity));
+                let new_radius = rad_chg.then_some((pn.radius, n.radius));
+                let init_vel = self
+                    .props
+                    .get(&kref as &dyn KeyLike)
+                    .map_or(0.0, |old| retarget_init_vel(old, new_bounds, new_opacity, new_radius));
                 next_props.insert(
                     node_key(n),
                     PropTrack {
                         spec,
                         elapsed: 0.0,
                         init_vel,
-                        bounds: bounds_chg.then_some((pn.bounds, n.bounds)),
-                        opacity: op_chg.then_some((pn.opacity, n.opacity)),
+                        bounds: new_bounds,
+                        opacity: new_opacity,
                         fill: fill_chg.then(|| (pn.fill.unwrap(), n.fill.unwrap())),
                         stroke: stroke_chg.then(|| (pn.stroke.unwrap(), n.stroke.unwrap())),
                         vector_fill: vfill_pair,
                         vector_stroke: vstroke_pair,
-                        radius: rad_chg.then_some((pn.radius, n.radius)),
+                        radius: new_radius,
                         text_color: text_col_chg.then(|| (pn.text.as_ref().unwrap().color, n.text.as_ref().unwrap().color)),
                         symbol_color: sym_col_chg.then(|| (pn.symbol.as_ref().unwrap().color, n.symbol.as_ref().unwrap().color)),
                         glyph_color: glyph_col_chg.then(|| (pn.glyph.unwrap().1, n.glyph.unwrap().1)),
@@ -999,7 +1045,14 @@ impl Animator {
                 let sub = subtree_indices(&out.nodes, i);
                 let live_to = out.nodes[i].bounds;
                 apply_matched_morph(&mut out.nodes, &sub, tr.from, live_to, tr.props, tr.anchor, p);
-                mul_opacity(&mut out.nodes, &sub, p.clamp(0.0, 1.0) as f32);
+                // Solve src-over compositing so `a_top + a_bot * (1 - a_top) == lerp(a_old, a_new, p)`:
+                // with outgoing ghost on top at `a_top = from_opacity * (1 - p)`, scaling the entering
+                // view by `p / (1 - a_top)` keeps opaque views at 1.0 (no 75% dip) and translucent
+                // views at their exact interpolated alpha (no initial jump at p = 0).
+                let p_c = p.clamp(0.0, 1.0);
+                let denom = 1.0 - (1.0 - p_c) * f64::from(tr.from_opacity.clamp(0.0, 1.0));
+                let enter_mul = if denom <= 1e-6 { 1.0 } else { (p_c / denom).clamp(0.0, 1.0) };
+                mul_opacity(&mut out.nodes, &sub, enter_mul as f32);
             }
         }
 
@@ -1387,6 +1440,47 @@ mod tests {
         assert!(!a.tick(0.2));
         let final_scene = a.render_scene(&s3);
         assert_eq!(final_scene.nodes.iter().find(|n| n.id == "0/T").unwrap().bounds, s3.nodes[1].bounds);
+    }
+
+    #[test]
+    fn matched_geometry_compositing_preserves_opaque_and_translucent_alpha() {
+        for (a_old, a_new) in [(1.0_f32, 1.0_f32), (0.5, 0.5), (0.4, 1.0), (1.0, 0.4)] {
+            let mut a = Animator::new();
+            let mut n1 = Node::new("0/F", "shape");
+            n1.bounds = Rect { x: 20.0, y: 20.0, w: 60.0, h: 40.0 };
+            n1.opacity = a_old;
+            n1.anim = Some(Box::new(NodeAnim {
+                matched: Some(MatchedGeometryMod { id: "pill".into(), namespace: "ns".into(), properties: MatchedProps::Frame, anchor: [0.5, 0.5], is_source: true }),
+                ..Default::default()
+            }));
+            a.update(&make_scene(vec![n1]));
+
+            let mut n2 = Node::new("0/T", "shape");
+            n2.bounds = Rect { x: 120.0, y: 20.0, w: 60.0, h: 40.0 };
+            n2.opacity = a_new;
+            n2.anim = Some(Box::new(NodeAnim {
+                animation: Some(linear(0.4, 1)),
+                matched: Some(MatchedGeometryMod { id: "pill".into(), namespace: "ns".into(), properties: MatchedProps::Frame, anchor: [0.5, 0.5], is_source: true }),
+                ..Default::default()
+            }));
+            let s2 = make_scene(vec![n2]);
+            a.update(&s2);
+
+            for (dt, p) in [(0.0, 0.0_f32), (0.2, 0.5_f32)] {
+                if dt > 0.0 {
+                    assert!(a.tick(dt));
+                }
+                let mid = a.render_scene(&s2);
+                let enter = mid.nodes.iter().find(|n| n.id == "0/T").unwrap().opacity;
+                let ghost = mid.nodes.iter().find(|n| n.id == "0/F").unwrap().opacity;
+                let combined = ghost + enter * (1.0 - ghost);
+                let expected = a_old * (1.0 - p) + a_new * p;
+                assert!(
+                    (combined - expected).abs() < 0.02,
+                    "({a_old}->{a_new} @ p={p}): enter={enter:.3}, ghost={ghost:.3}, combined={combined:.3}, expected={expected:.3}"
+                );
+            }
+        }
     }
 
     #[test]

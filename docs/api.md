@@ -67,6 +67,8 @@ Status values: `created`, `starting`, `running`, `paused`, `stopping`, `stopped`
 | `runtime.resume` | `{"sessionId"}` | `{"status":"running"}` |
 | `runtime.stop` | `{"sessionId"}` | `{"status":"stopped"}` |
 | `runtime.status` | `{"sessionId"}` | `{"status","treeVersion","errors":[{"message","source"}]}` |
+| `runtime.tick` | `{"sessionId","dtMs":number}` | `{"clockMs":number,"animating":bool}` (advance the deterministic animation clock by one step) |
+| `runtime.wait` | `{"sessionId","ms":number}` | `{"clockMs":number,"animating":bool}` (step the deterministic animation clock in 16 ms frames) |
 
 ## Input
 
@@ -88,6 +90,7 @@ SwiftUI never waits, so the flag changes nothing there. Keep the default for det
 | `input.key` | `{"sessionId","key":"enter"\|"backspace"}` | `{}` |
 | `input.scroll` | target + `{"dx","dy"}` points (positive dy reveals later content) | `{}` |
 | `input.swipe` | `{"sessionId","from":{x,y},"to":{x,y},"durationMs"?}` | `{}` (v0.2: delivered as a scroll of `from - to` at `from`) |
+| `input.drag` | `{"sessionId","phase":"begin"\|"move"\|"end","x","y","timeMs"?}` | `{"changed":bool}` (incremental finger drag; `timeMs` defaults to the session's `clockMs`) |
 
 All input params also carry `"sessionId"`.
 

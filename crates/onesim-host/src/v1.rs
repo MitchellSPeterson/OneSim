@@ -20,7 +20,10 @@ pub const COMMANDS: &[&str] = &[
     "set_scene_phase",
     "open_url",
     "send_pointer_event",
+    "send_drag_phase",
     "send_keyboard_event",
+    "tick",
+    "wait",
     "capture_screenshot",
     "inspect_ui_tree",
     "get_errors",
@@ -113,10 +116,44 @@ impl Host {
                 let (hit, action) = self.pointer(&a.session_id, a.event)?;
                 ok(json!({"hit": hit, "action": action}))
             }
+            "send_drag_phase" => {
+                let a: DragPhaseParams = p(params)?;
+                let phase = match a.phase {
+                    DragPhaseKind::Begin => onesim_render::DragPhase::Begin,
+                    DragPhaseKind::Move => onesim_render::DragPhase::Move,
+                    DragPhaseKind::End => onesim_render::DragPhase::End,
+                };
+                let t_ms = match a.time_ms {
+                    Some(t) if t.is_finite() => t,
+                    Some(_) => return Err(err(ErrorCode::BadRequest, "time_ms must be finite")),
+                    None => self.clock_ms(&a.session_id)?,
+                };
+                let changed = self.drag(&a.session_id, phase, a.x, a.y, t_ms)?;
+                ok(json!({"changed": changed}))
+            }
             "send_keyboard_event" => {
                 let a: KeyboardParams = p(params)?;
                 self.keyboard(&a.session_id, a.event)?;
                 ok(json!({}))
+            }
+            "tick" => {
+                let a: TickParams = p(params)?;
+                if !a.dt_ms.is_finite() || a.dt_ms < 0.0 {
+                    return Err(err(ErrorCode::BadRequest, "dt_ms must be a non-negative finite number"));
+                }
+                let animating = self.tick(&a.session_id, a.dt_ms / 1000.0)?;
+                let clock_ms = self.clock_ms(&a.session_id)?;
+                ok(json!({"clock_ms": clock_ms, "animating": animating}))
+            }
+            "wait" => {
+                let a: WaitParams = p(params)?;
+                if !a.ms.is_finite() || a.ms < 0.0 {
+                    return Err(err(ErrorCode::BadRequest, "ms must be a non-negative finite number"));
+                }
+                self.wait(&a.session_id, a.ms)?;
+                let clock_ms = self.clock_ms(&a.session_id)?;
+                let animating = self.is_animating(&a.session_id);
+                ok(json!({"clock_ms": clock_ms, "animating": animating}))
             }
             "capture_screenshot" => {
                 let a: ScreenshotParams = p(params)?;
