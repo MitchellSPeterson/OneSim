@@ -88,10 +88,10 @@ run(async () => {
 
   // ---- Images: GIF and WebP sources load (cached with their own extension) for core Image and expo-image.
   h.tap('Images>');
-  await h.until(() => { let n = 0; walk(h.tree, (v) => { if (v.props.__simcoreImage) n++; }); return n === 10; }, 'ten images loaded');
+  await h.until(() => { let n = 0; walk(h.tree, (v) => { if (v.props.__simcoreImage) n++; }); return n === 11; }, 'eleven images loaded');
   const exts = []; walk(h.tree, (v) => { if (v.props.__simcoreImage) exts.push(v.props.__simcoreImage.path.split('.').pop()); });
-  // GIF / WebP stills and animations, the ref (WebP), the repeat dot and the decoded blurhash (PNG).
-  expect(exts.sort().join() === 'gif,gif,gif,gif,png,png,webp,webp,webp,webp', 'image files: ' + exts);
+  // GIF / WebP stills and animations, the ref (WebP), the repeat dot, the decoded blurhash and a placeholder (PNG).
+  expect(exts.sort().join() === 'gif,gif,gif,gif,png,png,png,webp,webp,webp,webp', 'image files: ' + exts);
   ok('images: ' + exts.join(' '));
   // expo-image: a generated blurhash (the same string iOS 27.2 gives for this GIF), a blurhash source, a loadAsync ref,
   // repeat tiles, and stop / start on an autoplay={false} GIF.
@@ -100,6 +100,10 @@ run(async () => {
   expect(imgs.some((v) => v.component === 'ViewManagerAdapter_ExpoImage' && typeof v.props.source === 'number'), 'an ImageRef source (shared object id)');
   expect(imgs.some((v) => v.props.resizeMode === 'repeat'), 'repeat image loaded');
   expect(imgs.some((v) => [].concat(v.props.source)[0]?.uri?.startsWith('blurhash:/')), 'blurhash source decoded by the host');
+  // No source: the placeholder draws, with placeholderContentFit.
+  expect(imgs.some((v) => v.props.accessibilityLabel === 'Placeholder only' && ![].concat(v.props.source ?? []).length && v.props.contentFit === 'scale-down'), 'placeholder without a source');
+  // Cached files are named by key and content, so new bytes behind the same key are a new file the host decodes.
+  expect(imgs.every((v) => /\/onesim-images\/[0-9a-f]{40}-[0-9a-f]{16}\.(png|gif|webp|jpg)$/.test(v.props.__simcoreImage.path) || v.props.source?.uri?.startsWith?.('file:') || typeof v.props.source === 'number'), 'content-versioned cache files');
   const paused = () => { let a; walk(h.tree, (v) => { if (v.component === 'ViewManagerAdapter_ExpoImage' && v.props.autoplay === false) a = v.props.__simcoreAnimating; }); return a; };
   h.tap('Play');
   await h.until(() => paused() === true, 'startAnimating');

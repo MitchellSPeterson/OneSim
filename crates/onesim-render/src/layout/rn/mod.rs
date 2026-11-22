@@ -920,7 +920,7 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
                         // until `startAnimating`, and `stopAnimating` holds them (`__simcoreAnimating` from the guest).
                         let autoplay = component != "ViewManagerAdapter_ExpoImage" || p.get("autoplay").and_then(Value::as_bool) != Some(false);
                         let paused = !p.get("__simcoreAnimating").and_then(Value::as_bool).unwrap_or(autoplay);
-                        let frames = crate::image::animation(path).map(|animation| crate::scene::ImageFrames { animation, tint, tile, paused });
+                        let frames = crate::image::animation(path).map(|animation| crate::scene::ImageFrames { source: std::sync::Arc::from(path), animation, tint, tile, paused });
                         n.image = Some(ImageRun { pixmap, dest: Rect { x: x + dest.x, y: y + dest.y, ..dest }, rotation: cx.rot + spin, filter: 2, frames });
                     }
                     None => cx.note(format!("image_decode_failed: {path}")),

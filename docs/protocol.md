@@ -486,7 +486,8 @@ its existing focus + software-keyboard machinery.
   scroll view takes a drag its way); `scrollTo` and `contentOffset` still apply.
 
 **Image** (`RCTImageView`). The guest downloads `source[0].uri` (http(s), `data:`, Metro
-assets) with Node `fetch` into `$TMPDIR/onesim-images/<sha1(uri)>.<ext>` and adds
+assets) with Node `fetch` into `$TMPDIR/onesim-images/<sha1(uri)>-<sha1(bytes)>.<ext>` (new bytes, new
+file: the host caches decodes by path) and adds
 `props.__simcoreImage = {"path","width","height"}` (pixels) to the node, dispatching
 `topLoadStart`, `topLoad` `{source:{uri,width,height}}`, `topLoadEnd` (or `topError`
 `{error}`). Host decodes PNG, JPEG, GIF and WebP from `path` and draws with `resizeMode`

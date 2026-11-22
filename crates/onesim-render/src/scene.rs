@@ -144,6 +144,8 @@ pub struct ImageRun {
 /// The frames an animated [`ImageRun`] plays, and the template tint applied to each.
 #[derive(Debug, Clone)]
 pub struct ImageFrames {
+    /// The file the frames come from: a view whose source changes starts the new animation from its first frame.
+    pub source: std::sync::Arc<str>,
     pub animation: std::sync::Arc<crate::image::Animation>,
     pub tint: Option<Color>,
     /// `resizeMode="repeat"`: each frame tiled over this many device pixels.

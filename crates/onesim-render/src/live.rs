@@ -4,6 +4,7 @@
 
 use crate::scene::{Glyph, Scene};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// One spoke step of UIActivityIndicatorView: 8 steps a second, clockwise.
 pub const SPINNER_STEP_MS: f64 = 125.0;
@@ -15,10 +16,12 @@ pub struct Live {
 }
 
 /// One live view's clock: when it started, and where a paused one stopped.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Run {
     start: f64,
     paused_at: Option<f64>,
+    /// The animated image's file; another file in the same view plays from its start.
+    source: Option<Arc<str>>,
 }
 
 impl Live {
@@ -37,8 +40,14 @@ impl Live {
             if !spins && !plays {
                 continue;
             }
-            let paused = n.image.as_ref().and_then(|i| i.frames.as_ref()).is_some_and(|f| f.paused);
-            let run = self.shown.entry(n.id.clone()).or_insert(Run { start: clock_ms, paused_at: None });
+            let frames = n.image.as_ref().and_then(|i| i.frames.as_ref());
+            let paused = frames.is_some_and(|f| f.paused);
+            let source = frames.map(|f| f.source.clone());
+            let fresh = Run { start: clock_ms, paused_at: None, source: source.clone() };
+            let run = self.shown.entry(n.id.clone()).or_insert_with(|| fresh.clone());
+            if run.source != source {
+                *run = fresh;
+            }
             // A pause freezes the view's time; resuming carries on from there.
             match (paused, run.paused_at) {
                 (true, None) => run.paused_at = Some(clock_ms),
@@ -81,7 +90,6 @@ impl Live {
 mod tests {
     use super::*;
     use crate::scene::{Color, ImageFrames, ImageRun, Node, Rect};
-    use std::sync::Arc;
 
     fn spinner(id: &str, spins: bool) -> Node {
         let mut n = Node::new(id, "spinner");
@@ -132,7 +140,11 @@ mod tests {
     }
 
     fn gif(id: &str) -> Node {
-        let path = std::env::temp_dir().join("onesim-live-anim8.gif");
+        gif_at(id, "onesim-live-anim8.gif")
+    }
+
+    fn gif_at(id: &str, file: &str) -> Node {
+        let path = std::env::temp_dir().join(file);
         std::fs::write(&path, include_bytes!("../tests/fixtures/anim8.gif")).unwrap();
         let path = path.to_str().unwrap();
         let mut n = Node::new(id, "image");
@@ -141,7 +153,7 @@ mod tests {
             dest: Rect { x: 0.0, y: 0.0, w: 8.0, h: 8.0 },
             rotation: 0.0,
             filter: 2,
-            frames: Some(ImageFrames { animation: crate::image::animation(path).unwrap(), tint: None, tile: None, paused: false }),
+            frames: Some(ImageFrames { source: Arc::from(path), animation: crate::image::animation(path).unwrap(), tint: None, tile: None, paused: false }),
         });
         n
     }
@@ -194,6 +206,20 @@ mod tests {
         assert_eq!(at(&mut live, 1080.0, false).0, 0, "then frame 2 (blue)");
         let mut held = Live::new();
         assert_eq!(at(&mut held, 500.0, true), (0, false), "autoplay off: the first frame");
+    }
+
+    #[test]
+    fn a_new_source_in_the_same_view_plays_from_its_first_frame() {
+        let mut live = Live::new();
+        live.apply(&mut scene(vec![gif("g")]), 0.0);
+        let mut s = scene(vec![gif("g")]);
+        assert!(!live.apply(&mut s, 1800.0), "the first animation finished");
+        let mut s = scene(vec![gif_at("g", "onesim-live-anim8-b.gif")]);
+        assert!(live.apply(&mut s, 1810.0), "the replacement runs");
+        assert_eq!(green_at(&s, 1), 0, "from its first (red) frame");
+        let mut s = scene(vec![gif_at("g", "onesim-live-anim8-b.gif")]);
+        live.apply(&mut s, 1960.0);
+        assert_eq!(green_at(&s, 1), 255, "and keeps its own clock across redraws");
     }
 
 }

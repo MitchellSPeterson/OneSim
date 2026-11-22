@@ -139,7 +139,9 @@ function unsupported(mod, method, pkg) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Image cache: $TMPDIR/onesim-images/<sha1(uri)>.<ext>. Shared by RCTImageView and ImageLoader.
+// Image cache: $TMPDIR/onesim-images/<sha1(key)>-<sha1(bytes)>.<ext>. Shared by RCTImageView and ImageLoader. The
+// content hash gives changed bytes a new file, so the host (which caches decodes by path) draws the new image after
+// a reload.
 // ---------------------------------------------------------------------------------------------
 const imageCache = new Map(); // uri -> Promise<{path,width,height}> (pixels)
 const imageDone = new Map(); // uri -> info, once loaded (queryCache)
@@ -192,7 +194,8 @@ function loadImage(uri, headers, o = {}) {
       if (!i) throw new Error(`not a PNG/JPEG/GIF/WebP image: ${uri.slice(0, 120)}`);
       const dir = path.join(os.tmpdir(), 'onesim-images');
       fs.mkdirSync(dir, { recursive: true });
-      const file = path.join(dir, `${crypto.createHash('sha1').update(key).digest('hex')}.${i.ext}`);
+      const sha1 = (v) => crypto.createHash('sha1').update(v).digest('hex');
+      const file = path.join(dir, `${sha1(key)}-${sha1(buf).slice(0, 16)}.${i.ext}`);
       fs.writeFileSync(file, buf);
       const info = { path: file, width: i.width, height: i.height, animated: !!i.animated };
       imageDone.set(key, info);
@@ -834,10 +837,13 @@ class Runtime {
     const tag = n.reactTag, expo = n.viewName === EXPO_IMAGE, lib = this.registry.images, v = this.imageViews.get(tag) || {};
     if (expo && v.animating !== undefined) props.__simcoreAnimating = v.animating; // startAnimating / stopAnimating
     const src = lib.resolve([].concat(props.source ?? [])[0]), uri = src && src.uri;
-    if (!uri) return;
-    const key = src.ref ? `ref:${src.ref.__expo_shared_object_id__}` : src.cacheKey || uri;
+    if (!uri && !expo) return;
+    // No source (`source={null}` while data loads): expo-image still draws its placeholder.
+    const key = !uri ? null : src.ref ? `ref:${src.ref.__expo_shared_object_id__}` : src.cacheKey || uri;
     let st = this.images.get(tag);
-    if (!st || (st.key !== key && !(v.locked && st.info))) {
+    if (!uri) {
+      if (!st || (st.key !== null && !(v.locked && st.info))) this.images.set(tag, (st = { uri: null, key: null }));
+    } else if (!st || (st.key !== key && !(v.locked && st.info))) {
       const mine = (st = { uri, key });
       this.images.set(tag, st);
       const done = (type, ev) => { if (this.images.get(tag) !== mine) return; this.dispatch(this.nodes.get(tag) || n, type, { target: tag, ...ev }); };

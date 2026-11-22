@@ -123,6 +123,9 @@ function ImagesScreen({ fg }) {
         <Button label="Play" onPress={() => gif.current?.startAnimating()} />
         <Button label="Pause" onPress={() => gif.current?.stopAnimating()} />
       </View>
+      {/* Below the fold (the reference screenshots stay as they are): no source yet, so the placeholder shows. */}
+      <View style={{ height: 900 }} />
+      <ExpoImage source={null} placeholder={SAMPLE_HASH} accessibilityLabel="Placeholder only" style={styles.hash} />
     </ScrollView>
   );
 }
