@@ -552,6 +552,7 @@ struct MatchInsertTrack {
     spec: AnimationSpec,
     elapsed: f64,
     from: Rect,
+    from_opacity: f32,
     props: MatchedProps,
     anchor: [f64; 2],
 }
@@ -673,6 +674,7 @@ impl Animator {
                     spec: spec.clone(),
                     elapsed: 0.0,
                     from: old_rect,
+                    from_opacity: prev.nodes[pi].opacity,
                     props: m.properties,
                     anchor: m.anchor,
                 },
@@ -1043,8 +1045,14 @@ impl Animator {
                 let sub = subtree_indices(&out.nodes, i);
                 let live_to = out.nodes[i].bounds;
                 apply_matched_morph(&mut out.nodes, &sub, tr.from, live_to, tr.props, tr.anchor, p);
-                // Keep the entering matched view at full opacity while the outgoing ghost fades out on top
-                // (`(1-p) * old + p * new` with combined alpha = 1.0, avoiding a 75% mid-flight alpha dip).
+                // Solve src-over compositing so `a_top + a_bot * (1 - a_top) == lerp(a_old, a_new, p)`:
+                // with outgoing ghost on top at `a_top = from_opacity * (1 - p)`, scaling the entering
+                // view by `p / (1 - a_top)` keeps opaque views at 1.0 (no 75% dip) and translucent
+                // views at their exact interpolated alpha (no initial jump at p = 0).
+                let p_c = p.clamp(0.0, 1.0);
+                let denom = 1.0 - (1.0 - p_c) * f64::from(tr.from_opacity.clamp(0.0, 1.0));
+                let enter_mul = if denom <= 1e-6 { 1.0 } else { (p_c / denom).clamp(0.0, 1.0) };
+                mul_opacity(&mut out.nodes, &sub, enter_mul as f32);
             }
         }
 
@@ -1432,6 +1440,47 @@ mod tests {
         assert!(!a.tick(0.2));
         let final_scene = a.render_scene(&s3);
         assert_eq!(final_scene.nodes.iter().find(|n| n.id == "0/T").unwrap().bounds, s3.nodes[1].bounds);
+    }
+
+    #[test]
+    fn matched_geometry_compositing_preserves_opaque_and_translucent_alpha() {
+        for (a_old, a_new) in [(1.0_f32, 1.0_f32), (0.5, 0.5), (0.4, 1.0), (1.0, 0.4)] {
+            let mut a = Animator::new();
+            let mut n1 = Node::new("0/F", "shape");
+            n1.bounds = Rect { x: 20.0, y: 20.0, w: 60.0, h: 40.0 };
+            n1.opacity = a_old;
+            n1.anim = Some(Box::new(NodeAnim {
+                matched: Some(MatchedGeometryMod { id: "pill".into(), namespace: "ns".into(), properties: MatchedProps::Frame, anchor: [0.5, 0.5], is_source: true }),
+                ..Default::default()
+            }));
+            a.update(&make_scene(vec![n1]));
+
+            let mut n2 = Node::new("0/T", "shape");
+            n2.bounds = Rect { x: 120.0, y: 20.0, w: 60.0, h: 40.0 };
+            n2.opacity = a_new;
+            n2.anim = Some(Box::new(NodeAnim {
+                animation: Some(linear(0.4, 1)),
+                matched: Some(MatchedGeometryMod { id: "pill".into(), namespace: "ns".into(), properties: MatchedProps::Frame, anchor: [0.5, 0.5], is_source: true }),
+                ..Default::default()
+            }));
+            let s2 = make_scene(vec![n2]);
+            a.update(&s2);
+
+            for (dt, p) in [(0.0, 0.0_f32), (0.2, 0.5_f32)] {
+                if dt > 0.0 {
+                    assert!(a.tick(dt));
+                }
+                let mid = a.render_scene(&s2);
+                let enter = mid.nodes.iter().find(|n| n.id == "0/T").unwrap().opacity;
+                let ghost = mid.nodes.iter().find(|n| n.id == "0/F").unwrap().opacity;
+                let combined = ghost + enter * (1.0 - ghost);
+                let expected = a_old * (1.0 - p) + a_new * p;
+                assert!(
+                    (combined - expected).abs() < 0.02,
+                    "({a_old}->{a_new} @ p={p}): enter={enter:.3}, ghost={ghost:.3}, combined={combined:.3}, expected={expected:.3}"
+                );
+            }
+        }
     }
 
     #[test]

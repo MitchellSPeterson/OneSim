@@ -83,6 +83,61 @@ class CompareAnimationTests(unittest.TestCase):
             summary = ca.compare_sequences(nat_dir, os_dir, tmp / "out", timestamps=[50, 120], window=1, fps=fps, max_diff=2.0)
             self.assertFalse(summary["all_pass"], "snapped animation must fail mid-flight comparison")
 
+    def test_compare_rejects_timestamps_beyond_captured_interval(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            nat_dir = tmp / "nat"
+            os_dir = tmp / "os"
+            nat_dir.mkdir()
+            os_dir.mkdir()
+            fps = 60.0
+            dt = 1000.0 / fps
+            # Both recordings only cover 0..100ms (7 frames).
+            meta = []
+            for i in range(7):
+                fname = f"frame_{i:04d}.png"
+                make_bar_frame(240, 160, 20 + i * 10).save(nat_dir / fname)
+                make_bar_frame(240, 160, 20 + i * 10).save(os_dir / fname)
+                meta.append({"index": i, "file": fname, "t_ms": round(i * dt, 3)})
+            (nat_dir / "manifest.json").write_text(json.dumps({"fps": fps, "t0_index": 0, "frames": meta}))
+            (os_dir / "manifest.json").write_text(json.dumps({"fps": fps, "t0_index": 0, "frames": meta}))
+
+            summary = ca.compare_sequences(nat_dir, os_dir, tmp / "out", timestamps=[50, 350, 600], window=2, fps=fps, max_diff=2.0)
+            self.assertFalse(summary["all_pass"], "timestamps beyond captured duration must fail")
+            self.assertTrue(summary["samples"][0]["pass"])
+            self.assertFalse(summary["samples"][0]["missing"])
+            self.assertTrue(summary["samples"][1]["missing"])
+            self.assertFalse(summary["samples"][1]["pass"])
+            self.assertTrue(summary["samples"][2]["missing"])
+            self.assertFalse(summary["samples"][2]["pass"])
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg not installed")
+    def test_compare_isolates_same_stem_video_extractions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            for sub, x_fn in [("native", lambda i: 20 + i * 10), ("onesim", lambda _i: 160)]:
+                d = tmp / sub
+                d.mkdir()
+                for i in range(12):
+                    make_bar_frame(240, 160, x_fn(i)).save(d / f"frame_{i:04d}.png")
+                subprocess.run(
+                    ["ffmpeg", "-y", "-loglevel", "error", "-framerate", "30",
+                     "-i", str(d / "frame_%04d.png"), "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                     str(d / "recording.mp4")],
+                    check=True,
+                )
+            # Both inputs share the exact same filename stem `recording.mp4` but differ visually.
+            summary = ca.compare_sequences(
+                tmp / "native/recording.mp4",
+                tmp / "onesim/recording.mp4",
+                tmp / "out",
+                timestamps=[50, 150],
+                window=1,
+                fps=30.0,
+                max_diff=2.0,
+            )
+            self.assertFalse(summary["all_pass"], "same-stem videos must not overwrite each other's extracted frames")
+
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg not installed")
     def test_stitch_side_by_side_video(self):
         with tempfile.TemporaryDirectory() as tmp:

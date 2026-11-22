@@ -94,21 +94,26 @@ def frame_at_time(frames, t_ms: float) -> int:
     return min(range(len(frames)), key=lambda i: abs(frames[i]["t_ms"] - t_ms))
 
 
-def match_frame_in_window(onesim_img: Image.Image, native_frames, target_t_ms: float, window: int = 2):
-    """Match `onesim_img` against native frames within `[center - window, center + window]`.
+def match_frame_in_window(onesim_img: Image.Image, native_frames, target_t_ms: float, window: int = 2,
+                          nat_dt_ms: float | None = None):
+    """Match `onesim_img` against native frames within `[center - window, center + window]`
+    whose timestamps are within `(window + 0.55) * nat_dt_ms` of `target_t_ms`.
 
-    Returns `(best_idx, delta_frames, best_pct, best_mean, best_native_img, best_diff_luma)`.
+    Returns `(best_idx, delta_frames, best_pct, best_mean, best_native_img, best_diff_luma)`
+    or `None` if no native frame covers `target_t_ms` within the allowed tolerance.
     """
     center_idx = frame_at_time(native_frames, target_t_ms)
+    max_tol = (window + 0.55) * nat_dt_ms if nat_dt_ms is not None else None
     lo = max(0, center_idx - window)
     hi = min(len(native_frames) - 1, center_idx + window)
     best = None
     for idx in range(lo, hi + 1):
+        if max_tol is not None and abs(native_frames[idx]["t_ms"] - target_t_ms) > max_tol:
+            continue
         nat_img = Image.open(native_frames[idx]["path"]).convert("RGB")
         pct, mean, diff = pixel_diff_stats(nat_img, onesim_img)
         if best is None or pct < best[2]:
             best = (idx, idx - center_idx, pct, mean, nat_img, diff)
-    assert best is not None
     return best
 
 
@@ -305,14 +310,36 @@ def compare_sequences(native_path: Path, onesim_path: Path, out_dir: Path, times
     timestamps = timestamps or DEFAULT_TIMESTAMPS
     out_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="onesim-anim-cmp-") as tmp:
-        nat_frames, nat_t0, _ = load_frame_sequence(native_path, fps=fps, motion_threshold=motion_threshold, tmp_dir=Path(tmp))
-        os_frames, os_t0, _ = load_frame_sequence(onesim_path, fps=fps, motion_threshold=motion_threshold, tmp_dir=Path(tmp))
+        tmp = Path(tmp)
+        nat_frames, nat_t0, nat_fps = load_frame_sequence(native_path, fps=fps, motion_threshold=motion_threshold, tmp_dir=tmp / "nat")
+        os_frames, os_t0, os_fps = load_frame_sequence(onesim_path, fps=fps, motion_threshold=motion_threshold, tmp_dir=tmp / "os")
+        nat_dt = 1000.0 / nat_fps
+        os_dt = 1000.0 / os_fps
         results = []
         filmstrip_rows = []
         for t_ms in timestamps:
             oi = frame_at_time(os_frames, t_ms)
+            os_actual = os_frames[oi]["t_ms"]
+            if abs(os_actual - t_ms) > os_dt * 0.55:
+                results.append({
+                    "t_ms": t_ms,
+                    "missing": True,
+                    "error": f"onesim does not cover t={t_ms:.0f}ms (nearest {os_actual:.1f}ms, range {os_frames[0]['t_ms']:.1f}..{os_frames[-1]['t_ms']:.1f}ms)",
+                    "pass": False,
+                })
+                continue
             os_img = Image.open(os_frames[oi]["path"]).convert("RGB")
-            ni, df, pct, mean, nat_img, diff = match_frame_in_window(os_img, nat_frames, t_ms, window=window)
+            matched = match_frame_in_window(os_img, nat_frames, t_ms, window=window, nat_dt_ms=nat_dt)
+            if matched is None:
+                results.append({
+                    "t_ms": t_ms,
+                    "onesim_index": oi,
+                    "missing": True,
+                    "error": f"native does not cover t={t_ms:.0f}ms within +/-{window} frames (range {nat_frames[0]['t_ms']:.1f}..{nat_frames[-1]['t_ms']:.1f}ms)",
+                    "pass": False,
+                })
+                continue
+            ni, df, pct, mean, nat_img, diff = matched
             passed = pct < max_diff
             results.append({
                 "t_ms": t_ms,
@@ -321,19 +348,21 @@ def compare_sequences(native_path: Path, onesim_path: Path, out_dir: Path, times
                 "delta_frames": df,
                 "diff_pct": round(pct, 3),
                 "mean_abs_diff": round(mean, 2),
+                "missing": False,
                 "pass": passed,
             })
             filmstrip_rows.append({"t_ms": t_ms, "delta_frames": df, "pct": pct, "native": nat_img, "onesim": os_img, "diff": diff})
         filmstrip_path = out_dir / "filmstrip.png"
-        build_filmstrip(filmstrip_rows, filmstrip_path, native_label=native_label)
+        if filmstrip_rows:
+            build_filmstrip(filmstrip_rows, filmstrip_path, native_label=native_label)
         summary = {
             "native_t0_index": nat_t0,
             "onesim_t0_index": os_t0,
             "window_frames": window,
             "max_diff_pct": max_diff,
-            "filmstrip": str(filmstrip_path),
+            "filmstrip": str(filmstrip_path) if filmstrip_rows else None,
             "samples": results,
-            "all_pass": all(r["pass"] for r in results),
+            "all_pass": bool(results) and all(r["pass"] for r in results),
         }
         (out_dir / "report.json").write_text(json.dumps(summary, indent=2))
         return summary
@@ -460,8 +489,12 @@ def main(argv=None):
                               motion_threshold=a.motion_threshold, max_diff=a.max_diff, native_label=a.native_label)
         print(f"{'t_ms':>7}{'delta_f':>9}{'pixels >10% off':>17}{'mean abs diff':>15}  result (< {a.max_diff}%)")
         for r in s["samples"]:
-            print(f"{r['t_ms']:>7.0f}{r['delta_frames']:>+9d}{r['diff_pct']:>16.2f}%{r['mean_abs_diff']:>15.1f}  {'pass' if r['pass'] else 'FAIL'}")
-        print(f"filmstrip: {s['filmstrip']}")
+            if r.get("missing"):
+                print(f"{r['t_ms']:>7.0f}{'n/a':>9}{'n/a':>17}{'n/a':>15}  MISSING ({r.get('error', 'out of range')})")
+            else:
+                print(f"{r['t_ms']:>7.0f}{r['delta_frames']:>+9d}{r['diff_pct']:>16.2f}%{r['mean_abs_diff']:>15.1f}  {'pass' if r['pass'] else 'FAIL'}")
+        if s["filmstrip"]:
+            print(f"filmstrip: {s['filmstrip']}")
         return 0 if s["all_pass"] else 1
     if a.cmd == "video":
         out = stitch_side_by_side_video(a.native, a.onesim, a.out_mp4, duration_ms=a.duration_ms, fps=a.fps,
