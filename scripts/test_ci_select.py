@@ -67,6 +67,8 @@ MATRIX = [
      set(), set()),
     ("Android reference", ["tests/fixtures/compose-android/home.png"], set(), {"compose"}),
     ("pixel-diff tool", ["scripts/compare_ios.py"], NATIVE, NATIVE | WEB),
+    ("animation diff tool", ["scripts/compare_animation.py", "scripts/test_compare_animation.py"], {"swiftui"}, {"swiftui"}),
+    ("animation behavior harness", ["scripts/test-animation-behavior.py"], {"swiftui"}, {"swiftui"}),
     ("fonts", ["assets/fonts/Inter.ttf"], {"rust"} | NATIVE, ALL),
     ("pinned versions", ["docs/compatibility/versions.json"], set(), ALL),
 ]

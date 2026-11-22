@@ -29,7 +29,8 @@ pub const API_VERSION: &str = "2.0";
 pub const METHODS: &[&str] = &[
     "initialize", "session.create", "session.list", "session.get", "session.destroy",
     "runtime.load", "runtime.reload", "runtime.pause", "runtime.resume", "runtime.stop", "runtime.status",
-    "input.tap", "input.press", "input.type", "input.key", "input.scroll", "input.swipe",
+    "runtime.tick", "runtime.wait",
+    "input.tap", "input.press", "input.type", "input.key", "input.scroll", "input.swipe", "input.drag",
     "render.screenshot", "render.frame", "render.backend", "render.tree", "render.inspect",
     "device.list", "device.set", "device.rotate", "device.appearance", "device.keyboard", "device.pasteboard",
     "app.setScenePhase", "app.openURL",
@@ -150,6 +151,33 @@ struct SwipeP {
     session_id: String,
     from: Option<Pt>,
     to: Option<Pt>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DragP {
+    #[serde(default)]
+    session_id: String,
+    phase: Option<onesim_protocol::DragPhaseKind>,
+    x: Option<f64>,
+    y: Option<f64>,
+    time_ms: Option<f64>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TickP {
+    #[serde(default)]
+    session_id: String,
+    dt_ms: Option<f64>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WaitP {
+    #[serde(default)]
+    session_id: String,
+    ms: Option<f64>,
 }
 
 #[derive(Deserialize)]
@@ -640,6 +668,29 @@ fn session_call(srv: &Server, method: &str, p: &Value) -> R {
                 Ok(json!({"status": s.state().as_str(), "treeVersion": s.tree_version().unwrap_or(0), "errors": errors}))
             })
         }
+        "runtime.tick" => {
+            let a: TickP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
+            let dt_ms = a.dt_ms.filter(|v| v.is_finite() && *v >= 0.0).ok_or_else(|| bad("dtMs (non-negative number) required"))?;
+            let sid = en.id.as_str();
+            en.with_ro(|h| {
+                let animating = h.tick(sid, dt_ms / 1000.0)?;
+                let clock_ms = h.clock_ms(sid)?;
+                Ok(json!({"clockMs": clock_ms, "animating": animating}))
+            })
+        }
+        "runtime.wait" => {
+            let a: WaitP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
+            let ms = a.ms.filter(|v| v.is_finite() && *v >= 0.0).ok_or_else(|| bad("ms (non-negative number) required"))?;
+            let sid = en.id.as_str();
+            en.with_ro(|h| {
+                h.wait(sid, ms)?;
+                let clock_ms = h.clock_ms(sid)?;
+                let animating = h.is_animating(sid);
+                Ok(json!({"clockMs": clock_ms, "animating": animating}))
+            })
+        }
         "input.tap" | "input.scroll" => {
             let a: TargetP = args(p)?;
             let en = srv.entry(&a.session_id)?;
@@ -684,6 +735,26 @@ fn session_call(srv: &Server, method: &str, p: &Value) -> R {
             let (Some(f), Some(t)) = (&a.from, &a.to) else { return Err(bad("from and to ({x,y}) required")) };
             let ev = PointerEvent::moved(PointerKind::Scroll, f.x, f.y, f.x - t.x, f.y - t.y);
             en.with_ro(|h| h.pointer(&en.id, ev)).map(|_| json!({}))
+        }
+        "input.drag" => {
+            let a: DragP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
+            let phase = match a.phase.ok_or_else(|| bad("phase (\"begin\", \"move\", or \"end\") required"))? {
+                onesim_protocol::DragPhaseKind::Begin => onesim_render::DragPhase::Begin,
+                onesim_protocol::DragPhaseKind::Move => onesim_render::DragPhase::Move,
+                onesim_protocol::DragPhaseKind::End => onesim_render::DragPhase::End,
+            };
+            let (Some(x), Some(y)) = (a.x, a.y) else { return Err(bad("x and y required")) };
+            let sid = en.id.as_str();
+            en.with_ro(|h| {
+                let t_ms = match a.time_ms {
+                    Some(t) if t.is_finite() => t,
+                    Some(_) => return Err(ApiError::new(ErrorCode::BadRequest, "timeMs must be finite")),
+                    None => h.clock_ms(sid)?,
+                };
+                let changed = h.drag(sid, phase, x, y, t_ms)?;
+                Ok(json!({"changed": changed}))
+            })
         }
         "input.type" => {
             let a: TypeP = args(p)?;

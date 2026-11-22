@@ -41,7 +41,10 @@ Mismatched major version → `protocol_version` error.
 | `set_scene_phase` | `{"session_id","phase":"active"\|"inactive"\|"background"}` | `{"scene_phase"}` (SwiftUI, section V; React Native: AppState, section H) |
 | `open_url` | `{"session_id","url"}` | `{"scene_phase"}` (SwiftUI, section V; iOS React Native: Linking, section H) |
 | `send_pointer_event` | `{"session_id","event":{"kind":"down"\|"up"\|"click","x","y"}}` | `{"hit": <node id or null>, "action": <bool>}` |
+| `send_drag_phase` | `{"session_id","phase":"begin"\|"move"\|"end","x","y","time_ms"?:f64}` | `{"changed": <bool>}` (incremental finger drag; `time_ms` defaults to `clock_ms`) |
 | `send_keyboard_event` | `{"session_id","event":{...}}` | `unsupported` error in v1 |
+| `tick` | `{"session_id","dt_ms":f64}` | `{"clock_ms":f64,"animating":bool}` (advance deterministic clock by one step) |
+| `wait` | `{"session_id","ms":f64}` | `{"clock_ms":f64,"animating":bool}` (advance clock in 16 ms frames) |
 | `capture_screenshot` | `{"session_id","path":"out.png"?}` | `{"width","height","path"}` or `{"width","height","png_base64"}` |
 | `inspect_ui_tree` | `{"session_id"}` | `{"tree_version", "root": UiNode}` |
 | `get_errors` | `{"session_id"}` | `{"errors":[{"message","source"}]}` |
@@ -55,8 +58,8 @@ Session states: `created → starting → running → stopping → stopped`, plu
 returns only once the guest has submitted the next tree (or 2 s timeout), so
 a following `capture_screenshot` reflects the update.
 
-`UiNode`: `{"id","kind","frame":{"x","y","width","height"},"text"?,"role"?,"label"?,"action"?,"accessibility"?,"children":[...]}`
-(`role`: `"button"`, `"text"`, `"image"`, `"none"`). `accessibility` is section U.
+`UiNode`: `{"id","kind","frame":{"x","y","width","height"},"opacity"?,"text"?,"role"?,"label"?,"action"?,"accessibility"?,"children":[...]}`
+(`role`: `"button"`, `"text"`, `"image"`, `"none"`; `opacity` omitted when `1.0`). `accessibility` is section U.
 
 ---
 

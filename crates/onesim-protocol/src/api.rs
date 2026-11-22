@@ -230,6 +230,47 @@ pub struct ScreenshotParams {
     pub path: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct TickParams {
+    pub session_id: String,
+    /// Delta time in milliseconds to advance the deterministic animation clock.
+    pub dt_ms: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WaitParams {
+    pub session_id: String,
+    /// Duration in milliseconds to step the deterministic animation clock (in 16 ms frames).
+    pub ms: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DragPhaseKind {
+    Begin,
+    Move,
+    End,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DragPhaseParams {
+    pub session_id: String,
+    pub phase: DragPhaseKind,
+    pub x: f64,
+    pub y: f64,
+    /// Event timestamp in milliseconds (defaults to the session's current `clock_ms`).
+    #[serde(default)]
+    pub time_ms: Option<f64>,
+}
+
+fn default_opacity() -> f32 {
+    1.0
+}
+
+fn is_opaque(opacity: &f32) -> bool {
+    (*opacity - 1.0).abs() < 1e-3
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct UiFrame {
     pub x: f64,
@@ -243,6 +284,9 @@ pub struct UiNode {
     pub id: String,
     pub kind: String,
     pub frame: UiFrame,
+    /// Effective opacity (`0.0..=1.0`); omitted when fully opaque (`1.0`).
+    #[serde(default = "default_opacity", skip_serializing_if = "is_opaque")]
+    pub opacity: f32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

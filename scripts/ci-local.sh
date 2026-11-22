@@ -88,7 +88,9 @@ check_rust() {
 check_swiftui() {
   step frameworks/swiftui/Tests/wire_test.sh
   step swiftui_counter
+  step python3 scripts/test-animation-behavior.py
   need_pillow
+  step python3 -B scripts/test_compare_animation.py
   if fast; then
     SIMCORE_ONLY=swiftui SIMCORE_SMOKE=1 step scripts/compare-ios.sh
   else

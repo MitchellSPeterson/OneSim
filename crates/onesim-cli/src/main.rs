@@ -81,6 +81,15 @@ struct Opts {
     /// Write a PNG screenshot (after all interactions).
     #[arg(long)]
     screenshot: Option<String>,
+    /// Record an animation frame sequence (PNGs + manifest.json) into DIR after all interactions.
+    #[arg(long, value_name = "DIR")]
+    record: Option<String>,
+    /// Duration in milliseconds to record when `--record` is set (default 600).
+    #[arg(long = "record-ms", value_name = "MS", default_value_t = 600.0)]
+    record_ms: f64,
+    /// Frame rate in frames per second when `--record` is set (default 60).
+    #[arg(long = "record-fps", value_name = "FPS", default_value_t = 60.0)]
+    record_fps: f64,
     /// Click "X,Y" (points) or a control by label: button, navigation link, toggle (its switch),
     /// text field (placeholder; focuses it), or a stepper half as "LABEL#increment" / "LABEL#decrement"
     /// where LABEL is the stepper's current label. Repeatable.
@@ -335,8 +344,9 @@ fn prepare(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: &mut
 
 /// Create a session from the shared options, drive it in command-line order, then shut down.
 fn run(matches: &ArgMatches, name: &str, p: CreateSessionParams, mut o: Opts, appearance: Option<Appearance>, report: bool) -> Result<()> {
+    let rec = o.record.take().map(|dir| RecordOpts { dir, ms: o.record_ms, fps: o.record_fps });
     let (mut host, id, steps) = prepare(matches, name, p, &mut o, appearance)?;
-    let result = drive(&mut host, &id, o.screenshot, &steps, o.inspect, report);
+    let result = drive(&mut host, &id, o.screenshot, rec, &steps, o.inspect, report);
     if result.is_err() {
         for e in host.errors(&id).unwrap_or_default() {
             eprintln!("[{}] {}", e.source, e.message);
@@ -344,6 +354,12 @@ fn run(matches: &ArgMatches, name: &str, p: CreateSessionParams, mut o: Opts, ap
     }
     host.shutdown();
     result
+}
+
+struct RecordOpts {
+    dir: String,
+    ms: f64,
+    fps: f64,
 }
 
 /// Start the session, apply any `--click`/`--type`/... steps, then hand it to the native window.
@@ -356,7 +372,7 @@ fn open_window(matches: &ArgMatches, name: &str, p: CreateSessionParams, mut o: 
     let clipboard = p.framework == "swiftui" && o.pasteboard.is_none();
     let (mut host, id, steps) = prepare(matches, name, p, &mut o, appearance)?;
     // `drive` starts the session and applies the steps; the window then takes over the running session.
-    if let Err(e) = drive(&mut host, &id, None, &steps, false, false) {
+    if let Err(e) = drive(&mut host, &id, None, None, &steps, false, false) {
         host.shutdown();
         return Err(e);
     }
@@ -369,7 +385,7 @@ fn open_window(_: &ArgMatches, _: &str, _: CreateSessionParams, _: Opts, _: Opti
     bail!("this build has no native window: rebuild with `cargo build -p onesim-cli --features window`")
 }
 
-fn drive(host: &mut Host, id: &str, shot: Option<String>, steps: &[Step], inspect: bool, report: bool) -> Result<()> {
+fn drive(host: &mut Host, id: &str, shot: Option<String>, rec: Option<RecordOpts>, steps: &[Step], inspect: bool, report: bool) -> Result<()> {
     host.start_session(id).context("start_session")?;
     for step in steps {
         match step {
@@ -437,6 +453,34 @@ fn drive(host: &mut Host, id: &str, shot: Option<String>, steps: &[Step], inspec
                 host.wait(id, ms).context("--wait")?;
             }
         }
+    }
+    if let Some(rec) = rec {
+        if !(rec.fps.is_finite() && rec.fps > 0.0 && rec.fps <= 240.0) {
+            bail!("--record-fps must be in (0, 240], got {}", rec.fps);
+        }
+        if !(rec.ms.is_finite() && rec.ms >= 0.0) {
+            bail!("--record-ms must be non-negative, got {}", rec.ms);
+        }
+        let dir = std::path::PathBuf::from(&rec.dir);
+        std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
+        let dt_ms = 1000.0 / rec.fps;
+        let count = (rec.ms / dt_ms).floor() as usize + 1;
+        let t0 = host.clock_ms(id)?;
+        let mut frames = Vec::with_capacity(count);
+        for i in 0..count {
+            if i > 0 {
+                host.tick(id, dt_ms / 1000.0)?;
+            }
+            let t_ms = host.clock_ms(id)? - t0;
+            let file = format!("frame_{i:04}.png");
+            let (w, h, png) = host.screenshot(id)?;
+            std::fs::write(dir.join(&file), png).with_context(|| format!("writing {file}"))?;
+            frames.push(serde_json::json!({"index": i, "file": file, "t_ms": t_ms, "width": w, "height": h}));
+        }
+        let manifest = serde_json::json!({"fps": rec.fps, "duration_ms": rec.ms, "frames": frames});
+        std::fs::write(dir.join("manifest.json"), serde_json::to_string_pretty(&manifest)?)
+            .with_context(|| format!("writing {}/manifest.json", dir.display()))?;
+        eprintln!("recorded {} frames to {} ({:.0} fps, {:.0} ms)", count, dir.display(), rec.fps, rec.ms);
     }
     if let Some(path) = shot {
         let (w, h, png) = host.screenshot(id)?;
