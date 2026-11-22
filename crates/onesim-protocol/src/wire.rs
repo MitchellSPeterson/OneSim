@@ -25,6 +25,8 @@ pub enum GuestMessage {
     /// React Native `scrollTo` / `scrollToEnd` commands.
     #[serde(rename = "scroll_to")]
     ScrollTo { tag: u64, x: ScrollTarget, y: ScrollTarget },
+    /// The app replaced the session pasteboard (section W: the share sheet's Copy).
+    Pasteboard { items: Vec<String> },
     /// SwiftUI `ScrollViewProxy.scrollTo` (section M). `anchor` is a unit point; absent means top-leading.
     #[serde(rename = "scroll_to_id")]
     ScrollToId {
@@ -236,6 +238,8 @@ pub enum HostMessage {
         #[serde(default, rename = "dynamicTypeSize", skip_serializing_if = "Option::is_none")]
         dynamic_type_size: Option<DynamicTypeSize>,
     },
+    /// SwiftUI: replace the app's pasteboard (section W).
+    Pasteboard { items: Vec<String> },
     /// React Native touch: `x`/`y` page points, `lx`/`ly` relative to the target node (`tag`).
     Touch { phase: TouchPhase, tag: u64, x: f64, y: f64, lx: f64, ly: f64, timestamp: f64 },
     /// React Native: a finger on a scroll view passed the pan slop; the guest answers `touch_answer` with this `ask`
@@ -434,6 +438,9 @@ mod tests {
         let g: GuestMessage = serde_json::from_str(r#"{"type":"scroll_to","tag":3,"x":0,"y":"end"}"#).unwrap();
         let GuestMessage::ScrollTo { tag: 3, x, y } = g else { panic!() };
         assert_eq!((x.resolve(10.0), y.resolve(10.0)), (0.0, 10.0));
+        let pb: GuestMessage = serde_json::from_str(r#"{"type":"pasteboard","items":["a"]}"#).unwrap();
+        assert_eq!(pb, GuestMessage::Pasteboard { items: vec!["a".into()] });
+        assert_eq!(serde_json::to_string(&HostMessage::Pasteboard { items: vec!["a".into()] }).unwrap(), r#"{"type":"pasteboard","items":["a"]}"#);
         let sid = GuestMessage::ScrollToId { scroll: "0".into(), target: "row".into(), anchor: Some([0.5, 0.0]) };
         let sj = serde_json::to_string(&sid).unwrap();
         assert_eq!(sj, r#"{"type":"scroll_to_id","scroll":"0","target":"row","anchor":[0.5,0.0]}"#);

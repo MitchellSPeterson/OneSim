@@ -62,6 +62,18 @@ pub enum Layer {
         /// Guest action that clears the binding (swipe-to-dismiss); `None` when dismissal is disabled.
         #[serde(default)]
         dismiss: Option<u64>,
+        /// `presentationBackground`: drawn behind the content, filling the card (replaces the system background).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        background: Option<Box<ViewNode>>,
+        /// `presentationCornerRadius` (points); `None` keeps the system radius.
+        #[serde(default, rename = "cornerRadius", skip_serializing_if = "Option::is_none")]
+        corner_radius: Option<f64>,
+        /// `presentationBackgroundInteraction`.
+        #[serde(default, rename = "backgroundInteraction", skip_serializing_if = "Option::is_none")]
+        background_interaction: Option<BackgroundInteraction>,
+        /// `presentationContentInteraction`.
+        #[serde(default, rename = "contentInteraction", skip_serializing_if = "Option::is_none")]
+        content_interaction: Option<ContentInteraction>,
     },
     /// `.fullScreenCover`.
     Cover { content: Box<ViewNode> },
@@ -98,6 +110,59 @@ pub enum Layer {
         content: Box<ViewNode>,
         #[serde(default)]
         dismiss: Option<u64>,
+        /// `.popover` with `presentationCompactAdaptation(.popover)`: a bubble with an arrow at the anchor.
+        #[serde(default, skip_serializing_if = "is_false")]
+        arrow: bool,
+        /// `attachmentAnchor` other than the anchor's bounds.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        attachment: Option<Attachment>,
+        /// `arrowEdge`: the popover's edge that points at the anchor (`top`, `leading`, `bottom`, `trailing`).
+        #[serde(default, rename = "arrowEdge", skip_serializing_if = "Option::is_none")]
+        arrow_edge: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        background: Option<Box<ViewNode>>,
+    },
+    /// `.contextMenu`: the anchor lifted (or `preview`) over a blurred screen, with the menu by it; `dismiss`
+    /// closes it (tap outside).
+    #[serde(rename = "contextMenu")]
+    ContextMenu {
+        #[serde(default)]
+        anchor: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        preview: Option<Box<ViewNode>>,
+        #[serde(default)]
+        items: Vec<PickerOption>,
+        #[serde(default)]
+        dismiss: Option<u64>,
+    },
+    /// `ShareLink`'s share sheet. `copy` puts the items on the pasteboard and closes it; `dismiss` closes it.
+    Share {
+        #[serde(default)]
+        anchor: Option<String>,
+        #[serde(default)]
+        items: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        title: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        subject: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        message: Option<String>,
+        /// `SharePreview` image and icon, as views (drawn in the header tile when they are bitmaps).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        image: Option<Box<ViewNode>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        icon: Option<Box<ViewNode>>,
+        /// Every item is a `URL`: the sheet offers the link activities (Safari, Add to Reading List).
+        #[serde(default, skip_serializing_if = "is_false")]
+        url: bool,
+        #[serde(default)]
+        dismiss: Option<u64>,
+        #[serde(default)]
+        copy: Option<u64>,
+        /// Guest actions of the other activities by name (`Reminders`, `More`, `Save to Files`): each reports the
+        /// items as a `module.called` event and closes the sheet.
+        #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+        activities: std::collections::BTreeMap<String, u64>,
     },
     /// Menu of a menu-style `Picker` or a `Menu`, anchored to it; `dismiss` closes it (tap outside).
     Menu {
@@ -111,6 +176,37 @@ pub enum Layer {
         #[serde(default)]
         dismiss: Option<u64>,
     },
+}
+
+/// `PresentationBackgroundInteraction`: `enabled` leaves the screen under a sheet undimmed and interactive, up
+/// through `up_through` (every detent when `None`).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum BackgroundInteraction {
+    Automatic,
+    Enabled {
+        #[serde(default, rename = "upThrough", skip_serializing_if = "Option::is_none")]
+        up_through: Option<Detent>,
+    },
+    Disabled,
+}
+
+/// `PresentationContentInteraction`: `scrolls` makes a drag on a sheet's scrollable content scroll it before
+/// resizing the sheet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ContentInteraction {
+    Automatic,
+    Resizes,
+    Scrolls,
+}
+
+/// `PopoverAttachmentAnchor`: a rect in the anchor's space, or a unit point of it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Attachment {
+    Rect([f64; 4]),
+    Point([f64; 2]),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -197,6 +293,8 @@ pub enum ButtonStyle {
     NavigationLink,
     Glass,
     GlassProminent,
+    /// `PasteButton`: the system Paste button.
+    PasteButton,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -2230,6 +2328,33 @@ mod tests {
         let old: Layer = serde_json::from_value(json!({"kind": "menu", "items": [{"text": "A", "action": 1, "checked": true}]})).unwrap();
         assert!(matches!(old, Layer::Menu { centered: false, .. }));
     }
+    #[test]
+    fn presentation_layers_section_u_round_trip() {
+        let layers: Vec<Layer> = serde_json::from_value(json!([
+            {"kind": "sheet", "content": {"kind": "empty", "id": "c"}, "cornerRadius": 0.0, "contentInteraction": "scrolls",
+             "backgroundInteraction": {"kind": "enabled", "upThrough": {"kind": "medium"}}, "background": {"kind": "empty", "id": "bg"}},
+            {"kind": "popover", "content": {"kind": "empty", "id": "c"}, "arrow": true, "arrowEdge": "top", "attachment": {"point": [0.5, 1.0]}},
+            {"kind": "contextMenu", "anchor": "a", "preview": {"kind": "empty", "id": "p"}, "items": [{"text": "Copy", "action": 2}], "dismiss": 3},
+            {"kind": "share", "items": ["x", "y"], "title": "T", "subject": "S", "message": "M", "dismiss": 4, "copy": 5, "url": true,
+             "image": {"kind": "image", "id": "i", "systemName": "globe"}, "activities": {"More": 6}},
+        ]))
+        .unwrap();
+        assert!(matches!(&layers[0], Layer::Sheet { corner_radius: Some(r), content_interaction: Some(ContentInteraction::Scrolls),
+            background_interaction: Some(BackgroundInteraction::Enabled { up_through: Some(Detent::Medium) }), background: Some(_), .. } if *r == 0.0));
+        assert!(matches!(&layers[1], Layer::Popover { arrow: true, attachment: Some(Attachment::Point([x, y])), arrow_edge: Some(e), .. } if *x == 0.5 && *y == 1.0 && e == "top"));
+        assert!(matches!(&layers[2], Layer::ContextMenu { preview: Some(_), dismiss: Some(3), .. }));
+        assert!(matches!(&layers[3], Layer::Share { copy: Some(5), dismiss: Some(4), url: true, image: Some(_), icon: None, activities, .. } if activities["More"] == 6));
+        for l in &layers {
+            let again: Layer = serde_json::from_value(serde_json::to_value(l).unwrap()).unwrap();
+            assert_eq!(&again, l);
+        }
+        // Older hosts' popovers (a compact DatePicker's) still parse: no arrow, no attachment.
+        let old: Layer = serde_json::from_value(json!({"kind": "popover", "content": {"kind": "empty", "id": "c"}})).unwrap();
+        assert!(matches!(old, Layer::Popover { arrow: false, attachment: None, .. }));
+        let paste: ViewNode = serde_json::from_value(json!({"kind": "button", "id": "b", "action": 1, "style": "pasteButton", "label": {"kind": "empty", "id": "l"}})).unwrap();
+        assert!(matches!(paste.kind, ViewKind::Button { style: ButtonStyle::PasteButton, .. }));
+    }
+
 
     #[test]
     fn section_m_round_trip() {

@@ -3,6 +3,7 @@
 //! The host owns the frame scheduler ([`scheduler`]): rendering is on demand, so a static screen costs nothing.
 //! Input goes through the same `Host` calls the headless steps use; only presentation differs ([`present`]).
 
+mod clipboard;
 mod gesture;
 mod present;
 mod scheduler;
@@ -45,11 +46,15 @@ pub struct Config {
     pub stats: bool,
     /// Start in dark appearance (the session was created with it).
     pub dark: bool,
+    /// Keep a SwiftUI app's pasteboard in step with the host clipboard (both ways).
+    pub clipboard: bool,
 }
 
 enum UserEvent {
     Tree(u64),
     Stopped(String),
+    /// The app put these on its pasteboard (`pasteboard.changed`).
+    Pasteboard(Vec<String>),
 }
 
 pub fn run(mut host: Host, id: String, cfg: Config) -> Result<()> {
@@ -80,6 +85,9 @@ fn forward_events(host: &mut Host, id: &str, proxy: EventLoopProxy<UserEvent>) -
             let ev = match ev {
                 HostEvent::RenderUpdated { tree_version } => UserEvent::Tree(tree_version),
                 HostEvent::RuntimeStopped { reason } => UserEvent::Stopped(reason),
+                HostEvent::Other { name, data } if name == "pasteboard.changed" => UserEvent::Pasteboard(
+                    data["items"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect()).unwrap_or_default(),
+                ),
                 HostEvent::Other { .. } => continue,
             };
             if proxy.send_event(ev).is_err() {
@@ -108,6 +116,8 @@ struct App {
     gesture: Gesture,
     mods: ModifiersState,
     left_down: bool,
+    /// The host clipboard text last exchanged with the app's pasteboard (unchanged text is not resent).
+    clipboard: Option<String>,
     /// Cursor in physical pixels.
     cursor: PhysicalPosition<f64>,
     /// Wheel deltas (points) and the finger drag position since the last frame: applied once per draw.
@@ -146,6 +156,7 @@ impl App {
             gesture: Gesture::default(),
             mods: ModifiersState::default(),
             left_down: false,
+            clipboard: None,
             cursor: PhysicalPosition::new(0.0, 0.0),
             pending_scroll: None,
             pending_drag: None,
@@ -552,6 +563,19 @@ fn presenter_is_gpu(p: &Option<Presenter>) -> bool {
     p.as_ref().is_some_and(|p| p.name() == "gpu")
 }
 
+impl App {
+    /// Hands the host clipboard's text to a SwiftUI app's pasteboard when it changed (other frameworks: no-op).
+    fn sync_clipboard_in(&mut self) {
+        if !self.cfg.clipboard {
+            return;
+        }
+        let Some(text) = clipboard::read() else { return };
+        if self.clipboard.as_deref() != Some(text.as_str()) && self.host.set_pasteboard(&self.id, vec![text.clone()]).is_ok() {
+            self.clipboard = Some(text);
+        }
+    }
+}
+
 impl ApplicationHandler<UserEvent> for App {
     fn resumed(&mut self, el: &ActiveEventLoop) {
         if self.window.is_some() {
@@ -600,6 +624,13 @@ impl ApplicationHandler<UserEvent> for App {
             UserEvent::Tree(v) => {
                 self.sched.invalidate(Reason::Tree(v));
             }
+            UserEvent::Pasteboard(items) => {
+                // What the app copies goes on the host clipboard (and is not read back as new).
+                let text = items.join("\n");
+                if self.cfg.clipboard && !text.is_empty() && clipboard::write(&text) {
+                    self.clipboard = Some(text);
+                }
+            }
             UserEvent::Stopped(reason) => {
                 if !std::mem::replace(&mut self.stopped, true) {
                     eprintln!("session stopped ({reason}); the window shows the last frame");
@@ -611,6 +642,8 @@ impl ApplicationHandler<UserEvent> for App {
     fn window_event(&mut self, el: &ActiveEventLoop, _: WindowId, ev: WindowEvent) {
         match ev {
             WindowEvent::CloseRequested => el.exit(),
+            // Coming back to the window: the app's pasteboard picks up what was copied elsewhere meanwhile.
+            WindowEvent::Focused(true) => self.sync_clipboard_in(),
             WindowEvent::RedrawRequested => self.redraw(),
             WindowEvent::Resized(s) => {
                 if let Some(p) = &mut self.presenter {

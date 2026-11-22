@@ -139,6 +139,7 @@ struct SheetDrag {
     detent: usize,
     top0: f64,
     dismiss: Option<u64>,
+    scrolls_first: bool,
     start: (f64, f64),
     last: f64,
     samples: Vec<(f64, f64)>,
@@ -905,6 +906,7 @@ impl Interaction {
                     detent: info.detent,
                     top0: info.top,
                     dismiss: info.dismiss,
+                    scrolls_first: info.scrolls_first,
                     start: (x, y),
                     last: y,
                     samples: vec![(t, y)],
@@ -923,7 +925,7 @@ impl Interaction {
                         self.pending = Some(p);
                         return Some(Effect::None);
                     }
-                    let at_largest = p.detent + 1 >= p.tops.len();
+                    let at_largest = p.detent + 1 >= p.tops.len() || p.scrolls_first;
                     let content = scene.scroll_target(p.start.0, p.start.1).map(|i| &scene.nodes[i]);
                     let scrolls = at_largest && content.and_then(|n| n.scroll).is_some_and(|s| dy < 0.0 || s.offset.1 > 0.0);
                     if scrolls {

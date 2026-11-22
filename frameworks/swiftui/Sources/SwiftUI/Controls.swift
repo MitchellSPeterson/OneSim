@@ -54,7 +54,7 @@ public struct ForEach<Data: RandomAccessCollection, ID: Hashable, Content: View>
         rt.rowActions = _RowActions()
         defer { rt.rowActions = actions }
         return data.enumerated().flatMap { i, e -> [Node] in
-            let nodes = SwiftUI._children(content(e), "\(path)/\(e[keyPath: id])")
+            let nodes = _selectionRow(content(e), AnyHashable(e[keyPath: id]), "\(path)/\(e[keyPath: id])")
             rt.rowActions = actions
             _registerElementRows(nodes, index: i, count: count)
             rt.rowActions = _RowActions()

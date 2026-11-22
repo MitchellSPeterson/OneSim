@@ -10,6 +10,7 @@ public struct Text: View, _Primitive {
     var runs: [Run]
     public init(_ content: String) { runs = [Run(text: content, attrs: [:])] }
     public init(verbatim content: String) { self.init(content) }
+    var _plainText: String { runs.map(\.text).joined() }
 
     /// `Text + Text`: keeps each side's own styling.
     public static func + (l: Text, r: Text) -> Text { var t = l; t.runs += r.runs; return t }

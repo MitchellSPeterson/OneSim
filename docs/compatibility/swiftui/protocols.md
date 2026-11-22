@@ -45,7 +45,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `MatchedTransitionSourceConfiguration` | 18 | ⬜ |  |  |
 | `NavigationTransition` | 18 | ⬜ |  |  |
 | `PreferenceKey` | 13 | ⬜ |  |  |
-| `PresentationSizing` | 18 | ⬜ |  |  |
+| `PresentationSizing` | 18 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Custom sizings compile; no effect in compact width |
 | `PreviewContext` | 14 | ⬜ |  |  |
 | `PreviewContextKey` | 14 | ⬜ |  |  |
 | `PreviewModifier` | 18 | ⬜ |  |  |

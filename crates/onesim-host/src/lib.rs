@@ -256,6 +256,20 @@ impl Host {
         Self::push_env(s)
     }
 
+    /// SwiftUI: replace the app's pasteboard (protocol section W). It also seeds relaunches. The guest re-renders
+    /// only when that changes what it shows, so this does not wait for a tree.
+    pub fn set_pasteboard(&mut self, id: &str, items: Vec<String>) -> Result<(), ApiError> {
+        let s = self.get(id)?;
+        if s.params.framework != "swiftui" {
+            return Err(err(ErrorCode::Unsupported, "the pasteboard is SwiftUI-only"));
+        }
+        s.params.pasteboard = items.first().cloned();
+        if s.state() == State::Running {
+            s.send(&HostMessage::Pasteboard { items })?;
+        }
+        Ok(())
+    }
+
     fn push_env(s: &mut Session) -> Result<(), ApiError> {
         if s.state() == State::Running {
             let m = HostMessage::Environment {

@@ -106,6 +106,7 @@ pub enum Glyph {
     ArrowDown,
     ArrowUp,
     ArrowLeft,
+    ArrowRight,
     /// Activity indicator (static frame).
     Spinner,
     /// Large activity indicator / refresh control: thicker spokes.
@@ -159,6 +160,8 @@ pub struct SheetInfo {
     pub top: f64,
     /// Guest action that dismisses it; `None` = `interactiveDismissDisabled`.
     pub dismiss: Option<u64>,
+    /// `presentationContentInteraction(.scrolls)`: scrollable content scrolls before the sheet resizes, at any detent.
+    pub scrolls_first: bool,
 }
 
 /// Interaction state of one sheet layer (`Interaction::sheets`, keyed by layer id).

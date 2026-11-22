@@ -58,6 +58,8 @@ pub(crate) struct State {
     pub(crate) clock_ms: f64,
     pub(crate) guest_clock_ms: f64,
     pub(crate) guest_due_ms: Option<f64>,
+    /// Items the app last put on the pasteboard (section W), until JS takes them (`simcore_web_take_pasteboard`).
+    pub(crate) pasteboard_out: Option<Vec<String>>,
     /// SwiftUI scene phase (`simcore_web_set_scene_phase`).
     pub(crate) scene_phase: ScenePhase,
     pub(crate) last_anim_ver: Option<u64>,
@@ -96,7 +98,7 @@ thread_local! {
     pub(crate) static STATE: RefCell<State> = RefCell::new(State {
         ctx: 0, on_action: None, on_env: None, on_text: None, on_gesture: None, on_layout: None, in_layout: false, version: None, tree: None, layout_cache: SwiftUiLayoutCache::default(), scene: None,
         fonts: None, device: device(DEFAULT_DEVICE).unwrap(), viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios27, inter: Interaction::default(),
-        anim: Animator::new(), animation_target: None, clock_ms: 0.0, guest_clock_ms: 0.0, guest_due_ms: None, scene_phase: ScenePhase::Active, last_anim_ver: None,
+        anim: Animator::new(), animation_target: None, clock_ms: 0.0, guest_clock_ms: 0.0, guest_due_ms: None, pasteboard_out: None, scene_phase: ScenePhase::Active, last_anim_ver: None,
         stale: false, initialized: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), frame_version: 0, frame_dirty: false,
         output: 0, builder: Builder::new(), dl: Vec::new(), unread: None, buf: Vec::new(), rn: None,
     });
@@ -257,6 +259,15 @@ pub(crate) fn send_layout() {
         unsafe { cb(ctx as *mut c_void, line.as_ptr()) };
         STATE.with(|s| s.borrow_mut().in_layout = false);
     }
+}
+
+/// Replace the guest's pasteboard (`{"type":"pasteboard","items"}` through the layout callback); the guest
+/// re-submits its tree when that changes what it shows. 0 ok, 1 no SwiftUI guest.
+pub(crate) fn send_pasteboard(items: &[String]) -> i32 {
+    let Some((cb, ctx)) = STATE.with(|s| { let s = s.borrow(); s.on_layout.map(|cb| (cb, s.ctx)) }) else { return 1 };
+    let line = CString::new(serde_json::json!({"type": "pasteboard", "items": items}).to_string()).unwrap_or_default();
+    unsafe { cb(ctx as *mut c_void, line.as_ptr()) };
+    0
 }
 
 /// Push the environment to the guest (as the native host does); the guest re-submits its tree.

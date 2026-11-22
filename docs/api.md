@@ -112,6 +112,7 @@ All input params also carry `"sessionId"`.
 | `device.set` | `{"sessionId","device"}` | `SessionInfo` (viewport, scale and chrome change; the app gets a dimensions change) |
 | `device.rotate` | `{"sessionId","orientation":"portrait"\|"landscape"}` | `unsupported` in v0.2 for anything but `portrait` |
 | `device.appearance` | `{"sessionId","mode":"light"\|"dark"}` | `{}` |
+| `device.pasteboard` | `{"sessionId","items":["text"]}` | `{}` (SwiftUI: replaces the app's pasteboard, what `PasteButton` pastes; also seeds relaunches; `unsupported` for other frameworks) |
 | `device.keyboard` | `{"sessionId","visible":false}` | `{}` (hide = blur the focused field; `true` without a focused field → `invalid_state`) |
 
 ## App lifecycle (SwiftUI)
@@ -177,6 +178,7 @@ reconnects calls `events.subscribe` with the last `seq` it saw.
 | `render.updated` | `{"treeVersion"}` coalesced: at most one per 16 ms |
 | `navigation.changed` | `{"route","params"?,"stack"?:[routes]}` React Navigation / Expo Router focused route |
 | `module.unsupported` | `{"module","method","package"?}` once per module+method |
+| `pasteboard.changed` | `{"items"}` the SwiftUI app replaced the pasteboard (the share sheet's Copy) |
 | `module.called` | `{"module","method","args"}` simulated modules with observable side effects (haptics, clipboard writes, SwiftUI `openURL` with `module` `OpenURLAction`); `module` is the native module name (`ExpoHaptics`) |
 
 ## Guest wire additions (host ↔ React Native guest)
