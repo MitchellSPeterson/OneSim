@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "Prism",
+    "slug": "expo-prism",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": { "supportsTablet": false }
+  }
+}

@@ -33,6 +33,8 @@ export class Presenter {
     this.ctx = null;
     this.imageData = null;
     this.frames = 0;
+    this.lastPresentMs = 0;
+    this.lastDlBytes = 0;
     this.tainted = false; // the canvas has (had) a webgpu context: it cannot give a 2d one
     this.watch = 0;
   }
@@ -91,6 +93,7 @@ export class Presenter {
   present() {
     if (this.mode === "gpu") {
       try {
+        const t0 = performance.now();
         const dl = this.sim.displayList();
         if (this.gpuMemory && typeof this.gpu.alloc_dl === "function" && typeof this.gpu.render_dl === "function") {
           const ptr = this.gpu.alloc_dl(dl.length);
@@ -101,6 +104,8 @@ export class Presenter {
         }
         const failure = this.#gpuFailure();
         if (failure) return this.fallback(failure);
+        this.lastPresentMs = performance.now() - t0;
+        this.lastDlBytes = dl.length;
         this.frames++;
         return;
       } catch (e) {
@@ -137,6 +142,7 @@ export class Presenter {
   }
 
   #presentCpu() {
+    const t0 = performance.now();
     const { width, height, data } = this.sim.frameView(); // putImageData copies it out at once
     if (!width) return;
     if (this.canvas.width !== width || this.canvas.height !== height) { this.canvas.width = width; this.canvas.height = height; }
@@ -146,6 +152,8 @@ export class Presenter {
       this.imageData = new ImageData(data, width, height);
     }
     this.ctx.putImageData(this.imageData, 0, 0);
+    this.lastPresentMs = performance.now() - t0;
+    this.lastDlBytes = width * height * 4;
     this.frames++;
   }
 

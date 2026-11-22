@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Usage: serve-web.sh [--no-build] [port]
-# Builds every SwiftUI, Jetpack Compose, and Expo / React Native example into target/web-all/,
+# Builds the Prism showcase apps (SwiftUI, Jetpack Compose, and Expo / React Native) into target/web-all/,
 # writes an index page split by platform (iOS & Android), and serves it on http://localhost:<port>/ (default 8000).
 # Pass --no-build to refresh the web shell and index page using existing Wasm and Expo bundles.
 # Needs the toolchain in docs/web.md.
@@ -14,28 +14,14 @@ SITE="${CARGO_TARGET_DIR:-$ROOT/target}/web-all"
 # Native Wasm builds (SwiftUI & Compose)
 # example|platform|root_view|title|tag|description  (root_view '-' = @main / ComponentActivity entry point)
 NATIVE_BUILDS="
-swiftui-showcase|ios|-|Showcase|Featured|Multi-screen tour of SwiftUI controls, typography, todos, alerts, sheets, and Liquid Glass.
-swiftui-counter|ios|CounterView|Counter||Minimal stateful counter demonstrating @State updates and button actions.
-swiftui-app-entry|ios|-|App Entry||Custom @main App entry point with reusable interactive badge subviews.
-swiftui-dataflow|ios|-|Dataflow||@EnvironmentObject, @AppStorage, onChange, lazy stacks, and value-based navigation.
-swiftui-gestures|ios|-|Gestures||Interactive drag with @GestureState, long press, double tap, and pinch-rotate.
-swiftui-presentation|ios|-|Presentation||Sheets with detents, locked modals, full-screen covers, alerts, and confirmation dialogs.
-swiftui-tabs|ios|-|Tabs||Three-tab TabView with nested navigation stack, preserved state, and badges.
-compose-showcase|android|-|Showcase|Featured|Material 3 components, cards, switches, buttons, and adaptive light and dark theming.
-compose-counter|android|-|Counter||Edge-to-edge Material 3 counter built with ComponentActivity and Compose state.
-compose-input|android|-|Input||Interactive text fields, software keyboard input, and Material 3 sliders.
+swiftui-prism|ios|-|Prism|SwiftUI Showcase|Playful, colorful SwiftUI studio showcasing gradients, spring animations, gestures, Liquid Glass, sheets, and navigation.
+compose-prism|android|-|Prism|Compose Showcase|Playful Material 3 studio showcasing live color schemes, cards, sliders, switches, text input, and M3 buttons.
 "
 
 # Expo / React Native builds (exported per platform, served via shared target/web-all/expo/)
 # example|platforms|title|tag|ios_desc|android_desc
 EXPO_BUILDS="
-expo-showcase|ios,android|Showcase|Featured|Multi-screen React Native tour of layout, typography, controls, scroll, images, and gradients.|Multi-screen React Native tour of layout, typography, controls, scroll, images, and gradients.
-expo-ui|ios,android|Expo UI||Native SwiftUI components from @expo/ui hosted seamlessly inside React Native views.|Native Jetpack Compose components from @expo/ui hosted seamlessly inside React Native views.
-expo-router-stack|ios,android|Router Stack||Expo Router native stack navigation with large titles and dynamic detail routes.|Expo Router stack navigation with header transitions and dynamic detail routes.
-expo-default|ios|Starter Template||Default Expo Router template with Liquid Glass tabs, themed surfaces, and interactive assets.|
-expo-counter|ios,android|Counter||Minimal stateful React Native counter built with Pressable and useState.|Minimal stateful React Native counter built with Pressable and useState.
-expo-gestures|ios,android|Gestures||react-native-gesture-handler and Reanimated tap, pan, long press, and swipeable rows.|react-native-gesture-handler and Reanimated tap, pan, long press, and swipeable rows.
-expo-modules|ios,android|SDK Modules||Expo SDK modules demo: Clipboard, FileSystem, SecureStore, AsyncStorage, and Crypto.|Expo SDK modules demo: Clipboard, FileSystem, SecureStore, AsyncStorage, and Crypto.
+expo-prism|ios,android|Prism|Expo Showcase|Playful React Native studio with gradients, BlurView, Animated orbs, modals, alerts, and pull-to-refresh.|Playful React Native studio with gradients, BlurView, Animated orbs, modals, and pull-to-refresh on Android.
 "
 
 mkdir -p "$SITE" "$SITE/assets"
@@ -660,7 +646,7 @@ cat > "$SITE/index.html" <<HTML
   <header class="hero">
     <div class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span><span>Client-side WebAssembly · WebGPU</span></div>
     <h1>OneSim Web Builds</h1>
-    <p class="hero-sub">Interactive iOS and Android apps running locally in your browser—SwiftUI, Jetpack Compose, and Expo / React Native powered by the OneSim WebAssembly renderer.</p>
+    <p class="hero-sub">Each platform runs <strong>Prism</strong> — one unified showcase app displaying all currently supported features for SwiftUI, Jetpack Compose, and Expo / React Native, running locally in your browser via WebAssembly.</p>
   </header>
 
   <section class="platform" data-platform="ios" aria-labelledby="heading-ios">
