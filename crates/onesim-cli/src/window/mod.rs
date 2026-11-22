@@ -276,7 +276,7 @@ impl App {
             log::debug!("pointer {ev:?}: {e}");
         }
         self.sched.invalidate(Reason::Input);
-        if !self.cfg.rn && self.host.is_animating(&self.id) {
+        if self.host.is_animating(&self.id) {
             self.sched.set_animating(true);
             self.last_tick = Instant::now();
         }
@@ -516,7 +516,7 @@ impl App {
                 if d.shown {
                     self.hidden = None;
                     self.sched.drawn(started, version);
-                    if !self.cfg.rn && !self.sched.animating() && self.host.is_animating(&self.id) {
+                    if !self.sched.animating() && self.host.is_animating(&self.id) {
                         self.sched.set_animating(true);
                         self.last_tick = Instant::now();
                     }

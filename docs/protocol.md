@@ -32,14 +32,14 @@ Mismatched major version → `protocol_version` error.
 | method | params | result |
 |---|---|---|
 | `get_capabilities` | – | `{"frameworks":["swiftui"],"platforms":["ios"],"commands":[...],"headless":true}` |
-| `create_session` | `{"framework":"swiftui","platform":"ios","app_path":"<file or dir>","root_view":"CounterView"?,"viewport":{"width":393,"height":852}?,"scale":2.0?,"appearance":"light"\|"dark"?,"dynamic_type_size":"large"?,"device":"iphone-18-pro"?,"os_version":"27.2"?,"launch_url":"app://x"?}` | `{"session_id":"s1"}` (`launch_url`: SwiftUI only, see section V) |
+| `create_session` | `{"framework":"swiftui","platform":"ios","app_path":"<file or dir>","root_view":"CounterView"?,"viewport":{"width":393,"height":852}?,"scale":2.0?,"appearance":"light"\|"dark"?,"dynamic_type_size":"large"?,"device":"iphone-18-pro"?,"os_version":"27.2"?,"launch_url":"app://x"?}` | `{"session_id":"s1"}` (`launch_url`: SwiftUI, section V, and iOS React Native, section H Linking) |
 | `start_session` | `{"session_id"}` | `{"state":"running"}` (blocks until first tree or failure) |
 | `stop_session` | `{"session_id"}` | `{"state":"stopped"}` |
 | `get_session_status` | `{"session_id"}` | `{"session_id","state","framework","platform","app_path","viewport","scale","appearance","tree_version","scene_phase"}` |
 | `set_viewport` | `{"session_id","width","height"}` | `{}` |
 | `set_appearance` | `{"session_id","mode":"light"\|"dark"}` | `{}` |
 | `set_scene_phase` | `{"session_id","phase":"active"\|"inactive"\|"background"}` | `{"scene_phase"}` (SwiftUI; section V) |
-| `open_url` | `{"session_id","url"}` | `{"scene_phase"}` (SwiftUI; section V) |
+| `open_url` | `{"session_id","url"}` | `{"scene_phase"}` (SwiftUI, section V; iOS React Native: Linking, section H) |
 | `send_pointer_event` | `{"session_id","event":{"kind":"down"\|"up"\|"click","x","y"}}` | `{"hit": <node id or null>, "action": <bool>}` |
 | `send_keyboard_event` | `{"session_id","event":{...}}` | `unsupported` error in v1 |
 | `capture_screenshot` | `{"session_id","path":"out.png"?}` | `{"width","height","path"}` or `{"width","height","png_base64"}` |
@@ -335,7 +335,7 @@ System chrome uses the same effect:
 | `sheet` | `"content"`, `"detents"?: [Detent]`, `"dragIndicator"?: bool`, `"dismiss"?: u64` |
 | `cover` | `"content"` (`.fullScreenCover`) |
 | `alert` | `"title"`, `"message"?: ViewNode`, `"actions": [button ViewNode]` |
-| `dialog` | `"title"`, `"titleVisible"`, `"message"?`, `"actions"`, `"anchor"?: node id`, `"dismiss"?: u64` (`.confirmationDialog`) |
+| `dialog` | `"title"`, `"titleVisible"`, `"message"?`, `"actions"`, `"anchor"?: node id`, `"dismiss"?: u64`, `"appearance"?: "light"\|"dark"` (`.confirmationDialog`; React Native `ActionSheetIOS`, section H) |
 
   `Detent` is `{"kind":"medium"|"large"}`, `{"kind":"fraction","value"}` (of the large detent's height) or `{"kind":"height","value"}` (points); any order, the host sorts by height and starts at the smallest. Empty = large only. `dismiss` is a guest action that clears the binding (the guest then runs `onDismiss`); a sheet without it is `interactiveDismissDisabled`. `presentationDetents` / `presentationDragIndicator` / `interactiveDismissDisabled` are lifted off the sheet content's top node by the guest and never appear as modifiers. `actions` are buttons in source order; the host orders them. A dialog gets a Cancel button appended when the app gave none; its `dismiss` is that button's action id (tapping outside the popover cancels), and `anchor` is the id of the view the `.confirmationDialog` modifier is attached to. Tapping any alert/dialog button runs its action id and the guest clears the binding. The guest evaluates presented content under `<path>/sheet`, `<path>/cover` and `<path>/alert`, so its `@State` lives only while shown; `onDismiss` fires through the lifecycle machinery when the layer stops being evaluated (dismiss(), a swipe, or app code clearing the binding). A host that receives `presentation` nested below the root ignores the layer.
 - Layer ids are `layer<i>` (index in `layers`). The host keeps a detent and a drag position per sheet layer id, like scroll offsets, in `Interaction::sheets`, and passes them to layout as `SceneParams::sheets`.
@@ -383,6 +383,7 @@ It loads the app bundle from Metro and runs React Native's own Fabric renderer; 
 
 `SIMCORE_METRO_URL`, `SIMCORE_PLATFORM` (`ios` or `android`), `SIMCORE_VIEWPORT`, `SIMCORE_APPEARANCE`,
 `SIMCORE_SESSION_ID`, `SIMCORE_SCALE`, and `SIMCORE_INSETS=top,bottom` (profile insets used on Android).
+`SIMCORE_LAUNCH_URL`: the URL the app was launched to open (`create_session` `launch_url`, iOS only; see Linking).
 Optional: `SIMCORE_HMR=1` (connect Metro `/hot`), `SIMCORE_DEBUG=1`.
 `SIMCORE_BUNDLE_URL` loads that prebuilt bundle instead (`npx expo export --platform <p> --no-bytecode --no-minify`,
 the `_expo/static/js/<p>/*.js` file): no manifest, no HMR.
@@ -488,10 +489,13 @@ its existing focus + software-keyboard machinery.
 assets) with Node `fetch` into `$TMPDIR/onesim-images/<sha1(uri)>.<ext>` and adds
 `props.__simcoreImage = {"path","width","height"}` (pixels) to the node, dispatching
 `topLoadStart`, `topLoad` `{source:{uri,width,height}}`, `topLoadEnd` (or `topError`
-`{error}`). Host decodes PNG/JPEG from `path` and draws with `resizeMode`
+`{error}`). Host decodes PNG, JPEG, GIF and WebP from `path` and draws with `resizeMode`
 `cover` (default) / `contain` / `stretch` / `center`, clipped to `borderRadius`; until
 `__simcoreImage` exists it draws only the background. `ImageLoader.getSize`/`prefetch` use the
-same cache.
+same cache. An animated GIF or WebP plays on the session clock from when its node first appears (each frame composited
+onto the canvas the earlier ones left; a delay under 20 ms shows for 100 ms; its loop count of plays, forever for 0 /
+no limit, then the last frame stays); expo-image's `autoplay: false` shows the first frame. While one plays the
+session is animating (`--wait` steps it; live viewers tick).
 
 **Switch** (`RCTSwitch`, props `value`, `onTintColor`, `thumbTintColor`, `disabled`). Host draws
 the iOS 26 switch (same look and size as SwiftUI `Toggle`: 63×28, knob 37×24). The guest handles the tap: a touch `end`
@@ -504,7 +508,10 @@ everything else (transparent → no backdrop; otherwise background color of the 
 visible; `topRequestClose` is not generated (no hardware back on iOS).
 
 **ActivityIndicator** (`ActivityIndicatorView`, props `animating`, `hidesWhenStopped`, `color`, `size`; size from style:
-20×20 small, 36×36 large). Host draws the iOS spinner's 8 spokes at rest (a static frame); stopped + `hidesWhenStopped` → nothing.
+20×20 small, 36×36 large). Host draws the iOS spinner's 8 spokes, the brightest leading clockwise and the rest fading behind
+it; while `animating` it steps one spoke every 125 ms of session clock from when the node appears (the session is animating
+meanwhile); stopped + `hidesWhenStopped` → nothing, stopped otherwise → the resting frame. The refresh control's spinner turns
+the same way.
 
 **RefreshControl** (`PullToRefreshView`, iOS: first child of its `RCTScrollView`; props `refreshing`, `tintColor`).
 Outside the content flow. While `refreshing` the scroll view opens a band above the content (extra top inset) with a spinner
@@ -583,6 +590,55 @@ JS-driven push/pop needs no message. The guest spaces appear events by 350 ms
 - A tap on an alert button is sent as `{"type":"action","id","version"}` (as for SwiftUI). The guest drops that alert,
   re-emits the tree and calls the `alertWithArgs` callback with the button key (Alert.js runs that button's `onPress`).
 - `Alert.prompt` (`type` other than `default`) is unsupported (diagnostic).
+
+### `ActionSheetIOS` (ActionSheetManager, issue #50)
+
+- `showActionSheetWithOptions` adds a section G `dialog` layer (with the alerts, in order): `title` / `titleVisible`,
+  `message`, one `button` per option in option order (`role` `cancel` for `cancelButtonIndex`, `destructive` for
+  `destructiveButtonIndex(es)`, `disabled` for `disabledButtonIndices`, a `foregroundColor` modifier on the label for
+  `tintColor` / `cancelButtonTintColor`), `dismiss` (only with a cancel button), `anchor` (the `anchor` view's tag) and
+  `appearance` (`userInterfaceStyle`). Over React Native the host draws a `dialog` without `anchor` as the iOS 26+ iPhone
+  action sheet: the alert's dim and centred 320 pt card, Liquid Glass with the popover's shadow, buttons stacked with the
+  cancel button last, every label regular weight and plain ones in the label color; a tap on the dim runs `dismiss`.
+  With `anchor` it is the `.confirmationDialog` popover at that view. `appearance` draws that layer alone light or dark.
+- `showShareActionSheetWithOptions` adds a section W `share` layer (`items`: `message`, then `url`; `url` when the URL is
+  the only item; `activities` without the `excludedActivityTypes`, whose cells the host leaves out; `appearance`).
+- A button's `action` (or `dismiss`) drops the layer and calls back: the option index; for the share sheet
+  `(completed, activityType)` (Copy puts the URL or message on the simulated clipboard; dismissing is `false, null`).
+  `dismissActionSheet` drops the topmost sheet without a callback.
+
+### `LayoutAnimation` (issue #50)
+
+- `nativeFabricUIManager.configureNextLayoutAnimation(config, onEnd, onFail)` applies to the next `completeRoot`: the
+  tree emitted for that commit carries `__simcoreLayoutAnimation` on the root's props, `{...config, token}` (`token`
+  increases per configured commit; later trees omit it). `onEnd` runs once the longest of `create` / `update` / `delete`
+  (`duration` + `delay`, default the config's `duration`) has passed.
+- The host gives every node of that commit's scene a section P animation: `update` animates frames (bounds) of nodes
+  that stay; `create` / `delete` are the insertion / removal transition of inserted / removed nodes (`property` `opacity`
+  → opacity 0, `scaleXY` → scale 0, `scaleX` / `scaleY` → that axis 0; nothing configured → immediate). Curves: `linear`,
+  `easeIn`, `easeOut`, `easeInEaseOut`, `keyboard` (UIKit's keyboard curve), `spring` (Fabric's spring interpolation,
+  `springDamping`, sampled). A removal in a later, unconfigured commit is immediate.
+
+### Linking (iOS, issue #50)
+
+- `LinkingManager.getInitialURL` is `SIMCORE_LAUNCH_URL` (null without one); expo-linking's `getLinkingURL` is that, then
+  the last URL received (`clearInitialURL` clears it).
+- Host → guest `{"type":"open_url","url"}` (API `open_url`, CLI `--open-url`) delivers a URL: RN's `url` event and
+  expo-linking's `onURLReceived`. `create_session` `launch_url` / `--launch-url` starts the app with one.
+- `openURL` of the app's own scheme (`expo.scheme`, the iOS bundle id; `exp` / `exps` with a manifest) comes back the
+  same way. System schemes (`http(s)`, `tel`, `sms`, `mailto`, FaceTime, Maps, App Store, `app-settings` from
+  `openSettings`, ...) resolve `true` and emit `module.called` `{"module":"Linking","method":"openURL","args":[url]}`
+  (the app stays in front). Any other scheme rejects (`canOpenURL` false), as does a string that is not a URL.
+
+### expo-font / expo-asset (issue #50)
+
+- `ExpoAsset.downloadAsync(url, md5, type)` downloads into the session's Caches as `ExponentAsset-<md5>.<type>` and
+  returns its `file:` URL (a cached file is reused while its md5 matches).
+- `ExpoFontLoader.loadAsync(alias, localUri)` / `loadFontFamilyAsync(alias, faces)` check the files are TrueType /
+  OpenType and set the root's `__simcoreFonts` `{alias: [path, ...]}`. The host loads those files into its font database
+  (the browser host: from the guest's file writes) and resolves a `fontFamily` on text, spans and text inputs: an alias
+  takes its face nearest `fontWeight` / `fontStyle`; otherwise a family or PostScript name inside a loaded file; otherwise
+  the system font.
 
 ### react-native-gesture-handler (issue #10)
 
@@ -826,7 +882,7 @@ Existing view trees parse unchanged. New modifiers are omitted when absent.
 | JSON | SwiftUI |
 |---|---|
 | `{"animation": AnimationSpec \| null}` | `withAnimation` (on root), `.animation(_:value:)`, `.animation(_:)`, `.transaction`. `null` disables animation for the subtree. `AnimationSpec` is `{"curve", "duration", "delay", "speed", "repeat"?: u32 \| "forever", "autoreverses", "token"}`. `curve` is `"linear"`, `"easeIn"`, `"easeOut"`, `"easeInOut"`, `{"bezier": [x1, y1, x2, y2]}`, `{"spring": {"mass", "stiffness", "damping", "initialVelocity", "settling"}}`, or `{"samples": [f64...]}` (for `CustomAnimation`). `token > 0` fires once when bumped; `token == 0` animates any property change. |
-| `{"transition": {"insertion": Effect, "removal": Effect, "animation"?: AnimationSpec}}` | `.transition(_:)`. `Effect` holds optional `opacity`, `scale`, `anchor`, `offset` (`[x, y]`), and `edge` (`"top"\|"bottom"\|"leading"\|"trailing"`). |
+| `{"transition": {"insertion": Effect, "removal": Effect, "animation"?: AnimationSpec}}` | `.transition(_:)`. `Effect` holds optional `opacity`, `scale`, `scaleX` / `scaleY` (one axis; React Native LayoutAnimation), `anchor`, `offset` (`[x, y]`), and `edge` (`"top"\|"bottom"\|"leading"\|"trailing"`). |
 | `{"matchedGeometry": {"id", "namespace", "properties": "frame"\|"position"\|"size", "anchor": [x, y], "isSource": bool}}` | `.matchedGeometryEffect(id:in:properties:anchor:isSource:)` with `@Namespace`. |
 | `{"contentTransition": "identity"\|"interpolate"\|"opacity"\|"numericTextUp"\|"numericTextDown"\|"symbolEffect"}` | `.contentTransition(_:)`. Inherited by `text` and `image` descendants. |
 
@@ -1078,7 +1134,7 @@ Additive; `PROTOCOL_VERSION` stays 1. Extends the presentation layers of section
   that, centred (above when there is no room). `contextMenu(forSelectionType:)` wraps each `ForEach` row below it
   whose id is of the selection type: its long press opens the menu built for `[id]`, its tap runs `primaryAction`.
 - New layer `share` (`ShareLink`): `{"kind":"share","anchor","items":[String],"title"?,"subject"?,"message"?,"image"?:
-  ViewNode,"icon"?: ViewNode,"url"?: bool,"dismiss","copy","activities":{name: u64}}`. `items` are the items' text
+  ViewNode,"icon"?: ViewNode,"url"?: bool,"dismiss","copy","activities":{name: u64},"appearance"?}`. `items` are the items' text
   (each item's first transfer representation that has one); `title`, `image` and `icon` come from the `SharePreview`
   (the image and icon as their `image` view); `url` is set when every item is a `URL`. The host draws the Simulator's
   share sheet: a floating glass card (9 pt from the sides and bottom) with a header tile and title, an app row and an
@@ -1089,7 +1145,8 @@ Additive; `PROTOCOL_VERSION` stays 1. Extends the presentation layers of section
   title is primary and semibold; an item's own text secondary. Copy runs `copy` (the guest puts the items on the
   pasteboard and closes the sheet); every other cell runs its `activities` action: the guest reports
   `module.called` `{"module":"ShareSheet","method":<activity>,"args":items}` (handed to the system, like
-  `openURL`) and closes the sheet. A tap outside and a swipe down run `dismiss`. `subject` and `message` are not
+  `openURL`) and closes the sheet. A guest that sends `activities` gets cells only for those (and Copy only with `copy`);
+the rest close up. A tap outside and a swipe down run `dismiss`. `subject` and `message` are not
   shown, as on device (Mail and Messages use them).
 - `button` `style` `"pasteButton"` (`PasteButton`): a white `Label("Paste", systemImage: "doc.on.clipboard")` on an
   accent rounded rect (radius 5, 13.33 pt side padding, 34.67 tall; gray 133 / 140 under a presented layer). iOS draws

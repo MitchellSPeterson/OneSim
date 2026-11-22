@@ -554,8 +554,23 @@ fn scene_phase_is_swiftui_only() {
     let id = host.create_session(serde_json::from_value(p).unwrap()).unwrap();
     host.start_session(&id).unwrap();
     assert_eq!(host.set_scene_phase(&id, ScenePhase::Background).unwrap_err().code, ErrorCode::Unsupported);
-    assert_eq!(host.open_url(&id, "app://x").unwrap_err().code, ErrorCode::Unsupported);
+    // React Native (iOS) takes URLs through Linking: the guest gets `open_url`; a non-URL is refused before it.
+    host.open_url(&id, "app://x").unwrap();
+    assert_eq!(host.open_url(&id, "nope").unwrap_err().code, ErrorCode::BadRequest);
     host.stop_session(&id).unwrap();
+}
+
+#[test]
+fn launch_url_is_for_swiftui_and_ios_react_native() {
+    let mut host = Host::new();
+    let rn = |platform: &str| serde_json::from_value::<CreateSessionParams>(serde_json::json!({"framework": "expo", "platform": platform,
+        "app_path": "x", "prebuilt": true, "metroUrl": "http://localhost:1", "launch_url": "app://deep/link"})).unwrap();
+    assert!(host.create_session(rn("ios")).is_ok());
+    assert_eq!(host.create_session(rn("android")).unwrap_err().code, ErrorCode::Unsupported);
+    let mut compose = params(GUEST);
+    compose.framework = "compose".into();
+    compose.launch_url = Some("app://x".into());
+    assert_eq!(host.create_session(compose).unwrap_err().code, ErrorCode::Unsupported);
 }
 
 #[test]

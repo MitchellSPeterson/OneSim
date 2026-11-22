@@ -1,0 +1,99 @@
+// Issue #50 check (React Native gaps): node frameworks/react-native/guest/run-apis.mjs [port=8232]
+// Boots examples/expo-apis and asserts what screenshots cannot show: LayoutAnimation's per-commit root prop and its
+// end callback, ActionSheetIOS layers and callbacks (button, tap outside, dismissActionSheet, share sheet), Linking
+// (launch URL, own-scheme round trip, system hand-off, canOpenURL, rejections, host `open_url`), expo-font (the asset
+// downloaded into Caches, `__simcoreFonts`) and GIF / WebP image loads.
+// A Metro already listening on the port is reused (and left running).
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { root, run, startHost, startMetro, walk } from './lib.mjs';
+
+const port = Number(process.argv[2]) || 8232;
+const ok = (m) => console.log('ok:', m);
+const expect = (c, m) => { if (!c) throw new Error(m); };
+
+run(async () => {
+  await startMetro(join(root, 'examples/expo-apis'), port);
+  const launch = 'expoapis://welcome?from=test';
+  const trees = [];
+  const h = startHost({ SIMCORE_METRO_URL: `http://localhost:${port}`, SIMCORE_VIEWPORT: '402x874', SIMCORE_HMR: '0', SIMCORE_LAUNCH_URL: launch }, (_, m) => trees.push(m));
+  const home = async () => { h.tap('Back'); await h.until(() => /^APIs/.test(h.text), 'home'); };
+  await h.until(() => /^APIs/.test(h.text), 'first tree');
+  const mods = Object.fromEntries(h.modules[0].map((m) => [m.name, m]));
+  expect(mods.ActionSheetManager?.status === 'implemented', 'ActionSheetManager implemented');
+  expect(mods.LinkingManager?.status === 'simulated' && mods.ExpoLinking?.status === 'simulated', 'Linking simulated');
+  expect(mods.ExpoFontLoader?.methods.includes('loadFontFamilyAsync'), 'ExpoFontLoader.loadFontFamilyAsync');
+
+  // ---- LayoutAnimation: the configured commit carries the config once, with a fresh token; onEnd runs after it.
+  h.tap('Layout>');
+  await h.until(() => /Animations ended: 0/.test(h.text), 'Layout screen');
+  const n0 = trees.length;
+  h.tap('Toggle');
+  await h.until(() => /Expanded/.test(h.text), 'expanded');
+  const anim = trees.slice(n0).map((t) => t.root.props?.__simcoreLayoutAnimation ?? t.root.content?.props?.__simcoreLayoutAnimation).filter(Boolean);
+  expect(anim.length === 1, `one animated tree, got ${anim.length}`);
+  expect(anim[0].duration === 300 && anim[0].update?.type === 'easeInEaseOut' && anim[0].create?.property === 'opacity' && anim[0].token > 0, 'easeInEaseOut preset: ' + JSON.stringify(anim[0]));
+  await h.until(() => /Animations ended: 1/.test(h.text), 'onAnimationDidEnd', 3000);
+  h.tap('Spring');
+  await h.until(() => /Collapsed/.test(h.text), 'collapsed');
+  const spring = trees.slice(n0).map((t) => t.root.props?.__simcoreLayoutAnimation).filter(Boolean);
+  expect(spring.length === 2 && spring[1].update?.type === 'spring' && spring[1].update.springDamping === 0.4 && spring[1].token > spring[0].token, 'spring preset: ' + JSON.stringify(spring[1]));
+  await h.until(() => /Animations ended: 2/.test(h.text), 'spring end', 3000);
+  ok(`LayoutAnimation: tokens ${spring.map((a) => a.token)}, both ended`);
+  await home();
+
+  // ---- ActionSheetIOS
+  h.tap('Sheet>');
+  await h.until(() => /Picked: none/.test(h.text), 'Sheet screen');
+  h.tap('Show sheet');
+  await h.until(() => h.layers.length === 1, 'action sheet layer');
+  let sheet = h.layers[0];
+  expect(sheet.kind === 'dialog' && sheet.title === 'Photo' && sheet.titleVisible && sheet.message.text === 'Choose what to do with this photo' && !sheet.anchor, 'dialog layer: ' + JSON.stringify(sheet).slice(0, 300));
+  expect(sheet.actions.map((a) => [a.label.text, a.role ?? '']).join() === 'Cancel,cancel,Delete photo,destructive,Save to Files,', 'buttons in option order with roles');
+  h.send({ type: 'action', id: sheet.actions[2].action });
+  await h.until(() => /Picked: 2/.test(h.text) && h.layers.length === 0, 'Save to Files -> 2');
+  h.tap('Show sheet');
+  await h.until(() => h.layers.length === 1, 'sheet again');
+  h.send({ type: 'action', id: h.layers[0].dismiss });
+  await h.until(() => /Picked: 0/.test(h.text) && h.layers.length === 0, 'tap outside -> cancel index');
+  ok('ActionSheetIOS: button index and tap-outside cancel come back through the callback');
+  await home();
+
+  // ---- expo-font: Font.loadAsync downloads the asset into Caches and the root lists the file under its alias.
+  h.tap('Fonts>');
+  await h.until(() => /Loaded: true/.test(h.text) && /Roboto 34/.test(h.text), 'font loaded');
+  const fonts = trees[trees.length - 1].root.props.__simcoreFonts;
+  expect(fonts?.Roboto?.length === 1 && /Caches\/ExponentAsset-[0-9a-f]+\.ttf$/.test(fonts.Roboto[0]) && existsSync(fonts.Roboto[0]), '__simcoreFonts: ' + JSON.stringify(fonts));
+  ok(`expo-font: Roboto -> ${fonts.Roboto[0].split('/').slice(-2).join('/')}`);
+  await home();
+
+  // ---- Images: GIF and WebP sources load (cached with their own extension) for core Image and expo-image.
+  h.tap('Images>');
+  await h.until(() => { let n = 0; walk(h.tree, (v) => { if (v.props.__simcoreImage) n++; }); return n === 6; }, 'six images loaded');
+  const exts = []; walk(h.tree, (v) => { if (v.props.__simcoreImage) exts.push(v.props.__simcoreImage.path.split('.').pop()); });
+  expect(exts.sort().join() === 'gif,gif,gif,webp,webp,webp', 'gif/webp files: ' + exts);
+  ok('images: ' + exts.join(' '));
+  await home();
+
+  // ---- Linking
+  h.tap('Links>');
+  await h.until(() => h.text.includes(`Initial: ${launch}`), 'launch URL is the initial URL');
+  h.tap('Open self');
+  // Outside Expo Go, expo-linking builds the URL on the app's scheme (app.json `scheme`).
+  await h.until(() => /Last: expoapis:\/\/done\?n=1/.test(h.text) && /Result: self true/.test(h.text), 'own URL comes back as a url event');
+  const e0 = h.events.length;
+  h.tap('Open web');
+  await h.until(() => /Result: web true/.test(h.text), 'web resolves');
+  expect(h.events.slice(e0).some((e) => e.name === 'module.called' && e.detail.module === 'Linking' && e.detail.args[0] === 'https://expo.dev'), 'web URL handed to the system');
+  h.tap('Can tel');
+  await h.until(() => /Result: tel true/.test(h.text), 'canOpenURL tel');
+  h.tap('Can odd');
+  await h.until(() => /Result: odd false/.test(h.text), 'canOpenURL unknown scheme');
+  h.tap('Settings');
+  await h.until(() => /Result: settings true/.test(h.text), 'openSettings');
+  h.tap('Bad URL');
+  await h.until(() => /Result: bad failed Unable to open URL: no scheme/.test(h.text), 'invalid URL rejects');
+  h.send({ type: 'open_url', url: 'expoapis://from-host' });
+  await h.until(() => /Last: expoapis:\/\/from-host/.test(h.text), 'host open_url reaches the url event');
+  ok('Linking: launch URL, own-scheme round trip, system hand-off, canOpenURL, rejection, host open_url');
+}, 240000);

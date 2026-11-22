@@ -107,7 +107,7 @@ fn image_grid(dev: &Device, progress: f64, images: &[Arc<tiny_skia::Pixmap>]) ->
     for i in 0..18 {
         let mut n = rect(format!("image{i}"), 12.0 + (i % 3) as f64 * (cell + 12.0), 18.0 + (i / 3) as f64 * (cell + 12.0), cell, cell);
         n.radius = 10.0;
-        n.image = Some(ImageRun { pixmap: images[i % images.len()].clone(), dest: n.bounds, rotation: ((progress * std::f64::consts::TAU + i as f64).sin() * 35.0) as f32, filter: 2 });
+        n.image = Some(ImageRun { pixmap: images[i % images.len()].clone(), dest: n.bounds, rotation: ((progress * std::f64::consts::TAU + i as f64).sin() * 35.0) as f32, filter: 2, frames: None });
         scene.nodes.push(n);
     }
     scene

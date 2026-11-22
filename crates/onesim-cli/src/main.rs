@@ -105,16 +105,19 @@ struct Opts {
     /// Turn two fingers centred on "X,Y" or a labelled view by DEGREES (clockwise). Repeatable.
     #[arg(long = "rotate", value_name = "LABEL_OR_X,Y,DEGREES")]
     rotations: Vec<String>,
-    /// Advance SwiftUI animations, transitions, and timelines by MS milliseconds. Repeatable.
+    /// Advance animations by MS milliseconds: SwiftUI animations, transitions and timelines, React Native
+    /// LayoutAnimation, spinners and animated GIF / WebP. Repeatable.
     #[arg(long = "wait", value_name = "MS")]
     waits: Vec<String>,
     /// Move a SwiftUI app to a scene phase (through inactive, as iOS does). Repeatable.
     #[arg(long = "scene-phase", value_name = "active|inactive|background")]
     scene_phases: Vec<String>,
-    /// Open a URL in a SwiftUI app (`onOpenURL`); a backgrounded app comes to the front first. Repeatable.
+    /// Open a URL in the app: SwiftUI `onOpenURL` (a backgrounded app comes to the front first), React Native
+    /// `Linking`'s `url` event (iOS). Repeatable.
     #[arg(long = "open-url", value_name = "URL")]
     open_urls: Vec<String>,
-    /// Launch a SwiftUI app to open this URL (it reaches `onOpenURL` after the first frame).
+    /// Launch the app to open this URL: SwiftUI gets it in `onOpenURL` after the first frame, React Native (iOS) from
+    /// `Linking.getInitialURL` (Expo Router starts at its route).
     #[arg(long = "launch-url", value_name = "URL")]
     launch_url: Option<String>,
     /// Print the UI tree as JSON on stdout.

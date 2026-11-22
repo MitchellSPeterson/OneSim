@@ -85,8 +85,13 @@ guest main thread because RN's polyfills break Node `fetch` inside the worker), 
 BlobModule / FileReaderModule, ImageLoader (shared download cache), TextInput, ScrollView and
 Switch events, Modal `onShow`.
 
-Unsupported (diagnostic): Linking.openURL, Alert, ActionSheet, Share, Vibration, expo-camera, expo-web-browser,
-push notifications, layout animations, cookies (`clearCookies` returns false).
+Unsupported (diagnostic): `Alert.prompt`, Share (`ShareModule`), expo-camera, expo-web-browser, push notifications,
+cookies (`clearCookies` returns false).
+
+Issue #50: `LayoutAnimation` (played by the host), `ActionSheetIOS` (action sheet and share sheet layers), GIF / WebP
+images (animated ones play), spinning `ActivityIndicator`, Linking (launch URL `--launch-url`, `--open-url`, own-scheme
+round trips, system hand-off) and expo-font (`loadAsync`, font families; expo-asset downloads into Caches). Check:
+`node frameworks/react-native/guest/run-apis.mjs` (examples/expo-apis); screenshots: `rn-apis-ios` fixtures.
 
 Milestone 3 (Expo Router): react-native-screens (`RNSScreenStack`/`RNSScreen`/header config, `RNSTabsHostIOS`/`RNSTabsScreenIOS`)
 and safe-area-context views are known native views; the guest fires their lifecycle events after each committed tree
@@ -101,7 +106,7 @@ CSS animations/transitions, exiting/layout/shared-element animations. Check: `no
 
 - **Keyboard avoidance**: no `keyboardWillShow` events, so KeyboardAvoidingView does not move.
   Tapping outside a TextInput does not blur it (same as RN without `Keyboard.dismiss`).
-- **Image**: PNG/JPEG draw; GIF/WebP load (size, events) but do not draw. `tintColor`, `repeat` ignored.
+- **Image**: `resizeMode="repeat"` draws as `cover`.
 - **Fast Refresh** works (Metro `/hot` + React Refresh, on by default, `SIMCORE_HMR=0` off;
   check: `node frameworks/react-native/guest/run-refresh.mjs`). No redbox UI: errors go to
   `get_errors`. A render error unmounts the root, so recovery remounts with fresh state.

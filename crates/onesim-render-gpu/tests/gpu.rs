@@ -123,7 +123,7 @@ fn unit_scenes_match_cpu() {
     let mut n = node("img", 10.0, 10.0, 70.0, 60.0);
     n.radius = 10.0;
     n.opacity = 0.9;
-    n.image = Some(ImageRun { pixmap: Arc::new(px), dest: Rect { x: 5.0, y: 15.0, w: 80.0, h: 50.0 }, rotation: 0.0, filter: 2 });
+    n.image = Some(ImageRun { pixmap: Arc::new(px), dest: Rect { x: 5.0, y: 15.0, w: 80.0, h: 50.0 }, rotation: 0.0, filter: 2, frames: None });
     let mut rotated = n.clone();
     rotated.image.as_mut().unwrap().rotation = 35.0;
     cases.push(("image", scene(false, vec![n]), 1.0));

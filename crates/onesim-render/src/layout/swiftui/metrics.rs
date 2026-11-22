@@ -26,6 +26,8 @@ pub(super) const ALERT_BTN_PAD: f64 = 16.0;
 pub(super) const ALERT_MESSAGE_PT: f32 = 15.0;
 /// Button fill (light, dark) and gray the presenter's prominent buttons turn while an alert is up.
 // Alert message: iOS draws a vibrant gray, darker than .secondary over the card (sampled from alert(-dark).png).
+/// React Native `ActionSheetIOS` message, light (measured on iOS 27.2; dark: `ALERT_MESSAGE_FG`).
+pub(super) const SHEET_MESSAGE_FG: (u8, u8, u8) = (135, 135, 135);
 pub(super) const ALERT_MESSAGE_FG: ((u8, u8, u8), (u8, u8, u8)) = ((106, 107, 108), (162, 162, 162));
 pub(super) const ALERT_BTN_FILL: ((u8, u8, u8), (u8, u8, u8)) = ((209, 209, 210), (47, 47, 48));
 pub(super) const ALERT_DESAT: (u8, u8) = (160, 115);
@@ -556,6 +558,8 @@ pub(super) fn anim_layer(
         transition,
         matched,
         content_transition: ContentTransitionKind::Identity,
+        layout: false,
+        removal: None,
     }));
     n.inspect = false;
     Lay::new(inner.size, Some(n), vec![(0.0, 0.0, inner)])

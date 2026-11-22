@@ -758,7 +758,7 @@ impl Ctx<'_> {
         let mut n = Node::new(&v.id, "image");
         n.role = Role::Image;
         if let Some(pixmap) = pixmap {
-            n.image = Some(crate::scene::ImageRun { pixmap, dest, rotation: 0.0, filter });
+            n.image = Some(crate::scene::ImageRun { pixmap, dest, rotation: 0.0, filter, frames: None });
         }
         Lay::new(size, Some(n), vec![])
     }

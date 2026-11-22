@@ -66,6 +66,8 @@ pub struct Span {
     pub strike: bool,
     /// System monospaced face.
     pub mono: bool,
+    /// A font the app loaded (expo-font): its family name as registered ([`Fonts::custom_faces`]).
+    pub family: Option<&'static str>,
     /// Extra letter-spacing in points (kerning + tracking), added to the optical fit.
     pub extra: f32,
     /// 0 default, 1 serif, 2 rounded, 3 monospaced.
@@ -99,6 +101,7 @@ impl Span {
             underline: false,
             strike: false,
             mono: false,
+            family: None,
             extra: 0.0,
             design: 0,
             width: 0,
@@ -129,6 +132,8 @@ pub struct FontSpec {
     pub tracking: f32,
     /// System monospaced face (`ui-monospace`).
     pub mono: bool,
+    /// A font the app loaded (expo-font): its family name as registered ([`Fonts::custom_faces`]).
+    pub family: Option<&'static str>,
     /// Line cap: the last allowed line is cut to whole glyphs followed by `…` (React Native `numberOfLines`).
     pub lines: Option<usize>,
     /// Explicit paragraph line height (RN `lineHeight`): every run uses `pitch`; otherwise a run's pitch scales with its size.
@@ -184,6 +189,7 @@ impl FontSpec {
             align,
             tracking: tracking_em(size, weight),
             mono: false,
+            family: None,
             lines: None,
             fixed_pitch: false,
             inter_point_tracking: false,
@@ -307,6 +313,7 @@ struct MeasureMeta {
     extra: u32,
     lines: usize,
     design: u8,
+    family: Option<&'static str>,
     width_code: i8,
     trunc: u8,
     case_fold: u8,
@@ -374,6 +381,47 @@ pub struct Fonts {
     measured: HashMap<MeasureKey, (u64, (f64, f64))>,
     measured_tick: u64,
     measured_text_bytes: usize,
+    /// Font files loaded by apps (expo-font), by path: their faces once in the font database.
+    custom: HashMap<String, Vec<CustomFace>>,
+}
+
+/// One face of a font file an app loaded ([`Fonts::custom_faces`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CustomFace {
+    /// Family name in the font database (what [`FontSpec::family`] / [`Span::family`] take).
+    pub family: &'static str,
+    pub postscript: String,
+    pub weight: u16,
+    pub italic: bool,
+}
+
+/// Font files provided from memory (the browser has no files: docs/web.md), by path.
+fn font_files() -> std::sync::MutexGuard<'static, HashMap<String, std::sync::Arc<Vec<u8>>>> {
+    static FILES: std::sync::OnceLock<std::sync::Mutex<HashMap<String, std::sync::Arc<Vec<u8>>>>> = std::sync::OnceLock::new();
+    FILES.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Provide the font file at `path` from memory. False if it holds no font face.
+pub fn put_font(path: &str, bytes: &[u8]) -> bool {
+    let mut db = fontdb::Database::new();
+    db.load_font_data(bytes.to_vec());
+    if db.faces().next().is_none() {
+        return false;
+    }
+    font_files().insert(path.to_string(), std::sync::Arc::new(bytes.to_vec()));
+    true
+}
+
+/// Family names live as long as the font database (fonts are never unloaded from it).
+fn intern(name: &str) -> &'static str {
+    static NAMES: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<&'static str>>> = std::sync::OnceLock::new();
+    let mut names = NAMES.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(n) = names.get(name) {
+        return n;
+    }
+    let n: &'static str = Box::leak(name.to_string().into_boxed_str());
+    names.insert(n);
+    n
 }
 
 /// One drawn text line: x range and baseline, relative to the text origin (device px).
@@ -464,7 +512,38 @@ impl Fonts {
             measured: HashMap::new(),
             measured_tick: 0,
             measured_text_bytes: 0,
+            custom: HashMap::new(),
         }
+    }
+
+    /// The faces of the font file at `path` (registered with [`put_font`] or on disk), loaded into the font database
+    /// on first use. Empty when it is not a font.
+    pub fn custom_faces(&mut self, path: &str) -> &[CustomFace] {
+        if !self.custom.contains_key(path) {
+            let bytes = font_files().get(path).map(|b| b.as_ref().clone()).or_else(|| std::fs::read(path).ok());
+            let ids = bytes.map(|b| self.sys.db_mut().load_font_source(fontdb::Source::Binary(std::sync::Arc::new(b)))).unwrap_or_default();
+            let faces: Vec<CustomFace> = ids
+                .iter()
+                .filter_map(|id| self.sys.db().face(*id))
+                .filter_map(|f| {
+                    Some(CustomFace {
+                        family: intern(&f.families.first()?.0),
+                        postscript: f.post_script_name.clone(),
+                        weight: f.weight.0,
+                        italic: f.style != fontdb::Style::Normal,
+                    })
+                })
+                .collect();
+            if faces.is_empty() {
+                // Not (yet) there: the browser registers the file when the guest writes it; ask again next time.
+                return &[];
+            }
+            // Measurements made before the face existed fell back to another font.
+            self.measured.clear();
+            self.measured_text_bytes = 0;
+            self.custom.insert(path.to_string(), faces);
+        }
+        &self.custom[path]
     }
 
     fn ensure_roboto(&mut self) {
@@ -497,7 +576,11 @@ impl Fonts {
     /// Family, tracking (em), weight and stretch. `sf_tracking` is SF's tracking for the default face.
     /// A design that switches family drops that optical fit (it was measured for SF Pro).
     #[allow(clippy::too_many_arguments)]
-    fn face(&self, mono: bool, android: bool, pt: f32, inter_size: f32, weight: u16, sf_tracking: f32, big: bool, design: u8) -> (Family<'static>, f32, u16, Stretch) {
+    fn face(&self, family: Option<&'static str>, mono: bool, android: bool, pt: f32, inter_size: f32, weight: u16, sf_tracking: f32, big: bool, design: u8) -> (Family<'static>, f32, u16, Stretch) {
+        // An app's own font: as designed (no system optical fit), at the asked weight (variable fonts follow it).
+        if let Some(name) = family {
+            return (Family::Name(name), 0.0, weight, Stretch::Normal);
+        }
         let wght = if big { (weight as i32 + INTER_BIG_WEIGHT).clamp(100, 900) as u16 } else { weight };
         if mono || design == 3 {
             return (self.mono_family(), 0.0, wght, Stretch::Normal);
@@ -751,12 +834,12 @@ impl Fonts {
         }
         // Inter's glyphs are ~8% larger than SF's at the same size; at accessibility sizes that is a lot
         // of ink, so the fallback draws them slightly smaller (tracking is fitted for it).
-        let big = !self.sf && !f.android && f.pt > 40.0;
+        let big = !self.sf && !f.android && f.pt > 40.0 && f.family.is_none();
         let size = if big { f.size * INTER_BIG_SCALE } else { f.size };
         let mut b = Buffer::new(&mut self.sys, Metrics::new(size, f.pitch));
         b.set_size(shape_limit(width, f.width), None);
         let inter_size = if f.inter_point_tracking { f.pt } else { f.size };
-        let (family, tracking, wght, stretch) = self.face(f.mono || f.design == 3, f.android, f.pt, inter_size, f.weight, f.tracking, big, f.design);
+        let (family, tracking, wght, stretch) = self.face(f.family, f.mono || f.design == 3, f.android, f.pt, inter_size, f.weight, f.tracking, big, f.design);
         let tracking = tracking + extra_em(f.extra, f.pt);
         let mut attrs = Attrs::new().family(family).weight(Weight(wght)).stretch(stretch).letter_spacing(tracking);
         if f.italic {
@@ -770,9 +853,10 @@ impl Fonts {
             let runs = spans.iter().enumerate().map(|(i, s)| {
                 let k = s.pt / f.pt.max(0.01);
                 let size_px = f.size * k;
-                let big = !sf && !f.android && s.pt > 40.0;
+                let family = s.family.or(f.family);
+                let big = !sf && !f.android && s.pt > 40.0 && family.is_none();
                 let sf_tracking = if f.android { f.tracking } else { tracking_em(s.pt, s.weight) };
-                let (fam, tracking, wght, stretch) = self.face(f.mono || s.mono || s.design == 3, f.android, s.pt, inter_size * k, s.weight, sf_tracking, big, s.design);
+                let (fam, tracking, wght, stretch) = self.face(family, f.mono || s.mono || s.design == 3, f.android, s.pt, inter_size * k, s.weight, sf_tracking, big, s.design);
                 let tracking = tracking + extra_em(s.extra, s.pt);
                 let m = Metrics::new(if big { size_px * INTER_BIG_SCALE } else { size_px }, if f.fixed_pitch { f.pitch } else { f.pitch * k });
                 let c = Color::rgba((s.color.r * 255.0).round() as u8, (s.color.g * 255.0).round() as u8, (s.color.b * 255.0).round() as u8, (s.color.a * 255.0).round() as u8);
@@ -828,6 +912,7 @@ impl Fonts {
                 extra: f.extra.to_bits(),
                 lines: f.lines.unwrap_or(usize::MAX),
                 design: f.design,
+                family: f.family,
                 width_code: f.width,
                 trunc: f.trunc,
                 case_fold: f.case_fold,
@@ -1354,4 +1439,28 @@ mod span_tests {
         assert!(shown.ends_with("hello"), "expected tail preserved in {shown:?}");
         assert!(shown.contains('\n'), "expected two-line result in {shown:?}");
     }
+
+    #[test]
+    fn custom_font_faces_load_once_and_shape_with_their_family() {
+        let mut f = Fonts::with_fallback(true);
+        assert!(f.custom_faces("/no/such/font.ttf").is_empty());
+        assert!(!put_font("not-a-font.ttf", b"nope"));
+        assert!(put_font("app/Roboto.ttf", include_bytes!("../../../assets/fonts/RobotoVariable.ttf")));
+        let faces = f.custom_faces("app/Roboto.ttf").to_vec();
+        assert!(!faces.is_empty());
+        assert_eq!(faces[0].family, "Roboto");
+        assert!(faces[0].postscript.starts_with("Roboto"), "{faces:?}");
+        assert!(std::ptr::eq(f.custom_faces("app/Roboto.ttf")[0].family, faces[0].family), "loaded once, interned");
+        // The same text is narrower in Roboto than in the fallback Inter.
+        let plain = FontSpec::new(17.0, 22.0, 400, TextAlign::Leading);
+        let roboto = FontSpec { family: Some(faces[0].family), ..plain };
+        let (wi, _) = f.measure("The quick brown fox", &plain, None, &[]);
+        let (wr, _) = f.measure("The quick brown fox", &roboto, None, &[]);
+        assert!((wi - wr).abs() > 1.5, "inter {wi} vs roboto {wr}");
+        // A span may switch to it on its own.
+        let span = Span { family: Some(faces[0].family), ..Span::basic("The quick brown fox", 17.0, 400, crate::scene::Color::rgba(0.0, 0.0, 0.0, 1.0)) };
+        let (ws, _) = f.measure("The quick brown fox", &plain, None, &[span]);
+        assert!((ws - wr).abs() < 0.5, "span {ws} vs roboto {wr}");
+    }
+
 }

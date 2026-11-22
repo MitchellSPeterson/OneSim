@@ -121,8 +121,8 @@ impl Host {
             return Err(err(ErrorCode::BadRequest, format!("app_path {:?} does not exist", p.app_path)));
         }
         if let Some(url) = &p.launch_url {
-            if p.framework != "swiftui" {
-                return Err(err(ErrorCode::Unsupported, format!("launch_url exists only for swiftui sessions, not {}", p.framework)));
+            if p.framework == "compose" || (p.framework == "react-native" && p.platform != "ios") {
+                return Err(err(ErrorCode::Unsupported, format!("launch_url exists only for swiftui and iOS react-native sessions, not {} on {}", p.framework, p.platform)));
             }
             if !is_openable_url(url) {
                 return Err(err(ErrorCode::BadRequest, format!("launch_url {url:?} is not a URL (scheme:...)")));
@@ -151,7 +151,8 @@ impl Host {
             let _ = self.scene_within(id, STARTUP_MAX);
         }
         // Launched to open a URL: the scene connects with it, so `onOpenURL` gets it once the window is up.
-        if let Some(url) = self.get(id)?.params.launch_url.clone() {
+        // (React Native reads it at launch: `Linking.getInitialURL`, `SIMCORE_LAUNCH_URL`.)
+        if let Some(url) = self.get(id)?.params.launch_url.clone().filter(|_| !self.sessions[id].is_rn()) {
             self.open_url(id, &url)?;
         }
         Ok(())
@@ -198,6 +199,17 @@ impl Host {
     pub fn open_url(&mut self, id: &str, url: &str) -> Result<(), ApiError> {
         if !is_openable_url(url) {
             return Err(err(ErrorCode::BadRequest, format!("{url:?} is not a URL (scheme:...)")));
+        }
+        if self.get(id)?.is_rn() {
+            // React Native (iOS): `Linking`'s `url` event and expo-linking's `onURLReceived`.
+            let s = self.get(id)?;
+            s.require_running()?;
+            if s.params.platform != "ios" {
+                return Err(err(ErrorCode::Unsupported, "open_url exists only for iOS react-native sessions"));
+            }
+            s.send_and_settle(&HostMessage::OpenUrl { url: url.into() })?;
+            s.invalidate_scene();
+            return Ok(());
         }
         let s = self.require_scenes(id)?;
         let foreground = s.scene_phase != ScenePhase::Active;
@@ -332,6 +344,15 @@ impl Host {
             if s.anim.is_animating() {
                 scene = s.anim.render_scene(&scene);
             }
+        } else if s.is_rn() {
+            // React Native LayoutAnimation: the tree carries the animation for the commit it configured.
+            if gen != s.last_anim_gen {
+                s.anim.update(&scene);
+                s.last_anim_gen = gen;
+            }
+            if s.anim.is_animating() {
+                scene = s.anim.render_scene(&scene);
+            }
         }
         drop(fonts_guard);
         for name in &scene.unsupported_symbols {
@@ -340,8 +361,13 @@ impl Host {
         for note in &scene.notes {
             s.report_once("host", note.clone());
         }
-        let scene = Arc::new(scene);
-        s.cache_scene(gen, version, scene.clone());
+        let scene = if s.is_rn() {
+            s.cache_live_scene(gen, version, scene)
+        } else {
+            let scene = Arc::new(scene);
+            s.cache_scene(gen, version, scene.clone());
+            scene
+        };
         Ok((scene, version, s.scale))
     }
 
@@ -431,7 +457,7 @@ impl Host {
     pub fn is_animating(&mut self, id: &str) -> bool {
         let Some(s) = self.sessions.get_mut(id) else { return false };
         s.sync_schedule();
-        s.anim.is_animating() || s.guest_due_ms.is_some() || s.inter.holding()
+        s.anim.is_animating() || s.guest_due_ms.is_some() || s.inter.holding() || s.live_moving
     }
 
     /// Advance scroll momentum, bounces, SwiftUI animations, and scheduled guest ticks by `dt` seconds.
@@ -470,7 +496,7 @@ impl Host {
         }
         let s = self.get(id)?;
         s.sync_schedule();
-        Ok(anim_moving || scroll_moving || holding || s.anim.is_animating() || s.guest_due_ms.is_some())
+        Ok(anim_moving || scroll_moving || holding || s.anim.is_animating() || s.guest_due_ms.is_some() || s.live_moving)
     }
 
     /// Advance the session's animation clock deterministically by `ms` milliseconds in frame steps

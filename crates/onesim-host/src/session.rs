@@ -8,7 +8,7 @@ use onesim_protocol::{
 };
 use onesim_render::rn_input::{focus_change, Out, RnInput, Wait};
 pub use onesim_render::{device, Device, DEFAULT_DEVICE, DEVICES};
-use onesim_render::{Animator, Effect, Interaction, Scene, SwiftUiLayoutCache};
+use onesim_render::{Animator, Effect, Interaction, Live, Scene, SwiftUiLayoutCache};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
@@ -160,6 +160,8 @@ struct CachedScene {
     epoch: u64,
     version: u64,
     scene: Arc<Scene>,
+    /// React Native: the scene before the live pass, and the clock the live pass last ran at.
+    base: Option<(Arc<Scene>, f64)>,
 }
 
 pub struct Session {
@@ -186,6 +188,10 @@ pub struct Session {
     pub guest_due_ms: Option<f64>,
     /// Tree generation last ingested by `anim.update`.
     pub last_anim_gen: u64,
+    /// React Native: spinners and animated images that run on the session clock.
+    pub live: Live,
+    /// Whether the last live pass left something moving (the session needs ticks).
+    pub live_moving: bool,
     /// React Native: touch in progress and frames the guest already has (shared with the browser backend).
     pub rn: RnInput,
     /// SwiftUI: last `scroll_position` target sent per scroll-node id.
@@ -242,6 +248,8 @@ impl Session {
             guest_clock_ms: 0.0,
             guest_due_ms: None,
             last_anim_gen: 0,
+            live: Live::new(),
+            live_moving: false,
             rn: RnInput::default(),
             sent_positions: BTreeMap::new(),
             sent_geometry: BTreeMap::new(),
@@ -258,15 +266,30 @@ impl Session {
         }
     }
 
-    pub fn cached_scene(&self, generation: u64) -> Option<(Arc<Scene>, u64)> {
-        self.cached_scene
-            .as_ref()
-            .filter(|c| c.generation == generation && c.epoch == self.layout_epoch)
-            .map(|c| (c.scene.clone(), c.version))
+    pub fn cached_scene(&mut self, generation: u64) -> Option<(Arc<Scene>, u64)> {
+        let epoch = self.layout_epoch;
+        let c = self.cached_scene.as_mut().filter(|c| c.generation == generation && c.epoch == epoch)?;
+        // Spinners and animated images move on with the clock without a new layout.
+        if let Some((base, clock)) = c.base.as_mut().filter(|(_, at)| self.live_moving && *at != self.clock_ms) {
+            let mut scene = Scene::clone(base);
+            self.live_moving = self.live.apply(&mut scene, self.clock_ms);
+            *clock = self.clock_ms;
+            c.scene = Arc::new(scene);
+        }
+        Some((c.scene.clone(), c.version))
     }
 
     pub fn cache_scene(&mut self, generation: u64, version: u64, scene: Arc<Scene>) {
-        self.cached_scene = Some(CachedScene { generation, epoch: self.layout_epoch, version, scene });
+        self.cached_scene = Some(CachedScene { generation, epoch: self.layout_epoch, version, scene, base: None });
+    }
+
+    /// React Native: cache `base` (the laid-out scene) and what the live pass makes of it at the session clock.
+    pub fn cache_live_scene(&mut self, generation: u64, version: u64, base: Scene) -> Arc<Scene> {
+        let mut scene = base.clone();
+        self.live_moving = self.live.apply(&mut scene, self.clock_ms);
+        let scene = Arc::new(scene);
+        self.cached_scene = Some(CachedScene { generation, epoch: self.layout_epoch, version, scene: scene.clone(), base: Some((Arc::new(base), self.clock_ms)) });
+        scene
     }
 
     pub fn invalidate_scene(&mut self) {
@@ -376,6 +399,10 @@ impl Session {
             let mut c = Command::new("node");
             c.arg(onesim_home().join("frameworks/react-native/guest/host.js"))
                 .env("SIMCORE_METRO_URL", self.params.metro_url.as_deref().unwrap_or("http://localhost:8081"));
+            match &self.params.launch_url {
+                Some(u) => c.env("SIMCORE_LAUNCH_URL", u),
+                None => c.env_remove("SIMCORE_LAUNCH_URL"),
+            };
             c
         } else if is_prebuilt(&self.params) {
             Command::new(&self.params.app_path)

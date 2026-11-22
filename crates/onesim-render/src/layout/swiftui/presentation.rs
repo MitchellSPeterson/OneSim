@@ -346,8 +346,11 @@ impl Ctx<'_> {
     /// The card of an alert or confirmation popover: title, message (left-aligned) and capsule buttons.
     /// Alerts put two buttons side by side (cancel first) and stack more (cancel last); a popover stacks
     /// them and has no cancel button (tapping outside cancels).
+    /// `sheet` (React Native `ActionSheetIOS`): the alert card, its buttons always stacked with cancel last and plain
+    /// ones in the label color.
     pub(super) fn alert_card(&mut self, kind: &'static str, title: Option<&str>, message: Option<&ViewNode>, actions: &[ViewNode], card_w: f64) -> Lay {
         let popover = kind == "popover";
+        let sheet = kind == "sheet";
         let inner = card_w - 2.0 * ALERT_TEXT_PAD;
         let primary = self.semantic(Semantic::Primary);
         let mut kids: Vec<(f64, f64, Lay)> = vec![];
@@ -369,6 +372,7 @@ impl Ctx<'_> {
                 (true, true, false) => ALERT_27_DARK_MESSAGE,
                 (true, true, true) => POPOVER_27_DARK_MESSAGE,
                 (true, false, _) => ALERT_MESSAGE_FG.1,
+                (false, _, _) if sheet => SHEET_MESSAGE_FG,
                 _ => ALERT_MESSAGE_FG.0, };
             let env = Env { size: ALERT_MESSAGE_PT, align: TextAlign::Leading, fg: Some(rgba(fg.0, fg.1, fg.2, 1.0)), ..Env::new() };
             let ml = self.view(m, Prop { w: Some(inner), h: None }, env);
@@ -380,7 +384,7 @@ impl Ctx<'_> {
         y += ALERT_TEXT_BUTTON_GAP;
         let is_cancel = |b: &ViewNode| matches!(b.kind, ViewKind::Button { role: Some(onesim_protocol::ButtonRole::Cancel), .. });
         let mut acts: Vec<&ViewNode> = actions.iter().filter(|b| !(popover && is_cancel(b))).collect();
-        let side_by_side = !popover && acts.len() == 2;
+        let side_by_side = !popover && !sheet && acts.len() == 2;
         acts.sort_by_key(|b| is_cancel(b) != side_by_side); // stable: cancel first when side by side, last when stacked
         let n = acts.len().max(1);
         let bw = if side_by_side { (card_w - 2.0 * ALERT_BTN_PAD - ALERT_BTN_GAP) / 2.0 } else { card_w - 2.0 * ALERT_BTN_PAD };
@@ -404,8 +408,10 @@ impl Ctx<'_> {
             let (fg, weight) = match role {
                 Some(onesim_protocol::ButtonRole::Destructive) => (red, 600),
                 Some(onesim_protocol::ButtonRole::Cancel) => (primary, 600),
-                None => (if popover { primary } else { accent }, 600),
+                None => (if popover || sheet { primary } else { accent }, 600),
             };
+            // Action sheets set every button in the regular weight.
+            let weight = if sheet { 400 } else { weight };
             let env = Env { fg: Some(if *disabled { self.semantic(Semantic::Tertiary) } else { fg }), base_weight: weight, align: TextAlign::Center, ..Env::new() };
             let l = self.view(label, Prop { w: Some(bw - 24.0), h: None }, env);
             let mut bn = Node::new(&b.id, "button");
@@ -427,10 +433,10 @@ impl Ctx<'_> {
         }
         let rows = if side_by_side { 1 } else { n };
         y += rows as f64 * bh + (rows - 1) as f64 * ALERT_BTN_GAP + ALERT_BTN_PAD;
-        let mut card = Node::new(if popover { "dialog" } else { "alert" }, kind);
+        let mut card = Node::new(if popover || sheet { "dialog" } else { "alert" }, kind);
         card.label = title.map(str::to_string);
         card.radius = if popover { POPOVER_RADIUS } else { ALERT_RADIUS };
-        let (mix, shadow) = if popover { (Some(POPOVER_GLASS), Some(POPOVER_SHADOW)) } else { (None, None) };
+        let (mix, shadow) = if popover || sheet { (Some(POPOVER_GLASS), Some(POPOVER_SHADOW)) } else { (None, None) };
         let mix = if self.dark && self.ios >= IosVersion::Ios27 {
             Some(PRESENT_GLASS_27_DARK)
         } else {
@@ -446,6 +452,16 @@ impl Ctx<'_> {
         let cardl = self.alert_card("alert", Some(title), message, actions, ALERT_W);
         let y = cardl.size.h;
         let scrim = Lay::new(Size { w, h }, Some(self.scrim("alert#scrim", (w, h), if self.dark { ALERT_SCRIM.1 } else { ALERT_SCRIM.0 }, None)), vec![]);
+        Lay::new(Size { w, h }, None, vec![(0.0, 0.0, scrim), ((w - ALERT_W) / 2.0, h / 2.0 + ALERT_DY - y / 2.0, cardl)])
+    }
+
+    /// React Native `ActionSheetIOS` (iOS 26+ on iPhone): the alert's dim and centred card with stacked buttons; a
+    /// tap on the dim runs `dismiss` (the cancel button, when there is one).
+    pub(super) fn action_sheet(&mut self, title: Option<&str>, message: Option<&ViewNode>, actions: &[ViewNode], dismiss: Option<u64>, g: &Geo) -> Lay {
+        let (w, h) = (g.w, g.h);
+        let cardl = self.alert_card("sheet", title, message, actions, ALERT_W);
+        let y = cardl.size.h;
+        let scrim = Lay::new(Size { w, h }, Some(self.scrim("dialog#scrim", (w, h), if self.dark { ALERT_SCRIM.1 } else { ALERT_SCRIM.0 }, dismiss)), vec![]);
         Lay::new(Size { w, h }, None, vec![(0.0, 0.0, scrim), ((w - ALERT_W) / 2.0, h / 2.0 + ALERT_DY - y / 2.0, cardl)])
     }
 

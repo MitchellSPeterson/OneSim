@@ -415,7 +415,7 @@ impl Ctx<'_> {
             if let Some(pm) = path.and_then(|p| crate::image::load(p)) {
                 isz = (pm.width() as f64 / self.scale, pm.height() as f64 / self.scale);
                 let dest = Rect { x: 0.0, y: 0.0, w: isz.0, h: isz.1 };
-                icon.image = tinted(&pm, tint).map(|pixmap| crate::ImageRun { pixmap, dest, rotation: 0.0, filter: 2 });
+                icon.image = tinted(&pm, tint).map(|pixmap| crate::ImageRun { pixmap, dest, rotation: 0.0, filter: 2, frames: None });
             } else if let Some(name) = &tab.symbol {
                 let spec = crate::SymbolSpec { name: name.clone(), point_size: 22.0, weight: 400, scale: ImageScale::Medium, ..Default::default() };
                 isz = crate::symbols::metrics(&spec).map_or((22.0, 22.0), |m| (m.w, m.h));

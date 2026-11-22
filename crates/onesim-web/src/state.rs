@@ -63,6 +63,10 @@ pub(crate) struct State {
     /// SwiftUI scene phase (`simcore_web_set_scene_phase`).
     pub(crate) scene_phase: ScenePhase,
     pub(crate) last_anim_ver: Option<u64>,
+    /// React Native: spinners and animated images on the clock, the scene before that pass, and whether one moves.
+    pub(crate) live: onesim_render::Live,
+    pub(crate) live_base: Option<Scene>,
+    pub(crate) live_moving: bool,
     /// Set before a guest callback; a tree submit clears it by updating the scene.
     pub(crate) stale: bool,
     pub(crate) initialized: bool,
@@ -98,7 +102,7 @@ thread_local! {
     pub(crate) static STATE: RefCell<State> = RefCell::new(State {
         ctx: 0, on_action: None, on_env: None, on_text: None, on_gesture: None, on_layout: None, in_layout: false, version: None, tree: None, layout_cache: SwiftUiLayoutCache::default(), scene: None,
         fonts: None, device: device(DEFAULT_DEVICE).unwrap(), viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios27, inter: Interaction::default(),
-        anim: Animator::new(), animation_target: None, clock_ms: 0.0, guest_clock_ms: 0.0, guest_due_ms: None, pasteboard_out: None, scene_phase: ScenePhase::Active, last_anim_ver: None,
+        anim: Animator::new(), animation_target: None, clock_ms: 0.0, guest_clock_ms: 0.0, guest_due_ms: None, pasteboard_out: None, scene_phase: ScenePhase::Active, last_anim_ver: None, live: onesim_render::Live::new(), live_base: None, live_moving: false,
         stale: false, initialized: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), frame_version: 0, frame_dirty: false,
         output: 0, builder: Builder::new(), dl: Vec::new(), unread: None, buf: Vec::new(), rn: None,
     });
@@ -156,7 +160,9 @@ pub(crate) fn update_scene(s: &mut State) {
     // React Native needs current layout even when multiple updates share a presentation.
     if let Some(rn) = s.rn.as_mut() {
         rn.outbox.extend(rn.input.layout(&scene));
-    } else if s.version != s.last_anim_ver {
+    }
+    // SwiftUI animations, and React Native LayoutAnimation (carried by the tree of the commit it configured).
+    if s.version != s.last_anim_ver {
         s.anim.update(&scene);
         s.last_anim_ver = s.version;
     }
@@ -176,7 +182,23 @@ pub(crate) fn update_animation_frame(s: &mut State) {
             s.animation_target = None;
         }
     }
+    if s.rn.is_some() {
+        if let Some(scene) = s.scene.as_mut() {
+            s.live_base = Some(scene.clone());
+            s.live_moving = s.live.apply(scene, s.clock_ms);
+        }
+    }
     invalidate_frame(s);
+}
+
+/// React Native: move spinners and animated images on to the current clock (no new layout). True if redrawn.
+pub(crate) fn update_live_frame(s: &mut State) -> bool {
+    let Some(base) = s.live_base.as_ref().filter(|_| s.live_moving) else { return false };
+    let mut scene = base.clone();
+    s.live_moving = s.live.apply(&mut scene, s.clock_ms);
+    s.scene = Some(scene);
+    invalidate_frame(s);
+    true
 }
 
 pub(crate) fn invalidate_frame(s: &mut State) {

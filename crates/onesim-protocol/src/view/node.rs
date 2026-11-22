@@ -101,6 +101,9 @@ pub enum Layer {
         /// Guest action that clears the binding (tap outside the popover).
         #[serde(default)]
         dismiss: Option<u64>,
+        /// The dialog's own appearance (React Native `ActionSheetIOS` `userInterfaceStyle`); `None` follows the screen.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        appearance: Option<crate::Appearance>,
     },
     /// A glass card holding `content`, hanging under the anchor (a compact `DatePicker`'s calendar or time wheel,
     /// section S); `dismiss` closes it (tap outside).
@@ -163,6 +166,9 @@ pub enum Layer {
         /// items as a `module.called` event and closes the sheet.
         #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
         activities: std::collections::BTreeMap<String, u64>,
+        /// The sheet's own appearance (React Native `userInterfaceStyle`); `None` follows the screen.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        appearance: Option<crate::Appearance>,
     },
     /// Menu of a menu-style `Picker` or a `Menu`, anchored to it; `dismiss` closes it (tap outside).
     Menu {

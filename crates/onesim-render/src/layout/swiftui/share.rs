@@ -55,6 +55,10 @@ impl Ctx<'_> {
         }
         // App row, then action row: one cell per activity (icon, label under it).
         let (apps, actions): (&[&str], &[&str]) = if s.url { (m.url_apps, m.url_actions) } else { (&["Reminders", "More"], &["Copy", "Save to Files"]) };
+        // An activity the guest left out (React Native `excludedActivityTypes`) has no cell; the rest close up. A guest
+        // that sends no activities at all gets every cell (running `dismiss`).
+        let offered = |n: &&str| s.activities.is_empty() || if *n == "Copy" { s.copy.is_some() } else { s.activities.contains_key(*n) };
+        let (apps, actions): (Vec<&str>, Vec<&str>) = (apps.iter().copied().filter(offered).collect(), actions.iter().copied().filter(offered).collect());
         let cells = apps.iter().enumerate().map(|(i, n)| (i, *n, true)).chain(actions.iter().enumerate().map(|(i, n)| (i, *n, false)));
         let (isz, ix, iy) = m.app_icon;
         for (k, (col, label, app)) in cells.enumerate() {

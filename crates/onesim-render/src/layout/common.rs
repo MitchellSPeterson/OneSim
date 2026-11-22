@@ -62,6 +62,13 @@ pub struct SceneParams<'a> {
     pub chrome: crate::chrome::ChromeParams,
 }
 
+impl<'a> SceneParams<'a> {
+    /// The same parameters (struct update syntax needs a value, and `SceneParams` holds borrows).
+    pub(crate) fn reborrow(&self) -> SceneParams<'a> {
+        SceneParams { focus: self.focus, chrome: self.chrome, ..*self }
+    }
+}
+
 pub(crate) struct NavBack {
     pub action: Option<u64>,
     pub label: String,

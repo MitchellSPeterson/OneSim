@@ -109,6 +109,7 @@ const cfg = {
   hmr: process.env.SIMCORE_HMR !== '0' && !env.SIMCORE_BUNDLE_URL, // Fast Refresh via Metro's /hot; SIMCORE_HMR=0 turns it off
   generation: (workerData && workerData.generation) || 0, // 0 = first load, >0 = after a reload
   dataDir: workerData && workerData.dataDir, // per-session sandbox (documents, caches, secure store): survives reloads, removed on exit
+  launchURL: env.SIMCORE_LAUNCH_URL || null, // the URL the app was launched to open (Linking.getInitialURL)
 };
 {
   const android = cfg.platform === 'android';
@@ -215,7 +216,10 @@ class Runtime {
     this.images = new Map(); // tag -> {uri, info?, err?}
     this.scrolled = new Map(); // tag -> last reported [x,y]
     this.shown = new Set(); // Modal tags that got topShow
-    this.alerts = []; // Alert.alert: [{layer, keys: action id -> button key, cb}], bottom to top
+    this.alerts = []; // presentation layers (Alert.alert, ActionSheetIOS): [{layer, run: Map(action id -> handler), kind}], bottom to top
+    this.nextLayoutAnim = null; // LayoutAnimation.configureNext waiting for its commit: {config, total ms, done}
+    this.layoutAnim = null; // ... committed, rides on the next emitted tree
+    this.layoutAnimSeq = 0;
     this.blobs = new Map(); // BlobModule store: blobId -> Buffer
     this.eventHandler = null;
     this.simQueue = [];
@@ -295,7 +299,13 @@ class Runtime {
       createChildSet: () => [],
       appendChild: (parent, child) => { parent.children.push(child); return parent; },
       appendChildToSet: (set, child) => { set.push(child); },
-      completeRoot: (rootTag, childSet) => { env.SIMCORE_DEBUG && log('completeRoot', rootTag, childSet.length); self.rootChildren = childSet; self.scheduleEmit(); },
+      completeRoot: (rootTag, childSet) => {
+        env.SIMCORE_DEBUG && log('completeRoot', rootTag, childSet.length);
+        self.rootChildren = childSet;
+        // LayoutAnimation.configureNext applies to the next commit: this one.
+        if (self.nextLayoutAnim) { self.layoutAnim = self.nextLayoutAnim; self.nextLayoutAnim = null; }
+        self.scheduleEmit();
+      },
       registerEventHandler: (h) => { self.eventHandler = h; },
       // Frames come from the Rust host's layout engine; zeros until the first `layout` message.
       measure: (n, cb) => {
@@ -311,7 +321,16 @@ class Runtime {
         if (!f || !r) return node.queueMicrotask(self.guard(() => (onFail && onFail())));
         node.queueMicrotask(self.guard(() => onSuccess(f[0] - r[0], f[1] - r[1], f[2], f[3])));
       },
-      configureNextLayoutAnimation: diag('configureNextLayoutAnimation'),
+      // The host animates the commit (protocol H: `__simcoreLayoutAnimation`); `onEnd` runs once it has played.
+      configureNextLayoutAnimation: (config, onEnd, onFail) => {
+        if (!config || typeof config !== 'object') { if (typeof onFail === 'function') node.queueMicrotask(self.guard(onFail)); return; }
+        if (self.nextLayoutAnim) self.nextLayoutAnim.done(); // replaced before any commit: the earlier one ends unplayed
+        const part = (k) => config[k] && typeof config[k] === 'object' ? config[k] : null;
+        const ms = [part('create'), part('update'), part('delete')].filter(Boolean)
+          .map((p) => (Number.isFinite(p.duration) ? p.duration : Number(config.duration) || 0) + (Number(p.delay) || 0));
+        const total = Math.max(0, ...ms);
+        self.nextLayoutAnim = { config: JSON.parse(JSON.stringify(config)), total, done: typeof onEnd === 'function' ? self.guard(() => onEnd()) : () => {} };
+      },
       sendAccessibilityEvent: diag('sendAccessibilityEvent'),
       findShadowNodeByTag_DEPRECATED: (tag) => self.nodes.get(tag) || null,
       setNativeProps: (n, p) => {
@@ -406,7 +425,14 @@ class Runtime {
         if (n.viewName === expoUI.HOST) view.children = [expoUI.nativeTree(view, cfg.platform === 'android', this.appearance)];
         return view;
       };
-      const root = { kind: 'rn', id: String(ROOT_TAG), component: 'RootView', props: this.rootProps, children: this.rootChildren.flatMap((c) => ser(c, ROOT_TAG)) };
+      let rootProps = this.rootProps;
+      const la = this.layoutAnim;
+      if (la) { // once: later trees of the same commit (or unrelated ones) do not animate
+        this.layoutAnim = null;
+        rootProps = { ...rootProps, __simcoreLayoutAnimation: { ...la.config, token: ++this.layoutAnimSeq } };
+        node.setTimeout(la.done, la.total);
+      }
+      const root = { kind: 'rn', id: String(ROOT_TAG), component: 'RootView', props: rootProps, children: this.rootChildren.flatMap((c) => ser(c, ROOT_TAG)) };
       if (env.SIMCORE_DEBUG) log('emit tree', version + 1);
       // An alert up: the RN root becomes a `presentation`'s content (protocol G/H).
       const treeRoot = this.alerts.length ? { kind: 'presentation', id: 'presentation', content: root, layers: this.alerts.map((a) => a.layer) } : root;
@@ -589,16 +615,17 @@ class Runtime {
         break;
       }
       case 'simulate': if (this.registry) this.registry.simulate(m.module, m.state, m.replay); else this.simQueue.push(m); break; // before boot: applied once the registry exists
-      case 'action': { // an alert button: drop the alert, then run Alert.alert's callback with the button key
+      case 'action': { // a button of an alert / action sheet / share sheet: drop that layer, then run its handler
         const n = this.parents.has(m.id) && this.nodes.get(m.id);
         if (n && expoUI.viewName(n.viewName) && expoUI.action(n, cfg.platform, (event, payload) => this.dispatch(n, event, payload, 2))) break;
-        const i = this.alerts.findIndex((a) => a.keys.has(m.id));
+        const i = this.alerts.findIndex((a) => a.run.has(m.id));
         if (i < 0) return log(`OneSim: action ${m.id} matches no alert`);
         const [a] = this.alerts.splice(i, 1);
         this.scheduleEmit();
-        this.guard(a.cb)(+a.keys.get(m.id));
+        this.guard(a.run.get(m.id))();
         break;
       }
+      case 'open_url': if (this.registry) this.registry.openURL(m.url); break;
       case 'native_back': this.nativeBack(m.tag); break;
       case 'select_tab': this.selectTab(m); break;
       case 'focus': this.focus(m.tag); break;
@@ -829,7 +856,7 @@ class Runtime {
   // ---- native modules: the registry in modules.js (TurboModules, expo modules, simulated state) ----
   makeRegistry(bundleSource) {
     const ver = /ReactNativeVersion\.major = (\d+);\s*ReactNativeVersion\.minor = (\d+);\s*ReactNativeVersion\.patch = (\d+)/.exec(bundleSource) || [0, 0, 0, 0];
-    this.registry = require('./modules.js')(this, { node, log, sendError, sendEvent, unsupported, cfg, ver, insetsFor, loadImage, imageDone, expo: this.expoClasses() });
+    this.registry = require('./modules.js')(this, { node, log, sendError, sendEvent, unsupported, cfg, ver, insetsFor, loadImage, imageDone, readUri, expo: this.expoClasses() });
     for (const m of this.simQueue.splice(0)) this.registry.simulate(m.module, m.state, m.replay);
     return this.registry;
   }
