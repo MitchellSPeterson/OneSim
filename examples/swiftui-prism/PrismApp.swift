@@ -573,9 +573,9 @@ struct SparksTabView: View {
 
             NavigationLink {
                 SparkDetailView(
-                    spark: spark,
-                    palette: palette,
-                    onToggle: { toggleSpark(spark.id) }
+                    sparks: $sparks,
+                    sparkID: spark.id,
+                    palette: palette
                 )
             } label: {
                 HStack(spacing: 10) {
@@ -618,61 +618,70 @@ struct SparksTabView: View {
 }
 
 struct SparkDetailView: View {
-    let spark: SparkItem
+    @Binding var sparks: [SparkItem]
+    let sparkID: Int
     let palette: PrismPalette
-    let onToggle: () -> Void
+
+    private var sparkIndex: Int? {
+        sparks.firstIndex(where: { $0.id == sparkID })
+    }
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
-                VStack(spacing: 12) {
-                    Image(systemName: spark.category.symbol)
-                        .font(.system(size: 44, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(20)
-                        .glassEffect(.regular, in: Circle())
+            if let index = sparkIndex {
+                let spark = sparks[index]
+                VStack(spacing: 20) {
+                    VStack(spacing: 12) {
+                        Image(systemName: spark.category.symbol)
+                            .font(.system(size: 44, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(20)
+                            .glassEffect(.regular, in: Circle())
 
-                    Text(spark.title)
-                        .font(.title2.weight(.bold))
-                        .foregroundStyle(.white)
+                        Text(spark.title)
+                            .font(.title2.weight(.bold))
+                            .foregroundStyle(.white)
 
-                    Text(spark.category.rawValue.uppercased())
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.white.opacity(0.9))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 5)
-                        .background(Color.black.opacity(0.2), in: Capsule())
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 28)
-                .background(palette.gradient, in: RoundedRectangle(cornerRadius: 26))
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Prompt")
-                        .font(.headline)
-                    Text(spark.note)
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
-                .background(Color.gray.opacity(0.12), in: RoundedRectangle(cornerRadius: 18))
-
-                Button {
-                    onToggle()
-                } label: {
-                    Label(
-                        spark.isCompleted ? "Mark as Incomplete" : "Complete Spark",
-                        systemImage: spark.isCompleted ? "arrow.uturn.backward" : "checkmark.circle.fill"
-                    )
-                    .font(.headline)
+                        Text(spark.category.rawValue.uppercased())
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
+                            .background(Color.black.opacity(0.2), in: Capsule())
+                    }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, 28)
+                    .background(palette.gradient, in: RoundedRectangle(cornerRadius: 26))
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Prompt")
+                            .font(.headline)
+                        Text(spark.note)
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+                    .background(Color.gray.opacity(0.12), in: RoundedRectangle(cornerRadius: 18))
+
+                    Button {
+                        withAnimation(.bouncy) {
+                            sparks[index].isCompleted.toggle()
+                        }
+                    } label: {
+                        Label(
+                            spark.isCompleted ? "Mark as Incomplete" : "Complete Spark",
+                            systemImage: spark.isCompleted ? "arrow.uturn.backward" : "checkmark.circle.fill"
+                        )
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(palette.primary)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(palette.primary)
+                .padding(16)
             }
-            .padding(16)
         }
         .navigationTitle("Spark Detail")
     }

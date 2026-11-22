@@ -182,6 +182,8 @@ fun PrismApp() {
     var nextSparkId by remember { mutableIntStateOf(5) }
     var randomCursor by remember { mutableIntStateOf(0) }
     var draftSpark by remember { mutableStateOf("") }
+    var sparksPage by remember { mutableIntStateOf(0) }
+    val sparksPageSize = 4
 
     // Lab state
     var labCornerDp by remember { mutableStateOf(20f) }
@@ -279,8 +281,9 @@ fun PrismApp() {
                             onClick = {
                                 val (title, cat) = RandomSparkPool[randomCursor % RandomSparkPool.size]
                                 randomCursor++
-                                val trimmed = if (sparks.size >= 5) sparks.drop(1) else sparks
-                                sparks = trimmed + SparkItem(nextSparkId++, title, cat, done = false)
+                                val updated = sparks + SparkItem(nextSparkId++, title, cat, done = false)
+                                sparks = updated
+                                sparksPage = (updated.size - 1) / sparksPageSize
                             },
                             modifier = Modifier.padding(bottom = 80.dp),
                             containerColor = palette.primary,
@@ -321,13 +324,17 @@ fun PrismApp() {
                     PrismTab.Sparks -> SparksTab(
                         palette = palette,
                         sparks = sparks,
+                        page = sparksPage,
+                        pageSize = sparksPageSize,
+                        onPageChange = { sparksPage = it },
                         draft = draftSpark,
                         onDraftChange = { draftSpark = it },
                         onAddDraft = {
                             val clean = draftSpark.trim()
                             if (clean.isNotEmpty()) {
-                                val trimmed = if (sparks.size >= 5) sparks.drop(1) else sparks
-                                sparks = trimmed + SparkItem(nextSparkId++, clean, "Play", done = false)
+                                val updated = sparks + SparkItem(nextSparkId++, clean, "Play", done = false)
+                                sparks = updated
+                                sparksPage = (updated.size - 1) / sparksPageSize
                                 draftSpark = ""
                             }
                         },
@@ -335,10 +342,14 @@ fun PrismApp() {
                             sparks = sparks.map { if (it.id == id) it.copy(done = !it.done) else it }
                         },
                         onClearDone = {
-                            sparks = sparks.filterNot { it.done }
+                            val remaining = sparks.filterNot { it.done }
+                            sparks = remaining
+                            val maxPage = ((remaining.size - 1).coerceAtLeast(0)) / sparksPageSize
+                            if (sparksPage > maxPage) sparksPage = maxPage
                         },
                         onRestore = {
                             sparks = DefaultSparks
+                            sparksPage = 0
                         },
                     )
                     PrismTab.Lab -> LabTab(
@@ -681,6 +692,9 @@ private fun PulseTab(
 private fun SparksTab(
     palette: PrismPalette,
     sparks: List<SparkItem>,
+    page: Int,
+    pageSize: Int,
+    onPageChange: (Int) -> Unit,
     draft: String,
     onDraftChange: (String) -> Unit,
     onAddDraft: () -> Unit,
@@ -690,6 +704,9 @@ private fun SparksTab(
 ) {
     val doneCount = sparks.count { it.done }
     val progress = if (sparks.isEmpty()) 0f else doneCount.toFloat() / sparks.size.toFloat()
+    val pageCount = if (sparks.isEmpty()) 1 else (sparks.size + pageSize - 1) / pageSize
+    val safePage = page.coerceIn(0, pageCount - 1)
+    val pageSparks = sparks.drop(safePage * pageSize).take(pageSize)
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -785,7 +802,7 @@ private fun SparksTab(
                 }
             }
         } else {
-            sparks.take(5).forEach { spark ->
+            pageSparks.forEach { spark ->
                 val cardColor = if (spark.done) {
                     MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
                 } else {
@@ -834,6 +851,35 @@ private fun SparksTab(
                             )
                         }
                     }
+                }
+            }
+        }
+
+        // Pagination (when Sparks span multiple pages)
+        if (pageCount > 1) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedButton(
+                    onClick = { onPageChange((safePage - 1).coerceAtLeast(0)) },
+                    enabled = safePage > 0,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Text("Prev")
+                }
+                Text(
+                    text = "Page ${safePage + 1} / $pageCount",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(
+                    onClick = { onPageChange((safePage + 1).coerceAtMost(pageCount - 1)) },
+                    enabled = safePage < pageCount - 1,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Text("Next")
                 }
             }
         }
