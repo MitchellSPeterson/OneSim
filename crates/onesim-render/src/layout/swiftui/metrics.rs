@@ -205,7 +205,11 @@ pub(super) const SHARE_TILE_GLYPH: f64 = 30.0;
 pub(super) const SHARE_TITLE_PT: f32 = 15.0;
 pub(super) const SHARE_APP_RADIUS: f64 = 15.0;
 pub(super) const SHARE_MORE_GLYPH: f64 = 32.0;
-pub(super) const SHARE_MORE_FG: ((u8, u8, u8), (u8, u8, u8)) = ((99, 99, 102), (174, 174, 178));
+pub(super) const SHARE_MORE_FG: ((u8, u8, u8), (u8, u8, u8)) = ((99, 99, 102), (104, 104, 113));
+/// The More app tile stays white in dark (measured on iOS 27.2, React Native share sheet).
+pub(super) const SHARE_MORE_TILE: ((u8, u8, u8), (u8, u8, u8)) = ((255, 255, 255), (255, 255, 255));
+/// A link with no preview: a white tile with a gray compass (iOS 27.2, light and dark).
+pub(super) const SHARE_LINK_GLYPH_FG: (u8, u8, u8) = (138, 138, 142);
 pub(super) const SHARE_ACTION_FILL: ((u8, u8, u8), (u8, u8, u8)) = ((230, 230, 232), (58, 58, 60));
 pub(super) const SHARE_ACTION_GLYPH: f64 = 26.0;
 pub(super) const SHARE_LABEL_PT: f32 = 12.0;

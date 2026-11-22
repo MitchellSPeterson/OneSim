@@ -16,7 +16,7 @@ Part of [Expo / React Native API coverage](README.md): status legend, summary an
 | Device | expo-device | `ExpoDevice` | 🟡 | 🟡 | | Model and OS of the session's device profile and iOS release. Android simulates the Pixel 10a. |
 | Constants | expo-constants | `ExponentConstants` | ✅ | ✅ | | |
 | Linking | expo-linking | `ExpoLinking` | 🟡 | ⬜ | [#50](https://github.com/MitchellSPeterson/OneSim/issues/50) | `getLinkingURL` is the launch URL, then the last URL opened (`onURLReceived` / `useLinkingURL`, host `open_url`); `clearInitialURL`. Expo Router starts at the launch URL's route |
-| Image | expo-image | `ExpoImage` | ✅ | ⬜ | [#50](https://github.com/MitchellSPeterson/OneSim/issues/50) | PNG, JPEG, GIF and WebP draw; animated GIF / WebP play (unless `autoplay={false}`) |
+| Image | expo-image | `ExpoImage` | 🟠 | ⬜ | [#50](https://github.com/MitchellSPeterson/OneSim/issues/50) | PNG, JPEG, GIF and WebP draw; animated GIF / WebP play (unless `autoplay={false}`). Gaps: the `startAnimating` / `stopAnimating` ref methods, `loadAsync`, blurhash / thumbhash and the disk-cache functions |
 | Symbols | expo-symbols | `SymbolModule` | ✅ | — | | SF Symbols; Phosphor in fallback mode |
 | Glass effect | expo-glass-effect | `ExpoGlassEffect` | ✅ | — | | Liquid Glass |
 | Clipboard | expo-clipboard | `ExpoClipboard` | 🟡 | ⬜ | | `modules.simulate clipboard` |

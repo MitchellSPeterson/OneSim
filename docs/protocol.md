@@ -600,9 +600,11 @@ JS-driven push/pop needs no message. The guest spaces appear events by 350 ms
   `appearance` (`userInterfaceStyle`). Over React Native the host draws a `dialog` without `anchor` as the iOS 26+ iPhone
   action sheet: the alert's dim and centred 320 pt card, Liquid Glass with the popover's shadow, buttons stacked with the
   cancel button last, every label regular weight and plain ones in the label color; a tap on the dim runs `dismiss`.
-  With `anchor` it is the `.confirmationDialog` popover at that view. `appearance` draws that layer alone light or dark.
+  iPhone ignores `anchor` (iPad would point a popover at it). `appearance` draws that layer alone light or dark.
 - `showShareActionSheetWithOptions` adds a section W `share` layer (`items`: `message`, then `url`; `url` when the URL is
-  the only item; `activities` without the `excludedActivityTypes`, whose cells the host leaves out; `appearance`).
+  the only item; `activities` without the `excludedActivityTypes`, whose cells the host leaves out; `appearance`). Over
+  React Native a link item is drawn as iOS shows a link it has no page preview for: its host name by a white tile with a
+  gray compass (the guest fetches no preview).
 - A button's `action` (or `dismiss`) drops the layer and calls back: the option index; for the share sheet
   `(completed, activityType)` (Copy puts the URL or message on the simulated clipboard; dismissing is `false, null`).
   `dismissActionSheet` drops the topmost sheet without a callback.

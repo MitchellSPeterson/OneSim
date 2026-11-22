@@ -142,7 +142,7 @@ mod tests {
         assert!(live.apply(&mut s, 150.0));
         assert_eq!(green_at(&s, 1), 255, "frame 1 is green on the left");
         let mut s = scene(vec![gif("g")]);
-        assert!(!live.apply(&mut s, 1200.0), "played twice: done");
+        assert!(!live.apply(&mut s, 1800.0), "played three times: done");
         assert_eq!(s.nodes[0].image.as_ref().unwrap().pixmap.pixel(1, 1).unwrap().blue(), 255, "rests on the last (blue) frame");
     }
 

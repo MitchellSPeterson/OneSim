@@ -409,8 +409,11 @@ for ios in ${SIMCORE_IOS:-27.2}; do
       rrshot home-dark          --dark
       rrshot layout-expanded    --click Layout --click Toggle --wait 1000
       rrshot actionsheet        --click Sheet --click "Show sheet"
-      rrshot actionsheet-dark   --dark --click Sheet --click "Show sheet"
+      rrshot actionsheet-dark   --dark --click Sheet --click Share --click 200,400 --click "Show sheet"
       rrshot actionsheet-picked --click Sheet --click "Show sheet" --click "Save to Files"
+      rrshot actionsheet-anchored --click Sheet --click "Show sheet" --click "Save to Files" --click Anchored
+      rrshot share              --click Sheet --click "Show sheet" --click Cancel --click Share
+      rrshot share-dark         --dark --click Sheet --click Share
       rrshot images             --click Images
       rrshot images-dark        --dark --click Images
       rrshot fonts              --click Fonts

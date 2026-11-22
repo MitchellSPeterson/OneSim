@@ -27,9 +27,9 @@ The showcase is compared against Pixel 10a emulator captures at the 2% threshold
 |---|---|---|
 | [Core components](core-components.md) | 81% (10.5/13) | 42% (5/12) |
 | [React Native modules](react-native-modules.md) | 69% (18.5/27) | 26% (6/23) |
-| [Expo SDK](expo-sdk.md) | 55% (29.5/54) | 8% (4/51) |
+| [Expo SDK](expo-sdk.md) | 54% (29/54) | 8% (4/51) |
 | [Navigation, animation and community libraries](libraries.md) | 61% (5.5/9) | 0% (0/9) |
-| **Total** | **62% (64/103)** | **16% (15/95)** |
+| **Total** | **62% (63.5/103)** | **16% (15/95)** |
 <!-- coverage:end -->
 
 Refresh with `node scripts/api-coverage.mjs`; CI runs it with `--check`, which also fails when a module in

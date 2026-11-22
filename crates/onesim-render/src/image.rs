@@ -63,7 +63,8 @@ pub struct Animation {
     size: (u32, u32),
     /// How long each frame shows (ms).
     pub delays: Vec<f64>,
-    /// Plays in all (the GIF loop count / WebP loop count); `None` loops forever. Afterwards the last frame stays.
+    /// Plays in all (from the GIF's NETSCAPE block or the WebP loop count); `None` loops forever. Afterwards the last
+    /// frame stays.
     pub loops: Option<u32>,
     frames: Mutex<Frames>,
 }
@@ -248,10 +249,12 @@ fn ios_delay(ms: f64) -> f64 {
 fn decode_animated(bytes: &Arc<[u8]>, format: Format) -> Option<Decoded> {
     let mut s = Stream::new(bytes, format)?;
     let (size, loops) = match &s.inner {
+        // As ImageIO reports it (and RCTAnimatedImage plays it on iOS 14+): a NETSCAPE loop count of 0 loops forever,
+        // N plays N + 1 times, and a GIF without the block plays once (`gif` reads those as Infinite / Finite(N) /
+        // Finite(0)).
         StreamKind::Gif { size, d, .. } => (*size, match d.repeat() {
             gif::Repeat::Infinite => None,
-            // No NETSCAPE loop block (or a count of 0 there, which `gif` reads as Infinite): play once.
-            gif::Repeat::Finite(n) => Some(u32::from(n.max(1))),
+            gif::Repeat::Finite(n) => Some(u32::from(n) + 1),
         }),
         StreamKind::WebP { size, d, .. } => {
             if !d.is_animated() {
@@ -405,7 +408,7 @@ mod tests {
         let a = anim(include_bytes!("../tests/fixtures/anim8.gif"));
         assert_eq!(a.len(), 3);
         assert_eq!(a.delays, vec![100.0, 200.0, 300.0]);
-        assert_eq!(a.loops, Some(2));
+        assert_eq!(a.loops, Some(3), "NETSCAPE loop count 2: three plays, as ImageIO reports it");
         // Frame 2 changes only the left half: the right half still shows frame 1's red.
         let f1 = a.frame(1).unwrap();
         assert_eq!(rgba(&f1, 1, 1), [0, 255, 0, 255]);
@@ -423,7 +426,8 @@ mod tests {
         assert_eq!(a.frame_at(100.0), (1, true));
         assert_eq!(a.frame_at(350.0), (2, true));
         assert_eq!(a.frame_at(650.0), (0, true), "second play");
-        assert_eq!(a.frame_at(1200.0), (2, false), "two plays, then the last frame stays");
+        assert_eq!(a.frame_at(1300.0), (1, true), "third play");
+        assert_eq!(a.frame_at(1800.0), (2, false), "three plays, then the last frame stays");
         assert_eq!(a.frame_at(1e9), (2, false));
         assert_eq!(a.frame_at(-5.0), (0, true));
     }

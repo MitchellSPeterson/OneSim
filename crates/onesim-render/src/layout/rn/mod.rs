@@ -1456,11 +1456,11 @@ mod tests {
         assert!(save.color.r > 0.9, "userInterfaceStyle dark: white labels on a light screen");
         let root = dark.nodes.iter().find(|n| n.id == "root").unwrap();
         assert_eq!(root.fill.map(|c| c.r), Some(1.0), "the screen stays light");
+        // iPhone ignores the anchor (iOS 27.2: the same centred card).
         let anchored = presented(sheet_layer(json!({"anchor": "5"})));
         let card = anchored.nodes.iter().find(|n| n.id == "dialog").unwrap();
-        assert_eq!(card.kind, "popover", "anchored: a popover at the view");
-        assert!(anchored.nodes.iter().any(|n| n.kind == "arrow"));
-        assert!(!anchored.nodes.iter().any(|n| n.action == Some(1000)), "a popover has no cancel button");
+        assert_eq!((card.kind, card.bounds.x), ("sheet", 41.0));
+        assert!(!anchored.nodes.iter().any(|n| n.kind == "arrow"));
     }
 
     #[test]
@@ -1474,6 +1474,15 @@ mod tests {
         let first = some.nodes.iter().find(|n| n.label.as_deref() == Some("Safari") && n.kind == "button").unwrap().bounds.x;
         let was = all.nodes.iter().find(|n| n.label.as_deref() == Some("Reminders") && n.kind == "button").unwrap().bounds.x;
         assert!((first - was).abs() < 0.01, "cells close up");
+    }
+
+
+    #[test]
+    fn share_sheet_for_an_unpreviewed_link_shows_its_host() {
+        let s = presented(json!([{"kind":"share","items":["https://user@onesim.invalid:8443/share?x=1"],"url":true,"dismiss":9,"copy":8,"activities":{"Safari":2}}]));
+        assert!(s.nodes.iter().any(|n| n.text.as_ref().is_some_and(|t| t.text == "onesim.invalid")), "host as the title");
+        let text = presented(json!([{"kind":"share","items":["hello"],"dismiss":9,"copy":8,"activities":{"More":3}}]));
+        assert!(text.nodes.iter().any(|n| n.text.as_ref().is_some_and(|t| t.text == "hello")), "text items keep their text");
     }
 
 }

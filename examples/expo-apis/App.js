@@ -1,9 +1,9 @@
 // React Native / Expo APIs without a showcase screen of their own (issue #50): LayoutAnimation, ActionSheetIOS,
 // GIF / WebP images (core Image and expo-image), ActivityIndicator, Linking and expo-font. Reference screenshots:
 // tests/fixtures/ios27/rn-apis-ios (iOS 27.2) and tests/fixtures/rn-apis-ios (iOS 26.5).
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  ActionSheetIOS, ActivityIndicator, Image, LayoutAnimation, Linking, Pressable, ScrollView, StyleSheet, Text, View, useColorScheme,
+  ActionSheetIOS, ActivityIndicator, Image, LayoutAnimation, findNodeHandle, Linking, Pressable, ScrollView, StyleSheet, Text, View, useColorScheme,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Image as ExpoImage } from 'expo-image';
@@ -58,13 +58,20 @@ function LayoutScreen({ fg }) {
 
 function SheetScreen({ fg }) {
   const [picked, setPicked] = useState('none');
-  const show = () => ActionSheetIOS.showActionSheetWithOptions(
-    { options: ['Cancel', 'Delete photo', 'Save to Files'], destructiveButtonIndex: 1, cancelButtonIndex: 0, title: 'Photo', message: 'Choose what to do with this photo' },
-    (i) => setPicked(String(i)),
-  );
+  const anchor = useRef(null);
+  const options = { options: ['Cancel', 'Delete photo', 'Save to Files'], destructiveButtonIndex: 1, cancelButtonIndex: 0, title: 'Photo', message: 'Choose what to do with this photo' };
+  const show = () => ActionSheetIOS.showActionSheetWithOptions(options, (i) => setPicked(String(i)));
+  // iPhone ignores `anchor` (an iPad points a popover at it): the same centred card.
+  const anchored = () => ActionSheetIOS.showActionSheetWithOptions({ ...options, anchor: findNodeHandle(anchor.current) }, (i) => setPicked(String(i)));
+  const share = () => ActionSheetIOS.showShareActionSheetWithOptions({ url: 'https://onesim.invalid/share' }, // no page to preview: a stable reference
+    (e) => setPicked(`error ${e.message}`), (done, type) => setPicked(`${done} ${type}`));
   return (
     <View style={styles.body}>
       <Button label="Show sheet" onPress={show} />
+      <View style={styles.row}>
+        <Button label="Share" onPress={share} />
+        <View ref={anchor} collapsable={false}><Button label="Anchored" onPress={anchored} /></View>
+      </View>
       <Text accessibilityLabel="Picked" style={[styles.note, { color: fg }]}>{`Picked: ${picked}`}</Text>
     </View>
   );

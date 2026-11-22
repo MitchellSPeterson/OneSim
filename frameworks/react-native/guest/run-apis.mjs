@@ -56,7 +56,24 @@ run(async () => {
   await h.until(() => h.layers.length === 1, 'sheet again');
   h.send({ type: 'action', id: h.layers[0].dismiss });
   await h.until(() => /Picked: 0/.test(h.text) && h.layers.length === 0, 'tap outside -> cancel index');
-  ok('ActionSheetIOS: button index and tap-outside cancel come back through the callback');
+  // An anchor changes nothing on iPhone: the same card (the layer names it).
+  h.tap('Anchored');
+  await h.until(() => h.layers.length === 1, 'anchored sheet');
+  expect(/^\d+$/.test(h.layers[0].anchor || ''), 'anchor tag on the layer');
+  h.send({ type: 'action', id: h.layers[0].actions[1].action });
+  await h.until(() => /Picked: 1/.test(h.text) && h.layers.length === 0, 'Delete photo -> 1');
+  // Share sheet: a link item, Copy calls back (true, CopyToPasteboard), a tap outside (false, null).
+  h.tap('Share');
+  await h.until(() => h.layers.length === 1, 'share sheet');
+  const share = h.layers[0];
+  expect(share.kind === 'share' && share.url === true && share.items.join() === 'https://onesim.invalid/share' && share.copy && share.activities.Safari, 'share layer: ' + JSON.stringify(share));
+  h.send({ type: 'action', id: share.copy });
+  await h.until(() => /Picked: true com\.apple\.UIKit\.activity\.CopyToPasteboard/.test(h.text) && h.layers.length === 0, 'Copy -> completed');
+  h.tap('Share');
+  await h.until(() => h.layers.length === 1, 'share sheet again');
+  h.send({ type: 'action', id: h.layers[0].dismiss });
+  await h.until(() => /Picked: false null/.test(h.text) && h.layers.length === 0, 'dismissed share -> false null');
+  ok('ActionSheetIOS: button index, tap-outside cancel, anchor, share sheet Copy and dismiss come back through the callbacks');
   await home();
 
   // ---- expo-font: Font.loadAsync downloads the asset into Caches and the root lists the file under its alias.

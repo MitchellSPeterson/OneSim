@@ -37,6 +37,7 @@ module.exports = function createRegistry(rt, h) {
   const listener = { addListener: noop, removeListeners: noop };
   const reportException = (d) => sendError(`${d.message}\n${(d.stack || []).map((f) => `  at ${f.methodName || '?'} (${f.file}:${f.lineNumber}:${f.column})`).join('\n')}`);
   const all = (names, v = UNSUP) => Object.fromEntries(names.map((n) => [n, v]));
+  const coded = (code, message) => Object.assign(new Error(message), { code }); // an expo CodedError / RN rejection
 
   // ---- simulated platform state (host control: `simulate`) ----
   const sim = {
@@ -102,7 +103,7 @@ module.exports = function createRegistry(rt, h) {
   const opener = (u, method) => {
     const url = String(u ?? '');
     const m = /^([a-z][a-z0-9+.-]*):\S*$/i.exec(url);
-    if (!m) throw Object.assign(new Error(`Unable to open URL: ${url}`), { code: 'EUNSPECIFIED', method });
+    if (!m) throw coded('EUNSPECIFIED', `Unable to open URL: ${url}`);
     const scheme = m[1].toLowerCase();
     return ownSchemes().has(scheme) ? 'self' : SYSTEM_SCHEMES.has(scheme) ? 'system' : null;
   };
@@ -113,14 +114,14 @@ module.exports = function createRegistry(rt, h) {
   };
   const open = (u) => {
     const to = opener(u, 'openURL');
-    if (!to) throw Object.assign(new Error(`Unable to open URL: ${u}`), { code: 'EUNSPECIFIED' });
+    if (!to) throw coded('EUNSPECIFIED', `Unable to open URL: ${u}`);
     if (to === 'self') node.setImmediate(() => receiveURL(String(u))); // iOS hands the app its own URL right back
     else sendEvent('module.called', { module: 'Linking', method: 'openURL', args: [String(u)] });
     return true;
   };
 
-  // ActionSheetIOS: the sheet is a `dialog` layer (no anchor: the centred card iOS 26+ shows on iPhone; with `anchor`, a
-  // popover at that view), the share sheet a `share` layer (protocol W). The host draws them; taps come back as `action`.
+  // ActionSheetIOS: the sheet is a `dialog` layer (the centred card iOS 26+ shows on iPhone, `anchor` or not), the share
+  // sheet a `share` layer (protocol W). The host draws them; taps come back as `action`.
   const processed = (c) => (typeof c === 'number' ? { r: ((c >>> 16) & 255) / 255, g: ((c >>> 8) & 255) / 255, b: (c & 255) / 255, a: ((c >>> 24) & 255) / 255 } : null);
   const styleOf = (o) => (o.userInterfaceStyle === 'light' || o.userInterfaceStyle === 'dark' ? { appearance: o.userInterfaceStyle } : {});
   // UIActivityType of each share-sheet cell (`look::ShareLook`).
@@ -162,7 +163,7 @@ module.exports = function createRegistry(rt, h) {
       const activities = {};
       let next = n * 1000;
       for (const name of ['Reminders', 'Safari', 'More', 'Save to Files', 'Open in Safari', 'Add to Reading List']) {
-        if (ACTIVITY[name] && excluded.has(ACTIVITY[name])) continue; // the cell stays, but does nothing
+        if (ACTIVITY[name] && excluded.has(ACTIVITY[name])) continue; // no action: the host leaves the cell out
         const action = ++next;
         activities[name] = action;
         // Handed to the system (another app or the More list): reported like openURL; More shares nothing yet.
@@ -173,7 +174,7 @@ module.exports = function createRegistry(rt, h) {
       const dismiss = ++next;
       run.set(dismiss, finish(false, null));
       const layer = { kind: 'share', items, ...(o.subject != null && { subject: String(o.subject) }), ...(o.message != null && { message: String(o.message) }),
-        url: items.length === 1 && typeof o.url === 'string' && /^[a-z][a-z0-9+.-]*:/i.test(o.url), dismiss, ...(copy && { copy }), activities,
+        url: items.length === 1 && typeof o.url === 'string' && /^[a-z][a-z0-9+.-]*:/i.test(o.url), dismiss, ...(copy && { copy }), activities, ...styleOf(o),
         ...(Number.isInteger(o.anchor) && { anchor: String(o.anchor) }) };
       rt.alerts.push({ layer, run, kind: 'sheet' });
       rt.scheduleEmit();
@@ -189,15 +190,18 @@ module.exports = function createRegistry(rt, h) {
 
   // expo-asset: assets download into Caches as ExponentAsset-<md5>.<type> (AssetModule.swift); a cached file is reused
   // while its md5 matches.
-  const md5 = (b) => { try { return crypto.createHash('md5').update(b).digest('hex'); } catch (_) { return crypto.createHash('sha1').update(b).digest('hex'); } };
+  // The browser guest has no md5 (browser-worker.js): there the URL's sha1 names the file and a cached file is trusted.
+  const md5 = (b) => { try { return crypto.createHash('md5').update(b).digest('hex'); } catch (_) { return null; } };
   const assetDownload = async (url, hash, type) => {
     url = String(url);
     if (/^file:/.test(url)) return url;
-    const caches = path.join(cfg.dataDir, 'Caches'), file = path.join(caches, `ExponentAsset-${hash || md5(url)}.${type}`);
-    const have = fs.existsSync(file) && (!hash || md5(fs.readFileSync(file)) === hash);
+    const id = hash || md5(url) || crypto.createHash('sha1').update(url).digest('hex');
+    const caches = path.join(cfg.dataDir, 'Caches'), file = path.join(caches, `ExponentAsset-${id}.${type}`);
+    const sum = hash && fs.existsSync(file) ? md5(fs.readFileSync(file)) : null;
+    const have = fs.existsSync(file) && (!hash || sum === null || sum === hash);
     if (!have) {
       let buf;
-      try { buf = await readUri(url); } catch (e) { throw Object.assign(new Error(`Unable to download asset from url: '${url}'`), { code: 'ERR_UNABLE_TO_DOWNLOAD_ASSET' }); }
+      try { buf = await readUri(url); } catch (e) { throw coded('ERR_UNABLE_TO_DOWNLOAD_ASSET', `Unable to download asset from url: '${url}'`); }
       fs.mkdirSync(caches, { recursive: true });
       fs.writeFileSync(file, buf);
     }
@@ -211,7 +215,7 @@ module.exports = function createRegistry(rt, h) {
     const u = String(uri ?? ''), p = /^file:/.test(u) ? require('node:url').fileURLToPath(u) : u;
     let head = '';
     try { head = fs.readFileSync(p).subarray(0, 4).toString('hex'); } catch (_) { /* missing */ }
-    if (!FONT_MAGIC.includes(head)) throw Object.assign(new Error(`Could not create font from loaded data for '${u}'`), { code: 'ERR_FONT_CREATION_FAILED' });
+    if (!FONT_MAGIC.includes(head)) throw coded('ERR_FONT_CREATION_FAILED', `Could not create font from loaded data for '${u}'`);
     return p;
   };
   const setFonts = (alias, paths) => {
@@ -336,9 +340,9 @@ module.exports = function createRegistry(rt, h) {
       getLoadedFonts: () => [...fonts.keys()],
       loadAsync: async (alias, localUri) => { setFonts(alias, [fontFile(localUri)]); },
       loadFontFamilyAsync: async (alias, faces) => {
-        if (!Array.isArray(faces) || !faces.length) throw Object.assign(new Error(`Font family '${alias}' has no faces`), { code: 'ERR_FONT_FAMILY_EMPTY_FACES' });
+        if (!Array.isArray(faces) || !faces.length) throw coded('ERR_FONT_FAMILY_EMPTY_FACES', `Font family '${alias}' has no faces`);
         setFonts(alias, [...new Set(faces.map((f) => {
-          if (!f || !f.localUri) throw Object.assign(new Error(`A face of font family '${alias}' has no local URI`), { code: 'ERR_FONT_FACE_MISSING_URI' });
+          if (!f || !f.localUri) throw coded('ERR_FONT_FACE_MISSING_URI', `A face of font family '${alias}' has no local URI`);
           return fontFile(f.localUri);
         }))]);
       } } },
@@ -357,7 +361,7 @@ module.exports = function createRegistry(rt, h) {
         : { isDevice: false, brand: 'Apple', manufacturer: 'Apple', modelId: MODEL_ID, modelName: MODEL_NAME, deviceYearClass: YEAR_CLASS, totalMemory: 12 * 1024 ** 3,
           osName: 'iOS', osVersion: OS_VERSION, osBuildId: OS_BUILD, osInternalBuildId: OS_BUILD, deviceName: 'iPhone', deviceType: 1, supportedCpuArchitectures: ['arm64e', 'arm64'] },
       methods: { getDeviceTypeAsync: async () => 1, getUptimeAsync: async () => node.performance.now(), isRootedExperimentalAsync: async () => false } },
-    // expo-linking: no launch URL, so Expo Router falls back to the scheme root and lands on `index`. Opening URLs is unsupported.
+    // expo-linking (iOS): the launch URL, then the last URL received (see `link` above); Expo Router starts there.
     { name: 'ExpoLinking', package: 'expo-linking', kind: 'expo', status: android ? 'implemented' : 'simulated', events: ['onURLReceived'],
       methods: { getLinkingURL: () => (android ? null : link.latest), clearInitialURL: () => { link.latest = null; } } },
     { name: 'ExpoWebBrowser', package: 'expo-web-browser', kind: 'expo', status: 'unsupported', methods: all(['openBrowserAsync', 'dismissBrowser', 'openAuthSessionAsync', 'dismissAuthSession', 'warmUpAsync', 'coolDownAsync', 'mayInitWithUrlAsync', 'getCustomTabsSupportingBrowsers']) },

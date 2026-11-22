@@ -18,8 +18,12 @@ against `onesim expo`. Captured 2026-11-22.
 |---|---|---|
 | home / home-dark | launch | (none) / `--dark` |
 | layout-expanded | Layout, Toggle, wait 2 s (`LayoutAnimation.Presets.easeInEaseOut` grows the card, inserts a row; "Animations ended: 1") | `--click Layout --click Toggle --wait 1000` |
-| actionsheet / -dark | Sheet, Show sheet: `ActionSheetIOS.showActionSheetWithOptions` (title, message, Cancel index 0, Delete photo destructive) | `--click Sheet --click "Show sheet"` |
+| actionsheet | Sheet, Show sheet: `ActionSheetIOS.showActionSheetWithOptions` (title, message, Cancel index 0, Delete photo destructive) | `--click Sheet --click "Show sheet"` |
 | actionsheet-picked | the sheet, then Save to Files ("Picked: 2") | `... --click "Save to Files"` |
+| actionsheet-anchored | after actionsheet-picked, Anchored: the same options with `anchor` (iPhone ignores it: the same card) | `... --click Anchored` |
+| actionsheet-dark | dark: Sheet, Share, tap outside ("Picked: false null"), Show sheet | `--dark --click Sheet --click Share --click 200,400 --click "Show sheet"` |
+| share | Sheet, Show sheet, Cancel ("Picked: 0"), Share: `showShareActionSheetWithOptions({url: 'https://onesim.invalid/share'})` | `--click Sheet --click "Show sheet" --click Cancel --click Share` |
+| share-dark | dark: Sheet, Share | `--dark --click Sheet --click Share` |
 | images / -dark | Images: still GIF (transparent corner) and lossy WebP (core Image), lossless WebP with alpha and GIF (expo-image), animated GIF / WebP (40 pt) and two spinners | `--click Images` |
 | fonts / -dark | Fonts: `Font.loadAsync({Roboto: require('./assets/Roboto.ttf')})`, then Roboto 34 / 17 lines, a system line and a Roboto span | `--click Fonts` |
 
@@ -29,5 +33,7 @@ against `onesim expo`. Captured 2026-11-22.
   (centre 14 pt below the screen's) and dim, Liquid Glass with the popover's shadow, buttons stacked (48 pt, 8 pt apart)
   in option order with Cancel last, every button label regular weight, plain ones in the label color. A tap outside
   the card picks the cancel index.
+- The share sheet for a link iOS cannot preview (`.invalid`, so the reference does not depend on a fetched page): the
+  host name by a white tile with a gray compass; the More tile stays white in dark.
 - Animated images and spinners run; their frame at capture time is arbitrary (40 pt boxes: a small share of the diff).
 - `Roboto.ttf` is the variable Roboto from `assets/fonts` (OFL, `Roboto-OFL.txt`).
