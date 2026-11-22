@@ -209,7 +209,7 @@ async function main() {
       workerUrl: new URL("guest/browser-worker.js", location.href),
       env,
       onMessage(m) {
-        if (m.type === "hello" || m.type === "tree" || m.type === "focus_request" || m.type === "scroll_to" || m.type === "js_responder" || m.type === "touch_answer") {
+        if (m.type === "hello" || m.type === "tree" || m.type === "focus_request" || m.type === "scroll_to" || m.type === "js_responder" || m.type === "touch_answer" || m.type === "request") {
           if (m.type === "tree") trees++;
           try { if (sim.receive(m)) shown = true; } catch (e) { console.warn("onesim:", e.message); }
           flush();
@@ -218,6 +218,7 @@ async function main() {
         else if (m.type === "event") console.debug("guest event", m.name, m.detail);
       },
       onFile(path, bytes) {
+        // Images and fonts (expo-font) the guest wrote; the browser host reads them from memory.
         if (sim.putImage(path, bytes)) {
           flush();
           requestFrame();

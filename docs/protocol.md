@@ -38,7 +38,7 @@ Mismatched major version → `protocol_version` error.
 | `get_session_status` | `{"session_id"}` | `{"session_id","state","framework","platform","app_path","viewport","scale","appearance","tree_version","scene_phase"}` |
 | `set_viewport` | `{"session_id","width","height"}` | `{}` |
 | `set_appearance` | `{"session_id","mode":"light"\|"dark"}` | `{}` |
-| `set_scene_phase` | `{"session_id","phase":"active"\|"inactive"\|"background"}` | `{"scene_phase"}` (SwiftUI; section V) |
+| `set_scene_phase` | `{"session_id","phase":"active"\|"inactive"\|"background"}` | `{"scene_phase"}` (SwiftUI, section V; React Native: AppState, section H) |
 | `open_url` | `{"session_id","url"}` | `{"scene_phase"}` (SwiftUI, section V; iOS React Native: Linking, section H) |
 | `send_pointer_event` | `{"session_id","event":{"kind":"down"\|"up"\|"click","x","y"}}` | `{"hit": <node id or null>, "action": <bool>}` |
 | `send_keyboard_event` | `{"session_id","event":{...}}` | `unsupported` error in v1 |
@@ -80,8 +80,8 @@ Host → guest (guest stdin):
 - `{"type":"action","id":<u64>,"version":<u64>}` — `version` = tree version the
   action id came from. Guest ignores actions whose version is not current.
 - `{"type":"environment","appearance":"light"|"dark","viewport":{"width","height"},"dynamicTypeSize"?:"large"}` — guest re-evaluates and sends a new tree. `dynamicTypeSize` is omitted at the default (`large`); the guest also gets `SIMCORE_DYNAMIC_TYPE` at launch. The host does the text sizing (below); the guest may later expose it as `@Environment(\.dynamicTypeSize)`.
-- `{"type":"scene_phase","phase":"active"|"inactive"|"background"}` and `{"type":"open_url","url"}` — SwiftUI app
-  lifecycle (section V); the guest answers each with a tree.
+- `{"type":"scene_phase","phase":"active"|"inactive"|"background"}` and `{"type":"open_url","url"}` — app lifecycle
+  (SwiftUI: section V; React Native: AppState and Linking, section H); the guest answers each with a tree.
 - `{"type":"shutdown"}` — guest exits 0.
 
 ### ViewNode (normalized view tree, produced by Swift, consumed by Rust)
@@ -490,7 +490,8 @@ assets) with Node `fetch` into `$TMPDIR/onesim-images/<sha1(uri)>.<ext>` and add
 `props.__simcoreImage = {"path","width","height"}` (pixels) to the node, dispatching
 `topLoadStart`, `topLoad` `{source:{uri,width,height}}`, `topLoadEnd` (or `topError`
 `{error}`). Host decodes PNG, JPEG, GIF and WebP from `path` and draws with `resizeMode`
-`cover` (default) / `contain` / `stretch` / `center`, clipped to `borderRadius`; until
+`cover` (default) / `contain` / `stretch` / `center` / `repeat` (tiled from the top-left at one bitmap pixel per device
+pixel), clipped to `borderRadius`; until
 `__simcoreImage` exists it draws only the background. `ImageLoader.getSize`/`prefetch` use the
 same cache. An animated GIF or WebP plays on the session clock from when its node first appears (each frame composited
 onto the canvas the earlier ones left; a delay under 20 ms shows for 100 ms; its loop count of plays, forever for 0 /
@@ -629,8 +630,40 @@ JS-driven push/pop needs no message. The guest spaces appear events by 350 ms
   expo-linking's `onURLReceived`. `create_session` `launch_url` / `--launch-url` starts the app with one.
 - `openURL` of the app's own scheme (`expo.scheme`, the iOS bundle id; `exp` / `exps` with a manifest) comes back the
   same way. System schemes (`http(s)`, `tel`, `sms`, `mailto`, FaceTime, Maps, App Store, `app-settings` from
-  `openSettings`, ...) resolve `true` and emit `module.called` `{"module":"Linking","method":"openURL","args":[url]}`
-  (the app stays in front). Any other scheme rejects (`canOpenURL` false), as does a string that is not a URL.
+  `openSettings`, ...) belong to the simulated phone's Apple apps: they resolve `true`, emit `module.called`
+  `{"module":"Linking","method":"openURL","args":[url]}`, and the app goes to that app and comes back: AppState
+  `inactive`, `background`, `inactive`, `active`. No other app is installed: any other scheme rejects (`canOpenURL`
+  false, whether or not the app declares it), as does a string that is not a URL.
+- AppState follows host `scene_phase` (`set_scene_phase`; `open_url` brings a backgrounded app forward first, as for
+  SwiftUI): `appStateDidChange` `{app_state}`; a touch in progress is cancelled as the app resigns active (its later
+  moves are dropped until the next finger).
+
+### Guest requests (issue #50)
+
+Guest → host `{"type":"request","id","method","params"}`, host → guest `{"type":"response","id","result"?,"error"?}`
+(the guest rejects with `error`): work that needs the host's decoders or fonts. The native host answers on its guest
+reader (it may be waiting for a tree meanwhile), the browser host through its outbox; `onesim guest-request` answers
+one request from stdin (guest tests without a host).
+- `image.blurhash` `{path, x, y}` → the blurhash string (expo-image `generateBlurhashAsync`; components 1...9; the
+  full-size premultiplied bitmap, as expo-image's Swift encoder: the same string as iOS).
+- `image.thumbhash` `{path}` → base64 ThumbHash (`generateThumbhashAsync`; the image drawn into at most 100 x 100 first,
+  bilinear where iOS uses Core Graphics, so the bytes can differ slightly).
+- `image.decode_hash` `{uri, width?, height?}` → `{png, width, height}` (base64 PNG): a `blurhash:/` source at
+  `width` x `height` (default 16) or a `thumbhash:/` source at its own size.
+- `text.render` `{text, family?, fonts?: [path], size, color: 0xAARRGGBB, lineHeight?, scale}` →
+  `{png, width, height, scale}` (expo-font `renderToImageAsync`): the string at its size in points, `family` a family name
+  among the loaded `fonts`, else the system font; `lineHeight` fixes each line's height.
+
+### expo-image (issue #50)
+
+- A `source` (and `placeholder`) may be an image ref's shared-object id (`Image.loadAsync`, `readFromCacheAsync`), a
+  `blurhash:/` or `thumbhash:/` URI (decoded with `image.decode_hash`), or carry a `cacheKey` (the cache's key instead
+  of the URI). Until the source is in (or when it fails), the placeholder is drawn with `placeholderContentFit`.
+- Guest-added `__simcoreAnimating` (boolean): the view functions `startAnimating` / `stopAnimating` ran. Without it an
+  animation plays unless `autoplay` is false. A held animation keeps the frame it reached (the first when it never
+  played); resuming carries on from there.
+- `lockResourceAsync` keeps the loaded image when the source changes; `reloadAsync` loads the source again with its
+  events.
 
 ### expo-font / expo-asset (issue #50)
 
@@ -641,6 +674,8 @@ JS-driven push/pop needs no message. The guest spaces appear events by 350 ms
   (the browser host: from the guest's file writes) and resolves a `fontFamily` on text, spans and text inputs: an alias
   takes its face nearest `fontWeight` / `fontStyle`; otherwise a family or PostScript name inside a loaded file; otherwise
   the system font.
+- `ExpoFontUtils.renderToImageAsync(glyphs, {fontFamily, size, color, lineHeight})` asks the host for `text.render` and
+  writes the PNG to the session's `tmp/<UUID>.png`: `{uri, width, height, scale}` (points; `scale` is the device's).
 
 ### react-native-gesture-handler (issue #10)
 

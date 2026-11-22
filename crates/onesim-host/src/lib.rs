@@ -137,7 +137,7 @@ impl Host {
             }
         }
         let log = EventLog::new(id.clone());
-        self.sessions.insert(id.clone(), Session::new(id.clone(), p, log));
+        self.sessions.insert(id.clone(), Session::new(id.clone(), p, log, self.fonts.clone()));
         Ok(id)
     }
 
@@ -165,8 +165,8 @@ impl Host {
 
     fn require_scenes(&mut self, id: &str) -> Result<&mut Session, ApiError> {
         let s = self.get(id)?;
-        if !s.is_swiftui() {
-            return Err(err(ErrorCode::Unsupported, format!("scene phases and URLs exist only for swiftui sessions, not {}", s.params.framework)));
+        if !(s.is_swiftui() || s.is_rn()) {
+            return Err(err(ErrorCode::Unsupported, format!("scene phases and URLs exist only for swiftui and react-native sessions, not {}", s.params.framework)));
         }
         s.require_running()?;
         Ok(s)
@@ -176,7 +176,8 @@ impl Host {
     /// guest message and tree per step. The same phase again does nothing.
     pub fn set_scene_phase(&mut self, id: &str, phase: ScenePhase) -> Result<(), ApiError> {
         let s = self.require_scenes(id)?;
-        if s.scene_phase == ScenePhase::Active && phase != ScenePhase::Active {
+        // React Native: AppState follows (`appStateDidChange`); the guest cancels its own touches as it resigns.
+        if s.scene_phase == ScenePhase::Active && phase != ScenePhase::Active && s.is_swiftui() {
             // iOS cancels the app's touches as it resigns active; the input gate would otherwise strand them.
             let (scene, version, _) = self.scene(id)?;
             let s = self.get(id)?;
@@ -200,16 +201,8 @@ impl Host {
         if !is_openable_url(url) {
             return Err(err(ErrorCode::BadRequest, format!("{url:?} is not a URL (scheme:...)")));
         }
-        if self.get(id)?.is_rn() {
-            // React Native (iOS): `Linking`'s `url` event and expo-linking's `onURLReceived`.
-            let s = self.get(id)?;
-            s.require_running()?;
-            if s.params.platform != "ios" {
-                return Err(err(ErrorCode::Unsupported, "open_url exists only for iOS react-native sessions"));
-            }
-            s.send_and_settle(&HostMessage::OpenUrl { url: url.into() })?;
-            s.invalidate_scene();
-            return Ok(());
+        if self.get(id)?.is_rn() && self.get(id)?.params.platform != "ios" {
+            return Err(err(ErrorCode::Unsupported, "open_url exists only for iOS react-native sessions"));
         }
         let s = self.require_scenes(id)?;
         let foreground = s.scene_phase != ScenePhase::Active;
@@ -217,7 +210,12 @@ impl Host {
             self.set_scene_phase(id, ScenePhase::Inactive)?;
         }
         let s = self.get(id)?;
-        s.send_and_wait_tree(&HostMessage::OpenUrl { url: url.into() })?;
+        if s.is_rn() {
+            // React Native (iOS): `Linking`'s `url` event and expo-linking's `onURLReceived`; the app may not redraw.
+            s.send_and_settle(&HostMessage::OpenUrl { url: url.into() })?;
+        } else {
+            s.send_and_wait_tree(&HostMessage::OpenUrl { url: url.into() })?;
+        }
         s.invalidate_scene();
         if foreground {
             self.set_scene_phase(id, ScenePhase::Active)?;

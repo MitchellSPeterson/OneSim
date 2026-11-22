@@ -11,7 +11,14 @@ pub const SPINNER_STEP_MS: f64 = 125.0;
 /// When each live view appeared (session clock, ms), so its animation runs from there.
 #[derive(Debug, Default)]
 pub struct Live {
-    shown: HashMap<String, f64>,
+    shown: HashMap<String, Run>,
+}
+
+/// One live view's clock: when it started, and where a paused one stopped.
+#[derive(Debug, Clone, Copy)]
+struct Run {
+    start: f64,
+    paused_at: Option<f64>,
 }
 
 impl Live {
@@ -30,9 +37,19 @@ impl Live {
             if !spins && !plays {
                 continue;
             }
-            let start = *self.shown.entry(n.id.clone()).or_insert(clock_ms);
+            let paused = n.image.as_ref().and_then(|i| i.frames.as_ref()).is_some_and(|f| f.paused);
+            let run = self.shown.entry(n.id.clone()).or_insert(Run { start: clock_ms, paused_at: None });
+            // A pause freezes the view's time; resuming carries on from there.
+            match (paused, run.paused_at) {
+                (true, None) => run.paused_at = Some(clock_ms),
+                (false, Some(at)) => {
+                    run.start += clock_ms - at;
+                    run.paused_at = None;
+                }
+                _ => {}
+            }
+            let t = (run.paused_at.unwrap_or(clock_ms) - run.start).max(0.0);
             seen.push(n.id.clone());
-            let t = (clock_ms - start).max(0.0);
             if let Some((Glyph::Spinner { step, spins: true } | Glyph::SpinnerLarge { step, spins: true }, _)) = n.glyph.as_mut() {
                 *step = ((t / SPINNER_STEP_MS).floor() as u64 % 8) as u8;
                 moving = true;
@@ -40,9 +57,10 @@ impl Live {
             if let Some(img) = n.image.as_mut() {
                 if let Some(f) = &img.frames {
                     let (i, running) = f.animation.frame_at(t);
-                    moving |= running;
+                    moving |= running && !f.paused;
                     if let Some(frame) = f.animation.frame(i) {
-                        img.pixmap = f.tint.and_then(|c| crate::layout::common::tinted(&frame, c)).unwrap_or(frame);
+                        let frame = f.tint.and_then(|c| crate::layout::common::tinted(&frame, c)).unwrap_or(frame);
+                        img.pixmap = f.tile.and_then(|(w, h)| crate::layout::common::tiled(&frame, w, h)).unwrap_or(frame);
                     }
                 }
             }
@@ -123,7 +141,7 @@ mod tests {
             dest: Rect { x: 0.0, y: 0.0, w: 8.0, h: 8.0 },
             rotation: 0.0,
             filter: 2,
-            frames: Some(ImageFrames { animation: crate::image::animation(path).unwrap(), tint: None }),
+            frames: Some(ImageFrames { animation: crate::image::animation(path).unwrap(), tint: None, tile: None, paused: false }),
         });
         n
     }
@@ -157,4 +175,25 @@ mod tests {
         assert_eq!((p.red(), p.green(), p.blue()), (0, 0, 255));
         assert!(Arc::strong_count(&s.nodes[0].image.as_ref().unwrap().pixmap) >= 1);
     }
+
+    #[test]
+    fn a_paused_animation_holds_its_frame_and_resumes_from_it() {
+        let mut live = Live::new();
+        let at = |live: &mut Live, t: f64, paused: bool| {
+            let mut n = gif("g");
+            n.image.as_mut().unwrap().frames.as_mut().unwrap().paused = paused;
+            let mut s = scene(vec![n]);
+            let moving = live.apply(&mut s, t);
+            (green_at(&s, 1), moving)
+        };
+        assert_eq!(at(&mut live, 0.0, false), (0, true));
+        assert_eq!(at(&mut live, 150.0, true), (255, false), "stopped on frame 1, nothing to tick");
+        assert_eq!(at(&mut live, 900.0, true), (255, false), "still frame 1 later");
+        assert_eq!(at(&mut live, 920.0, false).0, 255, "resumes where it stopped (150 ms in)");
+        assert_eq!(at(&mut live, 1060.0, false).0, 255, "frame 1 runs to 300 ms of its own time");
+        assert_eq!(at(&mut live, 1080.0, false).0, 0, "then frame 2 (blue)");
+        let mut held = Live::new();
+        assert_eq!(at(&mut held, 500.0, true), (0, false), "autoplay off: the first frame");
+    }
+
 }

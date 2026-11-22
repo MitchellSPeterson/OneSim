@@ -112,6 +112,7 @@ check_expo() {
     SIMCORE_ONLY=expo SIMCORE_SMOKE=1 step scripts/compare-ios.sh
   else
     need_npm expo-showcase expo-router-stack expo-default expo-ui expo-apis
+    step cargo build -q -p onesim-cli # run-apis answers the guest's host requests with `onesim guest-request`
     step node frameworks/react-native/guest/run-apis.mjs
     SIMCORE_ONLY=expo step scripts/compare-ios.sh
     SIMCORE_ONLY=expo SIMCORE_FALLBACK=1 step scripts/compare-ios.sh

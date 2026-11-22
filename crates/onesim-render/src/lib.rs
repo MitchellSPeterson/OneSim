@@ -15,6 +15,7 @@ pub mod glass;
 pub mod image;
 pub use image::put as put_image;
 pub mod live;
+pub mod guest_request;
 pub use live::Live;
 mod interaction;
 pub mod look;

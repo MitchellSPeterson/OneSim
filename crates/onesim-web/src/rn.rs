@@ -122,6 +122,18 @@ pub extern "C" fn simcore_web_rn_receive(len: usize) -> i32 {
             }
             0
         }),
+        // Image hashes and text rendering for the guest (protocol section H): answered at once through the outbox.
+        Ok(GuestMessage::Request { id, method, params }) => with(|s| {
+            let fonts = s.fonts.get_or_insert_with(|| onesim_render::Fonts::with_fallback(true)); // browsers: bundled Inter only
+            let (result, error) = match onesim_render::guest_request::handle(fonts, &method, &params) {
+                Ok(v) => (Some(v), None),
+                Err(e) => (None, Some(e)),
+            };
+            if let Some(rn) = s.rn.as_mut() {
+                rn.outbox.push(onesim_protocol::HostMessage::Response { id, result, error });
+            }
+            0
+        }),
         Ok(_) => 0,
     }
 }

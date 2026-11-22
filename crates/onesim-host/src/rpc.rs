@@ -326,7 +326,7 @@ impl Entry {
             "device": display_name(s.device.name), "osVersion": s.os_version(), "viewport": s.viewport, "scale": s.scale,
             "appearance": s.appearance, "status": s.state().as_str(), "treeVersion": s.tree_version().unwrap_or(0),
             "metroUrl": s.params.metro_url, "appPath": (!s.params.app_path.is_empty()).then_some(&s.params.app_path),
-            "scenePhase": s.is_swiftui().then_some(s.scene_phase.as_str()),
+            "scenePhase": (s.is_swiftui() || s.is_rn()).then_some(s.scene_phase.as_str()),
         });
         let v = Value::Object(v.as_object().expect("object").iter().filter(|(_, v)| !v.is_null()).map(|(k, v)| (k.clone(), v.clone())).collect());
         *lock(&self.info) = v.clone();

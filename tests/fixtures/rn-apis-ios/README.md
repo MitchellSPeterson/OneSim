@@ -24,8 +24,8 @@ against `onesim expo`. Captured 2026-11-22.
 | actionsheet-dark | dark: Sheet, Share, tap outside ("Picked: false null"), Show sheet | `--dark --click Sheet --click Share --click 200,400 --click "Show sheet"` |
 | share | Sheet, Show sheet, Cancel ("Picked: 0"), Share: `showShareActionSheetWithOptions({url: 'https://onesim.invalid/share'})` | `--click Sheet --click "Show sheet" --click Cancel --click Share` |
 | share-dark | dark: Sheet, Share | `--dark --click Sheet --click Share` |
-| images / -dark | Images: still GIF (transparent corner) and lossy WebP (core Image), lossless WebP with alpha and GIF (expo-image), animated GIF / WebP (40 pt) and two spinners | `--click Images` |
-| fonts / -dark | Fonts: `Font.loadAsync({Roboto: require('./assets/Roboto.ttf')})`, then Roboto 34 / 17 lines, a system line and a Roboto span | `--click Fonts` |
+| images / -dark | Images: still GIF (transparent corner) and lossy WebP (core Image), lossless WebP with alpha and GIF (expo-image), animated GIF / WebP (40 pt) and two spinners; `resizeMode="repeat"` dots, a `blurhash:/` source, an `Image.loadAsync` ref; the text of `generateBlurhashAsync` for the checker GIF (iOS: `LbL3.FJ8J8Nv67I[1z:hv{Nu:}]i`, OneSim the same); an `autoplay={false}` GIF | `--click Images` |
+| fonts / -dark | Fonts: `Font.loadAsync({Roboto: require('./assets/Roboto.ttf')})`, then Roboto 34 / 17 lines, a system line, a Roboto span and `renderToImageAsync('Drawn 28', {fontFamily: 'Roboto', size: 28, color: '#FF9500'})` | `--click Fonts` |
 
 ## App facts OneSim must match
 - Root `paddingTop: 62`; header 44 pt (Back, gray title); buttons blue `#007AFF`, radius 12.
@@ -35,5 +35,9 @@ against `onesim expo`. Captured 2026-11-22.
   the card picks the cancel index.
 - The share sheet for a link iOS cannot preview (`.invalid`, so the reference does not depend on a fetched page): the
   host name by a white tile with a gray compass; the More tile stays white in dark.
+- Links (not compared; `run-apis.mjs` checks it): Probe's `canOpenURL` answers in Expo Go on the iOS 27.2 Simulator
+  were https/http/sms/maps/app-settings/exp 1; tel/mailto/facetime/itms-apps 0 (the Simulator has no Phone, Mail,
+  FaceTime or App Store); waze 0 (Expo Go declares it, it is not installed); expoapis 0 (Expo Go registers only `exp`).
+  OneSim answers as a phone (those Apple apps installed) running the app as a development build (its own scheme).
 - Animated images and spinners run; their frame at capture time is arbitrary (40 pt boxes: a small share of the diff).
 - `Roboto.ttf` is the variable Roboto from `assets/fonts` (OFL, `Roboto-OFL.txt`).

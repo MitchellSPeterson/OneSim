@@ -82,14 +82,29 @@ run(async () => {
   const fonts = trees[trees.length - 1].root.props.__simcoreFonts;
   expect(fonts?.Roboto?.length === 1 && /Caches\/ExponentAsset-[0-9a-f]+\.ttf$/.test(fonts.Roboto[0]) && existsSync(fonts.Roboto[0]), '__simcoreFonts: ' + JSON.stringify(fonts));
   ok(`expo-font: Roboto -> ${fonts.Roboto[0].split('/').slice(-2).join('/')}`);
+  // renderToImageAsync: the host draws it; the app shows the PNG it got back.
+  await h.until(() => { let ok2 = false; walk(h.tree, (v) => { if (v.component === 'RCTImageView' && /\/tmp\/[0-9A-F-]+\.png$/.test(v.props.__simcoreImage?.path ? [].concat(v.props.source)[0]?.uri : '')) ok2 = true; }); return ok2; }, 'renderToImageAsync image');
   await home();
 
   // ---- Images: GIF and WebP sources load (cached with their own extension) for core Image and expo-image.
   h.tap('Images>');
-  await h.until(() => { let n = 0; walk(h.tree, (v) => { if (v.props.__simcoreImage) n++; }); return n === 6; }, 'six images loaded');
+  await h.until(() => { let n = 0; walk(h.tree, (v) => { if (v.props.__simcoreImage) n++; }); return n === 10; }, 'ten images loaded');
   const exts = []; walk(h.tree, (v) => { if (v.props.__simcoreImage) exts.push(v.props.__simcoreImage.path.split('.').pop()); });
-  expect(exts.sort().join() === 'gif,gif,gif,webp,webp,webp', 'gif/webp files: ' + exts);
+  // GIF / WebP stills and animations, the ref (WebP), the repeat dot and the decoded blurhash (PNG).
+  expect(exts.sort().join() === 'gif,gif,gif,gif,png,png,webp,webp,webp,webp', 'image files: ' + exts);
   ok('images: ' + exts.join(' '));
+  // expo-image: a generated blurhash (the same string iOS 27.2 gives for this GIF), a blurhash source, a loadAsync ref,
+  // repeat tiles, and stop / start on an autoplay={false} GIF.
+  await h.until(() => /blurhash LbL3\.FJ8J8Nv67I\[1z:hv\{Nu:\}\]i/.test(h.text), 'generateBlurhashAsync');
+  const imgs = []; walk(h.tree, (v) => { if (v.props.__simcoreImage) imgs.push(v); });
+  expect(imgs.some((v) => v.component === 'ViewManagerAdapter_ExpoImage' && typeof v.props.source === 'number'), 'an ImageRef source (shared object id)');
+  expect(imgs.some((v) => v.props.resizeMode === 'repeat'), 'repeat image loaded');
+  expect(imgs.some((v) => [].concat(v.props.source)[0]?.uri?.startsWith('blurhash:/')), 'blurhash source decoded by the host');
+  const paused = () => { let a; walk(h.tree, (v) => { if (v.component === 'ViewManagerAdapter_ExpoImage' && v.props.autoplay === false) a = v.props.__simcoreAnimating; }); return a; };
+  h.tap('Play');
+  await h.until(() => paused() === true, 'startAnimating');
+  h.tap('Pause');
+  await h.until(() => paused() === false, 'stopAnimating');
   await home();
 
   // ---- Linking
@@ -102,15 +117,30 @@ run(async () => {
   h.tap('Open web');
   await h.until(() => /Result: web true/.test(h.text), 'web resolves');
   expect(h.events.slice(e0).some((e) => e.name === 'module.called' && e.detail.module === 'Linking' && e.detail.args[0] === 'https://expo.dev'), 'web URL handed to the system');
+  await h.until(() => /States: inactive background inactive active/.test(h.text), 'AppState round trip through Safari');
   h.tap('Can tel');
   await h.until(() => /Result: tel true/.test(h.text), 'canOpenURL tel');
   h.tap('Can odd');
   await h.until(() => /Result: odd false/.test(h.text), 'canOpenURL unknown scheme');
   h.tap('Settings');
   await h.until(() => /Result: settings true/.test(h.text), 'openSettings');
+  // Back from Settings (a tap while the app is away would be cancelled, as on iOS).
+  await h.until(() => /States: (inactive background inactive active ?){2}Open/.test(h.text), 'AppState round trip through Settings');
   h.tap('Bad URL');
   await h.until(() => /Result: bad failed Unable to open URL: no scheme/.test(h.text), 'invalid URL rejects');
   h.send({ type: 'open_url', url: 'expoapis://from-host' });
   await h.until(() => /Last: expoapis:\/\/from-host/.test(h.text), 'host open_url reaches the url event');
+  // canOpenURL on a phone: the system apps answer, an app that is not installed does not (even one Expo Go declares).
+  h.tap('Probe');
+  await h.until(() => /probe /.test(h.text), 'probe');
+  expect(/probe https=1 http=1 tel=1 mailto=1 sms=1 facetime=1 maps=1 itms-apps=1 app-settings=1 waze=0 exp=1 expoapis=1 notinstalled=0/.test(h.text), 'canOpenURL answers: ' + /probe [^R]*/.exec(h.text)[0]);
+  // Host scene phases drive AppState.
+  h.send({ type: 'scene_phase', phase: 'inactive' });
+  h.send({ type: 'scene_phase', phase: 'background' });
+  const states = () => (/States: ([a-z ]*?)Open self/.exec(h.text) || [])[1]?.trim() || '';
+  await h.until(() => states().endsWith('active inactive background'), 'scene_phase -> AppState');
+  h.send({ type: 'scene_phase', phase: 'inactive' });
+  h.send({ type: 'scene_phase', phase: 'active' });
+  await h.until(() => states().endsWith('background inactive active'), 'back to active');
   ok('Linking: launch URL, own-scheme round trip, system hand-off, canOpenURL, rejection, host open_url');
 }, 240000);

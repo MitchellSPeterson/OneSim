@@ -28,7 +28,8 @@ const HIDDEN = new Set(['getConstants', 'addListener', 'removeListeners']);
 const ABSENT = new Set(['NativeAnimatedModule', 'NativeAnimatedTurboModule', 'NativeCPUTime', 'ReactDevToolsRuntimeSettingsModule', 'NativeReactDevToolsSettingsManager', 'NativeIdleCallbacksCxx', 'NativeIdleCallbacks', 'JSCExecutor', 'IntentAndroid', 'SoundManager', 'Performance', 'HeadlessJsTaskSupport', 'PerformanceObserver', 'IntersectionObserver', 'MutationObserver', 'ResizeObserver', 'FrameRateLogger', 'UIManager', 'I18nManagerAndroid']);
 
 module.exports = function createRegistry(rt, h) {
-  const { node, log, sendError, sendEvent, unsupported, cfg, ver, insetsFor, loadImage, imageDone, readUri, expo: { NativeModule, SharedObject } } = h;
+  const { node, log, sendError, sendEvent, unsupported, cfg, ver, insetsFor, loadImage, forgetImage, imageDone, readUri, expo: { NativeModule, SharedObject, SharedRef } } = h;
+  const images = require('./images.js')(rt, { node, loadImage, forgetImage, imageDone, readUri, SharedRef });
   const android = cfg.platform === 'android';
   const androidVersion = android ? (process.env.SIMCORE_OS_VERSION || ANDROID_RELEASE) : null;
   const androidModel = 'Pixel 10a';
@@ -116,7 +117,14 @@ module.exports = function createRegistry(rt, h) {
     const to = opener(u, 'openURL');
     if (!to) throw coded('EUNSPECIFIED', `Unable to open URL: ${u}`);
     if (to === 'self') node.setImmediate(() => receiveURL(String(u))); // iOS hands the app its own URL right back
-    else sendEvent('module.called', { module: 'Linking', method: 'openURL', args: [String(u)] });
+    else {
+      // The other app comes to the front (this one resigns active and goes to the background) and the user comes
+      // straight back: AppState runs inactive, background, inactive, active.
+      sendEvent('module.called', { module: 'Linking', method: 'openURL', args: [String(u)] });
+      const steps = ['inactive', 'background', 'inactive', 'active'];
+      const next = () => { if (rt.dead || !steps.length) return; rt.setAppState(steps.shift()); node.setImmediate(next); };
+      node.setImmediate(next);
+    }
     return true;
   };
 
@@ -250,7 +258,9 @@ module.exports = function createRegistry(rt, h) {
           rt.scheduleEmit();
         }, setNetworkActivityIndicatorVisible: noop } },
     { name: 'ExceptionsManager', status: 'implemented', methods: { reportException, reportFatalException: (m, s) => reportException({ message: m, stack: s }), reportSoftException: (m) => log('OneSim soft exception:', m), updateExceptionMessage: noop, dismissRedbox: noop } },
-    { name: 'AppState', status: 'implemented', constants: { initialAppState: 'active' }, methods: { getCurrentAppState: (cb) => cb({ app_state: 'active' }), ...listener } },
+    // Host `scene_phase` moves it (`Runtime.setAppState`); events `appStateDidChange`.
+    { name: 'AppState', status: 'implemented', constants: () => ({ initialAppState: rt.appState }), events: ['appStateDidChange', 'memoryWarning'],
+      methods: { getCurrentAppState: (cb) => cb({ app_state: rt.appState }), ...listener } },
     { name: 'SettingsManager', status: 'implemented', constants: { settings: { AppleLocale: 'en_US', AppleLanguages: ['en'] } }, methods: { setValues: noop, deleteValues: noop } },
     { name: 'AccessibilityInfo', status: 'implemented', constants: {}, methods: {
       ...Object.fromEntries(['isReduceMotionEnabled', 'isReduceTransparencyEnabled', 'isBoldTextEnabled', 'isGrayscaleEnabled', 'isInvertColorsEnabled', 'isDarkerSystemColorsEnabled', 'isScreenReaderEnabled', 'getCurrentReduceMotionState', 'getCurrentReduceTransparencyState',
@@ -365,11 +375,20 @@ module.exports = function createRegistry(rt, h) {
     { name: 'ExpoLinking', package: 'expo-linking', kind: 'expo', status: android ? 'implemented' : 'simulated', events: ['onURLReceived'],
       methods: { getLinkingURL: () => (android ? null : link.latest), clearInitialURL: () => { link.latest = null; } } },
     { name: 'ExpoWebBrowser', package: 'expo-web-browser', kind: 'expo', status: 'unsupported', methods: all(['openBrowserAsync', 'dismissBrowser', 'openAuthSessionAsync', 'dismissAuthSession', 'warmUpAsync', 'coolDownAsync', 'mayInitWithUrlAsync', 'getCustomTabsSupportingBrowsers']) },
-    // expo-image: ImageLoader shares the guest's image cache; the rest of the cache API is not backed by anything.
-    { name: 'ExpoImage', package: 'expo-image', kind: 'expo', status: 'implemented', constants: { ViewPrototypes: {} },
-      methods: { configureCache: () => {}, clearMemoryCache: async () => false, clearDiskCache: async () => false,
-        prefetch: async (urls) => (await Promise.all(urls.map((u) => loadImage(u).then(() => true, () => false)))).every(Boolean),
-        ...all(['generateBlurhashAsync', 'generateThumbhashAsync', 'getCachePathAsync', 'writeToCacheAsync', 'readFromCacheAsync', 'loadAsync']) } },
+    // expo-image (images.js): the guest's image cache (shared with ImageLoader), image refs, placeholders, view functions.
+    { name: 'ExpoImage', package: 'expo-image', kind: 'expo', status: 'implemented', constants: () => ({ ViewPrototypes: images.viewPrototypes }), events: ['imageLoaded'],
+      methods: () => images.methods((event, payload) => emitOn('ExpoImage', event, payload)) },
+    // expo-font's renderToImageAsync: the host draws the string (`text.render`); the PNG lands in the session's tmp dir.
+    { name: 'ExpoFontUtils', package: 'expo-font', kind: 'expo', status: 'implemented', strict: true, methods: {
+      renderToImageAsync: async (glyphs, o) => {
+        o = o || {};
+        const r = await rt.request('text.render', { text: String(glyphs ?? ''), family: o.fontFamily || '', fonts: [...fonts.values()].flat(),
+          size: Number(o.size) > 0 ? Number(o.size) : 24, color: typeof o.color === 'number' ? o.color >>> 0 : 0xff000000, lineHeight: o.lineHeight ?? null, scale: cfg.scale });
+        const dir = path.join(cfg.dataDir, 'tmp'), file = path.join(dir, `${crypto.randomUUID().toUpperCase()}.png`);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(file, Buffer.from(r.png, 'base64'));
+        return { uri: require('node:url').pathToFileURL(file).href, width: r.width, height: r.height, scale: r.scale };
+      } } },
     { name: 'SymbolModule', package: 'expo-symbols', kind: 'expo', status: 'implemented', constants: { ViewPrototypes: {} } },
     { name: 'ExpoGlassEffect', package: 'expo-glass-effect', kind: 'expo', status: 'implemented', constants: { isLiquidGlassAvailable: true, isGlassEffectAPIAvailable: true, ViewPrototypes: {} } },
     // expo-constants: the manifest is the same one Metro hands a real Expo client; expo-asset uses it to build dev-server asset URLs.
@@ -508,6 +527,7 @@ module.exports = function createRegistry(rt, h) {
       methods: Object.entries(e.make ? {} : implsOf(e)).filter(([k, v]) => typeof v === 'function' || v === UNSUP).map(([k]) => k).filter((k) => !HIDDEN.has(k)),
       events: e.events || [], permissions: e.permissions || [],
     })),
+    images,
     // Host `open_url`: the system opens `url` in the app.
     openURL(url) { if (!android) receiveURL(String(url)); else log('OneSim: open_url is iOS-only for React Native'); },
     simulate(module, state, replay) {

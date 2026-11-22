@@ -6,7 +6,7 @@ Part of [Expo / React Native API coverage](README.md): status legend, summary an
 |---|---|---|---|---|---|---|
 | View | react-native | `RCTView` | ✅ | 🟠 | | Core layout and touch targeting in the Android preview. |
 | Text (nested spans, `numberOfLines`) | react-native | `RCTText` `RCTVirtualText` `RCTRawText` | ✅ | 🟠 | | Android uses Roboto. |
-| Image | react-native | `RCTImageView` | 🟠 | 🟠 | [#50](https://github.com/MitchellSPeterson/OneSim/issues/50) | PNG, JPEG, GIF and WebP draw; animated GIF / WebP play from when the view appears, their loop count times (forever for 0), frames under 20 ms showing for 100 ms as on iOS; `tintColor`. Gap: `resizeMode="repeat"` draws as `cover` |
+| Image | react-native | `RCTImageView` | ✅ | 🟠 | [#50](https://github.com/MitchellSPeterson/OneSim/issues/50) | PNG, JPEG, GIF and WebP draw; animated GIF / WebP play from when the view appears, their loop count times (forever for 0), frames under 20 ms showing for 100 ms as on iOS; `resizeMode` `cover`, `contain`, `stretch`, `center`, `repeat` (tiles at the bitmap's natural size); `tintColor` |
 | TextInput | react-native | `RCTSinglelineTextInputView` `RCTMultilineTextInputView` `AndroidTextInput` | 🟠 | 🟠 | | Tapping outside does not blur. Host typing and editing callbacks work on Android. The software keyboard is pending. |
 | ScrollView / FlatList / SectionList | react-native | `RCTScrollView` `RCTScrollContentView` `AndroidHorizontalScrollView` `AndroidHorizontalScrollContentView` | ✅ | 🟠 | | Vertical and horizontal scrolling in the Android preview. |
 | Switch | react-native | `RCTSwitch` `AndroidSwitch` | ✅ | 🟠 | | iOS 26 switch shared with SwiftUI `Toggle`. Android uses a native-style track and thumb. |

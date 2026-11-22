@@ -77,7 +77,8 @@ pub(super) fn image_dest(p: &Value, (bw, bh): (f64, f64), (iw, ih): (f64, f64), 
         Some("center") => fit((1.0 / scale).min(bw / iw).min(bh / ih)),
         Some("none") => fit(1.0 / scale),
         Some("scale-down") => fit((1.0 / scale).min((bw / iw).min(bh / ih))),
-        // ponytail: `repeat` (tiling) draws as cover.
+        // `repeat` fills the box with a bitmap tiled to it ([`crate::layout::common::tiled`]).
+        Some("repeat") => Rect { x: 0.0, y: 0.0, w: bw, h: bh },
         _ => fit((bw / iw).max(bh / ih)),
     }
 }

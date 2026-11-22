@@ -146,6 +146,10 @@ pub struct ImageRun {
 pub struct ImageFrames {
     pub animation: std::sync::Arc<crate::image::Animation>,
     pub tint: Option<Color>,
+    /// `resizeMode="repeat"`: each frame tiled over this many device pixels.
+    pub tile: Option<(u32, u32)>,
+    /// Held on the frame it reached (expo-image `stopAnimating`; `autoplay={false}` holds the first).
+    pub paused: bool,
 }
 
 /// Linear gradient fill over a node's bounds: CSS `angle` (0 = up, 90 = right), evenly spaced stops.

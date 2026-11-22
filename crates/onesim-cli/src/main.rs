@@ -49,6 +49,10 @@ enum Cmd {
         #[command(flatten)]
         opts: Opts,
     },
+    /// Answer one guest `request` line from stdin with a `response` line on stdout (protocol section H; for guest
+    /// tests that run the React Native guest without a host).
+    #[command(hide = true)]
+    GuestRequest,
     /// Run an Expo / React Native app served by Metro headlessly (same options as `run`).
     Expo {
         /// Metro dev server (default http://localhost:8081).
@@ -222,6 +226,17 @@ fn main() -> Result<()> {
             let listener = std::net::TcpListener::bind(&addr).with_context(|| format!("listen on {addr}"))?;
             eprintln!("listening on ws://{}/", listener.local_addr()?);
             onesim_host::serve_ws(listener, onesim_host::Server::new())?;
+            Ok(())
+        }
+        Cmd::GuestRequest => {
+            let mut line = String::new();
+            std::io::stdin().read_line(&mut line)?;
+            let Ok(onesim_protocol::GuestMessage::Request { id, method, params }) = serde_json::from_str(&line) else { bail!("not a guest request: {line}") };
+            let (result, error) = match onesim_render::guest_request::handle(&mut onesim_render::Fonts::new(), &method, &params) {
+                Ok(v) => (Some(v), None),
+                Err(e) => (None, Some(e)),
+            };
+            println!("{}", serde_json::to_string(&onesim_protocol::HostMessage::Response { id, result, error })?);
             Ok(())
         }
         Cmd::Serve { listen: None } => {

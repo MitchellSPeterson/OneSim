@@ -212,7 +212,10 @@ pub struct Session {
     /// When the host last wrote to the guest: its reaction (new trees) is due within the quiet window.
     last_sent: Instant,
     child: Option<Child>,
-    stdin: Option<ChildStdin>,
+    /// Shared with the stdout reader, which answers the guest's `request`s.
+    stdin: Arc<Mutex<Option<ChildStdin>>>,
+    /// The host's fonts (answering `text.render`).
+    fonts: Arc<Mutex<Option<onesim_render::Fonts>>>,
     shared: Arc<Shared>,
 }
 
@@ -226,12 +229,19 @@ impl Drop for Session {
     }
 }
 
+/// One line to the guest's stdin (shared by the API thread and the stdout reader).
+fn write_line(stdin: &Mutex<Option<ChildStdin>>, line: &str) -> Result<(), ApiError> {
+    let mut g = stdin.lock().unwrap_or_else(|e| e.into_inner());
+    let w = g.as_mut().ok_or_else(|| err(ErrorCode::InvalidState, "guest not running"))?;
+    w.write_all(line.as_bytes()).and_then(|_| w.flush()).map_err(|e| err(ErrorCode::RuntimeError, format!("guest pipe closed: {e}")))
+}
+
 fn err(code: ErrorCode, msg: impl Into<String>) -> ApiError {
     ApiError::new(code, msg)
 }
 
 impl Session {
-    pub fn new(id: String, p: CreateSessionParams, log: Arc<EventLog>) -> Self {
+    pub fn new(id: String, p: CreateSessionParams, log: Arc<EventLog>, fonts: Arc<Mutex<Option<onesim_render::Fonts>>>) -> Self {
         let dev = *device(p.device.as_deref().unwrap_or(DEFAULT_DEVICE)).expect("device validated by create_session");
         Self {
             id,
@@ -261,7 +271,8 @@ impl Session {
             last_sent: Instant::now(),
             params: p,
             child: None,
-            stdin: None,
+            stdin: Arc::new(Mutex::new(None)),
+            fonts,
             shared: Arc::new(Shared::new(log)),
         }
     }
@@ -376,7 +387,7 @@ impl Session {
 
     fn kill(&mut self) {
         self.shared.lock().stopping = true;
-        self.stdin = None;
+        *self.stdin.lock().unwrap_or_else(|e| e.into_inner()) = None;
         if let Some(mut c) = self.child.take() {
             signal(&c, SIGCONT);
             let _ = c.kill();
@@ -461,11 +472,12 @@ impl Session {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| err(ErrorCode::RuntimeError, format!("cannot launch {what}: {e}")))?;
-        self.stdin = child.stdin.take();
+        *self.stdin.lock().unwrap_or_else(|e| e.into_inner()) = child.stdin.take();
         let (stdout, stderr) = (child.stdout.take().expect("piped"), child.stderr.take().expect("piped"));
         self.child = Some(child);
 
         let sh = self.shared.clone();
+        let (fonts, stdin) = (self.fonts.clone(), self.stdin.clone());
         std::thread::spawn(move || {
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 match serde_json::from_str::<GuestMessage>(&line) {
@@ -501,6 +513,19 @@ impl Session {
                     }
                     Ok(GuestMessage::Hello { .. }) => sh.lock().restarted = true,
                     Ok(GuestMessage::Modules { modules }) => sh.lock().modules = Some(modules),
+                    // Answered here, off the API thread: the guest awaits it while the host may be waiting for a tree.
+                    Ok(GuestMessage::Request { id, method, params }) => {
+                        let answer = {
+                            let mut g = fonts.lock().unwrap_or_else(|e| e.into_inner());
+                            onesim_render::guest_request::handle(g.get_or_insert_with(onesim_render::Fonts::new), &method, &params)
+                        };
+                        let (result, error) = match answer { Ok(v) => (Some(v), None), Err(e) => (None, Some(e)) };
+                        let mut line = serde_json::to_string(&HostMessage::Response { id, result, error }).expect("serialize");
+                        line.push('\n');
+                        if let Err(e) = write_line(&stdin, &line) {
+                            log::debug!("response {id}: {}", e.message);
+                        }
+                    }
                     Ok(GuestMessage::Pasteboard { items }) => sh.log.emit("pasteboard.changed", json!({"items": items})),
                     Ok(GuestMessage::Event { name, detail }) => match name.as_str() {
                         "bundle.loaded" | "bundle.reloaded" | "bundle.error" | "refresh.applied" | "navigation.changed"
@@ -537,10 +562,7 @@ impl Session {
         self.last_sent = Instant::now();
         let mut line = serde_json::to_string(msg).expect("serialize");
         line.push('\n');
-        let w = self.stdin.as_mut().ok_or_else(|| err(ErrorCode::InvalidState, "guest not running"))?;
-        w.write_all(line.as_bytes())
-            .and_then(|_| w.flush())
-            .map_err(|e| err(ErrorCode::RuntimeError, format!("guest pipe closed: {e}")))
+        write_line(&self.stdin, &line)
     }
 
     /// React Native: send the frames that changed since the last `layout` message.
@@ -752,7 +774,7 @@ impl Session {
             signal(c, SIGCONT); // a suspended guest could not read the shutdown message
         }
         let _ = self.send(&HostMessage::Shutdown);
-        self.stdin = None; // EOF also makes the guest exit
+        *self.stdin.lock().unwrap_or_else(|e| e.into_inner()) = None; // EOF also makes the guest exit
         if let Some(mut c) = self.child.take() {
             let deadline = Instant::now() + Duration::from_secs(2);
             while matches!(c.try_wait(), Ok(None)) && Instant::now() < deadline {

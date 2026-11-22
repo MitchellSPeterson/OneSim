@@ -3,7 +3,7 @@
 // tests/fixtures/ios27/rn-apis-ios (iOS 27.2) and tests/fixtures/rn-apis-ios (iOS 26.5).
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActionSheetIOS, ActivityIndicator, Image, LayoutAnimation, findNodeHandle, Linking, Pressable, ScrollView, StyleSheet, Text, View, useColorScheme,
+  ActionSheetIOS, ActivityIndicator, AppState, Image, LayoutAnimation, findNodeHandle, Linking, Pressable, ScrollView, StyleSheet, Text, View, useColorScheme,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Image as ExpoImage } from 'expo-image';
@@ -11,6 +11,9 @@ import * as Font from 'expo-font';
 import * as ExpoLinking from 'expo-linking';
 
 const SCREENS = ['Layout', 'Sheet', 'Images', 'Fonts', 'Links'];
+// canOpenURL answers for: the web, system apps, a scheme the app declares (Expo Go: waze), Expo Go's own, this app's.
+const PROBE = ['https://expo.dev', 'http://expo.dev', 'tel:5551234', 'mailto:a@b.c', 'sms:5551234', 'facetime:a@b.c', 'maps://?q=x',
+  'itms-apps://apps.apple.com', 'app-settings:', 'waze://', 'exp://x', 'expoapis://x', 'notinstalled://x'];
 
 function Header({ title, onBack }) {
   return (
@@ -78,7 +81,17 @@ function SheetScreen({ fg }) {
 }
 
 // Still GIF / WebP through core Image and expo-image, two animated ones and the spinners.
+// A blurhash (blurha.sh's sample) used as a source: expo-image decodes it at the size the string names.
+const SAMPLE_HASH = 'blurhash:/LEHV6nWB2yk8pyo0adR*.7kCMdnj/32/24';
+
 function ImagesScreen({ fg }) {
+  const [ref, setRef] = useState(null);
+  const [hash, setHash] = useState('…');
+  const gif = useRef(null);
+  useEffect(() => {
+    ExpoImage.loadAsync(require('./assets/badge.webp'), { maxWidth: 80 }).then(setRef, (e) => setHash(`error ${e.message}`));
+    ExpoImage.generateBlurhashAsync(Image.resolveAssetSource(require('./assets/checker.gif')).uri, [4, 3]).then(setHash, (e) => setHash(`error ${e.message}`));
+  }, []);
   return (
     <ScrollView style={styles.body}>
       <Text style={[styles.caption, { color: fg }]}>Image: GIF, WebP</Text>
@@ -98,14 +111,29 @@ function ImagesScreen({ fg }) {
         <ActivityIndicator style={styles.spin} />
         <ActivityIndicator size="large" color="#AF52DE" style={styles.spin} />
       </View>
+      <Text style={[styles.caption, { color: fg }]}>repeat, blurhash source, loadAsync ref</Text>
+      <View style={styles.row}>
+        <Image source={require('./assets/dot.png')} resizeMode="repeat" style={styles.tiles} />
+        <ExpoImage source={SAMPLE_HASH} style={styles.hash} />
+        {ref && <ExpoImage source={ref} style={styles.anim} />}
+      </View>
+      <Text accessibilityLabel="Blurhash" style={[styles.caption, { color: fg }]}>{`blurhash ${hash}`}</Text>
+      <View style={styles.row}>
+        <ExpoImage ref={gif} source={require('./assets/pulse.gif')} autoplay={false} style={styles.anim} />
+        <Button label="Play" onPress={() => gif.current?.startAnimating()} />
+        <Button label="Pause" onPress={() => gif.current?.stopAnimating()} />
+      </View>
     </ScrollView>
   );
 }
 
 function FontsScreen({ fg }) {
   const [loaded, setLoaded] = useState(Font.isLoaded('Roboto'));
+  const [drawn, setDrawn] = useState(null);
   useEffect(() => {
-    Font.loadAsync({ Roboto: require('./assets/Roboto.ttf') }).then(() => setLoaded(Font.isLoaded('Roboto')), (e) => setLoaded(`error ${e.message}`));
+    Font.loadAsync({ Roboto: require('./assets/Roboto.ttf') })
+      .then(() => { setLoaded(Font.isLoaded('Roboto')); return Font.renderToImageAsync('Drawn 28', { fontFamily: 'Roboto', size: 28, color: '#FF9500' }); })
+      .then(setDrawn, (e) => setLoaded(`error ${e.message}`));
   }, []);
   return (
     <View style={styles.body}>
@@ -116,6 +144,7 @@ function FontsScreen({ fg }) {
           <Text style={{ fontFamily: 'Roboto', fontSize: 17, color: fg, marginTop: 8 }}>The quick brown fox jumps over the lazy dog</Text>
           <Text style={{ fontSize: 17, color: fg, marginTop: 8 }}>System: the quick brown fox jumps over the lazy dog</Text>
           <Text style={{ fontSize: 17, color: fg, marginTop: 8 }}>Mixed <Text style={{ fontFamily: 'Roboto', color: '#007AFF' }}>Roboto span</Text> in system text</Text>
+          {drawn && <Image source={{ uri: drawn.uri }} style={{ width: drawn.width, height: drawn.height, marginTop: 12 }} />}
         </View>
       )}
     </View>
@@ -126,10 +155,13 @@ function LinksScreen({ fg }) {
   const [initial, setInitial] = useState('…');
   const [last, setLast] = useState('none');
   const [result, setResult] = useState('none');
+  const [states, setStates] = useState([]);
   useEffect(() => {
     Linking.getInitialURL().then((u) => setInitial(String(u)));
     const sub = Linking.addEventListener('url', (e) => setLast(e.url));
-    return () => sub.remove();
+    // Opening another app's URL sends this one to the background and back.
+    const app = AppState.addEventListener('change', (s) => setStates((x) => [...x, s]));
+    return () => { sub.remove(); app.remove(); };
   }, []);
   const run = (what, p) => p.then((v) => setResult(`${what} ${v}`), (e) => setResult(`${what} failed ${e.message}`));
   return (
@@ -137,6 +169,7 @@ function LinksScreen({ fg }) {
       <Text style={[styles.note, { color: fg }]}>{`Initial: ${initial}`}</Text>
       <Text style={[styles.note, { color: fg }]}>{`Last: ${last}`}</Text>
       <Text style={[styles.note, { color: fg }]}>{`Result: ${result}`}</Text>
+      <Text style={[styles.note, { color: fg }]}>{`States: ${states.join(' ')}`}</Text>
       <View style={styles.wrap}>
         <Button label="Open self" onPress={() => run('self', Linking.openURL(ExpoLinking.createURL('done', { queryParams: { n: '1' } })))} />
         <Button label="Open web" onPress={() => run('web', Linking.openURL('https://expo.dev'))} />
@@ -144,6 +177,8 @@ function LinksScreen({ fg }) {
         <Button label="Can odd" onPress={() => run('odd', Linking.canOpenURL('notinstalled-app://x'))} />
         <Button label="Settings" onPress={() => run('settings', Linking.openSettings())} />
         <Button label="Bad URL" onPress={() => run('bad', Linking.openURL('no scheme'))} />
+        <Button label="Probe" onPress={() => Promise.all(PROBE.map((u) => Linking.canOpenURL(u).then((v) => (v ? 1 : 0), () => 'x')))
+          .then((r) => setResult(`probe ${PROBE.map((u, i) => `${u.split(':')[0]}=${r[i]}`).join(' ')}`))} />
       </View>
     </View>
   );
@@ -200,5 +235,7 @@ const styles = StyleSheet.create({
   pic: { width: 120, height: 80, marginRight: 16 },
   badge: { width: 80, height: 80, marginRight: 16 },
   anim: { width: 40, height: 40, marginRight: 24 },
+  tiles: { width: 120, height: 40, marginRight: 16, backgroundColor: '#E5E5EA' },
+  hash: { width: 120, height: 40, marginRight: 16 },
   spin: { marginRight: 24 },
 });

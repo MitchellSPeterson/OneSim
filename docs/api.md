@@ -49,7 +49,7 @@ stream. Ids are strings (`"s1"`).
 | `session.get` | `{"sessionId"}` | `SessionInfo` |
 | `session.destroy` | `{"sessionId"}` | `{}` (stops if running, frees the id) |
 
-`SessionInfo`: `{"sessionId","framework","platform","device","viewport":{width,height},"scale","appearance","status","treeVersion","metroUrl"?,"appPath"?,"scenePhase"?}` (`scenePhase` for SwiftUI).
+`SessionInfo`: `{"sessionId","framework","platform","device","viewport":{width,height},"scale","appearance","status","treeVersion","metroUrl"?,"appPath"?,"scenePhase"?}` (`scenePhase` for SwiftUI and React Native).
 `launchURL` (SwiftUI, and React Native on iOS) launches the app to open that URL: SwiftUI's `onOpenURL` gets it after the first frame; React Native reads it as `Linking.getInitialURL` (Expo Router starts at its route).
 Expo uses iOS by default. Pass `"platform": "android"` for Expo on Android. SwiftUI targets iOS and Compose targets Android.
 Device names accept a display name or profile slug. The defaults are `iphone-18-pro` on iOS and `pixel-10a` on Android.
@@ -119,7 +119,7 @@ All input params also carry `"sessionId"`.
 
 | method | params | result |
 |---|---|---|
-| `app.setScenePhase` | `{"sessionId","phase":"active"\|"inactive"\|"background"}` | `{"phase"}` once the app is there: `active` and `background` pass through `inactive`, one tree per step, as on iOS |
+| `app.setScenePhase` | `{"sessionId","phase":"active"\|"inactive"\|"background"}` | `{"phase"}` once the app is there: `active` and `background` pass through `inactive`, one tree per step, as on iOS (React Native: AppState) |
 | `app.openURL` | `{"sessionId","url"}` | `{"phase"}` after every `onOpenURL` ran; an app not in front comes forward first (it gets the URL while `inactive`, then becomes `active`). React Native (iOS): `Linking`'s `url` event and expo-linking's `onURLReceived` |
 
 A URL needs a scheme (`app:...`, `https://...`), else `bad_request`. While the app is not `active`, `input.*`

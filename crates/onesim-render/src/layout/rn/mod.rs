@@ -912,9 +912,15 @@ fn paint(cx: &mut Cx, it: &Item, origin: (f64, f64), parent: usize, parent_opaci
                         // Template images (`tintColor`) draw their alpha in the tint color.
                         let tint = p.get("tintColor").and_then(|t| t.as_str().and_then(css_color).or_else(|| cx.color(Some(t))));
                         let pixmap = tint.and_then(|c| tinted(&pixmap, c)).unwrap_or(pixmap);
-                        // Animated GIF / WebP play from when the view appears (expo-image: unless `autoplay` is false).
+                        // `repeat`: tiles at the bitmap's natural size (device pixels) over the whole box.
+                        let tile = (component == "RCTImageView" && p.get("resizeMode").and_then(Value::as_str) == Some("repeat"))
+                            .then(|| ((w * params.scale).round() as u32, (h * params.scale).round() as u32));
+                        let pixmap = tile.and_then(|(tw, th)| crate::layout::common::tiled(&pixmap, tw, th)).unwrap_or(pixmap);
+                        // Animated GIF / WebP play from when the view appears; expo-image holds them with `autoplay={false}`
+                        // until `startAnimating`, and `stopAnimating` holds them (`__simcoreAnimating` from the guest).
                         let autoplay = component != "ViewManagerAdapter_ExpoImage" || p.get("autoplay").and_then(Value::as_bool) != Some(false);
-                        let frames = crate::image::animation(path).filter(|_| autoplay).map(|animation| crate::scene::ImageFrames { animation, tint });
+                        let paused = !p.get("__simcoreAnimating").and_then(Value::as_bool).unwrap_or(autoplay);
+                        let frames = crate::image::animation(path).map(|animation| crate::scene::ImageFrames { animation, tint, tile, paused });
                         n.image = Some(ImageRun { pixmap, dest: Rect { x: x + dest.x, y: y + dest.y, ..dest }, rotation: cx.rot + spin, filter: 2, frames });
                     }
                     None => cx.note(format!("image_decode_failed: {path}")),
@@ -1483,6 +1489,39 @@ mod tests {
         assert!(s.nodes.iter().any(|n| n.text.as_ref().is_some_and(|t| t.text == "onesim.invalid")), "host as the title");
         let text = presented(json!([{"kind":"share","items":["hello"],"dismiss":9,"copy":8,"activities":{"More":3}}]));
         assert!(text.nodes.iter().any(|n| n.text.as_ref().is_some_and(|t| t.text == "hello")), "text items keep their text");
+    }
+
+
+    /// `resizeMode="repeat"`: the bitmap tiles from the top-left at one pixel per device pixel over the whole box.
+    #[test]
+    fn image_repeat_tiles_at_natural_size() {
+        let png = std::env::temp_dir().join(format!("onesim-rn-tile-{}.png", std::process::id()));
+        let mut pm = tiny_skia::Pixmap::new(2, 1).unwrap();
+        pm.pixels_mut()[0] = tiny_skia::PremultipliedColorU8::from_rgba(255, 0, 0, 255).unwrap();
+        pm.pixels_mut()[1] = tiny_skia::PremultipliedColorU8::from_rgba(0, 0, 255, 255).unwrap();
+        pm.save_png(&png).unwrap();
+        let s = presented_tree(json!({"kind":"rn","id":"1","component":"RootView","props":{},"children":[
+            {"kind":"rn","id":"4","component":"RCTImageView","props":{"position":"absolute","top":100,"left":10,"width":10,"height":5,"resizeMode":"repeat",
+                "__simcoreImage":{"path":png.to_str().unwrap(),"width":2,"height":1}},"children":[]}]}));
+        let img = s.nodes.iter().find(|n| n.id == "4").unwrap().image.as_ref().unwrap();
+        assert_eq!((img.dest.x, img.dest.y, img.dest.w, img.dest.h), (10.0, 100.0, 10.0, 5.0), "fills the box");
+        assert_eq!((img.pixmap.width(), img.pixmap.height()), (30, 15), "device pixels of the box");
+        let px = |x, y| { let p = img.pixmap.pixel(x, y).unwrap(); (p.red(), p.blue()) };
+        assert_eq!([px(0, 0), px(1, 0), px(2, 0), px(29, 14)], [(255, 0), (0, 255), (255, 0), (0, 255)]);
+        let cover = presented_tree(json!({"kind":"rn","id":"1","component":"RootView","props":{},"children":[
+            {"kind":"rn","id":"4","component":"RCTImageView","props":{"width":10,"height":5,
+                "__simcoreImage":{"path":png.to_str().unwrap(),"width":2,"height":1}},"children":[]}]}));
+        assert_eq!(cover.nodes.iter().find(|n| n.id == "4").unwrap().image.as_ref().unwrap().pixmap.width(), 2, "other modes keep the bitmap");
+    }
+
+    fn presented_tree(root: Value) -> Scene {
+        let dev = device(DEFAULT_DEVICE).unwrap();
+        let (scroll, sheets) = (HashMap::new(), HashMap::new());
+        let params = SceneParams {
+            viewport: (402.0, 874.0), device: dev, scale: 3.0, appearance: Appearance::Light, dynamic_type: Default::default(),
+            ios: IosVersion::Ios27, scroll: &scroll, focus: None, overscroll: false, status_bar: true, chrome: Default::default(), sheets: &sheets,
+        };
+        build_scene(&serde_json::from_value(root).unwrap(), &params, &mut Fonts::new())
     }
 
 }

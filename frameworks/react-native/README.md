@@ -89,8 +89,11 @@ Unsupported (diagnostic): `Alert.prompt`, Share (`ShareModule`), expo-camera, ex
 cookies (`clearCookies` returns false).
 
 Issue #50: `LayoutAnimation` (played by the host), `ActionSheetIOS` (action sheet and share sheet layers), GIF / WebP
-images (animated ones play), spinning `ActivityIndicator`, Linking (launch URL `--launch-url`, `--open-url`, own-scheme
-round trips, system hand-off) and expo-font (`loadAsync`, font families; expo-asset downloads into Caches). Check:
+images (animated ones play, `resizeMode="repeat"`), expo-image (image refs, blurhash / thumbhash sources and generation,
+cache API, view functions), spinning `ActivityIndicator`, Linking (launch URL `--launch-url`, `--open-url`, own-scheme
+round trips, system hand-off with an AppState round trip), AppState from host scene phases and expo-font (`loadAsync`,
+font families, `renderToImageAsync`; expo-asset downloads into Caches). Image hashes and text rendering run in the host
+(`request` / `response`; guest tests answer them with `onesim guest-request`, so build the CLI first). Check:
 `node frameworks/react-native/guest/run-apis.mjs` (examples/expo-apis); screenshots: `rn-apis-ios` fixtures.
 
 Milestone 3 (Expo Router): react-native-screens (`RNSScreenStack`/`RNSScreen`/header config, `RNSTabsHostIOS`/`RNSTabsScreenIOS`)
@@ -106,7 +109,6 @@ CSS animations/transitions, exiting/layout/shared-element animations. Check: `no
 
 - **Keyboard avoidance**: no `keyboardWillShow` events, so KeyboardAvoidingView does not move.
   Tapping outside a TextInput does not blur it (same as RN without `Keyboard.dismiss`).
-- **Image**: `resizeMode="repeat"` draws as `cover`.
 - **Fast Refresh** works (Metro `/hot` + React Refresh, on by default, `SIMCORE_HMR=0` off;
   check: `node frameworks/react-native/guest/run-refresh.mjs`). No redbox UI: errors go to
   `get_errors`. A render error unmounts the root, so recovery remounts with fresh state.

@@ -45,6 +45,9 @@ pub enum GuestMessage {
     Event { name: String, #[serde(default)] detail: serde_json::Value },
     /// React Native native-module inventory, once after boot (same shape as the API's `modules.list`).
     Modules { modules: serde_json::Value },
+    /// Work for the host (React Native, section H): `method` `image.blurhash` / `image.thumbhash` / `text.render`.
+    /// The host answers with `HostMessage::Response` carrying the same `id`.
+    Request { id: u64, method: String, #[serde(default)] params: serde_json::Value },
 }
 
 /// A `scroll_to` coordinate: an offset in points or the string `"end"` (max offset).
@@ -291,8 +294,17 @@ pub enum HostMessage {
     #[serde(rename = "scene_phase")]
     ScenePhase { phase: ScenePhase },
     /// SwiftUI: the system opened this URL in the app (`onOpenURL`). The guest answers with a tree.
+    /// React Native (iOS): Linking's `url` event.
     #[serde(rename = "open_url")]
     OpenUrl { url: String },
+    /// The host's answer to `GuestMessage::Request` `id`: `result`, or `error` (the message the guest rejects with).
+    Response {
+        id: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        result: Option<serde_json::Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
     Reload,
     Shutdown,
 }
@@ -507,4 +519,15 @@ mod tests {
         }
         assert!("Active".parse::<ScenePhase>().is_err() && "".parse::<ScenePhase>().is_err());
     }
+
+    #[test]
+    fn request_and_response_messages() {
+        let r: GuestMessage = serde_json::from_str(r#"{"type":"request","id":7,"method":"image.blurhash","params":{"path":"/x.png","x":4,"y":3}}"#).unwrap();
+        assert!(matches!(&r, GuestMessage::Request { id: 7, method, params } if method == "image.blurhash" && params["x"] == 4));
+        let ok = serde_json::to_value(HostMessage::Response { id: 7, result: Some(serde_json::json!("LEHV6n")), error: None }).unwrap();
+        assert_eq!(ok, serde_json::json!({"type": "response", "id": 7, "result": "LEHV6n"}));
+        let bad = serde_json::to_value(HostMessage::Response { id: 8, result: None, error: Some("no".into()) }).unwrap();
+        assert_eq!(bad, serde_json::json!({"type": "response", "id": 8, "error": "no"}));
+    }
+
 }

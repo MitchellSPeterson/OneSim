@@ -104,6 +104,16 @@ pub(crate) fn tinted(pm: &tiny_skia::Pixmap, c: Color) -> Option<std::sync::Arc<
     Some(std::sync::Arc::new(out))
 }
 
+/// `resizeMode="repeat"`: `pm` tiled from the top-left corner at one bitmap pixel per device pixel (its natural size)
+/// over a `w` x `h` device-pixel canvas.
+pub(crate) fn tiled(pm: &tiny_skia::Pixmap, w: u32, h: u32) -> Option<std::sync::Arc<tiny_skia::Pixmap>> {
+    let mut out = tiny_skia::Pixmap::new(w.max(1), h.max(1))?;
+    let pattern = tiny_skia::Pattern::new(pm.as_ref(), tiny_skia::SpreadMode::Repeat, tiny_skia::FilterQuality::Nearest, 1.0, tiny_skia::Transform::identity());
+    let paint = tiny_skia::Paint { shader: pattern, ..tiny_skia::Paint::default() };
+    out.fill_rect(tiny_skia::Rect::from_xywh(0.0, 0.0, w as f32, h as f32)?, &paint, tiny_skia::Transform::identity(), None);
+    Some(std::sync::Arc::new(out))
+}
+
 /// Modal layers use viewport coordinates and a virtual screen parent at index 0.
 #[derive(Default)]
 pub(super) struct ModalLayers(pub(super) Vec<Vec<Node>>);

@@ -1,10 +1,17 @@
 // Shared plumbing for the run-*.mjs drivers: Metro, host.js sessions, tree helpers, one cleanup registry.
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 
 export const root = fileURLToPath(new URL('../../..', import.meta.url));
 export const hostJs = fileURLToPath(new URL('./host.js', import.meta.url));
+/** The CLI that answers guest requests (`cargo build -p onesim-cli` first; SIMCORE_ONESIM overrides). */
+export const onesimBin = () => {
+  const bin = process.env.SIMCORE_ONESIM || fileURLToPath(new URL('../../../target/debug/onesim', import.meta.url));
+  if (!existsSync(bin)) throw new Error(`${bin} not found: cargo build -p onesim-cli`);
+  return bin;
+};
 
 const cleanups = [];
 let over = false;
@@ -66,6 +73,8 @@ export function startHost(env, onTree) {
     else if (m.type === 'error') h.errors.push(m.message);
     else if (m.type === 'event') h.events.push(m);
     else if (m.type === 'modules') h.modules.push(m.modules);
+    // Work only a host does (image hashes, text rendering): `onesim guest-request` answers it like the real host.
+    else if (m.type === 'request') h.send(JSON.parse(spawnSync(onesimBin(), ['guest-request'], { input: line + '\n', encoding: 'utf8' }).stdout || `{"type":"response","id":${m.id},"error":"onesim guest-request failed"}`));
     else h.other.push(m);
     check();
   });
