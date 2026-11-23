@@ -20,8 +20,8 @@ use tiny_skia::Pixmap;
 
 use crate::display::{DisplayList, Op, RRect, Resource, Sampling};
 use crate::raster::composite::{
-    aligned_origin, composite_key, needs_whole_frame_blend, plan_composite, render_composite_sprite,
-    subtree_bounds, transform_clip,
+    aligned_origin, anchored_origin, composite_key, needs_whole_frame_blend, plan_composite,
+    render_composite_sprite, subtree_bounds, transform_clip,
 };
 use crate::raster::{clip_radius, needs_backdrop, node_sprite, sprite_key, text_sprite, PaintClip, SpriteLayer};
 use crate::scene::{Color, Gradient, ImageRun, Node};
@@ -262,10 +262,31 @@ impl Builder {
         if !clip.overlaps(out_clip) {
             return;
         }
-        let Some((ox, oy, dx_pt, dy_pt, rw, rh)) =
-            aligned_origin(bounds.work, scale, bounds.has_scroll_edge, pw, ph)
-        else {
-            return;
+        let (ox, oy, origin_x_px, origin_y_px, dx_pt, dy_pt, rw, rh) = if plan.had_affine
+            && !bounds.clipped_by_viewport
+            && !bounds.has_scroll_edge
+            && !roots.is_empty()
+        {
+            let anchor = scene.nodes[roots[0]].bounds;
+            if let Some((ox_px, oy_px, dx_pt, dy_pt, rw, rh)) =
+                anchored_origin(bounds.work, anchor.x, anchor.y, scale, pw, ph)
+            {
+                (0, 0, ox_px, oy_px, dx_pt, dy_pt, rw, rh)
+            } else {
+                let Some((ox, oy, dx_pt, dy_pt, rw, rh)) =
+                    aligned_origin(bounds.work, scale, bounds.has_scroll_edge, pw, ph)
+                else {
+                    return;
+                };
+                (ox, oy, ox as f64, oy as f64, dx_pt, dy_pt, rw, rh)
+            }
+        } else {
+            let Some((ox, oy, dx_pt, dy_pt, rw, rh)) =
+                aligned_origin(bounds.work, scale, bounds.has_scroll_edge, pw, ph)
+            else {
+                return;
+            };
+            (ox, oy, ox as f64, oy as f64, dx_pt, dy_pt, rw, rh)
         };
         let padded = plan.had_affine;
         let viewport_clip = (bounds.clipped_by_viewport || bounds.has_scroll_edge).then_some((ox, oy, rw, rh));
@@ -297,9 +318,14 @@ impl Builder {
         };
 
         if let SpriteTile::Uploaded(dx, dy, width, height) = entry.tile {
-            let (sx, sy) = (ox + dx, oy + dy);
+            let (sx, sy) = (origin_x_px + dx as f64, origin_y_px + dy as f64);
             let sprite_clip = transform_clip(
-                PaintClip::pixels(sx, sy, width, height),
+                PaintClip::from_ltrb(
+                    sx.floor() as f32,
+                    sy.floor() as f32,
+                    (sx + width as f64).ceil() as f32,
+                    (sy + height as f64).ceil() as f32,
+                ),
                 plan.affine,
                 if plan.had_affine { 1.0 } else { 0.0 },
             );
@@ -307,17 +333,19 @@ impl Builder {
                 return;
             }
             let [a, b, c, d, e, f] = plan.affine;
-            let pure_int_translate = (a - 1.0).abs() < 1e-6
+            let int_pos = (sx - sx.round()).abs() < 1e-4 && (sy - sy.round()).abs() < 1e-4;
+            let pure_int_translate = int_pos
+                && (a - 1.0).abs() < 1e-6
                 && b.abs() < 1e-6
                 && c.abs() < 1e-6
                 && (d - 1.0).abs() < 1e-6
                 && (e - e.round()).abs() < 1e-4
                 && (f - f.round()).abs() < 1e-4;
             if pure_int_translate && plan.opacity >= 1.0 - 1e-6 {
-                dl.ops.push(Op::Sprite { id, x: sx + e.round() as i32, y: sy + f.round() as i32 });
+                dl.ops.push(Op::Sprite { id, x: (sx + e).round() as i32, y: (sy + f).round() as i32 });
             } else {
-                let m = Aff::translate(sx as f64, sy as f64).then(Aff(plan.affine)).0.map(|v| v as f32);
-                let sampling = if plan.had_affine { Sampling::Bilinear } else { Sampling::Nearest };
+                let m = Aff::translate(sx, sy).then(Aff(plan.affine)).0.map(|v| v as f32);
+                let sampling = if plan.had_affine || !int_pos { Sampling::Bilinear } else { Sampling::Nearest };
                 dl.ops.push(Op::Image { id, transform: m, sampling, opacity: plan.opacity, shape: None });
             }
         }
@@ -1289,5 +1317,65 @@ mod tests {
         assert_eq!(img_builder.cache_len(), 0);
         let im4 = img_builder.build(&img_scene, &mut fonts, 2.0);
         assert_eq!(im4.added.len(), 1, "after reset, composite sprite must be re-uploaded");
+    }
+
+    #[test]
+    fn translated_affine_composite_hits_sprite_cache() {
+        use onesim_protocol::VisualOp;
+        let mut fonts = Fonts::with_fallback(true);
+        let make_orb = |tx: f64, ty: f64| {
+            let bounds = Rect { x: 150.0 + tx, y: 300.0 + ty, w: 96.0, h: 96.0 };
+            let mut orb = Node::new("orb", "circle");
+            orb.parent = Some(0);
+            orb.bounds = bounds;
+            orb.radius = 48.0;
+            orb.fill = Some(Color::rgba(1.0, 0.37, 0.38, 1.0));
+            orb.shadow = Some(crate::scene::Shadow {
+                color: Color::rgba(1.0, 0.37, 0.38, 0.65),
+                radius: 20.0,
+                dx: 0.0,
+                dy: 0.0,
+            });
+            test_scene(402.0, 874.0, vec![
+                effect_node(
+                    "scale",
+                    None,
+                    bounds,
+                    VisualOp::Affine { matrix: [1.08, 0.0, 0.0, 1.08, 0.0, 0.0], anchor: [0.5, 0.5] },
+                ),
+                orb,
+            ])
+        };
+
+        for scale in [2.5, 3.0] {
+            let mut builder = Builder::new();
+            let first = builder.build(&make_orb(0.0, 0.0), &mut fonts, scale);
+            assert_eq!(first.added.len(), 1, "initial frame uploads the composite sprite");
+            let Op::Image { id: first_id, transform: t0, .. } = first.ops[0] else {
+                panic!("expected Op::Image for scaled composite");
+            };
+
+            for (tx, ty) in [(0.3, -0.7), (12.45, 27.81), (-33.19, 19.62), (48.01, -41.33)] {
+                let dl = builder.build(&make_orb(tx, ty), &mut fonts, scale);
+                assert!(
+                    dl.added.is_empty(),
+                    "translated affine composite at scale {scale} offset ({tx}, {ty}) should hit sprite cache"
+                );
+                let Op::Image { id, transform, .. } = dl.ops[0] else {
+                    panic!("expected Op::Image for scaled composite");
+                };
+                assert_eq!(id, first_id, "should reuse the exact cached sprite id");
+                let expected_e = t0[4] + (tx * scale) as f32;
+                let expected_f = t0[5] + (ty * scale) as f32;
+                assert!(
+                    (transform[4] - expected_e).abs() < 0.05 && (transform[5] - expected_f).abs() < 0.05,
+                    "transform should translate by ({}, {}), got ({}, {}) vs ({expected_e}, {expected_f})",
+                    tx * scale,
+                    ty * scale,
+                    transform[4],
+                    transform[5]
+                );
+            }
+        }
     }
 }

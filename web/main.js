@@ -183,8 +183,34 @@ async function main() {
   };
 
   let pendingFrame = null, lastTick = null, resizePending = false;
+  let pendingDragMoves = []; // queued [x, y, timeStamp] samples flushed once per animation frame
   function requestFrame() {
     pendingFrame ??= requestAnimationFrame(frame);
+  }
+  function drainDragMoves(schedule = true) {
+    if (!pendingDragMoves.length) return;
+    const list = pendingDragMoves;
+    pendingDragMoves = [];
+    const run = () => {
+      if (drag && !drag.started) {
+        sim.drag("begin", drag.x, drag.y, list[0][2]);
+        drag.started = true;
+      }
+      for (let i = 0; i < list.length; i++) {
+        const [x, y, t] = list[i];
+        if (i + 1 < list.length) sim.dragCoalesced(x, y, t);
+        else sim.drag("move", x, y, t);
+      }
+    };
+    if (schedule) {
+      act(run);
+    } else {
+      run();
+      const copied = sim.takePasteboard();
+      if (copied?.length) navigator.clipboard?.writeText?.(copied.join("\n")).catch(() => {});
+      flush();
+      lastTick ??= performance.now();
+    }
   }
   function frame(now) {
     pendingFrame = null;
@@ -193,6 +219,7 @@ async function main() {
       const scale = fit();
       if (scale !== sim.scale) sim.setScale(scale);
     }
+    drainDragMoves(false);
     let tickMs = 0;
     if (lastTick !== null) {
       const t0 = performance.now();
@@ -283,33 +310,33 @@ async function main() {
 
   // Pointer: down/up are taps; moving past a small threshold turns the gesture into a drag-scroll
   // (rubber band at the edges, momentum and bounce after lifting).
-  let drag = null; // { id, x, y: touch-down point, scrolling }
+  let drag = null; // { id, x, y: touch-down point, scrolling, started }
   stage.addEventListener("pointerdown", (e) => {
     if (e.button > 0) return;
     stage.setPointerCapture(e.pointerId);
     const [x, y] = toPoints(e);
-    drag = { id: e.pointerId, cx: e.clientX, cy: e.clientY, x, y, scrolling: false };
+    pendingDragMoves = [];
+    drag = { id: e.pointerId, cx: e.clientX, cy: e.clientY, x, y, scrolling: false, started: false };
     act(() => sim.pointer("down", x, y));
   });
   stage.addEventListener("pointermove", (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     if (!drag.scrolling && Math.hypot(e.clientX - drag.cx, e.clientY - drag.cy) < 8) return;
-    act(() => {
-      if (!drag.scrolling) sim.drag("begin", drag.x, drag.y, e.timeStamp);
-      drag.scrolling = true;
-      const samples = e.getCoalescedEvents?.();
-      const list = samples?.length ? samples : [e];
-      for (let i = 0; i < list.length; i++) {
-        const c = list[i];
-        const [x, y] = toPoints(c);
-        if (i + 1 < list.length) sim.dragCoalesced(x, y, c.timeStamp);
-        else sim.drag("move", x, y, c.timeStamp);
-      }
-    });
+    drag.scrolling = true;
+    const samples = e.getCoalescedEvents?.();
+    const list = samples?.length ? samples : [e];
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
+      const [x, y] = toPoints(c);
+      pendingDragMoves.push([x, y, c.timeStamp]);
+    }
+    requestFrame();
   });
   const lift = (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     const wasScroll = drag.scrolling;
+    if (wasScroll) drainDragMoves(true);
+    else pendingDragMoves = [];
     drag = null;
     const [x, y] = toPoints(e);
     if (wasScroll) act(() => sim.drag("end", x, y, e.timeStamp));

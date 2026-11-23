@@ -351,4 +351,48 @@ mod tests {
         assert_eq!(simcore_web_drag(1, 100.0, 120.0, 12.0), 1);
         assert_ne!(simcore_web_frame_version(), v_before, "final move rebuilds scene");
     }
+
+    #[test]
+    fn coalesced_gesture_move_skips_redundant_dispatch() {
+        thread_local! { static EVENTS: RefCell<Vec<(i32, f64, f64)>> = const { RefCell::new(Vec::new()) }; }
+        unsafe extern "C" fn on_gesture(
+            _: *mut c_void,
+            phase: i32,
+            _: f64,
+            pts: *const f64,
+            n_pts: usize,
+            _: *const *const c_char,
+            _: *const f64,
+            _: usize,
+        ) {
+            let (x, y) = if n_pts > 0 {
+                unsafe { (*pts, *pts.add(1)) }
+            } else {
+                (0.0, 0.0)
+            };
+            EVENTS.with(|e| e.borrow_mut().push((phase, x, y)));
+        }
+
+        let _ = simcore_web_init(200.0, 300.0, 1.0, 0);
+        simcore_runtime_set_gesture_callback(Some(on_gesture));
+        let tree = r#"{"kind":"rectangle","id":"r","modifiers":[{"frame":{"width":200.0,"height":300.0}},{"gesture":{"key":"r#g0","pans":true}}]}"#;
+        assert_eq!(unsafe { simcore_submit_tree(tree.as_ptr(), tree.len(), 1) }, 0);
+        EVENTS.with(|e| e.borrow_mut().clear());
+
+        assert_eq!(simcore_web_drag(0, 100.0, 150.0, 0.0), 1);
+        assert_eq!(simcore_web_drag(3, 110.0, 155.0, 4.0), 1);
+        assert_eq!(simcore_web_drag(3, 120.0, 160.0, 8.0), 1);
+        assert_eq!(
+            EVENTS.with(|e| e.borrow().clone()),
+            vec![(0, 100.0, 150.0)],
+            "coalesced pure Move samples should not redundantly dispatch to guest"
+        );
+        assert_eq!(simcore_web_drag(1, 130.0, 165.0, 12.0), 1);
+        assert_eq!(simcore_web_drag(2, 130.0, 165.0, 16.0), 1);
+        assert_eq!(
+            EVENTS.with(|e| e.borrow().clone()),
+            vec![(0, 100.0, 150.0), (1, 130.0, 165.0), (2, 130.0, 165.0)],
+            "final move and end dispatch normally"
+        );
+    }
 }

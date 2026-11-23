@@ -218,6 +218,11 @@ pub extern "C" fn simcore_web_drag(phase: i32, x: f64, y: f64, t: f64) -> i32 {
         return match e {
             Some(Effect::None) | None => 0,
             Some(Effect::Redraw) => 1,
+            Some(Effect::Gesture(ref touches))
+                if touches.iter().all(|t| t.phase == onesim_protocol::TouchPhase::Move) =>
+            {
+                1
+            }
             Some(other) => dispatch(other),
         };
     }
