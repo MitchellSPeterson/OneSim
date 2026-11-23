@@ -765,7 +765,7 @@ fn session_call(srv: &Server, method: &str, p: &Value) -> R {
         "input.key" => {
             let a: KeyP = args(p)?;
             let en = srv.entry(&a.session_id)?;
-            let key = a.key.filter(|k| matches!(k.as_str(), "enter" | "backspace")).ok_or_else(|| bad("key must be \"enter\" or \"backspace\""))?;
+            let key = a.key.filter(|k| matches!(k.as_str(), "enter" | "backspace" | "back")).ok_or_else(|| bad("key must be \"enter\", \"backspace\" or \"back\""))?;
             en.with_ro(|h| h.keyboard(&en.id, KeyboardEvent::Key { key })).map(|_| json!({}))
         }
         "render.screenshot" | "render.frame" => {

@@ -108,4 +108,12 @@ object WasmGuest {
     }
 
     fun version(): Double = Guest.version.toDouble()
+
+    /** The screen size in dp (the host viewport); applies before the next start or environment. */
+    fun viewport(width: Float, height: Float) {
+        if (width > 0f && height > 0f) {
+            Guest.screenWidth = width
+            Guest.screenHeight = height
+        }
+    }
 }

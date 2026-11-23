@@ -834,6 +834,12 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         android_status_bar(&mut nodes, params, cx.fonts, dark);
     }
     android_nav_handle(&mut nodes, params, dark);
+    // The app's window: edge swipes and the back key are Android system back (section N). Not drawn, not hit.
+    let mut back = Node::new("system_back", crate::interaction::SYSTEM_BACK);
+    back.bounds = Rect { x: 0.0, y: 0.0, w, h };
+    back.parent = Some(0);
+    back.inspect = false;
+    nodes.push(back);
     Scene {
         size: params.viewport,
         appearance: params.appearance,

@@ -65,6 +65,14 @@ class WireCx internal constructor(
         return k
     }
 
+    /** The innermost nested scroll link enclosing this element (an outer modifier or an ancestor's `nestedScroll`). */
+    internal fun nestedScrollParent(): androidx.compose.ui.input.nestedscroll.NestedScrollNode? = tables.nested.lastOrNull()
+
+    /** This element's nested scroll link encloses the rest of the chain and the children. */
+    internal fun pushNestedScroll(n: androidx.compose.ui.input.nestedscroll.NestedScrollNode) {
+        tables.nested.add(n)
+    }
+
     /** A composition local's value at the node, as AndroidX nodes read it with `currentValueOf`. */
     fun <T> local(key: CompositionLocal<T>): T = node.locals[key]
 }
@@ -75,6 +83,8 @@ internal class Tables {
     val gestures = HashMap<String, PointerTarget>()
     val live = HashSet<NodeState>()
     var scrollDepth = 0
+    /** Nested scroll links enclosing the node being written (outermost first). */
+    val nested = ArrayList<androidx.compose.ui.input.nestedscroll.NestedScrollNode>()
 }
 
 /** One layout primitive in the composed tree (`Box`, `Column`, `Row`, `Text`). */
@@ -118,6 +128,7 @@ class LayoutNode(val component: String) {
             first = false
         }
         val mods = mutableListOf<String>()
+        val nestedDepth = tables.nested.size
         var stateful = 0
         var position = 0
         val container = booleanArrayOf(false)
@@ -149,6 +160,7 @@ class LayoutNode(val component: String) {
             if (container[0]) tables.scrollDepth--
             out.append(']')
         }
+        while (tables.nested.size > nestedDepth) tables.nested.removeAt(tables.nested.size - 1)
         out.append('}')
     }
 }

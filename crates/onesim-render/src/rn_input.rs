@@ -160,6 +160,7 @@ pub fn effect_messages(e: Effect) -> Vec<HostMessage> {
         Effect::Action { id, version } => vec![HostMessage::Action { id, version }],
         Effect::TextInput { field, version, text } => vec![HostMessage::TextInput { field, version, text }],
         Effect::Gesture(touches) => touches.into_iter().map(HostMessage::Gesture).collect(),
+        Effect::Back(events) => events.into_iter().map(HostMessage::Back).collect(),
         Effect::None | Effect::Redraw => vec![],
     }
 }

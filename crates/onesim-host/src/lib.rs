@@ -585,8 +585,8 @@ impl Host {
         self.get(id)?.require_input()?;
         self.sync_guest_clock(id)?;
         if let KeyboardEvent::Key { key } = &ev {
-            if !matches!(key.as_str(), "backspace" | "enter") {
-                return Err(err(ErrorCode::Unsupported, format!("unknown key {key:?} (backspace, enter)")));
+            if !matches!(key.as_str(), "backspace" | "enter" | "back") {
+                return Err(err(ErrorCode::Unsupported, format!("unknown key {key:?} (backspace, enter, back)")));
             }
         }
         let (scene, version, _) = self.scene(id)?;

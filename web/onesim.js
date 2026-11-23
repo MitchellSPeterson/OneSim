@@ -76,10 +76,12 @@ export async function load(source, { log = (level, t) => console[level](t), gues
       return rc;
     };
     imports.onesim_guest = {
-      on_init(dark, _w, _h, safeTop, safeBottom) {
+      on_init(dark, w, h, safeTop, safeBottom) {
+        guest.onesimViewport?.(w, h);
         return submitTree(guest.onesimStart(dark !== 0, safeTop, safeBottom));
       },
-      on_env(dark, _w, _h, safeTop, safeBottom) {
+      on_env(dark, w, h, safeTop, safeBottom) {
+        guest.onesimViewport?.(w, h);
         return submitTree(guest.onesimEnvironment(dark !== 0, safeTop, safeBottom));
       },
       on_action(id) {
@@ -221,7 +223,7 @@ export class OneSim {
   type(text) { return this.#key(0, text); }
   /** Text typed by a person (physical keyboard): software-keyboard shift follows auto-capitalization. */
   typeByUser(text) { return this.#key(2, text); }
-  /** "backspace" | "enter" in the focused field. */
+  /** "backspace" | "enter" in the focused field, or "back" (Android system back). */
   key(name) { return this.#key(1, name); }
   #key(kind, s) {
     const r = this.wasm.simcore_web_key(kind, this.#put(s));

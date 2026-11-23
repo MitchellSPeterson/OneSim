@@ -228,6 +228,38 @@ pub struct GestureTouch {
     pub targets: Vec<GestureTarget>,
 }
 
+/// Phase of an Android system back (protocol section N): a predictive back gesture is `start`, `progress`..., then
+/// `commit` or `cancel`; the back key (or a button press) is a lone `commit`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BackPhase {
+    Start,
+    Progress,
+    Cancel,
+    Commit,
+}
+
+/// Screen edge a back swipe started from (`BackEventCompat.swipeEdge`); `none` for the back key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SwipeEdge {
+    Left,
+    Right,
+    None,
+}
+
+/// One Android system back event (protocol section N). `progress` is 0...1, `x`/`y` the finger in screen points,
+/// `time` in ms.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct BackEvent {
+    pub phase: BackPhase,
+    pub progress: f64,
+    pub edge: SwipeEdge,
+    pub x: f64,
+    pub y: f64,
+    pub time: f64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum HostMessage {
@@ -251,6 +283,8 @@ pub enum HostMessage {
     TouchAsk { ask: u64 },
     /// SwiftUI touch on views with gestures (section L). Not version-gated: gesture keys are structural paths.
     Gesture(GestureTouch),
+    /// Android system back (section N): the back key or a predictive back swipe from a screen edge. Not version-gated.
+    Back(BackEvent),
     /// React Native layout frames `tag -> [x, y, w, h]` in page points.
     Layout { frames: std::collections::BTreeMap<String, [f64; 4]> },
     /// SwiftUI `GeometryReader` correction (section M). One frame per geometry node id.
@@ -420,6 +454,10 @@ mod tests {
                     targets: vec![GestureTarget { key: "0/1".into(), frame: [0.0, 0.0, 10.0, 20.0] }],
                 }),
                 r#"{"type":"gesture","phase":"move","time":16.0,"points":[[1.0,2.0]],"targets":[{"key":"0/1","frame":[0.0,0.0,10.0,20.0]}]}"#,
+            ),
+            (
+                HostMessage::Back(BackEvent { phase: BackPhase::Progress, progress: 0.25, edge: SwipeEdge::Left, x: 100.0, y: 300.0, time: 32.0 }),
+                r#"{"type":"back","phase":"progress","progress":0.25,"edge":"left","x":100.0,"y":300.0,"time":32.0}"#,
             ),
             (HostMessage::Focus { tag: 9 }, r#"{"type":"focus","tag":9}"#),
             (HostMessage::Blur { tag: 9 }, r#"{"type":"blur","tag":9}"#),

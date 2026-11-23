@@ -67,7 +67,7 @@ impl Host {
                 "frameworks": ["swiftui", "react-native", "compose"], "platforms": ["ios", "android"], "commands": COMMANDS, "headless": true,
                 "devices": DEVICES.iter().map(|d| d.name).collect::<Vec<_>>(),
                 "pointer_events": ["down", "up", "click", "scroll"],
-                "keyboard": {"events": ["text", "key"], "keys": ["backspace", "enter"]},
+                "keyboard": {"events": ["text", "key"], "keys": ["backspace", "enter", "back"]},
                 "views": ["text", "vstack", "hstack", "zstack", "spacer", "button", "color", "rectangle", "shape", "divider",
                           "scroll", "list", "navigation", "toggle", "stepper", "text_field", "picker", "slider", "progress", "image", "label", "empty",
                           "canvas", "canvasItem", "visualEffect"],

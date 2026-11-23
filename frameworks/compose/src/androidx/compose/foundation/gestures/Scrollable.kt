@@ -14,6 +14,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.Velocity
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollNode
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import onesim.compose.Guest
 import onesim.compose.NodeElement
 import onesim.compose.NodeState
@@ -211,8 +214,9 @@ internal class DefaultFlingBehavior(private val calculator: FlingCalculator) : F
 /**
  * Scroll along [orientation] by dragging: past the touch slop each move's delta goes to [state]
  * ([ScrollableState.dispatchRawDelta] semantics inside a [MutatePriority.UserInput] scroll), then [flingBehavior]
- * continues with the release velocity. A touch on a flinging scrollable catches it. Nested scrolling and overscroll
- * effects are not modelled.
+ * continues with the release velocity. A touch on a flinging scrollable catches it. Deltas and flings take part in
+ * nested scrolling (`Modifier.nestedScroll` ancestors see them before and after this node; a scrollable child's
+ * leftover scrolls this one). Overscroll effects are not modelled.
  */
 fun Modifier.scrollable(
     state: ScrollableState,
@@ -240,6 +244,9 @@ private class ScrollableElement(
         s.enabled = enabled
         s.interactionSource = interactionSource
         if (enabled) cx.markScrollContainer()
+        s.nested.parent = cx.nestedScrollParent()
+        s.nested.connection = s.chaining
+        cx.pushNestedScroll(s.nested)
         s.wireGesture(cx)
     }
 }
@@ -247,15 +254,57 @@ private class ScrollableElement(
 private class ScrollableNodeState : DragGestureState() {
     lateinit var element: ScrollableElement
     private val defaultFling by lazy { DefaultFlingBehavior(FlingCalculator(Guest.density)) }
+    /** This node's link in the nested scroll chain: a child's leftover scrolls this node. */
+    val nested = NestedScrollNode(null, null)
 
     private fun Float.reverseIfNeeded() = if (element.reverseDirection) -this else this
+    private fun Float.toOffset() = if (element.orientation == Orientation.Vertical) Offset(0f, this) else Offset(this, 0f)
+    private fun Float.toVelocity() = if (element.orientation == Orientation.Vertical) Velocity(0f, this) else Velocity(this, 0f)
+
+    /**
+     * One delta (pixels, finger space) through the nested scroll chain: ancestors first, then [scope] scrolls by what is
+     * left (reversed if needed), then ancestors get the rest. Returns what the whole chain consumed.
+     */
+    fun nestedScrollBy(scope: ScrollScope, delta: Float, source: NestedScrollSource): Float {
+        val e = element
+        val parent = nested.parent
+        val pre = parent?.preScroll(delta.toOffset(), source)?.along(e.orientation) ?: 0f
+        val left = delta - pre
+        val self = scope.scrollBy(left.reverseIfNeeded()).reverseIfNeeded()
+        val post = parent?.postScroll(self.toOffset(), (left - self).toOffset(), source)?.along(e.orientation) ?: 0f
+        return pre + self + post
+    }
+
+    /** Scrolls by a child's leftover ([NestedScrollConnection.onPostScroll]) and flings with its leftover velocity. */
+    val chaining = object : NestedScrollConnection {
+        override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+            if (!enabled) return Offset.Zero
+            val e = element
+            val d = available.along(e.orientation)
+            if (d == 0f) return Offset.Zero
+            val used = e.state.dispatchRawDelta(d.reverseIfNeeded()).reverseIfNeeded()
+            return used.toOffset()
+        }
+
+        override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+            if (!enabled) return Velocity.Zero
+            val e = element
+            val v = available.along(e.orientation)
+            if (v == 0f) return Velocity.Zero
+            val fling = e.flingBehavior ?: defaultFling
+            var left = v
+            e.state.scroll(MutatePriority.Default) { left = with(fling) { performFling(v.reverseIfNeeded()) }.reverseIfNeeded() }
+            return (v - left).toVelocity()
+        }
+    }
 
     override fun startDragImmediately() = element.state.isScrollInProgress
 
     override suspend fun drag(forEachDelta: suspend ((DragEvent.DragDelta) -> Unit) -> Unit) {
         val e = element
         e.state.scroll(MutatePriority.UserInput) {
-            forEachDelta { scrollBy(it.delta.along(e.orientation).reverseIfNeeded()) }
+            val scope = this
+            forEachDelta { nestedScrollBy(scope, it.delta.along(e.orientation), NestedScrollSource.UserInput) }
         }
     }
 
@@ -263,10 +312,23 @@ private class ScrollableNodeState : DragGestureState() {
 
     override fun onDragStopped(velocity: Velocity) {
         val e = element
-        val v = velocity.along(e.orientation).reverseIfNeeded()
+        val v = velocity.along(e.orientation)
         val fling = e.flingBehavior ?: defaultFling
         Guest.scope.launch {
-            e.state.scroll(MutatePriority.Default) { with(fling) { performFling(v) } }
+            val parent = nested.parent
+            val pre = parent?.preFling(v.toVelocity())?.along(e.orientation) ?: 0f
+            val available = v - pre
+            var left = available
+            e.state.scroll(MutatePriority.Default) {
+                val outer = this
+                // Each fling step goes through the nested scroll chain too (source SideEffect).
+                val nestedScope = object : ScrollScope {
+                    override fun scrollBy(pixels: Float): Float =
+                        nestedScrollBy(outer, pixels.reverseIfNeeded(), NestedScrollSource.SideEffect).reverseIfNeeded()
+                }
+                left = with(fling) { nestedScope.performFling(available.reverseIfNeeded()) }.reverseIfNeeded()
+            }
+            parent?.postFling((available - left).toVelocity(), left.toVelocity())
         }
     }
 }

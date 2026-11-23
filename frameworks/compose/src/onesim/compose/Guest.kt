@@ -1,5 +1,6 @@
 package onesim.compose
 
+import androidx.activity.BackEventCompat
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
@@ -16,6 +17,22 @@ import kotlinx.coroutines.SupervisorJob
 object Guest {
     /** `isSystemInDarkTheme()`; updated by the host environment. */
     val dark = mutableStateOf(false)
+    private val screenWidthState = mutableStateOf(411.42856f)
+    private val screenHeightState = mutableStateOf(923.4286f)
+
+    /** Screen size in dp (`SIMCORE_VIEWPORT`; Pixel 10a 411 x 923), as `LocalConfiguration.screenWidthDp` reads it. */
+    var screenWidth: Float
+        get() = screenWidthState.value
+        set(value) {
+            screenWidthState.value = value
+        }
+
+    var screenHeight: Float
+        get() = screenHeightState.value
+        set(value) {
+            screenHeightState.value = value
+        }
+
     private val insetTopState = mutableStateOf(0f)
     private val insetBottomState = mutableStateOf(0f)
 
@@ -51,6 +68,13 @@ object Guest {
 
     internal var logSink: (String) -> Unit = { println(it) }
 
+    /** Guest → host lines other than trees (`{"type":"event",...}`). */
+    var messageSink: (String) -> Unit = {}
+
+    /** The running activity (system back goes to its `onBackPressedDispatcher`). */
+    var activity: ComponentActivity? = null
+        internal set
+
     /** Reports an exception thrown by app code outside composition (input handlers). */
     var errorSink: (String) -> Unit = { logSink(it) }
 
@@ -72,6 +96,7 @@ object Guest {
 
     internal fun reset() {
         content = null
+        activity = null
         root.children.clear()
         version = 0L
         actions = emptyMap()
@@ -84,6 +109,7 @@ object Guest {
     }
 
     fun startActivity(activity: ComponentActivity): @Composable () -> Unit {
+        this.activity = activity
         activity.onCreate(null)
         activity.onStart()
         activity.onResume()
@@ -119,9 +145,41 @@ object Guest {
         inputs[field]?.invoke(text)
     }
 
-    /** One `gesture` message (protocol section L): touches on the pointer input targets it names. */
+    /** Called by `ComponentActivity.finish()`: the host is told the activity would close. */
+    internal fun activityFinished() {
+        log("activity finished (system back with no enabled OnBackPressedCallback)")
+        messageSink("""{"type":"event","name":"activity.finished","detail":{}}""")
+    }
+
+    /**
+     * One `back` message (protocol section N) to the activity's `OnBackPressedDispatcher`: a predictive back gesture's
+     * start / progress / cancel / commit, or the back key (a lone commit).
+     */
+    fun dispatchBack(m: Map<*, *>) {
+        val dispatcher = activity?.onBackPressedDispatcher ?: return
+        val phase = m["phase"] as? String ?: return
+        val edge = when (m["edge"]) {
+            "left" -> BackEventCompat.EDGE_LEFT
+            "right" -> BackEventCompat.EDGE_RIGHT
+            else -> BackEventCompat.EDGE_NONE
+        }
+        val progress = ((m["progress"] as? Double) ?: 0.0).toFloat().coerceIn(0f, 1f)
+        val x = ((m["x"] as? Double) ?: 0.0).toFloat() * density
+        val y = ((m["y"] as? Double) ?: 0.0).toFloat() * density
+        val event = BackEventCompat(x, y, progress, edge, ((m["time"] as? Double) ?: 0.0).toLong())
+        when (phase) {
+            "start" -> dispatcher.dispatchOnBackStarted(event)
+            "progress" -> dispatcher.dispatchOnBackProgressed(event)
+            "cancel" -> dispatcher.dispatchOnBackCancelled()
+            "commit" -> dispatcher.onBackPressed()
+        }
+    }
+
+    /** One `gesture` message (protocol section L): touches on the pointer input targets it names; a `back` message
+     * (section N) arriving on the same channel (the web bridge) goes to [dispatchBack]. */
     fun dispatchGesture(json: String) {
         val m = Json.parse(json) as? Map<*, *> ?: return
+        if (m["type"] == "back") return dispatchBack(m)
         val phase = m["phase"] as? String ?: return
         val time = ((m["time"] as? Double) ?: 0.0).toLong()
         val points = (m["points"] as? List<*>).orEmpty().mapNotNull { p ->

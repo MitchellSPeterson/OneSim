@@ -680,6 +680,22 @@ impl Session {
                 }
                 Ok(())
             }
+            // Each back event is answered with a tree; a whole swipe waits for the trees to stop (the guest animates).
+            Effect::Back(events) => {
+                let n = events.len();
+                for (i, e) in events.into_iter().enumerate() {
+                    let ends = matches!(e.phase, onesim_protocol::BackPhase::Commit | onesim_protocol::BackPhase::Cancel);
+                    let m = HostMessage::Back(e);
+                    if i + 1 < n {
+                        self.send(&m)?;
+                    } else if n > 1 || ends {
+                        self.send_and_settle(&m)?;
+                    } else {
+                        self.send_and_wait_tree(&m)?;
+                    }
+                }
+                Ok(())
+            }
             Effect::None | Effect::Redraw => Ok(()),
         }
     }

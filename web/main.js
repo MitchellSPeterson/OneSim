@@ -355,6 +355,11 @@ async function main() {
 
   // Physical keyboard, only while a text field is focused (the on-canvas keyboard shows).
   addEventListener("keydown", (e) => {
+    // Escape is Android's back key (as in the emulator); other apps ignore it.
+    if (e.key === "Escape" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      try { act(() => sim.key("back")); e.preventDefault(); } catch { /* not an Android app */ }
+      return;
+    }
     if (!sim.focused || e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
     if (e.key === "Backspace") act(() => sim.key("backspace"));
     else if (e.key === "Enter") act(() => sim.key("enter"));

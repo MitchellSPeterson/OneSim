@@ -98,8 +98,8 @@ struct Opts {
     /// Type text into the focused text field. Repeatable.
     #[arg(long = "type", value_name = "TEXT")]
     texts: Vec<String>,
-    /// Press a key in the focused text field: backspace or enter. Repeatable.
-    #[arg(long = "key", value_name = "backspace|enter")]
+    /// Press a key: backspace or enter in the focused text field, or back (Android system back). Repeatable.
+    #[arg(long = "key", value_name = "backspace|enter|back")]
     keys: Vec<String>,
     /// Scroll the scroller under (X,Y) by (DX,DY) points; positive DY reveals later content. Repeatable.
     #[arg(long = "scroll", value_name = "X,Y,DX,DY")]
