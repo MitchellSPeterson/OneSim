@@ -388,8 +388,8 @@ It loads the app bundle from Metro and runs React Native's own Fabric renderer; 
 `SIMCORE_SESSION_ID`, `SIMCORE_SCALE`, and `SIMCORE_INSETS=top,bottom` (profile insets used on Android).
 `SIMCORE_LAUNCH_URL`: the URL the app was launched to open (`create_session` `launch_url`, iOS only; see Linking).
 Optional: `SIMCORE_HMR=1` (connect Metro `/hot`), `SIMCORE_DEBUG=1`.
-`SIMCORE_BUNDLE_URL` loads that prebuilt bundle instead (`npx expo export --platform <p> --no-bytecode --no-minify`,
-the `_expo/static/js/<p>/*.js` file): no manifest, no HMR.
+`SIMCORE_BUNDLE_URL` loads that prebuilt bundle instead (`npx expo export --platform <p> --no-bytecode`, minified or
+`--no-minify`, the `_expo/static/js/<p>/*.js` file): no manifest, no HMR.
 The guest loads `launchAsset.url` from the Expo manifest at `GET <metro>/` with `expo-platform` set
 to the session platform. Plain Metro uses `/index.bundle?platform=<platform>&dev=true&minify=false`.
 
