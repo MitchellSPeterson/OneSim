@@ -89,7 +89,11 @@ object Guest {
     private var lastTree = ""
 
     fun setContent(c: @Composable () -> Unit) {
-        content = c
+        // Window-level layers (dialogs, modal rails) are drawn over the app's content.
+        content = {
+            c()
+            OverlayHost()
+        }
     }
 
     internal fun log(line: String) = logSink(line)
@@ -97,6 +101,7 @@ object Guest {
     internal fun reset() {
         content = null
         activity = null
+        Overlays.entries.clear()
         root.children.clear()
         version = 0L
         actions = emptyMap()
