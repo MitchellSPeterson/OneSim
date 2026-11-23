@@ -1,5 +1,8 @@
 #if !os(WASI)
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 #if canImport(Darwin)
 import Darwin
 #endif
@@ -196,12 +199,16 @@ private let _imgBox = _ImgBox()
 private var _imgWrite: Int32 = -1
 
 func _installImageWake() {
+    #if os(Windows)
+    return  // no wake fd on Windows: onesim-runtime polls it only on unix
+    #else
     var fds = [Int32](repeating: 0, count: 2)
     guard pipe(&fds) == 0 else { return }
     let flags = fcntl(fds[1], F_GETFL)
     if flags >= 0 { _ = fcntl(fds[1], F_SETFL, flags | O_NONBLOCK) }
     _imgWrite = fds[1]
     simcore_runtime_set_wake(fds[0]) { _ in _drainImageWake() }
+    #endif
 }
 
 func _enqueueImage(_ key: String, _ state: _ImgState) {

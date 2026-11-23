@@ -2,6 +2,9 @@
 import WASILibc
 #else
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 #endif
 internal import OneSimBridge
 

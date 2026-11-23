@@ -22,8 +22,10 @@ public struct LocalizedStringKey: ExpressibleByStringInterpolation, Hashable, Se
 
 func _plain(_ t: Text) -> String { t.runs.map(\.text).joined() }
 
-#if !os(WASI)
+#if canImport(Darwin)
 func _res(_ r: LocalizedStringResource) -> String { String(localized: r) }
+#elseif !os(WASI)
+func _res(_ r: LocalizedStringResource) -> String { r.key }
 #endif
 
 // MARK: - Supporting types

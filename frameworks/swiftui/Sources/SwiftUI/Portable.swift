@@ -9,6 +9,19 @@
 #endif
 #endif
 
+#if !os(WASI) && !canImport(Darwin)
+/// Foundation's `LocalizedStringResource` exists only on Apple platforms. Off Apple there are no string tables in a
+/// headless guest, so the key is the text (what `String(localized:)` returns for a missing entry).
+public struct LocalizedStringResource: Hashable, Sendable, ExpressibleByStringInterpolation, CustomStringConvertible {
+    public var key: String
+    public var table: String?
+    public init(_ key: String, table: String? = nil, comment: StaticString? = nil) { self.key = key; self.table = table }
+    public init(stringLiteral value: String) { key = value }
+    public init(stringInterpolation: DefaultStringInterpolation) { key = String(stringInterpolation: stringInterpolation) }
+    public var description: String { key }
+}
+#endif
+
 // WASI build (docs/web.md): no Foundation (it is huge). Minimal stand-ins for what the module used from it.
 #if os(WASI)
 import WASILibc

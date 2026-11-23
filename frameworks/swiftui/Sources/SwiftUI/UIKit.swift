@@ -60,6 +60,12 @@ open class UIApplication {
 /// lifecycle iOS calls only the launch and termination methods; the `application...Active` / `...Background`
 /// pair and `application(_:open:options:)` are declared so delegates compile, and are never called.
 public protocol UIApplicationDelegate: AnyObject {
+    #if !canImport(ObjectiveC)
+    /// Off Apple platforms `NSObject.init()` is not `required`, so `@UIApplicationDelegateAdaptor` needs this to make
+    /// the delegate from its type. A `final class` satisfies it with the inherited `init()`; otherwise declare
+    /// `required override init()`.
+    init()
+    #endif
     func application(_ application: UIApplication, willFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool
     func applicationWillTerminate(_ application: UIApplication)
