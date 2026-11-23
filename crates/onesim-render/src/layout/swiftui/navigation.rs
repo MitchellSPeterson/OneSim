@@ -454,7 +454,7 @@ impl Ctx<'_> {
         let w = p.w.filter(|w| w.is_finite()).unwrap_or(402.0);
         let h = p.h.filter(|h| h.is_finite()).unwrap_or(874.0);
         let g = Geo { w, h, safe_top: env.safe_top, safe_bottom: env.bottom_inset.max(TAB_BAR_INSET), dev_bottom: TAB_BAR_INSET, body: env.size };
-        let inner = self.place_root(content, &g);
+        let inner = self.place_root_in(content, &g, env);
         let items = tabs
             .iter()
             .enumerate()
@@ -472,7 +472,7 @@ impl Ctx<'_> {
         n.inspect = false;
         let mut kids = vec![(0.0, 0.0, inner)];
         if !tabs.is_empty() {
-            kids.push((0.0, 0.0, self.tab_bar(&TabBar { items, selected, tint: None }, &v.id, w, h)));
+            kids.push((0.0, 0.0, self.tab_bar(&TabBar { items, selected, tint: self.tint_color(env) }, &v.id, w, h)));
         }
         Lay::new(Size { w, h }, Some(n), kids)
     }

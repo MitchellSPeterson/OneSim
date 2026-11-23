@@ -111,6 +111,148 @@ fn lerp<const N: usize>(a: [f64; N], b: [f64; N], t: f64) -> [f64; N] {
 }
 
 impl Gradient {
+    pub(crate) fn differs(&self, other: &Self) -> bool {
+        if std::sync::Arc::ptr_eq(&self.data, &other.data)
+            && (self.opacity - other.opacity).abs() <= 0.002
+        {
+            return false;
+        }
+        if self.space != other.space {
+            return false;
+        }
+        if (self.opacity - other.opacity).abs() > 0.002 {
+            return true;
+        }
+        match (&*self.data, &*other.data) {
+            (
+                GradientData::Stops { stops: sa, geometry: ga, absolute: aa, options: oa },
+                GradientData::Stops { stops: sb, geometry: gb, absolute: ab, options: ob },
+            ) => {
+                if sa.len() != sb.len() || aa != ab || oa != ob {
+                    return false;
+                }
+                let geom_same_kind = matches!(
+                    (ga, gb),
+                    (Geometry::Linear(..), Geometry::Linear(..))
+                        | (Geometry::Radial(..), Geometry::Radial(..))
+                        | (Geometry::Angular(..), Geometry::Angular(..))
+                );
+                if !geom_same_kind {
+                    return false;
+                }
+                sa.iter().zip(sb).any(|((la, ca), (lb, cb))| {
+                    (la - lb).abs() > 1e-4
+                        || (0..4).any(|i| (ca[i] - cb[i]).abs() > 0.002)
+                })
+            }
+            (
+                GradientData::Mesh { width: wa, height: ha, points: pa, colors: ca, background: ba, smooth: sma },
+                GradientData::Mesh { width: wb, height: hb, points: pb, colors: cb, background: bb, smooth: smb },
+            ) => {
+                wa == wb
+                    && ha == hb
+                    && sma == smb
+                    && pa.len() == pb.len()
+                    && ca.len() == cb.len()
+                    && (ca.iter().zip(cb).any(|(a, b)| (0..4).any(|i| (a[i] - b[i]).abs() > 0.002))
+                        || pa.iter().zip(pb).any(|(a, b)| {
+                            (a.position[0] - b.position[0]).abs() > 1e-4
+                                || (a.position[1] - b.position[1]).abs() > 1e-4
+                                || match (a.controls, b.controls) {
+                                    (Some(ca), Some(cb)) => (0..4).any(|i| {
+                                        (ca[i][0] - cb[i][0]).abs() > 1e-4
+                                            || (ca[i][1] - cb[i][1]).abs() > 1e-4
+                                    }),
+                                    (None, None) => false,
+                                    _ => true,
+                                }
+                        })
+                        || (ba.r - bb.r).abs() > 0.002
+                        || (ba.g - bb.g).abs() > 0.002
+                        || (ba.b - bb.b).abs() > 0.002
+                        || (ba.a - bb.a).abs() > 0.002)
+            }
+            _ => false,
+        }
+    }
+
+    pub(crate) fn lerp(&self, other: &Self, t: f64) -> Option<Self> {
+        if self.space != other.space {
+            return None;
+        }
+        let opacity = self.opacity + (other.opacity - self.opacity) * (t as f32);
+        let data = match (&*self.data, &*other.data) {
+            (
+                GradientData::Stops { stops: sa, geometry: ga, absolute: aa, options: oa },
+                GradientData::Stops { stops: sb, geometry: gb, absolute: ab, options: ob },
+            ) if sa.len() == sb.len() && aa == ab && oa == ob => {
+                let geometry = match (*ga, *gb) {
+                    (Geometry::Linear(a0, a1), Geometry::Linear(b0, b1)) => Geometry::Linear(
+                        [a0[0] + (b0[0] - a0[0]) * t, a0[1] + (b0[1] - a0[1]) * t],
+                        [a1[0] + (b1[0] - a1[0]) * t, a1[1] + (b1[1] - a1[1]) * t],
+                    ),
+                    (Geometry::Radial(ca, ea, r0a, r1a, ela), Geometry::Radial(cb, eb, r0b, r1b, elb)) if ela == elb => {
+                        let c = [ca[0] + (cb[0] - ca[0]) * t, ca[1] + (cb[1] - ca[1]) * t];
+                        let e = match (ea, eb) {
+                            (Some(a), Some(b)) => Some([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]),
+                            _ => eb,
+                        };
+                        Geometry::Radial(c, e, r0a + (r0b - r0a) * t, r1a + (r1b - r1a) * t, ela)
+                    }
+                    (Geometry::Angular(ca, s0a, s1a), Geometry::Angular(cb, s0b, s1b)) => Geometry::Angular(
+                        [ca[0] + (cb[0] - ca[0]) * t, ca[1] + (cb[1] - ca[1]) * t],
+                        s0a + (s0b - s0a) * t,
+                        s1a + (s1b - s1a) * t,
+                    ),
+                    _ => return None,
+                };
+                let stops = sa
+                    .iter()
+                    .zip(sb)
+                    .map(|((la, ca), (lb, cb))| (la + (lb - la) * t, lerp(*ca, *cb, t)))
+                    .collect();
+                GradientData::Stops { stops, geometry, absolute: *aa, options: *oa }
+            }
+            (
+                GradientData::Mesh { width: wa, height: ha, points: pa, colors: ca, background: ba, smooth: sma },
+                GradientData::Mesh { width: wb, height: hb, points: pb, colors: cb, background: bb, smooth: smb },
+            ) if wa == wb && ha == hb && sma == smb && pa.len() == pb.len() && ca.len() == cb.len() => {
+                let points = pa
+                    .iter()
+                    .zip(pb)
+                    .map(|(a, b)| {
+                        let position = lerp(a.position, b.position, t);
+                        let controls = match (a.controls, b.controls) {
+                            (Some(ca), Some(cb)) => Some(std::array::from_fn(|i| lerp(ca[i], cb[i], t))),
+                            (None, None) => None,
+                            (Some(ca), None) => Some(std::array::from_fn(|i| lerp(ca[i], b.position, t))),
+                            (None, Some(cb)) => Some(std::array::from_fn(|i| lerp(a.position, cb[i], t))),
+                        };
+                        MeshPoint { position, controls }
+                    })
+                    .collect();
+                let colors = ca.iter().zip(cb).map(|(a, b)| lerp(*a, *b, t)).collect();
+                let tf = t as f32;
+                let background = Color {
+                    r: (ba.r + (bb.r - ba.r) * tf).clamp(0.0, 1.0),
+                    g: (ba.g + (bb.g - ba.g) * tf).clamp(0.0, 1.0),
+                    b: (ba.b + (bb.b - ba.b) * tf).clamp(0.0, 1.0),
+                    a: (ba.a + (bb.a - ba.a) * tf).clamp(0.0, 1.0),
+                };
+                GradientData::Mesh {
+                    width: *wa,
+                    height: *ha,
+                    points,
+                    colors,
+                    background,
+                    smooth: *sma,
+                }
+            }
+            _ => return None,
+        };
+        Some(Self { data: std::sync::Arc::new(data), opacity: opacity.clamp(0.0, 1.0), space: self.space })
+    }
+
     pub(crate) fn resolve(
         gradient: &GradientPaint,
         color: impl Fn(&onesim_protocol::Color) -> Color,
@@ -829,5 +971,73 @@ impl Patch {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mesh(points: Vec<MeshPoint>, r: f64) -> Gradient {
+        let gp = GradientPaint::Mesh {
+            width: 2,
+            height: 2,
+            points,
+            colors: vec![
+                onesim_protocol::Color::Rgba { r, g: 0.0, b: 1.0 - r, a: 1.0, dark: None },
+                onesim_protocol::Color::Rgba { r: 0.0, g: 1.0, b: 0.0, a: 1.0, dark: None },
+                onesim_protocol::Color::Rgba { r: 0.0, g: 0.0, b: 1.0, a: 1.0, dark: None },
+                onesim_protocol::Color::Rgba { r: 1.0, g: 1.0, b: 0.0, a: 1.0, dark: None },
+            ],
+            background: onesim_protocol::Color::Rgba { r: 0.0, g: 0.0, b: 0.0, a: 0.0, dark: None },
+            smooths_colors: true,
+            color_space: GradientColorSpace::Device,
+        };
+        Gradient::resolve(&gp, |c| match c {
+            onesim_protocol::Color::Rgba { r, g, b, a, .. } => Color::rgba(*r as f32, *g as f32, *b as f32, *a as f32),
+            _ => Color::rgba(0.0, 0.0, 0.0, 1.0),
+        })
+    }
+
+    #[test]
+    fn mesh_gradient_lerp_interpolates_points_and_controls() {
+        let p0 = vec![
+            MeshPoint { position: [0.0, 0.0], controls: Some([[0.0, 0.0], [0.0, 0.0], [0.2, 0.0], [0.0, 0.2]]) },
+            MeshPoint { position: [1.0, 0.0], controls: None },
+            MeshPoint { position: [0.0, 1.0], controls: None },
+            MeshPoint { position: [1.0, 1.0], controls: None },
+        ];
+        let p1 = vec![
+            MeshPoint { position: [0.2, 0.4], controls: Some([[0.2, 0.4], [0.2, 0.4], [0.6, 0.4], [0.2, 0.8]]) },
+            MeshPoint { position: [1.0, 0.0], controls: None },
+            MeshPoint { position: [0.0, 1.0], controls: None },
+            MeshPoint { position: [0.8, 0.6], controls: None },
+        ];
+        let a = mesh(p0, 1.0);
+        let b = mesh(p1, 0.0);
+        assert!(a.differs(&b));
+        // Point-only change (same colors) must also trigger differs().
+        let b_same_color = mesh(
+            vec![
+                MeshPoint { position: [0.2, 0.4], controls: None },
+                MeshPoint { position: [1.0, 0.0], controls: None },
+                MeshPoint { position: [0.0, 1.0], controls: None },
+                MeshPoint { position: [1.0, 1.0], controls: None },
+            ],
+            1.0,
+        );
+        assert!(a.differs(&b_same_color));
+
+        let mid = a.lerp(&b, 0.5).expect("mesh lerp");
+        let end = a.lerp(&b, 1.0).expect("mesh lerp at 1.0");
+        let GradientData::Mesh { points: mp, .. } = &*mid.data else { panic!("expected mesh") };
+        assert!((mp[0].position[0] - 0.1).abs() < 1e-9 && (mp[0].position[1] - 0.2).abs() < 1e-9);
+        assert!((mp[3].position[0] - 0.9).abs() < 1e-9 && (mp[3].position[1] - 0.8).abs() < 1e-9);
+        let mc = mp[0].controls.expect("controls");
+        assert!((mc[2][0] - 0.4).abs() < 1e-9 && (mc[3][1] - 0.5).abs() < 1e-9);
+
+        let GradientData::Mesh { points: ep, .. } = &*end.data else { panic!("expected mesh") };
+        assert!((ep[0].position[0] - 0.2).abs() < 1e-9 && (ep[0].position[1] - 0.4).abs() < 1e-9);
+        assert!((ep[3].position[0] - 0.8).abs() < 1e-9 && (ep[3].position[1] - 0.6).abs() < 1e-9);
     }
 }

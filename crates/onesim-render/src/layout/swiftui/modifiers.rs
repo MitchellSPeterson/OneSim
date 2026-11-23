@@ -186,7 +186,11 @@ impl Ctx<'_> {
                 let inner = self.mods(v, &mods[..start], p, env);
                 mods[start..].iter().enumerate().fold(inner, |inner, (i, modifier)| {
                     let Modifier::Effect(op) = modifier else { unreachable!() };
-                    self.visual_op(format!("{}#effect{}", v.id, start + i), op.as_ref().clone(), inner)
+                    let mut out = self.visual_op(format!("{}#effect{}", v.id, start + i), op.as_ref().clone(), inner);
+                    if let Some(n) = out.node.as_deref_mut() {
+                        self.stamp_node(n, env);
+                    }
+                    out
                 })
             }
             Modifier::Mask(o) | Modifier::InvertedMask(o) => {
@@ -234,10 +238,14 @@ impl Ctx<'_> {
             Modifier::Shadow(s) => {
                 let inner = self.mods(v, rest, p, env);
                 let (radius, shadow) = (lay_radius(&inner), Shadow { color: self.color(&s.color), radius: s.radius, dx: s.x, dy: s.y });
-                layer(format!("{}#shadow{}", v.id, rest.len()), "shadow", inner, |n| {
+                let mut out = layer(format!("{}#shadow{}", v.id, rest.len()), "shadow", inner, |n| {
                     n.radius = radius;
                     n.shadow = Some(shadow);
-                })
+                });
+                if let Some(n) = out.node.as_deref_mut() {
+                    self.stamp_node(n, env);
+                }
+                out
             }
             Modifier::Font(f) => {
                 let (size, weight, design) = self.font_size_weight(f);
@@ -271,10 +279,14 @@ impl Ctx<'_> {
                     _ => PILL,
                 };
                 let spec = self.glass_spec(g.variant, g.tint.as_ref(), g.interactive);
-                layer(format!("{}#glass{}", v.id, rest.len()), "glass", inner, |n| {
+                let mut out = layer(format!("{}#glass{}", v.id, rest.len()), "glass", inner, |n| {
                     n.radius = radius;
                     n.glass = Some(spec);
-                })
+                });
+                if let Some(n) = out.node.as_deref_mut() {
+                    self.stamp_node(n, env);
+                }
+                out
             }
             // Layout keeps the original place; drawing and hit testing use the moved one.
             Modifier::Offset(o) => {
@@ -461,9 +473,9 @@ impl Ctx<'_> {
                 };
                 Lay::new(size, Some(Node::new(&v.id, "spacer")), vec![])
             }
-            ViewKind::Button { action, label, style, disabled, selected, .. } => match selected {
+            ViewKind::Button { action, label, style, disabled, role, selected } => match selected {
                 Some(on) => self.toggle_button(v, *action, label, *on, *disabled, p, env),
-                None => self.button(v, *action, label, *style, *disabled, p, env),
+                None => self.button(v, *action, label, *style, *disabled, *role, p, env),
             },
             ViewKind::Color { color } => {
                 let mut n = Node::new(&v.id, "color");
@@ -557,7 +569,7 @@ impl Ctx<'_> {
                 }
             }
             ViewKind::Wheel { columns, width, height, disabled, popover } => self.multi_wheel(v, columns, (*width, *height), *disabled, *popover, p),
-            ViewKind::Slider { value, min, max, field, disabled, .. } => self.slider(v, *value, (*min, *max), *field, *disabled, p),
+            ViewKind::Slider { value, min, max, field, disabled, .. } => self.slider(v, *value, (*min, *max), *field, *disabled, p, env),
             ViewKind::Progress { value, label, current_value_label } => {
                 self.progress(v, *value, label.as_deref(), current_value_label.as_deref(), p, child_env)
             }

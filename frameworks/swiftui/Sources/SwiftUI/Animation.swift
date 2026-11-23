@@ -1200,8 +1200,8 @@ public struct PhaseAnimator<Phase: Equatable, Content: View>: View, _Flattenable
             if continuous && phases.count > 1 {
                 st.running = true
                 st.stepStartMs = rt.clockMs
-                let nextAnim = animation(phases[1])
-                st.stepDurationMs = max((nextAnim?._totalDuration ?? 0.35) * 1000.0, 16.0)
+                // Start animating phase 0 -> phase 1 immediately on the first tick (matching iOS).
+                st.stepDurationMs = 0
             }
         } else if let changed = triggerChanged, changed(st.lastTrigger) {
             st.lastTrigger = trigger

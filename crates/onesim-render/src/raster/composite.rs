@@ -550,6 +550,52 @@ pub(crate) fn aligned_origin(
     Some((ox, oy, dx_pt, dy_pt, rw, rh))
 }
 
+/// Compute a translation-invariant tile origin anchored to `(anchor_x, anchor_y)` (in points),
+/// returning `(origin_x_px, origin_y_px, dx_pt, dy_pt, rw, rh)`.
+///
+/// Because `dx_pt` and `dy_pt` move with the subtree's anchor, translating an affine composite
+/// (e.g. `.scaleEffect(...)` + `.offset(...)`) keeps local coordinates constant and hits the
+/// composite sprite cache instead of re-rasterizing on the CPU every frame.
+pub(crate) fn anchored_origin(
+    work: PaintClip,
+    anchor_x: f64,
+    anchor_y: f64,
+    scale: f64,
+    pw: u32,
+    ph: u32,
+) -> Option<(f64, f64, f64, f64, u32, u32)> {
+    if work.is_empty() || !anchor_x.is_finite() || !anchor_y.is_finite() || !scale.is_finite() || scale <= 0.0 {
+        return None;
+    }
+    let left_margin_pt = (anchor_x - work.left() as f64 / scale).max(0.0);
+    let top_margin_pt = (anchor_y - work.top() as f64 / scale).max(0.0);
+    let pad_x_pt = ((left_margin_pt + 1.0) / 8.0).ceil() * 8.0;
+    let pad_y_pt = ((top_margin_pt + 1.0) / 8.0).ceil() * 8.0;
+    let dx_pt = anchor_x - pad_x_pt;
+    let dy_pt = anchor_y - pad_y_pt;
+    let origin_x_px = dx_pt * scale;
+    let origin_y_px = dy_pt * scale;
+    let rw_f = (work.right() as f64 - origin_x_px).ceil() + 2.0;
+    let rh_f = (work.bottom() as f64 - origin_y_px).ceil() + 2.0;
+    if !rw_f.is_finite() || !rh_f.is_finite() || rw_f < 1.0 || rh_f < 1.0 {
+        return None;
+    }
+    let rw = rw_f as u32;
+    let rh = rh_f as u32;
+    if rw > pw.saturating_add(64) || rh > ph.saturating_add(64) {
+        return None;
+    }
+    Some((origin_x_px, origin_y_px, dx_pt, dy_pt, rw, rh))
+}
+
+fn quantize_pt(v: f64) -> u64 {
+    if v.is_finite() && v.abs() < 1e12 {
+        (v * 1024.0).round() as i64 as u64
+    } else {
+        v.to_bits()
+    }
+}
+
 fn hash_proto_color<H: Hasher>(c: &onesim_protocol::Color, h: &mut H) {
     match c {
         onesim_protocol::Color::Hierarchical { semantic, hierarchical } => {
@@ -671,7 +717,7 @@ pub(crate) fn composite_key(
         }
 
         let b = n.bounds;
-        ((b.x - dx_pt).to_bits(), (b.y - dy_pt).to_bits(), b.w.to_bits(), b.h.to_bits()).hash(&mut h);
+        (quantize_pt(b.x - dx_pt), quantize_pt(b.y - dy_pt), b.w.to_bits(), b.h.to_bits()).hash(&mut h);
         n.radius.to_bits().hash(&mut h);
         n.clip_radius.map(f64::to_bits).hash(&mut h);
         n.opacity.to_bits().hash(&mut h);
@@ -782,7 +828,7 @@ pub(crate) fn composite_key(
         if let Some(im) = n.image.as_ref() {
             true.hash(&mut h);
             let d = im.dest;
-            ((d.x - dx_pt).to_bits(), (d.y - dy_pt).to_bits(), d.w.to_bits(), d.h.to_bits()).hash(&mut h);
+            (quantize_pt(d.x - dx_pt), quantize_pt(d.y - dy_pt), d.w.to_bits(), d.h.to_bits()).hash(&mut h);
             im.rotation.to_bits().hash(&mut h);
             im.filter.hash(&mut h);
             (Arc::as_ptr(&im.pixmap) as usize).hash(&mut h);

@@ -237,14 +237,20 @@ impl Ctx<'_> {
 
     /// The root view: full-bleed scrollers span the screen, anything else is centered in the safe area.
     pub(super) fn place_root(&mut self, root: &ViewNode, g: &Geo) -> Lay {
+        self.place_root_in(root, g, Env::new())
+    }
+
+    /// Like `place_root`, preserving inherited environment fields (e.g. `anim`, `tint`, `content_transition`)
+    /// across container boundaries such as `TabView`.
+    pub(super) fn place_root_in(&mut self, root: &ViewNode, g: &Geo, base: Env) -> Lay {
         let full_bleed = matches!(root.kind, ViewKind::Navigation { .. } | ViewKind::List { .. } | ViewKind::Scroll { .. } | ViewKind::TabView { .. });
         if full_bleed {
-            let env = Env { safe_top: g.safe_top, bottom_inset: g.safe_bottom, size: g.body, ..Env::new() };
+            let env = Env { safe_top: g.safe_top, bottom_inset: g.safe_bottom, size: g.body, ..base };
             let lay = self.view(root, Prop { w: Some(g.w), h: Some(g.h) }, env);
             Lay::new(Size { w: g.w, h: g.h }, None, vec![(0.0, 0.0, lay)])
         } else {
             let sh = (g.h - g.safe_top - g.safe_bottom).max(0.0);
-            let lay = self.view(root, Prop { w: Some(g.w), h: Some(sh) }, Env { size: g.body, ..Env::new() });
+            let lay = self.view(root, Prop { w: Some(g.w), h: Some(sh) }, Env { safe_top: 0.0, bottom_inset: 0.0, size: g.body, ..base });
             let (x, y) = ((g.w - lay.size.w) / 2.0, g.safe_top + (sh - lay.size.h) / 2.0);
             Lay::new(Size { w: g.w, h: g.h }, None, vec![(x, y, lay)])
         }

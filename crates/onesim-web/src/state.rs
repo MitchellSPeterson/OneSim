@@ -69,6 +69,10 @@ pub(crate) struct State {
     pub(crate) live_moving: bool,
     /// Set before a guest callback; a tree submit clears it by updating the scene.
     pub(crate) stale: bool,
+    /// When true (during coalesced drag samples), guest submits record the new tree without
+    /// rebuilding layout/scene until the frame's final move or render.
+    pub(crate) defer_scene: bool,
+    pub(crate) scene_dirty: bool,
     pub(crate) initialized: bool,
     pub(crate) tree_json: String,
     pub(crate) fb: Vec<u8>,
@@ -103,7 +107,7 @@ thread_local! {
         ctx: 0, on_action: None, on_env: None, on_text: None, on_gesture: None, on_layout: None, in_layout: false, version: None, tree: None, layout_cache: SwiftUiLayoutCache::default(), scene: None,
         fonts: None, device: device(DEFAULT_DEVICE).unwrap(), viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios27, inter: Interaction::default(),
         anim: Animator::new(), animation_target: None, clock_ms: 0.0, guest_clock_ms: 0.0, guest_due_ms: None, pasteboard_out: None, scene_phase: ScenePhase::Active, last_anim_ver: None, live: onesim_render::Live::new(), live_base: None, live_moving: false,
-        stale: false, initialized: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), frame_version: 0, frame_dirty: false,
+        stale: false, defer_scene: false, scene_dirty: false, initialized: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), frame_version: 0, frame_dirty: false,
         output: 0, builder: Builder::new(), dl: Vec::new(), unread: None, buf: Vec::new(), rn: None,
     });
     pub(crate) static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
@@ -207,6 +211,10 @@ pub(crate) fn invalidate_frame(s: &mut State) {
 }
 
 pub(crate) fn render_frame(s: &mut State) {
+    if s.scene_dirty {
+        s.scene_dirty = false;
+        update_scene(s);
+    }
     if !s.frame_dirty {
         return;
     }
@@ -244,7 +252,7 @@ pub(crate) fn with_frame<T>(f: impl FnOnce(&mut State) -> T) -> T {
 pub(crate) fn submit(json: &[u8], version: u64) -> Result<(), String> {
     let text = std::str::from_utf8(json).map_err(|e| format!("tree is not UTF-8: {e}"))?;
     let root: ViewNode = serde_json::from_str(text).map_err(|e| format!("tree is not valid ViewNode JSON: {e}"))?;
-    STATE.with(|s| {
+    let deferred = STATE.with(|s| {
         let mut s = s.borrow_mut();
         if s.version.is_some_and(|v| version <= v) {
             return Err("tree version must increase monotonically".to_string());
@@ -254,10 +262,19 @@ pub(crate) fn submit(json: &[u8], version: u64) -> Result<(), String> {
         s.layout_cache.clear();
         s.tree = Some(root);
         s.tree_json.clear();
-        update_scene(&mut s);
-        Ok(())
+        if s.defer_scene {
+            s.stale = false;
+            s.scene_dirty = true;
+            Ok(true)
+        } else {
+            s.scene_dirty = false;
+            update_scene(&mut s);
+            Ok(false)
+        }
     })?;
-    send_layout();
+    if !deferred {
+        send_layout();
+    }
     Ok(())
 }
 
@@ -397,12 +414,20 @@ pub(crate) fn dispatch(e: Effect) -> i32 {
         }
     }
     // The callback re-submits only if the guest state changed; focus/shift may have.
-    with(|s| {
-        if s.stale {
-            update_scene(s)
+    let deferred = with(|s| {
+        if s.defer_scene {
+            true
+        } else {
+            if s.stale || s.scene_dirty {
+                s.scene_dirty = false;
+                update_scene(s);
+            }
+            false
         }
     });
-    send_layout();
+    if !deferred {
+        send_layout();
+    }
     1
 }
 
