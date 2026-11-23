@@ -360,6 +360,8 @@ private fun DialogHost(dialogs: List<NavBackStackEntry>, holder: SaveableStateHo
         val dest = entry.destination as? DialogNavigator.Destination ?: continue
         key(entry.id) {
             val props = dest.dialogProperties
+            // A dialog window: over the whole screen, not just the NavHost.
+            onesim.compose.Overlay {
             Box(
                 Modifier.fillMaxSize().background(Color(0f, 0f, 0f, 0.6f)).then(
                     if (props.dismissOnClickOutside) {
@@ -376,6 +378,7 @@ private fun DialogHost(dialogs: List<NavBackStackEntry>, holder: SaveableStateHo
                 ) {
                     entry.LocalOwnersProvider(holder) { dest.content(entry) }
                 }
+            }
             }
             // The dialog window takes system back; it closes the dialog only with dismissOnBackPress.
             androidx.activity.compose.BackHandler { if (props.dismissOnBackPress) navController.popBackStack() }

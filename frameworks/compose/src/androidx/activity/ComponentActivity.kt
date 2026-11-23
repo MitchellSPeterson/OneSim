@@ -2,6 +2,7 @@ package androidx.activity
 
 import android.os.Bundle
 import androidx.lifecycle.Lifecycle
+import kotlinx.coroutines.Runnable
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import onesim.compose.Guest

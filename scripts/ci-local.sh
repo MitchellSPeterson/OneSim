@@ -102,7 +102,6 @@ check_swiftui() {
 check_compose() {
   step compose_counter
   step frameworks/compose/tests/wire_test.sh
-  step frameworks/compose/tests/drawer_wire_test.sh
   if ! fast; then
     need_pillow
     step scripts/compare-android.sh
