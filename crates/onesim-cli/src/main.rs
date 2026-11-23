@@ -430,8 +430,9 @@ fn drive(host: &mut Host, id: &str, shot: Option<String>, rec: Option<RecordOpts
                         (x, y, dx, dy)
                     }
                 };
-                let (hit, _) = host.pointer(id, PointerEvent::moved(PointerKind::Drag, x, y, dx, dy))?;
-                if hit.is_none() {
+                // An Android back swipe from a screen edge hits no node but acts.
+                let (hit, acted) = host.pointer(id, PointerEvent::moved(PointerKind::Drag, x, y, dx, dy))?;
+                if hit.is_none() && !acted {
                     bail!("nothing to drag at {x},{y}");
                 }
             }

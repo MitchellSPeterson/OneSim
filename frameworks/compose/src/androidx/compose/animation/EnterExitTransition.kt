@@ -178,6 +178,25 @@ internal fun transitionFrame(data: TransitionData, entering: Boolean, fullSize: 
     return TransitionFrame(alpha.coerceIn(0f, 1f), offset, scale, done)
 }
 
+/** How long (ms) every part of the transition takes to finish; springs are timed by sampling them. */
+internal fun TransitionData.durationMs(): Float {
+    val specs = listOfNotNull(fade?.animationSpec, slide?.animationSpec, scale?.animationSpec, changeSize?.animationSpec)
+    var longest = 0f
+    for (spec in specs) {
+        val ms = when (spec) {
+            is androidx.compose.animation.core.TweenSpec<*> -> (spec.delay + spec.durationMillis).toFloat()
+            is androidx.compose.animation.core.SnapSpec<*> -> spec.delay.toFloat()
+            else -> {
+                var t = 0f
+                while (t < 5000f && !sampleSpec(spec, floatArrayOf(0f), floatArrayOf(1f), floatArrayOf(0f), (t * 1_000_000f).toLong()) { 0.001f }.third) t += 16f
+                t
+            }
+        }
+        longest = maxOf(longest, ms)
+    }
+    return longest
+}
+
 /** Scope of the transitions of an animated content change from [initialState] to [targetState]. */
 interface AnimatedContentTransitionScope<S> {
     val initialState: S
@@ -242,3 +261,9 @@ fun SizeTransform(clip: Boolean = true, sizeAnimationSpec: (initialSize: IntSize
 infix fun EnterTransition.togetherWith(exit: ExitTransition): ContentTransform = ContentTransform(this, exit)
 
 infix fun ContentTransform.using(sizeTransform: SizeTransform?): ContentTransform = this.apply { this.sizeTransform = sizeTransform }
+
+/** Scope of content shown by an animated visibility or content change (a NavHost destination's content receiver). */
+interface AnimatedVisibilityScope
+
+/** Scope of [AnimatedContentTransitionScope] content: each NavHost destination composes in one. */
+interface AnimatedContentScope : AnimatedVisibilityScope
