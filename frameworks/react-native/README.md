@@ -96,6 +96,12 @@ font families, `renderToImageAsync`; expo-asset downloads into Caches). Image ha
 (`request` / `response`; guest tests answer them with `onesim guest-request`, so build the CLI first). Check:
 `node frameworks/react-native/guest/run-apis.mjs` (examples/expo-apis); screenshots: `rn-apis-ios` fixtures.
 
+Prebuilt bundles (`SIMCORE_BUNDLE_URL`, minified `expo export` output as `scripts/serve-web.sh` builds it): the guest
+patches RN's `Animated.flushQueue` so a missing `NativeAnimatedModule` (we ship no native driver, `useNativeDriver`
+falls back to JS) returns early instead of throwing, in dev and minified shapes alike (`guest/bundle-patches.js`, issue
+#129). Checks: `node --test frameworks/react-native/guest/bundle-patches.test.mjs` (shapes, no deps) and
+`node frameworks/react-native/guest/run-export.mjs` (exports examples/expo-prism for iOS and Android and boots it).
+
 Milestone 3 (Expo Router): react-native-screens (`RNSScreenStack`/`RNSScreen`/header config, `RNSTabsHostIOS`/`RNSTabsScreenIOS`)
 and safe-area-context views are known native views; the guest fires their lifecycle events after each committed tree
 (push/pop, tab selection, insets; `SIMCORE_NAV_MS` sets the 350 ms transition time) and takes `native_back` / `select_tab`

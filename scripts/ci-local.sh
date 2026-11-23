@@ -109,13 +109,15 @@ check_compose() {
 
 check_expo() {
   need_pillow
+  step node --test frameworks/react-native/guest/bundle-patches.test.mjs # no deps: bundle source patches
   if fast; then
     need_npm expo-showcase
     SIMCORE_ONLY=expo SIMCORE_SMOKE=1 step scripts/compare-ios.sh
   else
-    need_npm expo-showcase expo-router-stack expo-default expo-ui expo-apis
+    need_npm expo-showcase expo-router-stack expo-default expo-ui expo-apis expo-prism
     step cargo build -q -p onesim-cli # run-apis answers the guest's host requests with `onesim guest-request`
     step node frameworks/react-native/guest/run-apis.mjs
+    step node frameworks/react-native/guest/run-export.mjs # minified `expo export` bundle with Animated (#129)
     SIMCORE_ONLY=expo step scripts/compare-ios.sh
     SIMCORE_ONLY=expo SIMCORE_FALLBACK=1 step scripts/compare-ios.sh
     step scripts/compare-expo-android.sh
