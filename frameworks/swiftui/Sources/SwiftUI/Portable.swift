@@ -2,7 +2,11 @@
 #if !os(WASI)
 @_exported import struct Foundation.URL
 @_exported import class Foundation.UserDefaults   // `@AppStorage(store:)`, `.defaultAppStorage`
+#if canImport(ObjectiveC)
 @_exported import class ObjectiveC.NSObject      // `class AppDelegate: NSObject, UIApplicationDelegate`
+#else
+@_exported import class Foundation.NSObject      // swift-corelibs-foundation defines it off Apple platforms
+#endif
 #endif
 
 // WASI build (docs/web.md): no Foundation (it is huge). Minimal stand-ins for what the module used from it.

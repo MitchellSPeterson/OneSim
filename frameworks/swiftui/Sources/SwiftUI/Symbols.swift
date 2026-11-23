@@ -1,6 +1,8 @@
 #if !os(WASI)
 import Foundation
+#if canImport(Darwin)
 import Darwin
+#endif
 internal import OneSimBridge
 #endif
 
