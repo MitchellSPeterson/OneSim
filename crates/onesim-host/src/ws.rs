@@ -5,9 +5,12 @@
 //! replies, and a tiny bridge forwards outbound messages to the wake pipe.
 
 use crate::rpc::Server;
+#[cfg(unix)]
 use std::collections::VecDeque;
 use std::net::{TcpListener, TcpStream};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc};
+#[cfg(unix)]
+use std::sync::Mutex;
 use tungstenite::{Error, Message};
 
 /// Accept connections on `listener` forever, one thread per connection.

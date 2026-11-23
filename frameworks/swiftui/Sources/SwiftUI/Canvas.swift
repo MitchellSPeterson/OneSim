@@ -1,5 +1,7 @@
 #if !os(WASI)
 import Foundation
+#endif
+#if canImport(CoreGraphics)
 import CoreGraphics
 #endif
 
