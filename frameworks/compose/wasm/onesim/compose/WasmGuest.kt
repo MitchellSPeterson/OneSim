@@ -30,6 +30,7 @@ object WasmGuest {
         while (frames < 120) {
             Snapshot.sendApplyNotifications()
             loop.drain()
+            Snapshot.sendApplyNotifications() // writes from the drained tasks (see JvmGuest.pump)
             if (clock.hasAwaiters) {
                 frameTimeNs += 16_666_667L
                 clock.sendFrame(frameTimeNs)
