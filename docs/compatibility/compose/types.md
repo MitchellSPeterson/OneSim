@@ -69,7 +69,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `AutofillNode` | ui | ⬜ |  | Deprecated |
 | `AutofillTree` | ui | ⬜ |  | Deprecated |
 | `AutofillType` | ui | ⬜ |  | Deprecated |
-| `AwaitPointerEventScope` | ui | ⬜ |  |  |
+| `AwaitPointerEventScope` | ui | ✅ |  |  |
 | `BackgroundScope` | foundation | ⬜ |  | Experimental |
 | `BackspaceCommand` | ui-text | ⬜ |  |  |
 | `BadgeDefaults` | material3 | ⬜ |  |  |
@@ -148,7 +148,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `ColorMatrixColorFilter` | ui-graphics | ⬜ |  |  |
 | `ColorModel` | ui-graphics | ⬜ |  |  |
 | `ColorPainter` | ui-graphics | ⬜ |  |  |
-| `ColorProducer` | ui-graphics | ⬜ |  |  |
+| `ColorProducer` | ui-graphics | ✅ |  |  |
 | `ColorScheme` | material3 | ✅ | |  |
 | `ColorSpace` | ui-graphics | ⬜ |  |  |
 | `ColorSpaces` | ui-graphics | ⬜ |  |  |
@@ -221,7 +221,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Dp` | ui-unit | ✅ | |  |
 | `DpRect` | ui-unit | ⬜ |  |  |
 | `DpTouchBoundsExpansion` | ui | ⬜ |  |  |
-| `Drag2DScope` | foundation | ⬜ |  |  |
+| `Drag2DScope` | foundation | ✅ |  |  |
 | `DragAndDropEvent` | ui | ⬜ |  |  |
 | `DragAndDropModifierNode` | ui | ⬜ |  | Deprecated |
 | `DragAndDropSourceScope` | foundation | ⬜ |  | Deprecated; Experimental |
@@ -232,8 +232,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `DragHandleColors` | material3 | ⬜ |  |  |
 | `DragHandleShapes` | material3 | ⬜ |  |  |
 | `DragHandleSizes` | material3 | ⬜ |  |  |
-| `DragInteraction` | foundation | ⬜ |  |  |
-| `DragScope` | foundation | ⬜ |  |  |
+| `DragInteraction` | foundation | ✅ |  |  |
+| `DragScope` | foundation | ✅ |  |  |
 | `DrawCacheModifier` | ui | ⬜ |  |  |
 | `DrawContext` | ui-graphics | ⬜ |  |  |
 | `DrawerDefaults` | material3 | ⬜ |  |  |
@@ -264,7 +264,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `ExpandPolicy` | foundation | ⬜ |  |  |
 | `ExperimentalAnimationApi` | animation | ⬜ |  |  |
 | `ExperimentalAnimationSpecApi` | animation-core | ⬜ |  |  |
-| `ExperimentalFoundationApi` | foundation | ⬜ |  |  |
+| `ExperimentalFoundationApi` | foundation | ✅ |  |  |
 | `ExperimentalFoundationStyleApi` | foundation | ⬜ |  |  |
 | `ExperimentalGraphicsApi` | ui-graphics | ⬜ |  |  |
 | `ExperimentalLayoutApi` | foundation-layout | ⬜ |  |  |
@@ -301,7 +301,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `FlexDirection` | foundation-layout | ⬜ |  |  |
 | `FlexJustifyContent` | foundation-layout | ⬜ |  |  |
 | `FlexWrap` | foundation-layout | ⬜ |  |  |
-| `FlingBehavior` | foundation | ⬜ |  |  |
+| `FlingBehavior` | foundation | ✅ |  |  |
 | `FloatAnimationSpec` | animation-core | ⬜ |  |  |
 | `FloatDecayAnimationSpec` | animation-core | ⬜ |  |  |
 | `FloatExponentialDecaySpec` | animation-core | ⬜ |  |  |
@@ -328,7 +328,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `FocusEnterExitScope` | ui | ⬜ |  |  |
 | `FocusEventModifier` | ui | ⬜ |  | Deprecated |
 | `FocusEventModifierNode` | ui | ⬜ |  |  |
-| `FocusInteraction` | foundation | ⬜ |  |  |
+| `FocusInteraction` | foundation | 🟠 |  | Never emitted (no focus system yet) |
 | `FocusManager` | ui | ⬜ |  |  |
 | `FocusOrder` | ui | ⬜ |  | Deprecated |
 | `FocusOrderModifier` | ui | ⬜ |  | Deprecated |
@@ -356,7 +356,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `FrameRateCategory` | ui | ⬜ |  |  |
 | `GenericFontFamily` | ui-text | ⬜ |  |  |
 | `GenericShape` | foundation | ⬜ |  |  |
-| `GestureCancellationException` | foundation | ⬜ |  |  |
+| `GestureCancellationException` | foundation | ✅ |  |  |
 | `GlobalPositionAwareModifierNode` | ui | ⬜ |  |  |
 | `GraphicLayerInfo` | ui | ⬜ |  |  |
 | `GraphicsLayer` | ui-graphics | ⬜ |  |  |
@@ -370,10 +370,10 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `GridTrackSpec` | foundation-layout | ⬜ |  |  |
 | `HapticFeedback` | ui | ⬜ |  |  |
 | `HapticFeedbackType` | ui | ⬜ |  |  |
-| `HistoricalChange` | ui | ⬜ |  |  |
+| `HistoricalChange` | ui | ✅ |  |  |
 | `HorizontalAlignmentLine` | ui | ⬜ |  |  |
 | `HorizontalRuler` | ui | ⬜ |  |  |
-| `HoverInteraction` | foundation | ⬜ |  |  |
+| `HoverInteraction` | foundation | ✅ |  |  |
 | `Hyphens` | ui-text | ⬜ |  |  |
 | `HyphensScope` | foundation | ⬜ |  | Experimental |
 | `IconButtonColors` | material3 | ⬜ |  |  |
@@ -387,7 +387,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `ImageVector` | ui | ⬜ |  |  |
 | `ImeAction` | ui-text | ⬜ |  |  |
 | `ImeOptions` | ui-text | ⬜ |  |  |
-| `Indication` | foundation | ⬜ |  |  |
+| `Indication` | foundation | 🟠 |  | OneSim draws its own indications only (default overlay, `ripple()`) |
 | `IndicationInstance` | foundation | ⬜ |  | Deprecated |
 | `IndicationNodeFactory` | foundation | ⬜ |  |  |
 | `IndirectPointerEventPrimaryDirectionalMotionAxis` | ui | ⬜ |  |  |
@@ -410,8 +410,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `InspectableValue` | ui | ⬜ |  |  |
 | `InspectorInfo` | ui | ⬜ |  |  |
 | `InspectorValueInfo` | ui | ⬜ |  |  |
-| `Interaction` | foundation | ⬜ |  |  |
-| `InteractionSource` | foundation | ⬜ |  |  |
+| `Interaction` | foundation | ✅ |  |  |
+| `InteractionSource` | foundation | ✅ |  |  |
 | `InternalAnimationApi` | animation-core | ⬜ |  |  |
 | `InternalCoreApi` | ui | ⬜ |  | Deprecated |
 | `InternalFoundationApi` | foundation | ⬜ |  |  |
@@ -420,12 +420,12 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `InternalTextApi` | ui-text | ⬜ |  |  |
 | `Interpolatable` | ui-graphics | ⬜ |  |  |
 | `IntervalList` | foundation | ⬜ |  |  |
-| `IntOffset` | ui-unit | ⬜ |  |  |
+| `IntOffset` | ui-unit | ✅ |  |  |
 | `IntRect` | ui-unit | ⬜ |  |  |
 | `IntrinsicMeasurable` | ui | ⬜ |  |  |
 | `IntrinsicMeasureScope` | ui | ⬜ |  |  |
 | `IntrinsicSize` | foundation-layout | ⬜ |  |  |
-| `IntSize` | ui-unit | ⬜ |  |  |
+| `IntSize` | ui-unit | ✅ |  |  |
 | `Key` | ui | ⬜ |  |  |
 | `KeyboardActionHandler` | foundation | ⬜ |  |  |
 | `KeyboardActions` | foundation | ⬜ |  |  |
@@ -559,8 +559,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `MutableTransform` | animation | ⬜ |  |  |
 | `MutableTransitionState` | animation-core | ⬜ |  |  |
 | `MutableWindowInsets` | foundation-layout | ⬜ |  | Experimental |
-| `MutatePriority` | foundation | ⬜ |  |  |
-| `MutatorMutex` | foundation | ⬜ |  |  |
+| `MutatePriority` | foundation | ✅ |  |  |
+| `MutatorMutex` | foundation | ✅ |  |  |
 | `NavBackStackEntryInfo` | navigation-compose | ⬜ |  |  |
 | `NavigationBarDefaults` | material3 | ⬜ |  |  |
 | `NavigationBarItemColors` | material3 | ⬜ |  |  |
@@ -581,13 +581,13 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `NestedStyleProviderStyleScope` | foundation | ⬜ |  | Experimental |
 | `NonInteractiveScrollbarDefaults` | material3 | ⬜ |  |  |
 | `ObserverModifierNode` | ui | ⬜ |  |  |
-| `Offset` | ui-geometry | ⬜ |  |  |
+| `Offset` | ui-geometry | ✅ |  |  |
 | `OffsetEffect` | ui-graphics | ⬜ |  |  |
 | `OffsetMapping` | ui-text | ⬜ |  | Deprecated |
 | `OnGloballyPositionedModifier` | ui | ⬜ |  |  |
 | `OnPlacedModifier` | ui | ⬜ |  |  |
 | `OnRemeasuredModifier` | ui | ⬜ |  |  |
-| `Orientation` | foundation | ⬜ |  |  |
+| `Orientation` | foundation | ✅ |  |  |
 | `Outline` | ui-graphics | ⬜ |  |  |
 | `OutlinedTextFieldDefaults` | material3 | ⬜ |  |  |
 | `OutlinedToggleButtonDefaults` | material3 | ⬜ |  |  |
@@ -637,21 +637,21 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `PlatformTextInputSessionScope` | ui | ⬜ |  |  |
 | `PlatformTextStyle` | ui-text | ⬜ |  |  |
 | `PlatformTransferableContent` | foundation | ⬜ |  | Experimental |
-| `PointerButtons` | ui | ⬜ |  |  |
-| `PointerEvent` | ui | ⬜ |  |  |
-| `PointerEventPass` | ui | ⬜ |  |  |
-| `PointerEventTimeoutCancellationException` | ui | ⬜ |  |  |
-| `PointerEventType` | ui | ⬜ |  |  |
+| `PointerButtons` | ui | ✅ |  |  |
+| `PointerEvent` | ui | ✅ |  | Touch only: no buttons or keyboard modifiers |
+| `PointerEventPass` | ui | ✅ |  |  |
+| `PointerEventTimeoutCancellationException` | ui | ✅ |  |  |
+| `PointerEventType` | ui | ✅ |  | Press, Release and Move; Enter, Exit and Scroll never occur on the touch screen |
 | `PointerIcon` | ui | ⬜ |  |  |
-| `PointerId` | ui | ⬜ |  |  |
-| `PointerInputChange` | ui | ⬜ |  |  |
-| `PointerInputEventHandler` | ui | ⬜ |  |  |
+| `PointerId` | ui | ✅ |  |  |
+| `PointerInputChange` | ui | ✅ |  | No historical samples (each host sample is an event) |
+| `PointerInputEventHandler` | ui | ✅ |  |  |
 | `PointerInputFilter` | ui | ⬜ |  |  |
 | `PointerInputModifier` | ui | ⬜ |  |  |
 | `PointerInputModifierNode` | ui | ⬜ |  |  |
-| `PointerInputScope` | ui | ⬜ |  |  |
-| `PointerKeyboardModifiers` | ui | ⬜ |  |  |
-| `PointerType` | ui | ⬜ |  |  |
+| `PointerInputScope` | ui | ✅ |  |  |
+| `PointerKeyboardModifiers` | ui | ✅ |  |  |
+| `PointerType` | ui | ✅ |  | Always Touch |
 | `PointMode` | ui-graphics | ⬜ |  |  |
 | `PolygonShape` | foundation | ⬜ |  |  |
 | `PolygonShapeGeometry` | foundation | ⬜ |  |  |
@@ -663,8 +663,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `PrefetchRequest` | foundation | ⬜ |  | Deprecated; Experimental |
 | `PrefetchRequestScope` | foundation | ⬜ |  | Deprecated; Experimental |
 | `PrefetchScheduler` | foundation | ⬜ |  | Deprecated; Experimental |
-| `PressGestureScope` | foundation | ⬜ |  |  |
-| `PressInteraction` | foundation | ⬜ |  |  |
+| `PressGestureScope` | foundation | ✅ |  |  |
+| `PressInteraction` | foundation | ✅ |  |  |
 | `Preview` | ui-tooling-preview | ⬜ |  |  |
 | `PreviewDynamicColors` | ui-tooling-preview | ⬜ |  |  |
 | `PreviewFontScale` | ui-tooling-preview | ⬜ |  |  |
@@ -685,7 +685,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `RadioButtonDefaults` | material3 | ⬜ |  |  |
 | `RangeSliderState` | material3 | ⬜ |  |  |
 | `ReceiveContentListener` | foundation | ⬜ |  | Experimental |
-| `Rect` | ui-geometry | ⬜ |  |  |
+| `Rect` | ui-geometry | 🟠 |  | Basic members only |
 | `RectRulers` | ui | ⬜ |  |  |
 | `Ref` | ui | ⬜ |  |  |
 | `RelativeLayoutBounds` | ui | ⬜ |  |  |
@@ -701,8 +701,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `ResourceResolutionException` | ui | ⬜ |  |  |
 | `Rgb` | ui-graphics | ⬜ |  |  |
 | `RichTooltipColors` | material3 | ⬜ |  | Experimental |
-| `RippleConfiguration` | material3 | ⬜ |  |  |
-| `RippleDefaults` | material3 | ⬜ |  |  |
+| `RippleConfiguration` | material3 | ✅ |  |  |
+| `RippleDefaults` | material3 | ✅ |  |  |
 | `RippleThemeConfiguration` | material3 | ⬜ |  |  |
 | `Role` | ui | ⬜ |  |  |
 | `RootForTest` | ui | ⬜ |  |  |
@@ -721,14 +721,14 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `ScrimDefaults` | material3 | ⬜ |  |  |
 | `Scroll2DScope` | foundation | ⬜ |  |  |
 | `Scrollable2DState` | foundation | ⬜ |  |  |
-| `ScrollableDefaults` | foundation | ⬜ |  |  |
-| `ScrollableState` | foundation | ⬜ |  |  |
+| `ScrollableDefaults` | foundation | 🟠 |  | `flingBehavior()` only |
+| `ScrollableState` | foundation | ✅ |  |  |
 | `ScrollAxisRange` | ui | ⬜ |  |  |
 | `ScrollFieldColors` | material3 | ⬜ |  |  |
 | `ScrollFieldDefaults` | material3 | ⬜ |  |  |
 | `ScrollFieldState` | material3 | ⬜ |  |  |
 | `ScrollIndicatorState` | foundation | ⬜ |  |  |
-| `ScrollScope` | foundation | ⬜ |  |  |
+| `ScrollScope` | foundation | ✅ |  |  |
 | `ScrollState` | foundation | ⬜ |  |  |
 | `SearchBarColors` | material3 | ⬜ |  |  |
 | `SearchBarDefaults` | material3 | ⬜ |  |  |
@@ -772,7 +772,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `ShortNavigationBarDefaults` | material3 | ⬜ |  |  |
 | `ShortNavigationBarItemDefaults` | material3 | ⬜ |  |  |
 | `SingleChoiceSegmentedButtonRowScope` | material3 | ⬜ |  |  |
-| `Size` | ui-geometry | ⬜ |  |  |
+| `Size` | ui-geometry | ✅ |  |  |
 | `SizeScope` | foundation | ⬜ |  | Experimental |
 | `SlideConfig` | animation | ⬜ |  |  |
 | `SliderColors` | material3 | ⬜ |  |  |
@@ -958,9 +958,9 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `VectorPath` | ui | ⬜ |  |  |
 | `VectorProperty` | ui | ⬜ |  |  |
 | `VeilConfig` | animation | ⬜ |  |  |
-| `Velocity` | ui-unit | ⬜ |  |  |
-| `VelocityTracker` | ui | ⬜ |  |  |
-| `VelocityTracker1D` | ui | ⬜ |  |  |
+| `Velocity` | ui-unit | ✅ |  |  |
+| `VelocityTracker` | ui | ✅ |  | Least-squares (Lsq2) over the last 100 ms, as Compose's default |
+| `VelocityTracker1D` | ui | ✅ |  |  |
 | `VerbatimTtsAnnotation` | ui-text | ⬜ |  |  |
 | `VertexMode` | ui-graphics | ⬜ |  |  |
 | `VerticalAlignmentLine` | ui | ⬜ |  |  |
@@ -968,7 +968,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `VerticalRuler` | ui | ⬜ |  |  |
 | `Vertices` | ui-graphics | ⬜ |  |  |
 | `ViewCompositionStrategy` | ui | ⬜ |  |  |
-| `ViewConfiguration` | ui | ⬜ |  |  |
+| `ViewConfiguration` | ui | ✅ |  | Android defaults: 8 dp touch slop, 400 ms long press, 300 ms double tap, 8000 dp/s fling |
 | `ViewRootForInspector` | ui | ⬜ |  |  |
 | `ViewRootForTest` | ui | ⬜ |  |  |
 | `VisualTransformation` | ui-text | ⬜ |  | Deprecated |

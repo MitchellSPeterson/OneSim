@@ -41,5 +41,11 @@ a real APK of the same sources (`reference-app/`, material3 1.4.0) on the Androi
 `BasicTextField` and Material 3 `TextField` accept string edits from the host keyboard. Material 3
 `Slider` supports a value range and discrete steps, with input from clicks and drags.
 
-Not yet: `Icon`/`Image`, lazy lists and scrolling, navigation, dialogs, animations, ripples,
+Pointer input (`src/onesim/compose/Pointer.kt`): touches arrive as protocol section L `gesture` messages on the layers
+of `pointerInput`, `clickable` and friends, `draggable(2D)` and `scrollable`, and run AndroidX's dispatch (three
+passes, shared consumption, cancellation) and gesture detectors on the guest's event loop (`Loop.kt`: timers and
+60 fps frame-driven animations such as ripples and flings, in real time). `frameworks/compose/tests/wire_test.sh`
+checks the behaviour over the wire.
+
+Not yet: `Icon`/`Image`, lazy lists and scrolling, navigation, dialogs, animations,
 `AnnotatedString`, custom fonts, resources (`R.string`, `painterResource`), `ViewModel`.

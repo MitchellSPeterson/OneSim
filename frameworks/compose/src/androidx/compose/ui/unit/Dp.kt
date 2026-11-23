@@ -78,5 +78,19 @@ interface Density {
     val density: Float
     val fontScale: Float get() = 1f
     fun Dp.toPx(): Float = value * density
-    fun TextUnit.toDp(): Dp = Dp(value)
+    fun Dp.roundToPx(): Int = toPx().let { if (it.isInfinite()) Int.MAX_VALUE else kotlin.math.round(it).toInt() }
+    fun Dp.toSp(): TextUnit = (value / fontScale).sp
+    fun TextUnit.toDp(): Dp = Dp(value * fontScale)
+    fun TextUnit.toPx(): Float = toDp().toPx()
+    fun TextUnit.roundToPx(): Int = toDp().roundToPx()
+    fun Int.toDp(): Dp = Dp(this / density)
+    fun Float.toDp(): Dp = Dp(this / density)
+    fun Int.toSp(): TextUnit = (this / (density * fontScale)).sp
+    fun Float.toSp(): TextUnit = (this / (density * fontScale)).sp
+    fun DpSize.toSize(): androidx.compose.ui.geometry.Size = androidx.compose.ui.geometry.Size(width.toPx(), height.toPx())
+    fun androidx.compose.ui.geometry.Size.toDpSize(): DpSize = DpSize(width.toDp(), height.toDp())
 }
+
+fun Density(density: Float, fontScale: Float = 1f): Density = DensityImpl(density, fontScale)
+
+private data class DensityImpl(override val density: Float, override val fontScale: Float) : Density

@@ -5,40 +5,20 @@ import androidx.compose.runtime.BroadcastFrameClock
 import androidx.compose.runtime.Composition
 import androidx.compose.runtime.Recomposer
 import androidx.compose.runtime.snapshots.Snapshot
-import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Runnable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlin.coroutines.CoroutineContext
-
-/** Synchronous FIFO dispatcher so Compose recomposition settles within each browser input turn. */
-private class PumpDispatcher : CoroutineDispatcher() {
-    private val queue = ArrayDeque<Runnable>()
-
-    override fun dispatch(context: CoroutineContext, block: Runnable) {
-        queue.addLast(block)
-    }
-
-    fun drain(limit: Int = 1000) {
-        var count = 0
-        while (queue.isNotEmpty() && count < limit) {
-            queue.removeFirst().run()
-            count++
-        }
-    }
-
-    fun clear() {
-        queue.clear()
-    }
-}
 
 /**
- * Browser (Kotlin/Wasm) Compose guest host: drives the real AndroidX Compose runtime synchronously and returns
- * serialized `ViewNode` JSON trees to the JS bridge (`web/onesim.js`), which submits them to `onesim-web`.
+ * Browser (Kotlin/Wasm) Compose guest host: drives the real AndroidX Compose runtime synchronously on a [GuestLoop] and
+ * returns serialized `ViewNode` JSON trees to the JS bridge (`web/onesim.js`), which submits them to `onesim-web`.
+ * Frames are synthetic (16.7 ms apart) and run until idle within each input turn, so animations complete at once;
+ * timers (`delay`, pointer timeouts) run on the wall clock through [nextTimer] / [onTimers].
  */
 object WasmGuest {
-    private val dispatcher = PumpDispatcher()
+    private var loop = GuestLoop()
     private val clock = BroadcastFrameClock()
     private var recomposer: Recomposer? = null
     private var composition: Composition? = null
@@ -49,17 +29,14 @@ object WasmGuest {
         var frames = 0
         while (frames < 120) {
             Snapshot.sendApplyNotifications()
-            dispatcher.drain()
+            loop.drain()
             if (clock.hasAwaiters) {
                 frameTimeNs += 16_666_667L
                 clock.sendFrame(frameTimeNs)
                 frames++
-                dispatcher.drain()
-            } else if (!rec.hasPendingWork) {
+                loop.drain()
+            } else if (!rec.hasPendingWork && !loop.hasQueued) {
                 break
-            } else {
-                dispatcher.drain()
-                if (!clock.hasAwaiters && !rec.hasPendingWork) break
             }
         }
     }
@@ -67,13 +44,16 @@ object WasmGuest {
     fun start(dark: Boolean, insetTop: Float, insetBottom: Float, createActivity: () -> ComponentActivity): String {
         composition?.dispose()
         recomposer?.cancel()
-        dispatcher.clear()
+        loop.clear()
+        loop = GuestLoop()
         Guest.reset()
         Guest.dark.value = dark
         Guest.insetTop = insetTop
         Guest.insetBottom = insetBottom
 
-        val scope = CoroutineScope(dispatcher + clock)
+        val handler = CoroutineExceptionHandler { _, t -> Guest.errorSink("Input callback threw: $t") }
+        val scope = CoroutineScope(loop + clock + SupervisorJob() + handler)
+        Guest.scope = scope
         val rec = Recomposer(scope.coroutineContext)
         recomposer = rec
         scope.launch(start = CoroutineStart.UNDISPATCHED) { rec.runRecomposeAndApplyChanges() }
@@ -94,6 +74,27 @@ object WasmGuest {
 
     fun onTextInput(field: Long, text: String): String {
         Guest.dispatchTextInput(field, text)
+        pump()
+        return Guest.serialize(force = false) ?: ""
+    }
+
+    /** One `gesture` message (protocol section L) as JSON. */
+    fun onGesture(json: String): String {
+        try {
+            Guest.dispatchGesture(json)
+        } catch (t: Throwable) {
+            Guest.errorSink("Input callback threw: $t")
+        }
+        pump()
+        return Guest.serialize(force = false) ?: ""
+    }
+
+    /** Milliseconds until the next timer is due, or -1 without timers. */
+    fun nextTimer(): Double = loop.nextDueIn() ?: -1.0
+
+    /** Run due timers; returns the new tree, or "" when unchanged. */
+    fun onTimers(): String {
+        loop.runDue()
         pump()
         return Guest.serialize(force = false) ?: ""
     }

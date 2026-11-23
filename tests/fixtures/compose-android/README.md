@@ -1,7 +1,7 @@
 # compose-android ground-truth fixtures
 
 Real Jetpack Compose (material3 1.4.0, compose-bom 2026.09.00) running `examples/compose-counter`,
-`examples/compose-showcase`, and `examples/compose-input` unmodified, built as one APK by `frameworks/compose/reference-app` and captured on the
+`examples/compose-showcase`, `examples/compose-input` and `examples/compose-interaction` unmodified, built as one APK by `frameworks/compose/reference-app` and captured on the
 Android 17 (API 37) Pixel 10a emulator through agent-device (T3 device tools). `scripts/compare-android.sh` renders the
 same states on OneSim and requires every state to differ in < 2% of pixels (`scripts/compare_ios.py`).
 
@@ -19,8 +19,16 @@ same states on OneSim and requires every state to differ in < 2% of pixels (`scr
 | showcase-dark | showcase | launch with system dark theme |
 | input | input | launch with two text fields and a stepped slider |
 | input-changed | input | enter NameHello in the first field, dismiss the keyboard, and drag the slider to 75 |
+| interaction | interaction | launch: clickable card, combined clickable, draggable / draggable2D boxes, pointerInput, scrollable, selectable group, toggleable row |
+| interaction-changed | interaction | card clicked twice, long press, double tap, then a tap; 300 px drags (2D: 300, 100); tap at 299, 61; 300 px scroll; "Two"; Wi-Fi off |
+| interaction-pressed | interaction | a finger held on the card (`adb shell input motionevent DOWN`): pressed ripple and `collectIsPressedAsState` |
 
 No `counter-dark`: the counter's `MaterialTheme` has no dark scheme, so only the status-bar icons change.
+
+Drags are injected as `input motionevent` DOWN, 8 equal MOVEs (fractional px), a resting MOVE, UP: AndroidX ignores
+the movement carried by the lift, and Android's input resampling would otherwise leave an extrapolated overshoot.
+Android 12+ draws the pressed ripple with the platform `RippleDrawable` shader (faint sparkles and a soft edge); OneSim
+draws Material's plain circle, within the threshold.
 
 ## Recapture
 
@@ -29,7 +37,7 @@ No `counter-dark`: the counter's `MaterialTheme` has no dark scheme, so only the
 AGENT_DEVICE=... GRADLE=gradle tests/fixtures/compose-android/capture.sh
 ```
 
-Needs Gradle 9.3+ (AGP 9.1, built-in Kotlin), the Android 37 SDK platform and Java 17.
+`SIMCORE_CAPTURE_ONLY=interaction` recaptures only the interaction states. Needs Gradle 9.3+ (AGP 9.1, built-in Kotlin), the Android 37 SDK platform and Java 17.
 
 ## Measured facts used by the renderer
 

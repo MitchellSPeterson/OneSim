@@ -1,6 +1,7 @@
 package androidx.compose.material3
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -60,13 +61,13 @@ fun Surface(
     tonalElevation: Dp = 0.dp,
     shadowElevation: Dp = 0.dp,
     border: BorderStroke? = null,
-    interactionSource: Any? = null,
+    interactionSource: MutableInteractionSource? = null,
     content: @Composable () -> Unit,
 ) {
     CompositionLocalProvider(LocalContentColor provides contentColor) {
         Box(
             modifier.minimumInteractiveComponentSize().surface(shape, color, border, shadowElevation)
-                .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+                .clickable(interactionSource, ripple(), enabled, role = Role.Button, onClick = onClick),
             propagateMinConstraints = true,
         ) { content() }
     }
@@ -84,13 +85,13 @@ fun Surface(
     tonalElevation: Dp = 0.dp,
     shadowElevation: Dp = 0.dp,
     border: BorderStroke? = null,
-    interactionSource: Any? = null,
+    interactionSource: MutableInteractionSource? = null,
     content: @Composable () -> Unit,
 ) {
     CompositionLocalProvider(LocalContentColor provides contentColor) {
         Box(
             modifier.minimumInteractiveComponentSize().surface(shape, color, border, shadowElevation)
-                .selectable(selected = selected, enabled = enabled, onClick = onClick),
+                .selectable(selected, interactionSource, ripple(), enabled, onClick = onClick),
             propagateMinConstraints = true,
         ) { content() }
     }
@@ -108,13 +109,13 @@ fun Surface(
     tonalElevation: Dp = 0.dp,
     shadowElevation: Dp = 0.dp,
     border: BorderStroke? = null,
-    interactionSource: Any? = null,
+    interactionSource: MutableInteractionSource? = null,
     content: @Composable () -> Unit,
 ) {
     CompositionLocalProvider(LocalContentColor provides contentColor) {
         Box(
             modifier.minimumInteractiveComponentSize().surface(shape, color, border, shadowElevation)
-                .toggleable(value = checked, enabled = enabled, onValueChange = onCheckedChange),
+                .toggleable(checked, interactionSource, ripple(), enabled, onValueChange = onCheckedChange),
             propagateMinConstraints = true,
         ) { content() }
     }

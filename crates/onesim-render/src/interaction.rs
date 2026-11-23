@@ -98,6 +98,8 @@ impl Touch {
     }
 }
 
+/// Time between the lift of the first tap of a synthesized double tap and the second touch (ms).
+const DOUBLE_TAP_GAP_MS: f64 = 100.0;
 /// A finger must move this far (pt) before a scroller takes a touch from a tap-only gesture view (UIScrollView's slop).
 pub(crate) const PAN_SLOP: f64 = 10.0;
 /// Synthesized whole gestures (`drag`, `pinch`, `rotate`) move in this many steps, one per frame.
@@ -799,6 +801,15 @@ impl Interaction {
                 touch.time += FRAME_MS * 3.0;
                 out.push(Self::touch_event(&touch, TouchPhase::End));
             }
+            PointerKind::DoubleClick => {
+                let mut touch = self.touch_at(scene, x, y, t0)?;
+                for _ in 0..2 {
+                    out.push(Self::touch_event(&touch, TouchPhase::Start));
+                    touch.time += FRAME_MS * 3.0;
+                    out.push(Self::touch_event(&touch, TouchPhase::End));
+                    touch.time += DOUBLE_TAP_GAP_MS;
+                }
+            }
             PointerKind::LongPress => {
                 let mut touch = self.touch_at(scene, x, y, t0)?;
                 let end = t0 + ev.duration.unwrap_or(1.0) * 1000.0;
@@ -1288,6 +1299,30 @@ mod tests {
         let onesim_protocol::ViewKind::TextField { text: value, .. } = &mut input.kind else { unreachable!() };
         *value = text;
         assert!(caret_visible(&layout(&input, &interaction)));
+    }
+
+    #[test]
+    fn double_click_is_two_taps_on_gesture_views() {
+        use crate::scene::{Node, Rect};
+        let mut root = Node::new("root", "screen");
+        root.bounds = Rect { x: 0.0, y: 0.0, w: 400.0, h: 800.0 };
+        let mut tap = Node::new("tap", "clickable");
+        tap.parent = Some(0);
+        tap.action = Some(1);
+        tap.bounds = Rect { x: 10.0, y: 10.0, w: 100.0, h: 40.0 };
+        tap.gesture = Some(Box::new(onesim_protocol::GestureMod { key: "tap#m0".into(), pans: false, axis: None }));
+        let scene = Scene { size: (400.0, 800.0), appearance: onesim_protocol::Appearance::Light, ios: Default::default(),
+            nodes: vec![root, tap], unsupported_symbols: vec![], notes: vec![] };
+        assert!(scene.gesture_touch_at(20.0, 20.0), "a keyed clickable takes its own touches as a gesture view");
+        assert!(!scene.gesture_touch_at(200.0, 200.0));
+        let mut it = Interaction::default();
+        let Effect::Gesture(g) = it.pointer(&scene, PointerEvent::new(PointerKind::DoubleClick, 20.0, 20.0)) else { panic!("gesture") };
+        assert_eq!(g.iter().map(|t| t.phase).collect::<Vec<_>>(), [TouchPhase::Start, TouchPhase::End, TouchPhase::Start, TouchPhase::End]);
+        let t: Vec<f64> = g.iter().map(|e| e.time - g[0].time).collect();
+        // Each finger down 48 ms, the second one 100 ms after the first lifts: inside Android's 40...300 ms window.
+        assert_eq!(t, [0.0, 48.0, 148.0, 196.0]);
+        assert!(g.iter().all(|e| e.targets.len() == 1 && e.targets[0].key == "tap#m0"));
+        assert!(it.acted);
     }
 
     #[test]

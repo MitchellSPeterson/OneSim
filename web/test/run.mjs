@@ -3,7 +3,8 @@
 // same driver as the browser (web/onesim.js) and drives it like `onesim run`.
 //
 //   node web/test/run.mjs [--wasm target/web/app.wasm] [--width W] [--height H] [--scale S] [--dark] [--dynamic-type SIZE]
-//        [--click LABEL|X,Y] [--type TEXT] [--key backspace|enter] [--scroll X,Y,DX,DY] [--drag X,Y,DX,DY] ...   (in order)
+//        [--click LABEL|X,Y] [--type TEXT] [--key backspace|enter] [--scroll X,Y,DX,DY] [--drag X,Y,DX,DY]
+//        [--double-click|--long-press|--down|--up LABEL|X,Y] [--wait MS] ...   (in order)
 //        [--screenshot out.png] [--inspect] [--expect TEXT]...
 //   node web/test/run.mjs --suite counter|showcase     assertions against the built app
 import { readFileSync, writeFileSync } from "node:fs";
@@ -28,10 +29,20 @@ function click(sim, c) {
   sim.click(x, y);
 }
 
+function at(sim, c) {
+  return nums(c, 2) ?? sim.find(c);
+}
+
 /** One CLI-style step: [flag, value]. */
-function step(sim, flag, v) {
+async function step(sim, flag, v) {
   switch (flag) {
     case "--click": return click(sim, v);
+    case "--double-click": { const [x, y] = at(sim, v); sim.pointer("double_click", x, y); return; }
+    case "--long-press": { const [x, y] = at(sim, v); sim.pointer("long_press", x, y); return; }
+    case "--down": { const [x, y] = at(sim, v); sim.pointer("down", x, y); return; }
+    case "--up": { const [x, y] = at(sim, v); sim.pointer("up", x, y); return; }
+    // Let real time pass: guest timers (double tap timeout, delayed press) fire through the bridge.
+    case "--wait": { await new Promise((r) => setTimeout(r, Number(v))); return; }
     case "--type": return sim.type(v);
     case "--key": return sim.key(v);
     case "--scroll": {
@@ -77,11 +88,11 @@ async function cli(argv) {
     else if (f === "--screenshot") shot = val();
     else if (f === "--inspect") inspect = true;
     else if (f === "--expect") expects.push(val());
-    else if (["--click", "--type", "--key", "--scroll", "--drag"].includes(f)) steps.push([f, val()]);
+    else if (["--click", "--type", "--key", "--scroll", "--drag", "--double-click", "--long-press", "--down", "--up", "--wait"].includes(f)) steps.push([f, val()]);
     else throw new Error(`unknown argument ${f}`);
   }
   const sim = await boot(o.wasm, o);
-  for (const [f, v] of steps) step(sim, f, v);
+  for (const [f, v] of steps) await step(sim, f, v);
   const texts = sim.texts();
   for (const e of expects) if (!texts.some((t) => t.includes(e))) throw new Error(`expected text ${JSON.stringify(e)} not in tree: ${JSON.stringify(texts)}`);
   if (shot) savePng(sim, shot);

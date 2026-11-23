@@ -20,7 +20,7 @@ The pixel-diff thresholds are the same at every level. The fast level compares f
 |---|---|---|
 | `rust` | build, test, clippy of the changed crates and their reverse dependencies; when the CLI is affected, the window build, the showcase PNGs and the fake-guest navigation | the whole workspace |
 | `swiftui` | wire test, headless counter, iOS 27.2 smoke states (`SIMCORE_SMOKE=1`) | every iOS 27.2 state, Apple and fallback fonts |
-| `compose` | headless counter | Android 17 pixel diffs |
+| `compose` | headless counter, guest wire test (pointer input) | Android 17 pixel diffs |
 | `expo` | React Native smoke states on iOS 27.2 | every iOS 27.2 state (showcase, Expo Router, Expo UI), fallback fonts, Android |
 | `web-swiftui` | Wasm clippy, counter build and Node harness | showcase, Chrome presenter, browser vs native parity |
 | `web-compose` | counter build and Node harness | showcase and input apps, Chrome presenter, parity |

@@ -62,3 +62,8 @@ fun Color.luminance(): Float {
     fun lin(c: Float) = if (c <= 0.04045f) c / 12.92f else ((c + 0.055f) / 1.055f).toDouble().pow(2.4).toFloat()
     return 0.2126f * lin(red) + 0.7152f * lin(green) + 0.0722f * lin(blue)
 }
+
+/** A color computed when it is drawn (lets a ripple follow state without recomposing). */
+fun interface ColorProducer {
+    operator fun invoke(): Color
+}

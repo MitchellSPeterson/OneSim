@@ -170,6 +170,9 @@ pub enum PointerKind {
     Pinch,
     /// Two fingers centred on (x, y), 100 pt apart horizontally, turned by `degrees` (positive = clockwise).
     Rotate,
+    /// Two taps at (x, y) in quick succession (each finger down 48 ms, 100 ms apart): a double tap.
+    #[serde(rename = "double_click")]
+    DoubleClick,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -422,6 +425,9 @@ mod tests {
         assert_eq!((r.kind, r.degrees), (PointerKind::Rotate, Some(30.0)));
         let l: PointerEvent = serde_json::from_str(r#"{"kind":"long_press","x":1,"y":2,"duration":0.8}"#).unwrap();
         assert_eq!((l.kind, l.duration), (PointerKind::LongPress, Some(0.8)));
+        let d: PointerEvent = serde_json::from_str(r#"{"kind":"double_click","x":1,"y":2}"#).unwrap();
+        assert_eq!(d.kind, PointerKind::DoubleClick);
+        assert_eq!(serde_json::to_value(PointerKind::DoubleClick).unwrap(), "double_click");
         let k: KeyboardEvent = serde_json::from_str(r#"{"kind":"text","text":"abc"}"#).unwrap();
         assert_eq!(k, KeyboardEvent::Text { text: "abc".into() });
         let k: KeyboardEvent = serde_json::from_str(r#"{"kind":"key","key":"backspace"}"#).unwrap();

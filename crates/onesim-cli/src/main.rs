@@ -112,6 +112,16 @@ struct Opts {
     /// Hold a finger still for a second at "X,Y" or on a control or text by label (SwiftUI long presses). Repeatable.
     #[arg(long = "long-press", value_name = "LABEL_OR_X,Y")]
     long_presses: Vec<String>,
+    /// Tap twice in quick succession at "X,Y" or on a control or text by label (double taps). Repeatable.
+    #[arg(long = "double-click", value_name = "LABEL_OR_X,Y")]
+    double_clicks: Vec<String>,
+    /// Put a finger down at "X,Y" or on a control or text by label and keep it there (a pressed state) until
+    /// `--up`. Repeatable.
+    #[arg(long = "down", value_name = "LABEL_OR_X,Y")]
+    downs: Vec<String>,
+    /// Lift the finger put down by `--down`, at "X,Y" or on a control or text by label. Repeatable.
+    #[arg(long = "up", value_name = "LABEL_OR_X,Y")]
+    ups: Vec<String>,
     /// Pinch two fingers centred on "X,Y" or a labelled view, 100 pt apart, to SCALE times that distance. Repeatable.
     #[arg(long = "pinch", value_name = "LABEL_OR_X,Y,SCALE")]
     pinches: Vec<String>,
@@ -170,6 +180,9 @@ enum Step {
     Scroll(String),
     Drag(String),
     LongPress(String),
+    DoubleClick(String),
+    Down(String),
+    Up(String),
     Pinch(String),
     Rotate(String),
     Wait(String),
@@ -191,6 +204,9 @@ fn steps(m: &ArgMatches) -> Vec<Step> {
     add("scrolls", Step::Scroll);
     add("drags", Step::Drag);
     add("long_presses", Step::LongPress);
+    add("double_clicks", Step::DoubleClick);
+    add("downs", Step::Down);
+    add("ups", Step::Up);
     add("pinches", Step::Pinch);
     add("rotations", Step::Rotate);
     add("waits", Step::Wait);
@@ -425,6 +441,18 @@ fn drive(host: &mut Host, id: &str, shot: Option<String>, rec: Option<RecordOpts
                     bail!("nothing to long-press at {x},{y}");
                 }
             }
+            Step::DoubleClick(s) | Step::Down(s) | Step::Up(s) => {
+                let (x, y) = point(host, id, s)?;
+                let (kind, what) = match step {
+                    Step::DoubleClick(_) => (PointerKind::DoubleClick, "double-click"),
+                    Step::Down(_) => (PointerKind::Down, "press"),
+                    _ => (PointerKind::Up, "release"),
+                };
+                let (hit, _) = host.pointer(id, PointerEvent::new(kind, x, y))?;
+                if hit.is_none() && kind != PointerKind::Up {
+                    bail!("nothing to {what} at {x},{y}");
+                }
+            }
             Step::Pinch(s) | Step::Rotate(s) => {
                 let rotate = matches!(step, Step::Rotate(_));
                 let (at, amount) = s.rsplit_once(',').with_context(|| format!("wants LABEL_OR_X,Y,AMOUNT, got {s:?}"))?;
@@ -522,6 +550,7 @@ mod tests {
         let m = Cli::command().get_matches_from([
             "onesim", "run", "app", "--click", "New todo", "--type", "hi", "--key", "enter", "--click", "Add",
             "--scroll", "1,2,0,50", "--scene-phase", "background", "--open-url", "app://x", "--type", "x",
+            "--down", "3,4", "--up", "3,4", "--double-click", "Add",
         ]);
         let got = steps(m.subcommand_matches("run").unwrap());
         assert_eq!(
@@ -535,6 +564,9 @@ mod tests {
                 Step::ScenePhase("background".into()),
                 Step::OpenUrl("app://x".into()),
                 Step::Type("x".into()),
+                Step::Down("3,4".into()),
+                Step::Up("3,4".into()),
+                Step::DoubleClick("Add".into()),
             ]
         );
     }

@@ -24,11 +24,11 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Modifier.captionBarPadding` | foundation-layout | ⬜ |  |  |
 | `Modifier.carouselParallaxScrollEffect` | material3 | ⬜ |  | Experimental |
 | `Modifier.clearAndSetSemantics` | ui | ⬜ |  |  |
-| `Modifier.clickable` | foundation | 🟠 | | Taps only; no ripple, press state or onClickLabel |
+| `Modifier.clickable` | foundation | 🟠 | | Pixel-checked on Android 17 (`compose-interaction`): press, release, cancel when the finger leaves or a parent takes it; ripple from `LocalIndication`; press shown after 100 ms inside a scrollable. Gaps: no focus, so no Enter / D-pad activation or `FocusInteraction`; `onClickLabel` not exposed (no accessibility services) |
 | `Modifier.clip` | ui | ✅ | |  |
 | `Modifier.clipScrollableContainer` | foundation | ⬜ |  |  |
 | `Modifier.clipToBounds` | ui | ⬜ |  |  |
-| `Modifier.combinedClickable` | foundation | 🟠 | | onClick only; long and double clicks are not delivered |
+| `Modifier.combinedClickable` | foundation | 🟠 | | Pixel-checked on Android 17 (`compose-interaction`): long click at 400 ms, double click within 300 ms (the click waits for it). Gaps: no haptic feedback; no focus, so no Enter / D-pad activation or `FocusInteraction`; labels not exposed |
 | `Modifier.composed` | ui | ⬜ |  |  |
 | `Modifier.consumeWindowInsets` | foundation-layout | ⬜ |  |  |
 | `Modifier.contentReceiver` | foundation | ⬜ |  | Experimental |
@@ -37,8 +37,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Modifier.displayCutoutPadding` | foundation-layout | 🟠 | | Top (status bar) and bottom (navigation bar) insets only |
 | `Modifier.dragAndDropSource` | foundation | ⬜ |  |  |
 | `Modifier.dragAndDropTarget` | foundation | ⬜ |  |  |
-| `Modifier.draggable` | foundation | ⬜ |  |  |
-| `Modifier.draggable2D` | foundation | ⬜ |  |  |
+| `Modifier.draggable` | foundation | ✅ |  | Pixel-checked on Android 17 (`compose-interaction`): touch slop along the axis, release velocity, `DragInteraction`s, `MutatorMutex` priorities |
+| `Modifier.draggable2D` | foundation | ✅ |  | Pixel-checked on Android 17 (`compose-interaction`) |
 | `Modifier.drawBehind` | ui | ⬜ |  |  |
 | `Modifier.drawWithCache` | ui | ⬜ |  |  |
 | `Modifier.drawWithContent` | ui | ⬜ |  |  |
@@ -64,10 +64,10 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Modifier.height` | foundation-layout | ✅ | |  |
 | `Modifier.heightIn` | foundation-layout | ✅ | |  |
 | `Modifier.horizontalScroll` | foundation | ⬜ |  |  |
-| `Modifier.hoverable` | foundation | ⬜ |  |  |
+| `Modifier.hoverable` | foundation | 🟠 |  | Touch input only: the host sends no mouse hover, so no `HoverInteraction`s occur (fingers never hover on the device either); an exit is sent when disabled or removed mid-hover |
 | `Modifier.imeNestedScroll` | foundation-layout | ⬜ |  | Experimental |
 | `Modifier.imePadding` | foundation-layout | ⬜ |  |  |
-| `Modifier.indication` | foundation | ⬜ |  |  |
+| `Modifier.indication` | foundation | 🟠 |  | Draws `LocalIndication`'s default overlay, Material 3 `ripple()` and `null`; custom `Indication` / `IndicationNodeFactory` implementations draw nothing (no `Modifier.Node` or `DrawScope`) |
 | `Modifier.innerShadow` | ui | ⬜ |  |  |
 | `Modifier.inspectable` | ui | ⬜ |  | Deprecated |
 | `Modifier.keepScreenOn` | ui | ⬜ |  |  |
@@ -107,7 +107,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Modifier.paint` | ui | ⬜ |  |  |
 | `Modifier.placement` | foundation | ⬜ |  | Experimental |
 | `Modifier.pointerHoverIcon` | ui | ⬜ |  |  |
-| `Modifier.pointerInput` | ui | ⬜ |  |  |
+| `Modifier.pointerInput` | ui | ✅ |  | Pixel-checked on Android 17 (`compose-interaction`); three-pass dispatch with shared consumption, `withTimeout` by event and wall-clock time, restart on key change. Touch only (no mouse, hover or scroll-wheel events) |
 | `Modifier.pointerInteropFilter` | ui | ⬜ |  |  |
 | `Modifier.preferKeepClear` | foundation | ⬜ |  |  |
 | `Modifier.preferredFrameRate` | ui | ⬜ |  |  |
@@ -125,11 +125,11 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Modifier.safeDrawingPadding` | foundation-layout | 🟠 | | Top (status bar) and bottom (navigation bar) insets only |
 | `Modifier.safeGesturesPadding` | foundation-layout | ⬜ |  |  |
 | `Modifier.scale` | ui | ⬜ |  |  |
-| `Modifier.scrollable` | foundation | ⬜ |  |  |
+| `Modifier.scrollable` | foundation | 🟠 |  | Pixel-checked on Android 17 (`compose-interaction`); Android spline fling. No nested scrolling with parent scrollers, no overscroll effect (the `overscrollEffect` / `bringIntoViewSpec` overload is missing), no mouse wheel |
 | `Modifier.scrollable2D` | foundation | ⬜ |  |  |
 | `Modifier.scrollableArea` | foundation | ⬜ |  |  |
-| `Modifier.selectable` | foundation | 🟠 | | Taps only; no ripple |
-| `Modifier.selectableGroup` | foundation | ⬜ |  |  |
+| `Modifier.selectable` | foundation | 🟠 | | Pixel-checked on Android 17 (`compose-interaction`). Gaps: no focus, so no Enter / D-pad activation or `FocusInteraction`; selected-state semantics not exposed |
+| `Modifier.selectableGroup` | foundation | 🟠 |  | Accessibility semantics only, which the host does not model (no accessibility tree): accepted, no effect |
 | `Modifier.semantics` | ui | ⬜ |  |  |
 | `Modifier.sensitiveContent` | ui | ⬜ |  |  |
 | `Modifier.shadow` | ui | 🟠 | | Ambient + spot shadow fitted to Android 17; ambientColor/spotColor ignored |
@@ -149,7 +149,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Modifier.systemGestureExclusion` | foundation | ⬜ |  |  |
 | `Modifier.systemGesturesPadding` | foundation-layout | ⬜ |  |  |
 | `Modifier.testTag` | ui | ⬜ |  |  |
-| `Modifier.toggleable` | foundation | 🟠 | | Taps only; no ripple |
+| `Modifier.toggleable` | foundation | 🟠 | | Pixel-checked on Android 17 (`compose-interaction`). Gaps: no focus, so no Enter / D-pad activation or `FocusInteraction`; toggle-state semantics not exposed |
 | `Modifier.toolingGraphicsLayer` | ui | ⬜ |  |  |
 | `Modifier.transformable` | foundation | ⬜ |  |  |
 | `Modifier.triStateToggleable` | foundation | ⬜ |  |  |
