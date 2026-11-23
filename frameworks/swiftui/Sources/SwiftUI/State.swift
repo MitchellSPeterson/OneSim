@@ -375,7 +375,13 @@ struct _TapView<Content: View>: View, _Primitive {
             let g = TapGesture(count: count).onEnded(action)
             return _attachGesture([node], path, .normal) { g._recognizer($0) }[0]
         }
-        return ["kind": "button", "id": path, "action": rt.disabled ? 0 : rt.registerAction(action), "label": _eval(content, path + "/0"),
+        let inner = _eval(content, path + "/0")
+        if let mods = inner["modifiers"] as? [Node], mods.contains(where: { $0["gesture"] != nil }) {
+            guard !rt.disabled else { return inner }
+            let g = TapGesture(count: 1).onEnded(action)
+            return _attachGesture([inner], path, .normal) { g._recognizer($0) }[0]
+        }
+        return ["kind": "button", "id": path, "action": rt.disabled ? 0 : rt.registerAction(action), "label": inner,
                 "style": "plain", "disabled": rt.disabled]
     }
 }

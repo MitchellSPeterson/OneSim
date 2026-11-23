@@ -130,6 +130,10 @@ impl Ctx<'_> {
         env.fg.map_or(ResolvedPaint::Color(default), |fg| ResolvedPaint::Color(fg).opacity(factor))
     }
 
+    pub(super) fn tint_color(&self, env: Env) -> Option<Color> {
+        env.tint_paint.map(|i| self.paints[i].color()).or(env.tint)
+    }
+
     pub(super) fn inherited_paint(&self, color: &onesim_protocol::Color, env: Env) -> Option<ResolvedPaint> {
         let onesim_protocol::Color::Hierarchical { semantic, hierarchical: true } = color else { return None };
         let style = match semantic {

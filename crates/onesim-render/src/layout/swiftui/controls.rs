@@ -22,9 +22,11 @@ impl Ctx<'_> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn button(&mut self, v: &ViewNode, action: u64, label: &ViewNode, style: ButtonStyle, disabled: bool, p: Prop, env: Env) -> Lay {
+    pub(super) fn button(&mut self, v: &ViewNode, action: u64, label: &ViewNode, style: ButtonStyle, disabled: bool, role: Option<onesim_protocol::ButtonRole>, p: Prop, env: Env) -> Lay {
         let child_env = Env { axis: None, ..env };
-        let accent = self.semantic(Semantic::Accent);
+        let destructive = role == Some(onesim_protocol::ButtonRole::Destructive);
+        let explicit_tint = self.tint_color(env);
+        let accent = if destructive { self.destructive() } else { explicit_tint.unwrap_or_else(|| self.semantic(Semantic::Accent)) };
         let dim = self.semantic(Semantic::Tertiary);
         let mut n = Node::new(&v.id, "button");
         n.role = Role::Button;
@@ -40,7 +42,8 @@ impl Ctx<'_> {
                 let (fg, tint) = match (style, disabled) {
                     (_, true) => (dim, None),
                     (ButtonStyle::Automatic, _) if env.in_toolbar => {
-                        (env.tint.unwrap_or_else(|| self.semantic(Semantic::Primary)), env.tint)
+                        let c = if destructive { self.destructive() } else { explicit_tint.unwrap_or_else(|| self.semantic(Semantic::Primary)) };
+                        (c, if destructive { Some(c) } else { explicit_tint })
                     }
                     (ButtonStyle::Automatic, _) => (accent, Some(accent)),
                     _ => (env.fg.unwrap_or_else(|| self.semantic(Semantic::Primary)), None),
@@ -50,10 +53,15 @@ impl Ctx<'_> {
             }
             ButtonStyle::Bordered | ButtonStyle::BorderedProminent => {
                 let prominent = style == ButtonStyle::BorderedProminent;
+                let bordered_bg = if destructive || explicit_tint.is_some() {
+                    Color { a: if self.dark { 0.24 } else { 0.15 }, ..accent }
+                } else {
+                    self.control_fill(0.16)
+                };
                 let (fg, bg) = match (prominent, disabled) {
                     (_, true) => (dim, self.control_fill(0.16)),
                     (true, _) => (rgba(255, 255, 255, 1.0), if self.desat { let g = if self.dark { ALERT_DESAT.1 } else { ALERT_DESAT.0 }; rgba(g, g, g, 1.0) } else { accent }),
-                    (false, _) => (accent, self.control_fill(0.16)),
+                    (false, _) => (accent, bordered_bg),
                 };
                 let (hp, vp) = (12.0, 7.0);
                 let inner_p = Prop { w: p.w.map(|w| (w - 2.0 * hp).max(0.0)), h: None };
@@ -116,7 +124,7 @@ impl Ctx<'_> {
         let w = fin.unwrap_or(l.size.w + 8.0 + SWITCH.0);
         let h = l.size.h.max(SWITCH.1);
         let mut sw = Node::new(format!("{}#switch", v.id), "switch");
-        let knob = switch_style(&mut sw, &v.id, self.dark, on, disabled, None, None);
+        let knob = switch_style(&mut sw, &v.id, self.dark, on, disabled, on.then(|| self.tint_color(env)).flatten(), None);
         sw.label = first_text(label);
         sw.action = (!disabled).then_some(action);
         let (kw, kh) = KNOB;
@@ -377,7 +385,8 @@ impl Ctx<'_> {
 
     /// `Slider`: capsule track, accent fill up to the value, a white capsule thumb. Tapping or
     /// dragging sets the value (see `Interaction`), through `field`.
-    pub(super) fn slider(&mut self, v: &ViewNode, value: f64, range: (f64, f64), field: Option<u64>, disabled: bool, p: Prop) -> Lay {
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn slider(&mut self, v: &ViewNode, value: f64, range: (f64, f64), field: Option<u64>, disabled: bool, p: Prop, env: Env) -> Lay {
         let w = p.w.filter(|w| w.is_finite()).unwrap_or(200.0);
         let h = SLIDER_H;
         let span = range.1 - range.0;
@@ -396,7 +405,7 @@ impl Ctx<'_> {
         track.radius = PILL;
         track.inspect = false;
         let mut fill = Node::new(format!("{}#fill", v.id), "slider-fill");
-        fill.fill = Some(self.semantic(Semantic::Accent));
+        fill.fill = Some(self.tint_color(env).unwrap_or_else(|| self.semantic(Semantic::Accent)));
         fill.radius = PILL;
         fill.inspect = false;
         let mut thumb = Node::new(format!("{}#thumb", v.id), "slider-thumb");
@@ -436,7 +445,7 @@ impl Ctx<'_> {
             track.radius = PILL;
             track.inspect = false;
             let mut bar = Node::new(format!("{}#bar", v.id), "progress-bar");
-            bar.fill = Some(self.semantic(Semantic::Accent));
+            bar.fill = Some(self.tint_color(env).unwrap_or_else(|| self.semantic(Semantic::Accent)));
             bar.radius = PILL;
             bar.inspect = false;
             let fw = (w * f.clamp(0.0, 1.0)).max(if f > 0.0 { PROGRESS_H } else { 0.0 });
@@ -586,7 +595,7 @@ impl Ctx<'_> {
         let fin = p.w.filter(|w| w.is_finite());
         let w = fin.unwrap_or(200.0);
         let primary = self.semantic(Semantic::Primary);
-        let accent = self.semantic(Semantic::Accent);
+        let accent = self.tint_color(env).unwrap_or_else(|| self.semantic(Semantic::Accent));
         let (bar_h, track_c, gap, leading) = match style {
             GaugeStyle::AccessoryLinearCapacity => (PROGRESS_H, self.pick(PROGRESS_TRACK_FILL), GAUGE_ACC_LABEL_GAP, true),
             GaugeStyle::AccessoryLinear => (GAUGE_ACC_BAR, primary, GAUGE_ACC_LABEL_GAP, true),
