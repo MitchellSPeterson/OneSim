@@ -338,22 +338,33 @@ fn lerp_affine(a: [f64; 6], b: [f64; 6], t: f64) -> [f64; 6] {
     if a[1].abs() < 1e-6 && a[2].abs() < 1e-6 && b[1].abs() < 1e-6 && b[2].abs() < 1e-6 {
         return std::array::from_fn(|i| lerp(a[i], b[i], t));
     }
-    let decomp = |m: [f64; 6]| -> (f64, f64, f64, f64, f64) {
+    // QR decomposition: [[a, c], [b, d]] = R(ang) * [[sx, k], [0, sy]], which preserves
+    // rotation, scale, reflection, and shear exactly. Fall back to element-wise lerp when
+    // either first column is degenerate (sx ~= 0).
+    let decomp = |m: [f64; 6]| -> Option<(f64, f64, f64, f64, f64, f64)> {
         let sx = m[0].hypot(m[1]);
+        if sx <= 1e-9 || !sx.is_finite() {
+            return None;
+        }
+        let c0 = m[0] / sx;
+        let s0 = m[1] / sx;
         let ang = m[1].atan2(m[0]);
-        let sy = if sx > 1e-9 { (m[0] * m[3] - m[1] * m[2]) / sx } else { m[3] };
-        (sx, sy, ang, m[4], m[5])
+        let k = c0 * m[2] + s0 * m[3];
+        let sy = -s0 * m[2] + c0 * m[3];
+        Some((sx, sy, k, ang, m[4], m[5]))
     };
-    let (sxa, sya, aa, txa, tya) = decomp(a);
-    let (sxb, syb, ab, txb, tyb) = decomp(b);
+    let (Some((sxa, sya, ka, aa, txa, tya)), Some((sxb, syb, kb, ab, txb, tyb))) = (decomp(a), decomp(b)) else {
+        return std::array::from_fn(|i| lerp(a[i], b[i], t));
+    };
     let mut da = ab - aa;
     while da > std::f64::consts::PI { da -= std::f64::consts::TAU; }
     while da < -std::f64::consts::PI { da += std::f64::consts::TAU; }
     let sx = lerp(sxa, sxb, t);
     let sy = lerp(sya, syb, t);
+    let k = lerp(ka, kb, t);
     let ang = aa + da * t;
     let (s, c) = ang.sin_cos();
-    [sx * c, sx * s, -sy * s, sy * c, lerp(txa, txb, t), lerp(tya, tyb, t)]
+    [sx * c, sx * s, c * k - s * sy, s * k + c * sy, lerp(txa, txb, t), lerp(tya, tyb, t)]
 }
 
 fn composite_diff(a: &Composite, b: &Composite) -> bool {
@@ -1879,5 +1890,33 @@ mod tests {
         assert!((gt.r - 0.5).abs() < 0.02 && (gt.b - 0.5).abs() < 0.02);
         assert!(mid.nodes[1].fill_paint.as_ref().unwrap().differs(s2.nodes[1].fill_paint.as_ref().unwrap()));
         assert!(!a.tick(0.2));
+    }
+
+    #[test]
+    fn lerp_affine_preserves_shear_and_degenerate_fallback() {
+        // Sheared translation: [1, 0, 1, 1, 0, 0] -> [1, 0, 1, 1, 20, 0]
+        let a = [1.0, 0.0, 1.0, 1.0, 0.0, 0.0];
+        let b = [1.0, 0.0, 1.0, 1.0, 20.0, 0.0];
+        for (t, expected_tx) in [(0.0, 0.0), (0.5, 10.0), (1.0, 20.0)] {
+            let m = lerp_affine(a, b, t);
+            let want = [1.0, 0.0, 1.0, 1.0, expected_tx, 0.0];
+            for i in 0..6 {
+                assert!((m[i] - want[i]).abs() < 1e-9, "t={t} idx={i}: got {}, want {}", m[i], want[i]);
+            }
+        }
+        // Varying shear + rotation endpoints match exactly at t=0 and t=1.
+        let s0 = [0.8, 0.6, 0.4, 1.2, 5.0, -3.0];
+        let s1 = [-0.6, 0.8, -1.1, 0.5, -2.0, 9.0];
+        let at0 = lerp_affine(s0, s1, 0.0);
+        let at1 = lerp_affine(s0, s1, 1.0);
+        for i in 0..6 {
+            assert!((at0[i] - s0[i]).abs() < 1e-9, "t=0 idx={i}: got {}, want {}", at0[i], s0[i]);
+            assert!((at1[i] - s1[i]).abs() < 1e-9, "t=1 idx={i}: got {}, want {}", at1[i], s1[i]);
+        }
+        // Degenerate first column (sx == 0) falls back to element-wise lerp cleanly.
+        let deg = [0.0, 0.0, 1.0, 1.0, 0.0, 0.0];
+        let target = [1.0, 0.0, 1.0, 1.0, 10.0, 0.0];
+        let mid = lerp_affine(deg, target, 0.5);
+        assert!((mid[0] - 0.5).abs() < 1e-9 && (mid[2] - 1.0).abs() < 1e-9 && (mid[4] - 5.0).abs() < 1e-9);
     }
 }

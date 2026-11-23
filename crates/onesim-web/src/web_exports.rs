@@ -218,15 +218,27 @@ pub extern "C" fn simcore_web_drag(phase: i32, x: f64, y: f64, t: f64) -> i32 {
         return match e {
             Some(Effect::None) | None => 0,
             Some(Effect::Redraw) => 1,
-            Some(Effect::Gesture(ref touches))
-                if touches.iter().all(|t| t.phase == onesim_protocol::TouchPhase::Move) =>
-            {
-                1
+            Some(other) => {
+                // Deliver every coalesced sample to the guest so recognizers observe threshold
+                // crossings (e.g. moving past drag slop and back within one frame), while
+                // deferring layout/scene rebuilds until the frame's final move.
+                with(|s| s.defer_scene = true);
+                let rc = dispatch(other);
+                with(|s| s.defer_scene = false);
+                rc
             }
-            Some(other) => dispatch(other),
         };
     }
-    e.map_or(0, dispatch)
+    let rc = e.map_or(0, dispatch);
+    if with(|s| s.scene_dirty) {
+        with(|s| {
+            s.scene_dirty = false;
+            update_scene(s);
+        });
+        send_layout();
+        return 1;
+    }
+    rc
 }
 
 /// Advance scroll animations, SwiftUI animations, and scheduled guest ticks by `dt_ms`.

@@ -353,8 +353,11 @@ mod tests {
     }
 
     #[test]
-    fn coalesced_gesture_move_skips_redundant_dispatch() {
-        thread_local! { static EVENTS: RefCell<Vec<(i32, f64, f64)>> = const { RefCell::new(Vec::new()) }; }
+    fn coalesced_gesture_move_preserves_recognition_and_defers_scene() {
+        thread_local! {
+            static EVENTS: RefCell<Vec<(i32, f64, f64)>> = const { RefCell::new(Vec::new()) };
+            static NEXT_VER: RefCell<u64> = const { RefCell::new(2) };
+        }
         unsafe extern "C" fn on_gesture(
             _: *mut c_void,
             phase: i32,
@@ -371,6 +374,15 @@ mod tests {
                 (0.0, 0.0)
             };
             EVENTS.with(|e| e.borrow_mut().push((phase, x, y)));
+            // Simulate a Swift guest submitting an updated tree on every touch event.
+            let v = NEXT_VER.with(|nv| {
+                let mut nv = nv.borrow_mut();
+                let cur = *nv;
+                *nv += 1;
+                cur
+            });
+            let tree = r#"{"kind":"rectangle","id":"r","modifiers":[{"frame":{"width":200.0,"height":300.0}},{"gesture":{"key":"r#g0","pans":true}}]}"#;
+            assert_eq!(unsafe { simcore_submit_tree(tree.as_ptr(), tree.len(), v) }, 0);
         }
 
         let _ = simcore_web_init(200.0, 300.0, 1.0, 0);
@@ -378,21 +390,30 @@ mod tests {
         let tree = r#"{"kind":"rectangle","id":"r","modifiers":[{"frame":{"width":200.0,"height":300.0}},{"gesture":{"key":"r#g0","pans":true}}]}"#;
         assert_eq!(unsafe { simcore_submit_tree(tree.as_ptr(), tree.len(), 1) }, 0);
         EVENTS.with(|e| e.borrow_mut().clear());
+        NEXT_VER.with(|nv| *nv.borrow_mut() = 2);
 
         assert_eq!(simcore_web_drag(0, 100.0, 150.0, 0.0), 1);
-        assert_eq!(simcore_web_drag(3, 110.0, 155.0, 4.0), 1);
-        assert_eq!(simcore_web_drag(3, 120.0, 160.0, 8.0), 1);
+        let v_after_begin = simcore_web_frame_version();
+        // Excursion 20pt past start then back to 5pt within one frame: guest must see every sample
+        // so recognizers activate drag / fail tap, while scene layout is deferred until final move.
+        assert_eq!(simcore_web_drag(3, 120.0, 150.0, 4.0), 1);
+        assert_eq!(simcore_web_drag(3, 105.0, 150.0, 8.0), 1);
+        assert_eq!(
+            simcore_web_frame_version(),
+            v_after_begin,
+            "coalesced gesture moves defer scene/layout rebuild until final move"
+        );
         assert_eq!(
             EVENTS.with(|e| e.borrow().clone()),
-            vec![(0, 100.0, 150.0)],
-            "coalesced pure Move samples should not redundantly dispatch to guest"
+            vec![(0, 100.0, 150.0), (1, 120.0, 150.0), (1, 105.0, 150.0)],
+            "every coalesced sample must still reach the guest recognizers"
         );
-        assert_eq!(simcore_web_drag(1, 130.0, 165.0, 12.0), 1);
-        assert_eq!(simcore_web_drag(2, 130.0, 165.0, 16.0), 1);
-        assert_eq!(
-            EVENTS.with(|e| e.borrow().clone()),
-            vec![(0, 100.0, 150.0), (1, 130.0, 165.0), (2, 130.0, 165.0)],
-            "final move and end dispatch normally"
+        assert_eq!(simcore_web_drag(1, 105.0, 150.0, 12.0), 1);
+        assert_ne!(
+            simcore_web_frame_version(),
+            v_after_begin,
+            "final move flushes the deferred scene rebuild"
         );
+        assert_eq!(simcore_web_drag(2, 105.0, 150.0, 16.0), 1);
     }
 }
