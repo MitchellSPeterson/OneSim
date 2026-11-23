@@ -97,6 +97,9 @@ object JvmGuest {
             while (true) {
                 Snapshot.sendApplyNotifications()
                 loop.drain()
+                // State the drained tasks wrote (an animation's last frame settling a value) must reach the
+                // recomposer before deciding it is idle.
+                Snapshot.sendApplyNotifications()
                 if (!recomposer.hasPendingWork || frames >= 120) break
                 if (clock.hasAwaiters) {
                     lastFrame = System.nanoTime()
