@@ -90,8 +90,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `BlurStop` | ui-graphics | ⬜ |  |  |
 | `BorderScope` | foundation | ⬜ |  | Experimental |
 | `BorderStroke` | foundation | ⬜ |  |  |
-| `BottomAppBarDefaults` | material3 | ⬜ |  |  |
-| `BottomAppBarScrollBehavior` | material3 | ⬜ |  |  |
+| `BottomAppBarDefaults` | material3 | 🟠 | #73 | Scroll behaviors follow nested scrolling from `Modifier.scrollable`/`draggable` content; `verticalScroll` and lazy lists aren't implemented yet |
+| `BottomAppBarScrollBehavior` | material3 | 🟠 | #73 | Scroll behaviors follow nested scrolling from `Modifier.scrollable`/`draggable` content; `verticalScroll` and lazy lists aren't implemented yet |
 | `BottomSheetDefaults` | material3 | ⬜ |  | Experimental |
 | `BottomSheetScaffoldState` | material3 | ⬜ |  | Experimental |
 | `BoundsTransform` | animation | ⬜ |  |  |
@@ -160,7 +160,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `ComposeFoundationFlags` | foundation | ⬜ |  | Experimental |
 | `ComposeFoundationLayoutFlags` | foundation-layout | ⬜ |  | Experimental |
 | `ComposeMaterial3Flags` | material3 | ⬜ |  | Experimental |
-| `ComposeNavigator` | navigation-compose | ⬜ |  |  |
+| `ComposeNavigator` | navigation-compose | 🟠 | #73 | Shows destinations only inside `NavHost`; no `Navigator` state API |
 | `ComposeNavigatorDestinationBuilder` | navigation-compose | ⬜ |  |  |
 | `ComposeUiFlags` | ui | ⬜ |  | Experimental |
 | `ComposeUiUnitFlags` | ui-unit | ⬜ |  | Experimental |
@@ -200,7 +200,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `DatePickerFormatter` | material3 | ⬜ |  |  |
 | `DateRangePickerDefaults` | material3 | ⬜ |  |  |
 | `DecayAnimationSpec` | animation-core | ⬜ |  |  |
-| `DefaultNavTransitions` | navigation-compose | ⬜ |  |  |
+| `DefaultNavTransitions` | navigation-compose | ✅ | #73 |  |
 | `DefaultTooltipCaretShape` | material3 | ⬜ |  | Experimental |
 | `DeferredTargetAnimation` | animation-core | ⬜ |  |  |
 | `DeferredTransition` | animation-core | ⬜ |  |  |
@@ -212,7 +212,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `DeleteSurroundingTextInCodePointsCommand` | ui-text | ⬜ |  |  |
 | `DeviceFontFamilyName` | ui-text | ⬜ |  |  |
 | `Devices` | ui-tooling-preview | ⬜ |  |  |
-| `DialogNavigator` | navigation-compose | ⬜ |  |  |
+| `DialogNavigator` | navigation-compose | 🟠 | #73 | Shows destinations only inside `NavHost`; no `Navigator` state API |
 | `DialogNavigatorDestinationBuilder` | navigation-compose | ⬜ |  |  |
 | `DialogProperties` | ui | ⬜ |  |  |
 | `DialogWindowProvider` | ui | ⬜ |  |  |
@@ -236,9 +236,9 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `DragScope` | foundation | ✅ |  |  |
 | `DrawCacheModifier` | ui | ⬜ |  |  |
 | `DrawContext` | ui-graphics | ⬜ |  |  |
-| `DrawerDefaults` | material3 | ⬜ |  |  |
-| `DrawerState` | material3 | ⬜ |  |  |
-| `DrawerValue` | material3 | ⬜ |  |  |
+| `DrawerDefaults` | material3 | ✅ | #73 |  |
+| `DrawerState` | material3 | 🟠 | #73 | Settling after a fling uses a tween, without decay |
+| `DrawerValue` | material3 | ✅ | #73 |  |
 | `DrawModifier` | ui | ⬜ |  |  |
 | `DrawModifierNode` | ui | ⬜ |  |  |
 | `DrawResult` | ui | ⬜ |  |  |
@@ -507,7 +507,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Locale` | ui-text | ⬜ |  |  |
 | `LocaleList` | ui-text | ⬜ |  |  |
 | `LocalFullyDrawnReporterOwner` | activity-compose | ⬜ |  |  |
-| `LocalOnBackPressedDispatcherOwner` | activity-compose | ⬜ |  |  |
+| `LocalOnBackPressedDispatcherOwner` | activity-compose | ✅ | #73 |  |
 | `LookaheadScope` | ui | ⬜ |  |  |
 | `LoremIpsum` | ui-tooling-preview | ⬜ |  |  |
 | `ManagedActivityResultLauncher` | activity-compose | ⬜ |  |  |
@@ -536,7 +536,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `MinSizeScope` | foundation | ⬜ |  | Experimental |
 | `ModalBottomSheetDefaults` | material3 | ⬜ |  | Experimental |
 | `ModalBottomSheetProperties` | material3 | ⬜ |  | Experimental |
-| `ModalWideNavigationRailProperties` | material3 | ⬜ |  |  |
+| `ModalWideNavigationRailProperties` | material3 | 🟠 | #73 | No `securePolicy` |
 | `Modifier` | ui | ✅ | |  |
 | `ModifierInfo` | ui | ⬜ |  |  |
 | `ModifierLocal` | ui | ⬜ |  |  |
@@ -562,16 +562,16 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `MutatePriority` | foundation | ✅ |  |  |
 | `MutatorMutex` | foundation | ✅ |  |  |
 | `NavBackStackEntryInfo` | navigation-compose | ⬜ |  |  |
-| `NavigationBarDefaults` | material3 | ⬜ |  |  |
-| `NavigationBarItemColors` | material3 | ⬜ |  |  |
-| `NavigationBarItemDefaults` | material3 | ⬜ |  |  |
-| `NavigationDrawerItemColors` | material3 | ⬜ |  |  |
-| `NavigationDrawerItemDefaults` | material3 | ⬜ |  |  |
-| `NavigationItemColors` | material3 | ⬜ |  |  |
-| `NavigationItemIconPosition` | material3 | ⬜ |  |  |
-| `NavigationRailDefaults` | material3 | ⬜ |  |  |
-| `NavigationRailItemColors` | material3 | ⬜ |  |  |
-| `NavigationRailItemDefaults` | material3 | ⬜ |  |  |
+| `NavigationBarDefaults` | material3 | ✅ | #73 |  |
+| `NavigationBarItemColors` | material3 | ✅ | #73 |  |
+| `NavigationBarItemDefaults` | material3 | ✅ | #73 |  |
+| `NavigationDrawerItemColors` | material3 | ✅ | #73 |  |
+| `NavigationDrawerItemDefaults` | material3 | ✅ | #73 |  |
+| `NavigationItemColors` | material3 | ✅ | #73 |  |
+| `NavigationItemIconPosition` | material3 | ✅ | #73 |  |
+| `NavigationRailDefaults` | material3 | ✅ | #73 |  |
+| `NavigationRailItemColors` | material3 | ✅ | #73 |  |
+| `NavigationRailItemDefaults` | material3 | ✅ | #73 |  |
 | `NestedPrefetchScope` | foundation | ⬜ |  | Experimental |
 | `NestedScrollConnection` | ui | ⬜ |  |  |
 | `NestedScrollDispatcher` | ui | ⬜ |  |  |
@@ -768,9 +768,9 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `SharedTransitionScope` | animation | ⬜ |  |  |
 | `SheetState` | material3 | ⬜ |  | Experimental |
 | `SheetValue` | material3 | ⬜ |  | Experimental |
-| `ShortNavigationBarArrangement` | material3 | ⬜ |  |  |
-| `ShortNavigationBarDefaults` | material3 | ⬜ |  |  |
-| `ShortNavigationBarItemDefaults` | material3 | ⬜ |  |  |
+| `ShortNavigationBarArrangement` | material3 | ✅ | #73 |  |
+| `ShortNavigationBarDefaults` | material3 | ✅ | #73 |  |
+| `ShortNavigationBarItemDefaults` | material3 | ✅ | #73 |  |
 | `SingleChoiceSegmentedButtonRowScope` | material3 | ⬜ |  |  |
 | `Size` | ui-geometry | ✅ |  |  |
 | `SizeScope` | foundation | ⬜ |  | Experimental |
@@ -830,9 +830,9 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `SwitchColors` | material3 | ⬜ |  |  |
 | `SwitchDefaults` | material3 | ⬜ |  |  |
 | `SystemFontFamily` | ui-text | ⬜ |  |  |
-| `TabIndicatorScope` | material3 | ⬜ |  |  |
-| `TabPosition` | material3 | ⬜ |  |  |
-| `TabRowDefaults` | material3 | ⬜ |  |  |
+| `TabIndicatorScope` | material3 | 🟠 | #73 | No `tabIndicatorLayout` (needs custom layout) |
+| `TabPosition` | material3 | 🟠 | #73 | Positions given to deprecated rows' indicator lambdas are estimates |
+| `TabRowDefaults` | material3 | ✅ | #73 |  |
 | `TargetedFlingBehavior` | foundation | ⬜ |  |  |
 | `TaskDispatchers` | ui | ⬜ |  |  |
 | `TextAlign` | ui-text | ✅ | |  |
@@ -909,10 +909,10 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `TooltipAnchorPosition` | material3 | ⬜ |  | Experimental |
 | `TooltipDefaults` | material3 | ⬜ |  | Experimental |
 | `TooltipScope` | material3 | ⬜ |  | Experimental |
-| `TopAppBarColors` | material3 | ⬜ |  |  |
-| `TopAppBarDefaults` | material3 | ⬜ |  |  |
-| `TopAppBarScrollBehavior` | material3 | ⬜ |  |  |
-| `TopAppBarState` | material3 | ⬜ |  |  |
+| `TopAppBarColors` | material3 | ✅ | #73 |  |
+| `TopAppBarDefaults` | material3 | 🟠 | #73 | Scroll behaviors follow nested scrolling from `Modifier.scrollable`/`draggable` content; `verticalScroll` and lazy lists aren't implemented yet |
+| `TopAppBarScrollBehavior` | material3 | 🟠 | #73 | Scroll behaviors follow nested scrolling from `Modifier.scrollable`/`draggable` content; `verticalScroll` and lazy lists aren't implemented yet |
+| `TopAppBarState` | material3 | ✅ | #73 |  |
 | `TouchBoundsExpansion` | ui | ⬜ |  |  |
 | `TrackedRange` | foundation | ⬜ |  |  |
 | `TransferableContent` | foundation | ⬜ |  | Experimental |
@@ -976,11 +976,11 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Wallpapers` | ui-tooling-preview | ⬜ |  |  |
 | `WavyProgressIndicatorDefaults` | material3 | ⬜ |  |  |
 | `WhitePoint` | ui-graphics | ⬜ |  |  |
-| `WideNavigationRailColors` | material3 | ⬜ |  |  |
-| `WideNavigationRailDefaults` | material3 | ⬜ |  |  |
-| `WideNavigationRailItemDefaults` | material3 | ⬜ |  |  |
-| `WideNavigationRailState` | material3 | ⬜ |  |  |
-| `WideNavigationRailValue` | material3 | ⬜ |  |  |
+| `WideNavigationRailColors` | material3 | ✅ | #73 |  |
+| `WideNavigationRailDefaults` | material3 | ✅ | #73 |  |
+| `WideNavigationRailItemDefaults` | material3 | 🟠 | #73 | `indicatorPadding` returns one of its two ends |
+| `WideNavigationRailState` | material3 | ✅ | #73 |  |
+| `WideNavigationRailValue` | material3 | ✅ | #73 |  |
 | `WindowInfo` | ui | ⬜ |  |  |
 | `WindowInsets` | foundation-layout | ⬜ |  |  |
 | `WindowInsetsAnimation` | ui | ⬜ |  |  |

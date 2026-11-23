@@ -157,7 +157,7 @@ object Guest {
     }
 
     /**
-     * One `back` message (protocol section N) to the activity's `OnBackPressedDispatcher`: a predictive back gesture's
+     * One `back` message (protocol section X) to the activity's `OnBackPressedDispatcher`: a predictive back gesture's
      * start / progress / cancel / commit, or the back key (a lone commit).
      */
     fun dispatchBack(m: Map<*, *>) {
@@ -181,7 +181,7 @@ object Guest {
     }
 
     /** One `gesture` message (protocol section L): touches on the pointer input targets it names; a `back` message
-     * (section N) arriving on the same channel (the web bridge) goes to [dispatchBack]. */
+     * (section X) arriving on the same channel (the web bridge) goes to [dispatchBack]. */
     fun dispatchGesture(json: String) {
         val m = Json.parse(json) as? Map<*, *> ?: return
         if (m["type"] == "back") return dispatchBack(m)

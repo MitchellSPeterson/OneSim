@@ -1,4 +1,4 @@
-"""Compose guest wire test: navigation-compose and Android system back (protocol section N).
+"""Compose guest wire test: navigation-compose and Android system back (protocol section X).
 
 Drives NavLab.kt over stdin/stdout: taps go to clickables' gesture keys, back arrives as `back` messages (the back key
 is a lone `commit`, a swipe is `start`, `progress`..., then `commit` or `cancel`). Usage: nav_wire_test.py <NavLab launcher>

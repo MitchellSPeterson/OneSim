@@ -960,7 +960,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         android_status_bar(&mut nodes, params, cx.fonts, dark);
     }
     android_nav_handle(&mut nodes, params, dark);
-    // The app's window: edge swipes and the back key are Android system back (section N). Not drawn, not hit.
+    // The app's window: edge swipes and the back key are Android system back (section X). Not drawn, not hit.
     let mut back = Node::new("system_back", crate::interaction::SYSTEM_BACK);
     back.bounds = Rect { x: 0.0, y: 0.0, w, h };
     back.parent = Some(0);
@@ -998,6 +998,71 @@ mod tests {
 
     fn sized(id: &str, w: f64, h: f64) -> Value {
         json!({"kind":"compose","id":id,"component":"Box","props":{"modifier":[{"width":w},{"height":h}]}})
+    }
+
+    /// A tab like Material's text tab: its content plus 16 dp on each side, at least 48 dp tall.
+    fn tab(id: &str, content_w: f64) -> Value {
+        json!({"kind":"compose","id":id,"component":"Box","props":{"contentAlignment":[0.0,0.0],"modifier":[{"heightIn":[48.0,null]},{"padding":[16.0,0.0,16.0,0.0]}]},
+            "children":[sized(&format!("{id}/t"), content_w, 20.0)]})
+    }
+
+    fn tab_row(props: Value, indicator: Value) -> Value {
+        json!({"kind":"compose","id":"tr","component":"TabRow","props":props,"children":[
+            tab("a", 40.0), tab("b", 40.0), tab("c", 40.0),
+            {"kind":"compose","id":"div","component":"Box","props":{},"children":[
+                {"kind":"compose","id":"line","component":"Box","props":{"modifier":[{"fillMaxWidth":1.0},{"height":1.0}]}}]},
+            {"kind":"compose","id":"ind","component":"Box","props":{},"children":[
+                {"kind":"compose","id":"bar","component":"Box","props":{"modifier":[{"tabIndicator":indicator},{"height":3.0}]}}]}
+        ]})
+    }
+
+    /// (x, width) of the indicator bar inside a laid-out tab row, and the indicator slot's y.
+    fn indicator_of(l: &Laid) -> (f64, f64, f64) {
+        let (_, y, slot) = l.kids.last().expect("indicator slot");
+        let (x, _, bar) = &slot.kids[0].2.kids[0];
+        (*x, bar.w, *y)
+    }
+
+    #[test]
+    fn fixed_tab_rows_split_the_width_and_place_the_indicator() {
+        let c = C { min_w: 0.0, max_w: 300.0, min_h: 0.0, max_h: 800.0 };
+        let l = lay(tab_row(json!({}), json!({"index":1,"match":"content"})), c);
+        assert_eq!((l.w, l.h), (300.0, 48.0));
+        let tabs: Vec<(f64, f64)> = l.kids[..3].iter().map(|k| (k.0, k.2.w)).collect();
+        assert_eq!(tabs, vec![(0.0, 100.0), (100.0, 100.0), (200.0, 100.0)]);
+        // Content width (40 dp) centred under tab 1, at the bottom; the divider spans the row's bottom.
+        assert_eq!(indicator_of(&l), (130.0, 40.0, 45.0));
+        assert_eq!((l.kids[3].1, l.kids[3].2.w), (47.0, 300.0));
+        // The tab's width, and halfway through a slide from tab 0.
+        assert_eq!(indicator_of(&lay(tab_row(json!({}), json!({"index":2,"match":"tab"})), c)), (200.0, 100.0, 45.0));
+        let sliding = lay(tab_row(json!({}), json!({"index":1,"match":"content","from":[0,0,0.0],"progress":0.5})), c);
+        assert_eq!(indicator_of(&sliding).0, 80.0);
+        // Content narrower than 24 dp gets a 24 dp indicator.
+        let narrow = json!({"kind":"compose","id":"tr","component":"TabRow","props":{},"children":[tab("a", 10.0),
+            {"kind":"compose","id":"div","component":"Box","props":{}},
+            {"kind":"compose","id":"ind","component":"Box","props":{},"children":[
+                {"kind":"compose","id":"bar","component":"Box","props":{"modifier":[{"tabIndicator":{"index":0,"match":"content"}},{"height":3.0}]}}]}]});
+        assert_eq!(indicator_of(&lay(narrow, c)), (138.0, 24.0, 45.0));
+    }
+
+    #[test]
+    fn scrollable_tab_rows_scroll_to_centre_the_selected_tab() {
+        let c = C { min_w: 0.0, max_w: 300.0, min_h: 0.0, max_h: 800.0 };
+        let props = |sel: u32| json!({"scrollable":true,"selected":sel,"edgePadding":52.0,"minTabWidth":90.0,"scroll":{"seq":sel}});
+        let l = lay(tab_row(props(2), json!({"index":2,"match":"tab"})), c);
+        let (_, _, scroller) = l.kids.last().expect("scroller");
+        let info = match &scroller.deco { Deco::Control(n) => n.scroll.expect("scroll info"), _ => panic!("scroller") };
+        // Tabs 90 dp (minimum) from 52 dp: content 374 dp in 300, centring tab 2 (left 232) clamps at the end.
+        assert_eq!((info.max.0, info.offset.0), (74.0, 74.0));
+        assert_eq!(scroller.id, "tr@2", "each selection is a fresh scroll position");
+        let row = &scroller.kids[0].2;
+        let lefts: Vec<f64> = row.kids[..3].iter().map(|k| k.0).collect();
+        assert_eq!(lefts, vec![52.0, 142.0, 232.0]);
+        let (x, w) = (row.kids[3].2.kids[0].2.kids[0].0, row.kids[3].2.kids[0].2.kids[0].2.w);
+        assert_eq!((x, w), (232.0, 90.0));
+        let first = lay(tab_row(props(0), json!({"index":0,"match":"tab"})), c);
+        let (_, _, s0) = first.kids.last().expect("scroller");
+        assert_eq!(s0.kids[0].0, 0.0, "the first tab needs no scrolling");
     }
 
     #[test]

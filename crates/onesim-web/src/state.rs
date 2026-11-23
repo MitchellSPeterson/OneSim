@@ -418,7 +418,7 @@ pub(crate) fn dispatch(e: Effect) -> i32 {
                 }
             }
         }
-        // Android system back (section N): the Kotlin/Wasm guest takes it on the gesture channel (its `type` tells).
+        // Android system back (section X): the Kotlin/Wasm guest takes it on the gesture channel (its `type` tells).
         Effect::Back(events) => {
             with(|s| s.stale = true);
             #[cfg(all(target_family = "wasm", feature = "js-guest"))]

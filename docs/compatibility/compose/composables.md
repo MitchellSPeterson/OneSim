@@ -15,7 +15,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `AppBarRow` | material3 | ⬜ |  |  |
 | `AppBarWithSearch` | material3 | ⬜ |  | Experimental |
 | `AssistChip` | material3 | ⬜ |  |  |
-| `BackHandler` | activity-compose | ⬜ |  |  |
+| `BackHandler` | activity-compose | ✅ | #73 |  |
 | `Badge` | material3 | ⬜ |  |  |
 | `BadgedBox` | material3 | ⬜ |  |  |
 | `BasicAlertDialog` | material3 | ⬜ |  |  |
@@ -23,7 +23,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `BasicText` | foundation | 🟠 | | String only (no AnnotatedString); overflow always clips; no minLines |
 | `BasicTextField` | foundation | 🟠 |  | String value and change callback, host keyboard input. |
 | `BasicTooltipBox` | foundation | ⬜ |  | Experimental |
-| `BottomAppBar` | material3 | ⬜ |  |  |
+| `BottomAppBar` | material3 | 🟠 | #73 | Scroll behaviors follow nested scrolling from `Modifier.scrollable`/`draggable` content; `verticalScroll` and lazy lists aren't implemented yet; with a scroll behavior a `height` in the modifier is ignored |
 | `BottomSheet` | material3 | ⬜ |  | Experimental |
 | `BottomSheetScaffold` | material3 | ⬜ |  | Experimental |
 | `Box` | foundation-layout | ✅ | |  |
@@ -32,7 +32,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `ButtonGroup` | material3 | ⬜ |  |  |
 | `CapturedAnimatedVisibility` | animation | ⬜ |  |  |
 | `Card` | material3 | 🟠 | | Pixel-checked on Android 17; ripple drawn as a plain circle (no Android 12+ sparkle shader) |
-| `CenterAlignedTopAppBar` | material3 | 🟠 | | No scroll behavior; navigation icon slot has no Icon support yet |
+| `CenterAlignedTopAppBar` | material3 | 🟠 | #73 | Scroll behaviors follow nested scrolling from `Modifier.scrollable`/`draggable` content; `verticalScroll` and lazy lists aren't implemented yet; a long centred title overlaps the icons instead of being pushed clear |
 | `CheckableDropdownMenuItem` | material3 | ⬜ |  |  |
 | `Checkbox` | material3 | ⬜ |  |  |
 | `CircularProgressIndicator` | material3 | ⬜ |  |  |
@@ -52,8 +52,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Dialog` | ui | ⬜ |  |  |
 | `DialogHost` | navigation-compose | ⬜ |  |  |
 | `DisableSelection` | foundation | ⬜ |  |  |
-| `DismissibleDrawerSheet` | material3 | ⬜ |  |  |
-| `DismissibleNavigationDrawer` | material3 | ⬜ |  |  |
+| `DismissibleDrawerSheet` | material3 | 🟠 | #73 | Predictive back insets the container instead of scaling it (no scale transform on the host) |
+| `DismissibleNavigationDrawer` | material3 | 🟠 | #73 | The content moves by the sheet's estimated width; a fling settles with a tween, without decay |
 | `Divider` | material3 | ⬜ |  | Deprecated |
 | `DockedSearchBar` | material3 | ⬜ |  | Deprecated; Experimental |
 | `DropdownMenu` | material3 | ⬜ |  |  |
@@ -81,7 +81,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `FilledTonalToggleButton` | material3 | ⬜ |  |  |
 | `FilterChip` | material3 | ⬜ |  |  |
 | `FlexBox` | foundation-layout | ⬜ |  |  |
-| `FlexibleBottomAppBar` | material3 | ⬜ |  |  |
+| `FlexibleBottomAppBar` | material3 | 🟠 | #73 | Scroll behaviors follow nested scrolling from `Modifier.scrollable`/`draggable` content; `verticalScroll` and lazy lists aren't implemented yet |
 | `FloatingActionButton` | material3 | 🟠 | | No Android reference screenshot yet; ripple drawn as a plain circle (no Android 12+ sparkle shader) |
 | `FloatingActionButtonMenu` | material3 | ⬜ |  |  |
 | `FloatingActionButtonMenuItem` | material3 | ⬜ |  |  |
@@ -103,9 +103,9 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `InterceptPlatformTextInput` | ui | ⬜ |  |  |
 | `Label` | material3 | ⬜ |  | Experimental |
 | `LargeExtendedFloatingActionButton` | material3 | ⬜ |  |  |
-| `LargeFlexibleTopAppBar` | material3 | ⬜ |  |  |
+| `LargeFlexibleTopAppBar` | material3 | 🟠 | #73 | Titles anchored to the bottom row are placed by an estimated text baseline (one line per text style); Scroll behaviors follow nested scrolling from `Modifier.scrollable`/`draggable` content; `verticalScroll` and lazy lists aren't implemented yet |
 | `LargeFloatingActionButton` | material3 | ⬜ |  |  |
-| `LargeTopAppBar` | material3 | ⬜ |  |  |
+| `LargeTopAppBar` | material3 | 🟠 | #73 | Titles anchored to the bottom row are placed by an estimated text baseline (one line per text style); Scroll behaviors follow nested scrolling from `Modifier.scrollable`/`draggable` content; `verticalScroll` and lazy lists aren't implemented yet |
 | `Layout` | ui | ⬜ |  |  |
 | `LazyColumn` | foundation | ⬜ |  |  |
 | `LazyHorizontalGrid` | foundation | ⬜ |  |  |
@@ -115,30 +115,30 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `LazyRow` | foundation | ⬜ |  |  |
 | `LazyVerticalGrid` | foundation | ⬜ |  |  |
 | `LazyVerticalStaggeredGrid` | foundation | ⬜ |  |  |
-| `LeadingIconTab` | material3 | ⬜ |  |  |
+| `LeadingIconTab` | material3 | ✅ | #73 |  |
 | `LinearProgressIndicator` | material3 | ⬜ |  |  |
 | `LinearWavyProgressIndicator` | material3 | ⬜ |  |  |
 | `ListItem` | material3 | ⬜ |  |  |
 | `LoadingIndicator` | material3 | ⬜ |  | Experimental |
-| `LocalOwnersProvider` | navigation-compose | ⬜ |  |  |
+| `LocalOwnersProvider` | navigation-compose | 🟠 | #73 | Provides the entry's lifecycle owner and saved UI state; no `ViewModelStoreOwner` or `SavedStateRegistryOwner` |
 | `LookaheadAnimationVisualDebugging` | animation | ⬜ |  | Experimental |
 | `MaterialExpressiveTheme` | material3 | ⬜ |  |  |
 | `MediumExtendedFloatingActionButton` | material3 | ⬜ |  |  |
-| `MediumFlexibleTopAppBar` | material3 | ⬜ |  |  |
+| `MediumFlexibleTopAppBar` | material3 | 🟠 | #73 | Titles anchored to the bottom row are placed by an estimated text baseline (one line per text style); Scroll behaviors follow nested scrolling from `Modifier.scrollable`/`draggable` content; `verticalScroll` and lazy lists aren't implemented yet |
 | `MediumFloatingActionButton` | material3 | ⬜ |  |  |
-| `MediumTopAppBar` | material3 | ⬜ |  |  |
+| `MediumTopAppBar` | material3 | 🟠 | #73 | Titles anchored to the bottom row are placed by an estimated text baseline (one line per text style); Scroll behaviors follow nested scrolling from `Modifier.scrollable`/`draggable` content; `verticalScroll` and lazy lists aren't implemented yet |
 | `ModalBottomSheet` | material3 | ⬜ |  | Experimental |
-| `ModalDrawerSheet` | material3 | ⬜ |  |  |
-| `ModalNavigationDrawer` | material3 | ⬜ |  |  |
-| `ModalWideNavigationRail` | material3 | ⬜ |  |  |
+| `ModalDrawerSheet` | material3 | 🟠 | #73 | Predictive back insets the container instead of scaling it (no scale transform on the host) |
+| `ModalNavigationDrawer` | material3 | 🟠 | #73 | The closed position uses the sheet's estimated width (the guest can't measure); Predictive back insets the container instead of scaling it (no scale transform on the host); a fling settles with a tween, without decay; the scrim doesn't dim the status bar |
+| `ModalWideNavigationRail` | material3 | 🟠 | #73 | Predictive back insets the container instead of scaling it (no scale transform on the host); no Escape key dismissal; with `hideOnCollapse` the first slide-in starts from 360 dp |
 | `MultiChoiceSegmentedButtonRow` | material3 | ⬜ |  |  |
 | `MultiMeasureLayout` | ui | ⬜ |  | Deprecated |
-| `NavHost` | navigation-compose | ⬜ |  |  |
-| `NavigationBar` | material3 | ⬜ |  |  |
-| `NavigationBarItem` | material3 | ⬜ |  |  |
-| `NavigationDrawerItem` | material3 | ⬜ |  |  |
-| `NavigationRail` | material3 | ⬜ |  |  |
-| `NavigationRailItem` | material3 | ⬜ |  |  |
+| `NavHost` | navigation-compose | 🟠 | #73 | String routes only: type-safe (`@Serializable`) routes aren't supported; destinations aren't wrapped in `AnimatedContent`: fades and slides run (slides sized by the screen), scale and expand/shrink aren't drawn; entries don't pass through STARTED during transitions; no ViewModels |
+| `NavigationBar` | material3 | ✅ | #73 |  |
+| `NavigationBarItem` | material3 | 🟠 | #73 | The indicator assumes a 24 dp icon; with `alwaysShowLabel = false` the icon shift assumes a one-line label |
+| `NavigationDrawerItem` | material3 | ✅ | #73 |  |
+| `NavigationRail` | material3 | ✅ | #73 |  |
+| `NavigationRailItem` | material3 | 🟠 | #73 | The indicator assumes a 24 dp icon; with `alwaysShowLabel = false` the icon shift assumes a one-line label |
 | `OutlinedButton` | material3 | 🟠 | | Pixel-checked on Android 17; ripple drawn as a plain circle (no Android 12+ sparkle shader) |
 | `OutlinedCard` | material3 | 🟠 | | Pixel-checked on Android 17; ripple drawn as a plain circle (no Android 12+ sparkle shader) |
 | `OutlinedIconButton` | material3 | ⬜ |  |  |
@@ -147,13 +147,13 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `OutlinedTextField` | material3 | ⬜ |  |  |
 | `OutlinedToggleButton` | material3 | ⬜ |  |  |
 | `Path` | ui, ui-graphics | ⬜ |  |  |
-| `PermanentDrawerSheet` | material3 | ⬜ |  |  |
-| `PermanentNavigationDrawer` | material3 | ⬜ |  |  |
+| `PermanentDrawerSheet` | material3 | ✅ | #73 |  |
+| `PermanentNavigationDrawer` | material3 | ✅ | #73 |  |
 | `PlainTooltip` | material3 | ⬜ |  | Experimental |
 | `Popup` | ui | ⬜ |  |  |
-| `PredictiveBackHandler` | activity-compose | ⬜ |  |  |
-| `PrimaryScrollableTabRow` | material3 | ⬜ |  |  |
-| `PrimaryTabRow` | material3 | ⬜ |  |  |
+| `PredictiveBackHandler` | activity-compose | ✅ | #73 |  |
+| `PrimaryScrollableTabRow` | material3 | 🟠 | #73 | The host scrolls the row: `scrollState` isn't connected to it |
+| `PrimaryTabRow` | material3 | ✅ | #73 |  |
 | `ProvideTextStyle` | material3 | ✅ | |  |
 | `PullToRefreshBox` | material3 | ⬜ |  |  |
 | `RadioButton` | material3 | ⬜ |  |  |
@@ -166,19 +166,19 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Row` | foundation-layout | ✅ | |  |
 | `Scaffold` | material3 | 🟠 | | Bars are stacked around the content (content does not scroll under them); no snackbar host |
 | `Scrim` | material3 | ⬜ |  |  |
-| `ScrollableTabRow` | material3 | ⬜ |  | Deprecated |
+| `ScrollableTabRow` | material3 | 🟠 | #73 | Deprecated. The indicator lambda gets estimated `TabPosition`s (90 dp tabs); `tabIndicatorOffset` places the indicator exactly |
 | `ScrollField` | material3 | ⬜ |  |  |
 | `SearchBar` | material3 | ⬜ |  |  |
-| `SecondaryScrollableTabRow` | material3 | ⬜ |  |  |
-| `SecondaryTabRow` | material3 | ⬜ |  |  |
+| `SecondaryScrollableTabRow` | material3 | 🟠 | #73 | The host scrolls the row: `scrollState` isn't connected to it |
+| `SecondaryTabRow` | material3 | ✅ | #73 |  |
 | `SecureTextField` | material3 | ⬜ |  |  |
 | `SegmentedButton` | material3 | ⬜ |  |  |
 | `SegmentedListItem` | material3 | ⬜ |  |  |
 | `SelectableDropdownMenuItem` | material3 | ⬜ |  |  |
 | `SelectionContainer` | foundation | ⬜ |  |  |
 | `SharedTransitionLayout` | animation | ⬜ |  |  |
-| `ShortNavigationBar` | material3 | ⬜ |  |  |
-| `ShortNavigationBarItem` | material3 | ⬜ |  |  |
+| `ShortNavigationBar` | material3 | ✅ | #73 |  |
+| `ShortNavigationBarItem` | material3 | 🟠 | #73 | With the start icon position the indicator fades in instead of growing in width |
 | `SingleChoiceSegmentedButtonRow` | material3 | ⬜ |  |  |
 | `Slider` | material3 | 🟠 |  | Value range, steps, tap and drag. |
 | `SmallExtendedFloatingActionButton` | material3 | ⬜ |  |  |
@@ -193,8 +193,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Surface` | material3 | 🟠 | | Pixel-checked on Android 17; ripple drawn as a plain circle (no Android 12+ sparkle shader); tonalElevation does not tint |
 | `SwipeToDismissBox` | material3 | ⬜ |  |  |
 | `Switch` | material3 | 🟠 | | Pixel-checked on Android 17; 28 dp thumb and unbounded ripple while pressed; thumbContent not drawn |
-| `Tab` | material3 | ⬜ |  |  |
-| `TabRow` | material3 | ⬜ |  | Deprecated |
+| `Tab` | material3 | 🟠 | #73 | With both text and icon the text is placed by an estimated baseline |
+| `TabRow` | material3 | 🟠 | #73 | Deprecated. The indicator lambda gets estimated `TabPosition`s (equal shares of the screen); `tabIndicatorOffset` places the indicator exactly |
 | `Text` | material3 | 🟠 | | String only (no AnnotatedString); overflow always clips; custom fonts render as Roboto |
 | `TextButton` | material3 | 🟠 | | Pixel-checked on Android 17; ripple drawn as a plain circle (no Android 12+ sparkle shader) |
 | `TextField` | material3 | 🟠 |  | Filled string field, enabled and read-only state, host keyboard input. |
@@ -205,15 +205,15 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `ToggleButton` | material3 | ⬜ |  |  |
 | `ToggleFloatingActionButton` | material3 | ⬜ |  |  |
 | `TooltipBox` | material3 | ⬜ |  | Experimental |
-| `TopAppBar` | material3 | 🟠 | | No scroll behavior; navigation icon slot has no Icon support yet |
+| `TopAppBar` | material3 | 🟠 | #73 | Scroll behaviors follow nested scrolling from `Modifier.scrollable`/`draggable` content; `verticalScroll` and lazy lists aren't implemented yet |
 | `TopSearchBar` | material3 | ⬜ |  | Deprecated; Experimental |
 | `TriStateCheckbox` | material3 | ⬜ |  |  |
-| `TwoRowsTopAppBar` | material3 | ⬜ |  |  |
+| `TwoRowsTopAppBar` | material3 | 🟠 | #73 | Titles anchored to the bottom row are placed by an estimated text baseline (one line per text style); Scroll behaviors follow nested scrolling from `Modifier.scrollable`/`draggable` content; `verticalScroll` and lazy lists aren't implemented yet |
 | `VerticalDivider` | material3 | ✅ | |  |
 | `VerticalDragHandle` | material3 | ⬜ |  |  |
 | `VerticalFloatingToolbar` | material3 | ⬜ |  |  |
 | `VerticalPager` | foundation | ⬜ |  |  |
 | `VerticalSlider` | material3 | ⬜ |  |  |
 | `VibrantTimePickerDialog` | material3 | ⬜ |  |  |
-| `WideNavigationRail` | material3 | ⬜ |  |  |
-| `WideNavigationRailItem` | material3 | ⬜ |  |  |
+| `WideNavigationRail` | material3 | 🟠 | #73 | Width animates between exact end states with approximate in-between frames; a header wider than 96 dp wraps when collapsed |
+| `WideNavigationRailItem` | material3 | 🟠 | #73 | Switches between top and start layouts halfway instead of morphing the indicator |

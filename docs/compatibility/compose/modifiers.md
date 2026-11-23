@@ -81,7 +81,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `Modifier.modifierLocalProvider` | ui | ⬜ |  |  |
 | `Modifier.motionEventSpy` | ui | ⬜ |  |  |
 | `Modifier.navigationBarsPadding` | foundation-layout | 🟠 | | Top (status bar) and bottom (navigation bar) insets only |
-| `Modifier.nestedScroll` | ui | ⬜ |  |  |
+| `Modifier.nestedScroll` | ui | 🟠 | #73 | Only `scrollable` and `draggable` content dispatches nested scrolling; no `nestedScrollModifierNode` |
 | `Modifier.nonInteractiveScrollbar` | material3 | ⬜ |  |  |
 | `Modifier.offset` | foundation-layout | ✅ | |  |
 | `Modifier.onConsumedWindowInsetsChanged` | foundation-layout | ⬜ |  |  |

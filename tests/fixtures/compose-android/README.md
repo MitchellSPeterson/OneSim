@@ -1,7 +1,8 @@
 # compose-android ground-truth fixtures
 
-Real Jetpack Compose (material3 1.4.0, compose-bom 2026.09.00) running `examples/compose-counter`,
-`examples/compose-showcase`, `examples/compose-input` and `examples/compose-interaction` unmodified, built as one APK by `frameworks/compose/reference-app` and captured on the
+Real Jetpack Compose (compose-bom 2026.09.00 with material3 1.5.0-beta01, navigation-compose 2.10.0-rc01) running
+`examples/compose-counter`, `examples/compose-showcase`, `examples/compose-input`, `examples/compose-interaction` and
+`examples/compose-navigation` unmodified, built as one APK by `frameworks/compose/reference-app` and captured on the
 Android 17 (API 37) Pixel 10a emulator through agent-device (T3 device tools). `scripts/compare-android.sh` renders the
 same states on OneSim and requires every state to differ in < 2% of pixels (`scripts/compare_ios.py`).
 
@@ -48,3 +49,12 @@ AGENT_DEVICE=... GRADLE=gradle tests/fixtures/compose-android/capture.sh
 - Status bar: clock 14 sp regular, box centred at (57.9, 26.9) dp; battery 23.8 x 12.9 dp pill + 1.6 x 6.5 dp nub
   ending at x 382.9 dp; wifi two arcs + dot in a 16 x 11.8 dp box; icons black on light apps, white on dark.
 - Navigation handle 108 x 4 dp: black at 60% (light), white at 92% (dark).
+| navigation | navigation | launch: medium top app bar, primary tab row, NavHost inbox, navigation bar |
+| navigation-detail | navigation | Social tab, "Social message 2" (NavHost pushes `message/2`) |
+| navigation-changed | navigation | then the back key (pops to the inbox), then the Search bar item |
+| drawer | navigation | DrawerActivity: "Open drawer" (modal drawer sheet with items and a badge) |
+| bars | navigation | BarsActivity: large top app bar, secondary scrollable tabs, navigation rail with a header FAB, bottom app bar |
+| bars-changed | navigation | Collapse (top bar to its collapsed height), Podcasts tab (row scrolls to centre it), Saved rail item |
+| expressive | navigation | ExpressiveActivity: medium flexible top app bar with a subtitle, expanded wide navigation rail, flexible bottom app bar, short navigation bar |
+
+`SIMCORE_CAPTURE_ONLY=navigation` recaptures just the navigation states.

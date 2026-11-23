@@ -10,5 +10,9 @@
         <activity android:name="com.example.showcase.ShowcaseActivity" android:exported="true" />
         <activity android:name="com.example.input.InputActivity" android:exported="true" />
         <activity android:name="com.example.interaction.InteractionActivity" android:exported="true" />
+        <activity android:name="com.example.navigation.NavigationActivity" android:exported="true" />
+        <activity android:name="com.example.navigation.DrawerActivity" android:exported="true" />
+        <activity android:name="com.example.navigation.BarsActivity" android:exported="true" />
+        <activity android:name="com.example.navigation.ExpressiveActivity" android:exported="true" />
     </application>
 </manifest>

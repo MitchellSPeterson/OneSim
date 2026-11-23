@@ -228,7 +228,7 @@ pub struct GestureTouch {
     pub targets: Vec<GestureTarget>,
 }
 
-/// Phase of an Android system back (protocol section N): a predictive back gesture is `start`, `progress`..., then
+/// Phase of an Android system back (protocol section X): a predictive back gesture is `start`, `progress`..., then
 /// `commit` or `cancel`; the back key (or a button press) is a lone `commit`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -248,7 +248,7 @@ pub enum SwipeEdge {
     None,
 }
 
-/// One Android system back event (protocol section N). `progress` is 0...1, `x`/`y` the finger in screen points,
+/// One Android system back event (protocol section X). `progress` is 0...1, `x`/`y` the finger in screen points,
 /// `time` in ms.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct BackEvent {
@@ -283,7 +283,7 @@ pub enum HostMessage {
     TouchAsk { ask: u64 },
     /// SwiftUI touch on views with gestures (section L). Not version-gated: gesture keys are structural paths.
     Gesture(GestureTouch),
-    /// Android system back (section N): the back key or a predictive back swipe from a screen edge. Not version-gated.
+    /// Android system back (section X): the back key or a predictive back swipe from a screen edge. Not version-gated.
     Back(BackEvent),
     /// React Native layout frames `tag -> [x, y, w, h]` in page points.
     Layout { frames: std::collections::BTreeMap<String, [f64; 4]> },

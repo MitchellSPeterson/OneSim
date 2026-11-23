@@ -20,7 +20,7 @@ pub enum Effect {
     TextInput { field: u64, version: u64, text: String },
     /// Deliver touches to SwiftUI gesture views, in order (protocol section L). Not version-gated.
     Gesture(Vec<GestureTouch>),
-    /// Deliver Android system back events to the guest, in order (protocol section N). Not version-gated.
+    /// Deliver Android system back events to the guest, in order (protocol section X). Not version-gated.
     Back(Vec<BackEvent>),
     /// Only interaction state changed (scroll, focus, shift): re-layout, no guest call.
     Redraw,
@@ -62,7 +62,7 @@ pub struct Interaction {
     focus_tree: Option<u64>,
     keypad: Option<Keypad>,
     phone_symbols: bool,
-    /// A finger swiping back from a screen edge (Android, section N).
+    /// A finger swiping back from a screen edge (Android, section X).
     back: Option<BackSwipe>,
 }
 
@@ -138,7 +138,7 @@ impl Touch {
     }
 }
 
-/// Scene node kind marking an Android app's window: edge swipes and the back key are system back (section N).
+/// Scene node kind marking an Android app's window: edge swipes and the back key are system back (section X).
 pub const SYSTEM_BACK: &str = "system_back";
 
 /// Time between the lift of the first tap of a synthesized double tap and the second touch (ms).
