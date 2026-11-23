@@ -55,6 +55,7 @@ open class NavController {
                 val d = if (e.destination.id == graph.id) graph else graph.findDeep(e.destination.id)
                 if (d != null) e.destination = d
             }
+            dispatch()
             return
         }
         for (e in backQueue.toList()) discard(e)
@@ -149,12 +150,19 @@ open class NavController {
             dispatch()
             return
         }
-        // Parent graphs not yet on the back stack, outermost first.
+        // Parent graphs not already enclosing the top of the back stack, outermost first.
         val parents = target.hierarchy.drop(1).filterIsInstance<NavGraph>().toList().asReversed()
-        for (p in parents) if (backQueue.none { it.destination.id == p.id && it.destination is NavGraph }) backQueue.add(newEntry(p, args))
+        for (p in parents) if (!encloses(p)) backQueue.add(newEntry(p, args))
         backQueue.add(newEntry(target, args))
         isPop.value = false
         dispatch()
+    }
+
+    /** Whether an entry of graph [g] is on the back stack with only its own destinations above it. */
+    private fun encloses(g: NavGraph): Boolean {
+        val i = backQueue.indexOfLast { it.destination.id == g.id && it.destination is NavGraph }
+        if (i < 0) return false
+        return backQueue.subList(i + 1, backQueue.size).all { e -> e.destination.hierarchy.any { it.id == g.id } }
     }
 
     // ---- pop -----------------------------------------------------------------------------------------------------
@@ -205,8 +213,10 @@ open class NavController {
     private fun popFrom(from: Int, saveState: Boolean): Boolean {
         if (from >= backQueue.size) return false
         var start = from
-        // Graphs left without destinations above them go too (never the root graph).
-        while (start > 1 && backQueue[start - 1].destination is NavGraph) start--
+        // Graphs left without destinations above them go too; with no destination left, the whole back stack goes
+        // (as in AndroidX: the NavHost shows nothing).
+        while (start > 0 && backQueue[start - 1].destination is NavGraph) start--
+        if (start > 0 && backQueue.subList(0, start).all { it.destination is NavGraph }) start = 0
         val popped = backQueue.subList(start, backQueue.size).toList()
         repeat(popped.size) { backQueue.removeAt(backQueue.size - 1) }
         if (saveState) {
@@ -280,12 +290,13 @@ open class NavController {
                 else -> Lifecycle.State.CREATED
             }
         }
-        backStackFlow.value = list
+        backStackFlow.value = list.toList()
         visibleFlow.value = list.filter { it.maxLifecycle.isAtLeast(Lifecycle.State.STARTED) && it.destination !is NavGraph }
         currentEntryFlow.value = list.lastOrNull()
         if (top != null) {
             val now = top.destination to top.arguments
-            if (lastDispatched?.first !== now.first || lastDispatched?.second != now.second) {
+            // The same destination (by id) with the same arguments is no change, even from a rebuilt graph.
+            if (lastDispatched?.first?.id != now.first.id || lastDispatched?.second != now.second) {
                 lastDispatched = now
                 for (l in listeners.toList()) l.onDestinationChanged(this, top.destination, top.arguments)
             }

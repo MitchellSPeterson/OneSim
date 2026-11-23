@@ -33,6 +33,14 @@ object Guest {
             screenHeightState.value = value
         }
 
+    /** Set the screen size (dp); ignored unless both sides are positive. */
+    fun setViewport(width: Float, height: Float) {
+        if (width > 0f && height > 0f) {
+            screenWidth = width
+            screenHeight = height
+        }
+    }
+
     private val insetTopState = mutableStateOf(0f)
     private val insetBottomState = mutableStateOf(0f)
 

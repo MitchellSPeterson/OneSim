@@ -577,7 +577,6 @@ impl Cx<'_> {
     /// split the width equally (`TabRowImpl`); scrollable ones give each tab its own width, at least `minTabWidth`,
     /// between `edgePadding`s, and scroll horizontally with the selected tab centred (`ScrollableTabData`).
     fn tab_row(&mut self, n: &ViewNode, p: &Value, children: &[ViewNode], c: C) -> Laid {
-        // The tabs, then the divider slot and the indicator slot.
         let count = children.len().saturating_sub(2);
         let (tabs, slots) = children.split_at(count);
         let (divider, indicator) = (slots.first(), slots.get(1));
@@ -653,13 +652,12 @@ impl Cx<'_> {
         node.scroll = Some(ScrollInfo { max: (max, 0.0), offset: (offset, 0.0), vertical: false, snap: None, content: Some((content_w, h)), page: None, aligned: false });
         let scroller = Laid { id: sid, w: viewport, h, deco: Deco::Control(Box::new(node)), kids: vec![(-offset, 0.0, inner)] };
         let mut kids = vec![];
-        let total_h = h;
         if let Some(dv) = divider {
             let l = self.measure(dv, C { min_w: 0.0, max_w: width, min_h: 0.0, max_h: INF });
-            kids.push((0.0, total_h - l.h, l));
+            kids.push((0.0, h - l.h, l));
         }
         kids.push((0.0, 0.0, scroller));
-        let (w, h) = c.size(width, total_h);
+        let (w, h) = c.size(width, h);
         Laid { id: n.id.clone(), w, h, deco: Deco::Core("tab_row"), kids }
     }
 

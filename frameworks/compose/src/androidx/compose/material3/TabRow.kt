@@ -88,7 +88,7 @@ private class TabIndicatorElement(val index: Int, val matchContent: Boolean, val
     override fun wire(state: NodeState, cx: WireCx) {
         val s = state as TabIndicatorState
         s.update(index, spec)
-        val from = if (s.progress.floatValue < 1f) ""","from":[${s.fromA},${s.fromB},${jsonNum(s.fromP)}],"progress":${jsonNum(s.progress.floatValue)}""" else ""
+        val from = if (s.progress < 1f) ""","from":[${s.fromA},${s.fromB},${jsonNum(s.fromP)}],"progress":${jsonNum(s.progress)}""" else ""
         cx.add("""{"tabIndicator":{"index":$index,"match":"${if (matchContent) "content" else "tab"}"$from}}""")
     }
 
@@ -102,7 +102,9 @@ private class TabIndicatorState : NodeState() {
     var fromA = 0
     var fromB = 0
     var fromP = 0f
-    val progress = mutableFloatStateOf(1f)
+    /** Read when the tree is written (state written there would not stick); [frames] makes each step send a tree. */
+    var progress = 1f
+    private val frames = mutableFloatStateOf(1f)
     private var job: kotlinx.coroutines.Job? = null
 
     fun update(index: Int, spec: FiniteAnimationSpec<Float>) {
@@ -112,22 +114,26 @@ private class TabIndicatorState : NodeState() {
             return
         }
         // Start from where the indicator is now (approximated between the previous slide's ends).
-        if (progress.floatValue < 1f) {
+        if (progress < 1f) {
             fromA = fromB
             fromB = target
-            fromP = progress.floatValue
+            fromP = progress
         } else {
             fromA = target
             fromB = target
             fromP = 0f
         }
         target = index
-        progress.floatValue = 0f
+        progress = 0f
         job?.cancel()
         job = Guest.scope.launch {
             val a = Animatable(0f, 0.001f)
-            a.animateTo(1f, spec) { progress.floatValue = value }
-            progress.floatValue = 1f
+            a.animateTo(1f, spec) {
+                progress = value
+                frames.floatValue = value
+            }
+            progress = 1f
+            frames.floatValue = 1f
         }
     }
 

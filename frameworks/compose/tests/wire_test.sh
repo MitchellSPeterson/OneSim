@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the test labs and the counter example and drives them over guest wire B/L/N: pointer input, navigation and
+# Builds the test labs and the counter example and drives them over guest wire B/L/X: pointer input, navigation and
 # system back, app bars, navigation bars and rails, drawers. Exit 0 = pass.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"

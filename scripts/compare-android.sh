@@ -34,4 +34,8 @@ nav drawer --root-view DrawerScreen --click "Open drawer" --wait 1200
 nav bars --root-view BarsScreen
 nav bars-changed --root-view BarsScreen --click Collapse --wait 600 --click Podcasts --wait 800 --click Saved --wait 800
 nav expressive --root-view ExpressiveScreen
+nav more-bars --root-view MoreBarsScreen
+nav drawer-permanent --root-view PermanentDrawerScreen
+nav drawer-dismissible --root-view DismissibleDrawerScreen --click Open --wait 1200
+nav rail-modal --root-view ModalRailScreen --click "Expand rail" --wait 1200
 python3 scripts/compare_ios.py tests/fixtures/compose-android "$out/onesim" "$out"

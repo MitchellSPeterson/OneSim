@@ -56,5 +56,9 @@ AGENT_DEVICE=... GRADLE=gradle tests/fixtures/compose-android/capture.sh
 | bars | navigation | BarsActivity: large top app bar, secondary scrollable tabs, navigation rail with a header FAB, bottom app bar |
 | bars-changed | navigation | Collapse (top bar to its collapsed height), Podcasts tab (row scrolls to centre it), Saved rail item |
 | expressive | navigation | ExpressiveActivity: medium flexible top app bar with a subtitle, expanded wide navigation rail, flexible bottom app bar, short navigation bar |
+| more-bars | navigation | MoreBarsActivity: centre-aligned, large flexible (with subtitle) and two-row top app bars, leading-icon tabs, scrollable tabs centred on "Day 4" |
+| drawer-permanent | navigation | PermanentDrawerActivity: 240 dp permanent drawer sheet beside the content |
+| drawer-dismissible | navigation | DismissibleDrawerActivity: Open (the sheet pushes the content aside) |
+| rail-modal | navigation | ModalRailActivity: Expand rail (modal wide navigation rail over a scrim) |
 
 `SIMCORE_CAPTURE_ONLY=navigation` recaptures just the navigation states.

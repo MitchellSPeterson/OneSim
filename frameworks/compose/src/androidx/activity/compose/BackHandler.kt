@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import onesim.compose.Guest
 
 /** The [OnBackPressedDispatcherOwner] of the composition: the activity unless something provides another. */
@@ -52,8 +53,11 @@ fun BackHandler(enabled: Boolean = true, onBack: () -> Unit) {
         "No OnBackPressedDispatcherOwner was provided via LocalOnBackPressedDispatcherOwner"
     }
     val dispatcher = owner.onBackPressedDispatcher
-    DisposableEffect(owner, dispatcher) {
-        dispatcher.addCallback(owner, callback)
+    // Registered while the composition's lifecycle owner (a NavHost entry, else the activity) is started: a
+    // destination leaving the screen stops handling back.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, dispatcher) {
+        dispatcher.addCallback(lifecycleOwner, callback)
         onDispose { callback.remove() }
     }
 }
@@ -103,8 +107,11 @@ fun PredictiveBackHandler(enabled: Boolean = true, onBack: suspend (progress: Fl
         "No OnBackPressedDispatcherOwner was provided via LocalOnBackPressedDispatcherOwner"
     }
     val dispatcher = owner.onBackPressedDispatcher
-    DisposableEffect(owner, dispatcher) {
-        dispatcher.addCallback(owner, callback)
+    // Registered while the composition's lifecycle owner (a NavHost entry, else the activity) is started: a
+    // destination leaving the screen stops handling back.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, dispatcher) {
+        dispatcher.addCallback(lifecycleOwner, callback)
         onDispose { callback.remove() }
     }
 }

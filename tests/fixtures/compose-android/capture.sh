@@ -66,6 +66,10 @@ capture_navigation() {
   launch com.example.navigation.BarsActivity; shot bars
   tap "$(ref Collapse)"; w 600; tap "$(ref Podcasts)"; w 800; tap "$(ref Saved)"; w 800; shot bars-changed
   launch com.example.navigation.ExpressiveActivity; shot expressive
+  launch com.example.navigation.MoreBarsActivity; shot more-bars
+  launch com.example.navigation.PermanentDrawerActivity; shot drawer-permanent
+  launch com.example.navigation.DismissibleDrawerActivity; tap "$(ref Open)"; w 1200; shot drawer-dismissible
+  launch com.example.navigation.ModalRailActivity; tap "$(ref 'Expand rail')"; w 1200; shot rail-modal
 }
 
 $AD settings appearance light >/dev/null

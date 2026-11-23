@@ -27,7 +27,8 @@ object JvmGuest {
     private val ID_RE = Regex(""""id"\s*:\s*(\d+)""")
     private val FIELD_RE = Regex(""""field"\s*:\s*(\d+)""")
     private val APPEARANCE_RE = Regex(""""appearance"\s*:\s*"(\w+)"""")
-    private val VIEWPORT_RE = Regex(""""width"\s*:\s*([0-9.]+)\s*,\s*"height"\s*:\s*([0-9.]+)""")
+    private val WIDTH_RE = Regex(""""width"\s*:\s*([0-9.]+)""")
+    private val HEIGHT_RE = Regex(""""height"\s*:\s*([0-9.]+)""")
     private val TEXT_RE = Regex(""""text"\s*:\s*"((?:[^"\\]|\\.)*)"""")
     private val ESCAPE_RE = Regex("""\\(u[0-9a-fA-F]{4}|["\\/bfnrt])""")
     private const val FRAME_NS = 16_666_667L
@@ -62,9 +63,8 @@ object JvmGuest {
         val parts = (System.getenv("SIMCORE_INSETS") ?: "0,0").split(',').map { it.trim().toFloatOrNull() ?: 0f }
         Guest.insetTop = parts.getOrElse(0) { 0f }
         Guest.insetBottom = parts.getOrElse(1) { 0f }
-        System.getenv("SIMCORE_VIEWPORT")?.split('x')?.mapNotNull { it.trim().toFloatOrNull() }?.takeIf { it.size == 2 && it.all { v -> v > 0f } }?.let {
-            Guest.screenWidth = it[0]
-            Guest.screenHeight = it[1]
+        System.getenv("SIMCORE_VIEWPORT")?.split('x')?.mapNotNull { it.trim().toFloatOrNull() }?.takeIf { it.size == 2 }?.let {
+            Guest.setViewport(it[0], it[1])
         }
 
         val activityClass = args.firstOrNull() ?: run {
@@ -169,14 +169,9 @@ object JvmGuest {
                 }
                 "environment" -> {
                     APPEARANCE_RE.find(line)?.groupValues?.get(1)?.let { Guest.dark.value = it == "dark" }
-                    VIEWPORT_RE.find(line)?.groupValues?.let { g ->
-                        val w = g[1].toFloatOrNull() ?: 0f
-                        val h = g[2].toFloatOrNull() ?: 0f
-                        if (w > 0f && h > 0f) {
-                            Guest.screenWidth = w
-                            Guest.screenHeight = h
-                        }
-                    }
+                    val w = WIDTH_RE.find(line)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
+                    val h = HEIGHT_RE.find(line)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
+                    Guest.setViewport(w, h)
                     pump()
                     dirty = false
                     emit(force = true)

@@ -944,7 +944,7 @@ impl Interaction {
 
     /// A back swipe starting at `x`, when the scene is an Android app's and `x` is in an edge strip.
     fn back_swipe_at(scene: &Scene, x: f64) -> Option<BackSwipe> {
-        if !scene.nodes.iter().any(|n| n.kind == SYSTEM_BACK) {
+        if !scene.has_system_back() {
             return None;
         }
         let w = scene.size.0;
@@ -1239,7 +1239,7 @@ impl Interaction {
         self.forget_gone(scene);
         if matches!(&ev, KeyboardEvent::Key { key } if key == "back") {
             // The back key: a lone commit (`OnBackPressedDispatcher.onBackPressed`), at the centre of the screen.
-            if !scene.nodes.iter().any(|n| n.kind == SYSTEM_BACK) {
+            if !scene.has_system_back() {
                 return Err("the back key needs an Android app");
             }
             let (x, y) = (scene.size.0 / 2.0, scene.size.1 / 2.0);

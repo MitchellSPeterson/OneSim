@@ -987,5 +987,5 @@ private val PredictiveBackDrawerMaxScaleYDistance = 48.dp
 
 private val PredictiveBackEasing = CubicBezierEasing(0.1f, 0.1f, 0f, 1f)
 
-// TODO: b/177571613 this should be a proper decay settling (from the source)
+// As upstream (AndroidX TODO b/177571613): settling uses a tween, not a decay.
 private val AnchoredDraggableDefaultAnimationSpec = TweenSpec<Float>(durationMillis = 256)

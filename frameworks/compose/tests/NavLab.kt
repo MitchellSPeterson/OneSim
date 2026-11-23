@@ -6,6 +6,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.PrimaryScrollableTabRow
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -70,6 +73,8 @@ fun NavLab() {
             }
         }
         Act("act:result") { nav.previousBackStackEntry?.savedStateHandle?.set("result", "done"); nav.popBackStack() }
+        Act("act:flowTwo") { nav.navigate("flow/two") }
+        Act("act:popAll") { log = "pop=" + nav.popBackStack("home", inclusive = true) + " current=" + nav.currentDestination?.route }
         Act("act:handler") { handler = !handler }
         Act("act:predictive") { predictive = !predictive }
         if (handler) BackHandler { log = "handler" }
@@ -84,6 +89,14 @@ fun NavLab() {
                     throw c
                 }
             }
+        }
+        var tab by remember { mutableIntStateOf(0) }
+        PrimaryTabRow(selectedTabIndex = tab) {
+            listOf("T0", "T1", "T2").forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) }
+        }
+        var stab by remember { mutableIntStateOf(0) }
+        PrimaryScrollableTabRow(selectedTabIndex = stab) {
+            (0..7).forEach { i -> Tab(selected = stab == i, onClick = { stab = i }, text = { Text("S$i") }) }
         }
         NavHost(nav, startDestination = "home") {
             composable("home") {

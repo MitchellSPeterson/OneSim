@@ -161,6 +161,10 @@ check(text("route=") == "route=flow/one" and text("stack=") == "stack=home,flow,
 tap("flow one")
 tap("flow two")
 check(text("stack=") == "stack=home", "graph popped inclusive")
+# Leaving a nested graph and coming back into it pushes a new graph entry above the other destination.
+tap("act:nested"); tap("act:detail"); tap("act:flowTwo")
+check(text("stack=") == "stack=home,flow,flow/one,detail/{id}?tab={tab},flow,flow/two", "graph entry pushed again")
+tap("act:popHome")
 
 # Dialog destinations show over the content; back dismisses them.
 tap("act:dialog", 0.4)
@@ -187,6 +191,30 @@ check(text("log=") == "log=committed after 0.25", "predictive commit")
 back()
 check(text("log=") == "log=committed after -1.0", "back key: the flow completes empty")
 tap("act:predictive")
+
+# Tabs: a selection slides the indicator (from, progress) and then rests on the new tab; each selection of a
+# scrollable row is a new scroll position the host centres.
+def indicators():
+    return [m["tabIndicator"] for n in walk(last[0]["root"]) for m in n["props"].get("modifier", []) if "tabIndicator" in m]
+
+def scrolls():
+    return [n["props"]["scroll"] for n in walk(last[0]["root"]) if n["component"] == "TabRow" and "scroll" in n["props"]]
+
+check([i["index"] for i in indicators()] == [0, 0] and all("from" not in i for i in indicators()), "indicators at rest")
+check(scrolls() == [{"seq": 0}], f"scroll {scrolls()}")
+tap("T2", 0.05)
+mid = [i for i in indicators() if i["index"] == 2]
+check(mid and mid[0]["match"] == "content" and mid[0]["from"][:2] == [0, 0] and 0 <= mid[0]["progress"] < 1, f"sliding {indicators()}")
+settle(0.8)
+check([i["index"] for i in indicators()][0] == 2 and all("from" not in i for i in indicators()), f"rested {indicators()}")
+tap("S5", 0.05)
+check(scrolls()[0]["seq"] == 1 and scrolls()[0].get("from") == 0, f"scroll animates from tab 0: {scrolls()}")
+settle(0.8)
+check(scrolls() == [{"seq": 1}], f"scroll rested {scrolls()}")
+
+# Popping the start destination empties the back stack (the NavHost shows nothing), as in AndroidX.
+tap("act:popAll")
+check(text("log=") == "log=pop=true current=null" and not any(s.startswith("home n=") for s in texts()), "empty back stack")
 
 # Back with nothing to handle it finishes the activity: the host hears of it.
 back()
