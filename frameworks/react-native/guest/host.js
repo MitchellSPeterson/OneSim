@@ -14,6 +14,7 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const expoUI = require('./expo-ui.js');
+const { patchAnimated } = require('./bundle-patches.js');
 const { Worker, isMainThread, parentPort, workerData } = require('node:worker_threads');
 
 Error.stackTraceLimit = 60;
@@ -64,9 +65,11 @@ const node = {
   Buffer, setTimeout, clearTimeout, setInterval, clearInterval, setImmediate, queueMicrotask, performance, fetch,
   AbortController, TextDecoder, Uint8Array,
   inspect: require('node:util').inspect, randomUUID: require('node:crypto').randomUUID,
+  // Reading a lazy undici global loads undici now: RN's polyfillGlobal reads these descriptors once Buffer is gone.
+  Headers: globalThis.Headers,
 };
 // HTTP runs on the main thread (see __fetch): once RN's polyfills replace timers/Promise/Buffer in this global,
-// Node's own fetch (undici) breaks here. The worker only keeps the plain `node.fetch` for the bundle download.
+// Node's own fetch (undici) breaks here. The worker only keeps the plain `node.fetch` for Metro's manifest.
 const fetches = new Map(); // id -> in-flight request state
 let fetchSeq = 0;
 // nfetch(url, {method, headers, body, redirect, onChunk}) -> Promise<{status,statusText,url,redirected,headers:[[k,v]],get(name),done,abort()}>;
@@ -1106,14 +1109,15 @@ class Runtime {
     this.manifest = manifest;
     let src;
     try {
-      const r = await node.fetch(bundleUrl);
-      if (!r.ok) throw new Error(`HTTP ${r.status}: ${(await r.text()).slice(0, 500)}`);
-      src = await r.text();
-      // RN's Animated flushQueue (run by every Animated component's effect) throws without NativeAnimatedModule, although
-      // useNativeDriver otherwise falls back to JS when it is absent (we ship no native driver): make an absent module a no-op.
-      src = src.replace(/\(0, invariant\.default\)\(NativeAnimatedModule, 'Native animated module is not available'\);(\s*flushQueueImmediate = null;)/g, 'if (!NativeAnimatedModule) return;$1')
-        // and the one-time "useNativeDriver is not supported" warning would land in LogBox's on-screen toast: that fallback is intended.
-        .replace('var _warnedMissingNativeAnimated = false;', 'var _warnedMissingNativeAnimated = true;');
+      // Main-thread HTTP like every other request: a keep-alive socket left in this worker's undici fires its idle
+      // timer after RN replaced setTimeout (`this.timeout?.unref is not a function`), e.g. a static server for `expo export`.
+      const r = await nfetch(bundleUrl);
+      src = (await r.done).toString('utf8');
+      if (r.status < 200 || r.status > 299) throw new Error(`HTTP ${r.status}: ${src.slice(0, 500)}`);
+      // Animated.flushQueue must not throw without NativeAnimatedModule (dev and minified bundles alike): bundle-patches.js.
+      const p = patchAnimated(src);
+      src = p.src;
+      if (p.hasAnimated && !p.flushQueue) log('warning: Animated.flushQueue patch found no match; Animated views may fail to mount');
     } catch (e) { sendEvent('bundle.error', { message: e.message, url: bundleUrl }); return sendError(`bundle fetch failed (${bundleUrl}): ${e.message}`); }
     if (this.dead) return;
 

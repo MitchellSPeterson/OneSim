@@ -150,7 +150,7 @@ jobs:
       - name: Install Expo fixture dependencies
         run: |
           apps="expo-showcase"
-          [ "$LEVEL" = fast ] || apps="expo-showcase expo-router-stack expo-default expo-ui expo-apis"
+          [ "$LEVEL" = fast ] || apps="expo-showcase expo-router-stack expo-default expo-ui expo-apis expo-prism"
           for a in $apps; do npm ci --prefix "examples/$a"; done
       - name: Install Pillow for screenshot comparisons
         run: python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
