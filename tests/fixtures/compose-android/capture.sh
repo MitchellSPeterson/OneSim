@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Capture the Android reference states for scripts/compare-android.sh on a real emulator.
-# Usage: AGENT_DEVICE=<agent-device command from the T3 device tools' device_open> tests/fixtures/compose-android/capture.sh
+# Usage: AGENT_DEVICE=<agent-device command> tests/fixtures/compose-android/capture.sh [--text-only]
 # Needs: a booted Pixel 10a emulator (Android 17, API 37), adb on PATH or $ANDROID_HOME, Java 17+.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
@@ -30,18 +30,41 @@ ref() { $AD snapshot -i 2>/dev/null | grep "\"$1\"" | head -1 | awk '{print $1}'
 tap() { $AD press "$@" --settle >/dev/null; }
 shot() { $AD wait 1500 >/dev/null 2>&1 || true; $AD screenshot "$out/$1.png" >/dev/null; echo "captured $1"; }
 
+if [[ "${1:-}" != --text-only ]]; then
+  $AD settings appearance light >/dev/null
+  launch com.example.counter.MainActivity;   shot counter
+  tap "$(ref Increment)"; tap "$(ref Increment)"; tap "$(ref Decrement)"; shot counter-changed
+  launch com.example.showcase.ShowcaseActivity; shot showcase
+  # The Switch has no label: its center is 927,668 px (353,254 dp).
+  tap "$(ref Filled)"; tap "$(ref Compose)"; tap 927 668; shot showcase-changed
+  $AD settings appearance dark >/dev/null
+  launch com.example.showcase.ShowcaseActivity; shot showcase-dark
+  $AD settings appearance light >/dev/null
+  launch com.example.input.InputActivity; shot input
+  $AD fill "$(ref Name)" NameHello --settle >/dev/null
+  $AD keyboard dismiss >/dev/null
+  $AD swipe 226 822 532 822 >/dev/null
+  shot input-changed
+fi
 $AD settings appearance light >/dev/null
-launch com.example.counter.MainActivity;   shot counter
-tap "$(ref Increment)"; tap "$(ref Increment)"; tap "$(ref Decrement)"; shot counter-changed
-launch com.example.showcase.ShowcaseActivity; shot showcase
-# The Switch has no label: its center is 927,668 px (353,254 dp).
-tap "$(ref Filled)"; tap "$(ref Compose)"; tap 927 668; shot showcase-changed
-$AD settings appearance dark >/dev/null
-launch com.example.showcase.ShowcaseActivity; shot showcase-dark
-$AD settings appearance light >/dev/null
-launch com.example.input.InputActivity; shot input
-$AD fill "$(ref Name)" NameHello --settle >/dev/null
-$AD keyboard dismiss >/dev/null
-$AD swipe 226 822 532 822 >/dev/null
-shot input-changed
+launch com.example.text.TextActivity; shot text
+tap 156 412; shot text-tapped
+# Capture after text is selected and while the finger is still held.
+"$ADB" shell input touchscreen swipe 122 598 122 598 4500 &
+hold=$!
+shot text-selected
+wait "$hold"
+shot text-toolbar
+launch com.example.text.InlineTextActivity; shot text-inline
+launch com.example.text.RichTextActivity; shot text-rich
+"$ADB" shell input keyboard keyevent KEYCODE_TAB
+"$ADB" shell input keyboard keyevent KEYCODE_TAB KEYCODE_DPAD_DOWN
+shot text-link-focused
+"$ADB" shell input touchscreen swipe 150 865 150 865 4500 &
+hold=$!
+shot text-link-pressed
+wait "$hold"
+launch com.example.text.TextEffectsActivity; shot text-effects
+launch com.example.text.TextPaintActivity; shot text-paint
+launch com.example.text.TextDirectionActivity; shot text-direction
 demo exit

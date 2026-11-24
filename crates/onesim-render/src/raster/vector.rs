@@ -116,7 +116,7 @@ fn uneven_rrect(x: f32, y: f32, w: f32, h: f32, radii: [(f64, f64); 4], continuo
     b.finish()
 }
 
-pub(super) fn build_vector_path(geom: &VectorGeom, b: crate::scene::Rect, inset: f64) -> Option<Path> {
+pub(crate) fn build_vector_path(geom: &VectorGeom, b: crate::scene::Rect, inset: f64) -> Option<Path> {
     let bx = b.x as f32;
     let by = b.y as f32;
     let bw = b.w as f32;
@@ -156,7 +156,7 @@ pub(super) fn build_vector_path(geom: &VectorGeom, b: crate::scene::Rect, inset:
     }
 }
 
-pub(super) fn to_skia_stroke(st: &VectorStroke) -> Stroke {
+pub(crate) fn to_skia_stroke(st: &VectorStroke) -> Stroke {
     let line_cap = match st.line_cap {
         ProtoLineCap::Butt => LineCap::Butt,
         ProtoLineCap::Round => LineCap::Round,
@@ -191,6 +191,16 @@ pub(super) fn to_skia_stroke(st: &VectorStroke) -> Stroke {
     }
 }
 
+pub(super) fn vector_stroke_path(v: &VectorShape, bounds: crate::scene::Rect) -> Option<crate::compose_path_effect::StrokePath> {
+    let st = v.stroke.as_ref().filter(|st| st.line_width > 0.0)?;
+    let path = build_vector_path(&v.geom, bounds, st.inset)?;
+    let geometry = crate::compose_path_effect::StrokePath::new(path, to_skia_stroke(st));
+    match &st.compose_effect {
+        Some((effect, unit)) => geometry.apply(effect, *unit),
+        None => Some(geometry),
+    }
+}
+
 pub(super) fn draw_vector(
     pm: &mut Pixmap,
     v: &VectorShape,
@@ -208,14 +218,13 @@ pub(super) fn draw_vector(
             pm.fill_path(&p, &pt, rule, xf, mask);
         }
     }
-    if let Some(st) = &v.stroke {
-        if st.line_width > 0.0 {
-            if let Some(p) = build_vector_path(&v.geom, bounds, st.inset) {
-                let mut pt = paint(color.unwrap_or(st.color), opacity);
-                pt.anti_alias = st.antialiased;
-                let sk = to_skia_stroke(st);
-                pm.stroke_path(&p, &pt, &sk, xf, mask);
-            }
+    if let (Some(st), Some(geometry)) = (&v.stroke, vector_stroke_path(v, bounds)) {
+        let mut pt = paint(color.unwrap_or(st.color), opacity);
+        pt.anti_alias = st.antialiased;
+        if let Some(stroke) = geometry.stroke {
+            pm.stroke_path(&geometry.path, &pt, &stroke, xf, mask);
+        } else {
+            pm.fill_path(&geometry.path, &pt, FillRule::Winding, xf, mask);
         }
     }
 }

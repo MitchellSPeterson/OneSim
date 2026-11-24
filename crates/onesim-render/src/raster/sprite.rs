@@ -1,5 +1,5 @@
 use super::glyphs::{draw_glyph, symbol_tile};
-use super::vector::{build_vector_path, draw_painted_vector_at, draw_vector};
+use super::vector::{build_vector_path, draw_painted_vector_at, draw_vector, vector_stroke_path};
 use super::{apply_text_op, paint_text, PaintClip, TextOp};
 use crate::scene::{Color, Glyph, SymbolRun, TextRun, VectorGeom, VectorShape};
 use crate::text::{FontSpec, Fonts, Span};
@@ -113,6 +113,10 @@ pub(super) fn hash_vector<H: Hasher>(v: &VectorShape, h: &mut H) {
             d.to_bits().hash(h);
         }
         st.dash_phase.to_bits().hash(h);
+        if let Some((effect, unit)) = &st.compose_effect {
+            format!("{effect:?}").hash(h);
+            unit.to_bits().hash(h);
+        }
         st.antialiased.hash(h);
         st.inset.to_bits().hash(h);
     } else {
@@ -141,6 +145,7 @@ pub(super) fn hash_symbol<H: Hasher>(sy: &SymbolRun, h: &mut H) {
 }
 
 fn hash_font_spec<H: Hasher>(f: &FontSpec, h: &mut H) {
+    (f.family, f.compose_overflow, f.compose_direction, f.no_wrap).hash(h);
     [
         f.size,
         f.pt,
@@ -171,6 +176,10 @@ fn hash_font_spec<H: Hasher>(f: &FontSpec, h: &mut H) {
 
 fn hash_span<H: Hasher>(sp: &Span, h: &mut H) {
     sp.text.hash(h);
+    sp.family.hash(h);
+    if let Some(style) = &sp.compose {
+        format!("{style:?}").hash(h);
+    }
     [sp.pt, sp.extra, sp.baseline].map(f32::to_bits).hash(h);
     hash_color(sp.color, h);
     (
@@ -233,6 +242,9 @@ pub fn sprite_key(n: &crate::scene::Node, fonts: &Fonts, scale: f64, layer: Spri
             if let Some(v) = n.vector.as_deref() {
                 hash_vector(v, &mut h);
             }
+            if let Some(brush) = &n.vector_brush {
+                format!("{brush:?}").hash(&mut h);
+            }
             if let Some(g) = n.fill_paint.as_ref() {
                 true.hash(&mut h);
                 g.hash_key(&mut h);
@@ -264,6 +276,15 @@ pub fn sprite_key(n: &crate::scene::Node, fonts: &Fonts, scale: f64, layer: Spri
         SpriteLayer::Text => {
             if let Some(t) = n.text.as_ref() {
                 hash_text(t, &mut h);
+            }
+            if let Some(layout) = &n.compose_text {
+                layout.highlight.len().hash(&mut h);
+                for rect in &layout.highlight {
+                    [rect.x, rect.y, rect.w, rect.h].map(f64::to_bits).hash(&mut h);
+                }
+                if let Some(color) = layout.selection_color {
+                    hash_color(color, &mut h);
+                }
             }
             if let Some(g) = n.content_paint.as_ref() {
                 true.hash(&mut h);
@@ -306,13 +327,11 @@ pub fn node_sprite(n: &crate::scene::Node, fonts: &mut Fonts, scale: f64, layer:
                     grow(&p, 2.0);
                 }
             }
-            if let Some(st) = &v.stroke {
-                if st.line_width > 0.0 {
-                    if let Some(p) = build_vector_path(&v.geom, b, st.inset) {
-                        let pad = (st.line_width as f32 * (st.miter_limit as f32).clamp(1.0, 10.0) * 0.5 + 2.0).max(st.line_width as f32 + 2.0);
-                        grow(&p, pad);
-                    }
-                }
+            if let Some(geometry) = vector_stroke_path(v, b) {
+                let pad = geometry.stroke.as_ref().map_or(2.0, |st| {
+                    (st.width * st.miter_limit.clamp(1.0, 10.0) * 0.5 + 2.0).max(st.width + 2.0)
+                });
+                grow(&geometry.path, pad);
             }
             if !min_x.is_finite() || !min_y.is_finite() || max_x <= min_x || max_y <= min_y {
                 return None;
@@ -330,6 +349,9 @@ pub fn node_sprite(n: &crate::scene::Node, fonts: &mut Fonts, scale: f64, layer:
             } else {
                 let xf = Transform::from_scale(s, s).post_translate(-ox as f32, -oy as f32);
                 draw_vector(&mut pm, v, b, n.opacity, xf, None, None);
+            }
+            if let Some(brush) = &n.vector_brush {
+                crate::compose_paint::tint(&mut pm, brush, (ox as f32 - sh.0 * s, oy as f32 - sh.1 * s), (sh.2 * s, sh.3 * s));
             }
             crop(ox, oy, pm).map(|(x, y, pixmap)| Sprite { x, y, pixmap })
         }

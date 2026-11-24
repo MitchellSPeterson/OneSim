@@ -425,6 +425,9 @@ impl Builder {
             return false;
         }
         let Some(t) = n.text.as_ref() else { return false };
+        if t.font.compose_overflow.is_some() {
+            return false;
+        }
         let c = t.color;
         if n.opacity != 1.0 || c.a != 1.0 || c.r != c.g || c.g != c.b || t.strike || !t.spans.is_empty() || t.font.size > 40.0 || t.text.len() > 256 {
             return false;
@@ -1287,6 +1290,7 @@ mod tests {
                 miter_limit: 30.0,
                 dash: vec![],
                 dash_phase: 0.0,
+                compose_effect: None,
                 antialiased: true,
                 inset: 0.0,
             }),

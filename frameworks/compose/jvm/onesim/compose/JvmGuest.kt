@@ -3,8 +3,11 @@ package onesim.compose
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.BroadcastFrameClock
 import androidx.compose.runtime.Composition
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Recomposer
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -13,6 +16,10 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import java.io.PrintStream
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.system.exitProcess
 
 /**
@@ -23,13 +30,17 @@ object JvmGuest {
     private val TYPE_RE = Regex(""""type"\s*:\s*"(\w+)"""")
     private val VERSION_RE = Regex(""""version"\s*:\s*(\d+)""")
     private val ID_RE = Regex(""""id"\s*:\s*(\d+)""")
+    private val OFFSET_RE = Regex(""""offset"\s*:\s*(\d+)""")
     private val FIELD_RE = Regex(""""field"\s*:\s*(\d+)""")
     private val APPEARANCE_RE = Regex(""""appearance"\s*:\s*"(\w+)"""")
     private val TEXT_RE = Regex(""""text"\s*:\s*"((?:[^"\\]|\\.)*)"""")
     private val ESCAPE_RE = Regex("""\\(u[0-9a-fA-F]{4}|["\\/bfnrt])""")
 
     private lateinit var wire: PrintStream
+    private val nextMeasureId = AtomicLong()
+    private val measurements = ConcurrentHashMap<Long, CompletableFuture<String?>>()
 
+    @Synchronized
     private fun send(line: String) {
         wire.print(line)
         wire.print('\n')
@@ -50,7 +61,14 @@ object JvmGuest {
         wire = PrintStream(java.io.FileOutputStream(java.io.FileDescriptor.out), false, "UTF-8")
         System.setOut(System.err)
         Guest.logSink = { System.err.println(it) }
+        Guest.uriSink = { uri ->
+            val desktop = java.awt.Desktop.getDesktop()
+            val target = java.net.URI(uri)
+            if (target.scheme == "mailto") desktop.mail(target) else desktop.browse(target)
+        }
         Guest.dark.value = System.getenv("SIMCORE_APPEARANCE") == "dark"
+        Guest.density = System.getenv("SIMCORE_SCALE")?.toFloatOrNull() ?: 1f
+        Guest.measureTextSink = ::measureText
         val parts = (System.getenv("SIMCORE_INSETS") ?: "0,0").split(',').map { it.trim().toFloatOrNull() ?: 0f }
         Guest.insetTop = parts.getOrElse(0) { 0f }
         Guest.insetBottom = parts.getOrElse(1) { 0f }
@@ -64,8 +82,15 @@ object JvmGuest {
             val r = System.`in`.bufferedReader()
             while (true) {
                 val line = r.readLine() ?: break
-                messages.trySend(line)
+                if (measurementType.containsMatchIn(line)) {
+                    val id = measurementId.find(line)?.groupValues?.get(1)?.toLongOrNull()
+                    val result = measurementResult.find(line)?.groupValues?.get(1)
+                    id?.let { measurements[it]?.complete(result) }
+                } else {
+                    messages.trySend(line)
+                }
             }
+            measurements.values.forEach { it.complete(null) }
             messages.close()
         }, "onesim-stdin").apply { isDaemon = true }.start()
 
@@ -116,7 +141,7 @@ object JvmGuest {
                 exitProcess(1)
             }
             val composition = Composition(LayoutApplier(Guest.root), recomposer)
-            composition.setContent(app)
+            composition.setContent { CompositionLocalProvider(LocalDensity provides Density(Guest.density), content = app) }
             pump()
             emit(force = true)
 
@@ -124,13 +149,20 @@ object JvmGuest {
                 val line = withContext(Dispatchers.IO) { messages.receiveCatching().getOrNull() } ?: break
                 val type = TYPE_RE.find(line)?.groupValues?.get(1)
                 when (type) {
-                    "action", "text_input" -> {
-                        val v = VERSION_RE.find(line)?.groupValues?.get(1)?.toLong()
+                    "action", "text_input", "text_click", "text_layout" -> {
+                        val v = VERSION_RE.find(line)?.groupValues?.get(1)?.toLongOrNull()
                         val before = Guest.version
                         try {
                             if (v == Guest.version) {
-                                if (type == "action") ID_RE.find(line)?.groupValues?.get(1)?.toLong()?.let { Guest.dispatchAction(it) }
-                                else textInput(line)?.let { text -> FIELD_RE.find(line)?.groupValues?.get(1)?.toLong()?.let { Guest.dispatchTextInput(it, text) } }
+                                when (type) {
+                                    "action" -> ID_RE.find(line)?.groupValues?.get(1)?.toLongOrNull()?.let { Guest.dispatchAction(it) }
+                                    "text_input" -> textInput(line)?.let { text -> FIELD_RE.find(line)?.groupValues?.get(1)?.toLongOrNull()?.let { Guest.dispatchTextInput(it, text) } }
+                                    "text_click" -> {
+                                        val offset = OFFSET_RE.find(line)?.groupValues?.get(1)?.toLongOrNull()?.takeIf { it <= Int.MAX_VALUE }?.toInt()
+                                        if (offset != null) ID_RE.find(line)?.groupValues?.get(1)?.toLongOrNull()?.let { Guest.dispatchTextClick(it, offset) }
+                                    }
+                                    "text_layout" -> Guest.dispatchTextLayouts(line)
+                                }
                             }
                         } catch (t: Throwable) {
                             error("Input callback threw: ${t.stackTraceToString()}")
@@ -152,6 +184,22 @@ object JvmGuest {
             recomposer.cancel()
         }
         exitProcess(0)
+    }
+
+    private val measurementType = Regex("""^\s*\{\s*"type"\s*:\s*"text_measurement"""")
+    private val measurementId = Regex(""""id"\s*:\s*(\d+)""")
+    private val measurementResult = Regex(""""result"\s*:\s*"([^"\\]*)"""")
+
+    private fun measureText(request: String): String {
+        val id = nextMeasureId.incrementAndGet()
+        val response = CompletableFuture<String?>()
+        measurements[id] = response
+        try {
+            send("""{"type":"measure_text","id":$id,"request":$request}""")
+            return checkNotNull(response.get(10, TimeUnit.SECONDS)) { "OneSim could not measure text" }
+        } finally {
+            measurements.remove(id)
+        }
     }
 
     private fun textInput(line: String): String? {

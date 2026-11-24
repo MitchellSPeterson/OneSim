@@ -133,7 +133,7 @@ impl Host {
             return self.build(id);
         }
         if !self.get(id)?.is_rn() {
-            return if self.get(id)?.is_swiftui() { self.swiftui_settle(id) } else { self.build(id) };
+            return if self.get(id)?.is_swiftui() { self.swiftui_settle(id) } else { self.compose_settle(id) };
         }
         let settle = self.get(id)?.settle;
         let (start, deadline) = (Instant::now(), Instant::now() + SETTLE_MAX.max(anim));
@@ -155,6 +155,29 @@ impl Host {
                 return Ok(out);
             }
         }
+    }
+
+    fn compose_settle(&mut self, id: &str) -> Result<(Arc<Scene>, u64, f64), ApiError> {
+        let mut negotiating = false;
+        for round in 0..64 {
+            let out = self.build(id)?;
+            let pending = out.0.pending_compose_auto_size();
+            if round >= 4 && !pending && !negotiating {
+                return Ok(out);
+            }
+            negotiating = pending;
+            let layouts = out.0.compose_text_layouts();
+            let session = self.get(id)?;
+            if layouts == session.sent_text_layouts {
+                return Ok(out);
+            }
+            let changed = layouts.iter().filter(|layout| !session.sent_text_layouts.contains(layout)).cloned().collect::<Vec<_>>();
+            if !changed.is_empty() {
+                session.send_and_wait_tree(&HostMessage::TextLayout { version: out.1, layouts: changed })?;
+            }
+            session.sent_text_layouts = layouts;
+        }
+        self.build(id)
     }
 
     /// Apply the guest's `focus_request` / `scroll_to` messages and drop focus on a vanished field.

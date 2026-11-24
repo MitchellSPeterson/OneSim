@@ -262,9 +262,9 @@ impl Ctx<'_> {
         let overflow = if multiline || empty { 0.0 } else { (caret_x - (inner_w - 2.0)).max(0.0) };
         let ink_w = if bullets == 0 { t.size.w } else { caret_x };
         let align = match env.align {
-            TextAlign::Leading => 0.0,
+            TextAlign::Leading | TextAlign::Justify | TextAlign::Left => 0.0,
             TextAlign::Center => 0.5,
-            TextAlign::Trailing => 1.0,
+            TextAlign::Trailing | TextAlign::End => 1.0,
         };
         let x = pad_x + if multiline { 0.0 } else { (inner_w - ink_w).max(0.0) * align };
         if let Some(tn) = t.node.as_mut() {

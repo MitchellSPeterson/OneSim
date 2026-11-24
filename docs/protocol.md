@@ -747,7 +747,101 @@ Material color scheme and dark theme are guest-side). Shapes: `{"corners":[tl,tr
 | `Box` | `contentAlignment`: `[h, v]` biases -1...1 (default `[-1,-1]` TopStart), `propagateMinConstraints`: bool |
 | `Column` | `arrangement`: Arrangement, `alignment`: horizontal bias -1...1 (Start = -1) |
 | `Row` | `arrangement`: Arrangement, `alignment`: vertical bias -1...1 (Top = -1) |
-| `Text` | `text`, `color`, `fontSize`, `lineHeight` (sp), `fontWeight` (100...900), `letterSpacing` (sp), `textAlign`: `start`\|`center`\|`end`, `maxLines`, `softWrap` |
+| `Text` | `text`, `color`, `fontSize`, `fontFamily`, `lineHeight` (sp), `fontWeight` (100...900), `letterSpacing` (sp), `textAlign`: `start`\|`center`\|`end`, `maxLines`, `minLines`, `softWrap`, `textOverflow`, `italic`, `decoration`, `fontFeatureSettings`, `spans`, `textClick`, `textLayout`, `autoSize`, `linkRanges`, `linkStyles`, `speechRanges`, `selectionColor`, `selectionHandleColor` |
+
+An optional `Text.spans` array carries `{start,end,color?,fontSize?,fontWeight?,italic?,decoration?,background?,letterSpacing?,letterSpacingEm?,fontFamily?,baselineShift?}` objects.
+The half-open offsets count UTF-16 code units in `Text.text`. Later spans override individual specified properties on
+overlap. `decoration` is a bitmask (1 underline, 2 strikethrough). Spans also support `fontSizeEm`, `fontFeatureSettings`, `textLocale`, `textTransform: [scaleX,skewX]`
+and text foreground effects. `brush` carries `kind` (solid, linear, radial, or sweep), RGBA
+`stops` as `[position,color]` pairs, `positions` in device pixels, and a numerical `tile` mode
+(0 clamp, 1 repeat, 2 mirror, 3 decal). Null positions use the corresponding paint bounds.
+For `kind: "image"`, `image` contains `width`, `height`, `tileX`, `tileY`, and `rgba`
+(base64-encoded unpremultiplied sRGB bytes, row-major). Both tile modes use the same numerical values.
+`paintAlpha` multiplies the foreground alpha. `textShadow` is `[color,dx,dy,blurRadius]` in
+device pixels. `textStroke` has `width`, `miter`, `cap`, `join`, and an optional `pathEffect`.
+Effects are `{kind:"dash",intervals,phase}`, `{kind:"corner",radius}`, `{kind:"chain",outer,inner}`,
+or `{kind:"stamp",shape,advance,phase,style}`. Stamps use `shape: {path,eoFill?}` (section N)
+and `style` of `translate`, `rotate`, or `morph`. Chains apply their inner effect first.
+Lengths and stamp coordinates are in device pixels. Stroke objects also accept legacy root-level
+`dash` and `phase`. `textFill: true`
+clears an inherited stroke. These effects can be supplied on a Text node or overridden on a span.
+
+Text nodes and paragraph spans also accept `lineBreak: [strategy,strictness,wordBreak]` and
+`autoHyphens`. Strategy values are 1 greedy, 2 high quality, 3 balanced. Strictness values
+are 1 default, 2 loose, 3 normal, 4 strict. Word break values are 1 default, 2 phrase.
+`textLocale` is a BCP 47 language tag and chooses the hyphenation dictionary. Discretionary
+hyphens produce glyphs with a zero-length source range and are omitted from copy.
+
+Additional paragraph properties include `paragraphAlign`, `paragraphHeight` (sp), `paragraphHeightEm`, and `paragraphIndent`.
+Text `textAlign` and span `paragraphAlign` accept physical `left` and `right` and relative
+`start` and `end`, alongside `center` and `justify`. Text `textDirection` and span
+`paragraphDirection` accept 1 for LTR, 2 for RTL, 4 for content with an LTR fallback,
+and 5 for content with an RTL fallback. The guest resolves `Content` using its environment
+before sending the request. Direction controls the paragraph base level while glyph runs
+retain their own bidi levels and source offsets.
+`paragraph` numbers identify paragraph boundaries. `paragraphIndent` is a pair of first-line and
+continuation-line units. A unit is `[value,isEm]` with sp used when `isEm` is false.
+A `bullet` annotation carries `width`, `height`, and `padding` units plus optional
+`shape`, RGBA `color`, `brush`, `alpha`, and `strokeStyle` (the same object as
+`textStroke`). Legacy `stroke` sets an unadorned width in device pixels. The marker is drawn in the
+paragraph's leading margin. It does not occupy a character offset. Custom marker shapes use the
+section N `path` commands and optional `eoFill`, or `roundedOutline` bounds with four
+elliptical `cornerRadii`. Shape coordinates are relative to the marker in dp.
+`textOverflow` accepts `visible`, `ellipsis`, `startEllipsis`, and `middleEllipsis`. The default is clipping.
+For compatibility, an older guest's `clipText: false` requests end ellipsis.
+
+An inline content slot is U+FFFC in `Text.text` and has a corresponding child in source order. `sourceText`
+holds the original annotated string, including alternate text. `inlineObjects` entries contain
+`[displayOffset,sourceStart,sourceEnd,width,height,verticalAlignment]`. The width and height are sp.
+Two optional flags after the alignment indicate which dimensions scale with the chosen base font size.
+
+A `Box` with `selectionContainer: true` groups text selection. A descendant `Text` joins its nearest group if
+it carries a `selectionColor` RGBA array. `selectionHandleColor` sets the touch handles. Selection is host-local.
+The desktop and browser drivers handle copy and read-aloud requests. `speechRanges` gives optional
+`[start,end,verbatim]` substitutions for speech.
+
+A `Text` with a numeric `textClick` callback ID
+receives `{"type":"text_click","id":<textClick>,"version":<tree version>,"offset":<UTF-16 caret offset>}`
+for a tap. If `linkRanges` contains `[start,end]` pairs, taps outside those glyphs fall through to ancestor
+controls and the offset is the hit glyph's first UTF-16 code unit. Keyboard activation sends the
+first offset of the focused link. `linkStyles` is an array parallel to `linkRanges` with
+`[focused,hovered,pressed]` span objects or null for each variant. When active, the host applies the
+variants in that order. The Compose pointer API accepts `hover` and `cancel` events.
+Keyboard events `tab` and `shift_tab` traverse the visible links. `enter` and `space` activate
+the focused link, and `escape` drops focus. Callback IDs are scoped to a tree version.
+
+The root Compose node can carry `fontResources`, a map from a registered family name to an
+array of faces with `data` (base64 font bytes), `weight`, `italic`, and optional TTC `index` fields. The host registers
+these faces before measuring text that refers to the family name.
+
+`autoSize` is a triple of minimum, maximum and step units. The host measures candidates and
+selects the largest step that fits. A custom strategy sends a `customAutoSize: true` text
+node while it evaluates and may append a hidden Text probe after its inline children.
+The probe carries `probeConstraints: [minWidth,maxWidth,minHeight,maxHeight]` in device
+pixels and has a distinct `textLayout` callback ID. Probes produce measurement records
+only. Once the strategy returns a font size, the guest sends the resolved `fontSize`
+and `customAutoSize: false`.
+
+A `Text` with a numeric `textLayout` callback ID receives a record in
+`{"type":"text_layout","version":<tree version>,"layouts":[{"id":<textLayout>,"geometry":"..."}]}`
+on first layout and when its measurement changes. The geometry string is semicolon-delimited. The header
+contains `width,height,scale,minWidth,maxWidth,minHeight,maxHeight,autoFontSize` (sp, or -1 when unused), followed by an opaque fingerprint
+and four coordinates per inline placeholder. Negative-width or negative-height rectangles mark clipped placeholders.
+Each line contains `start,end,visibleEnd,left,right,top,bottom,baseline,rtl` followed by five fields per
+glyph cluster `start,end,left,right,rtl`. The final record is an overflow bitmask (1 height, 2 width, 4 line cap, 8 ellipsis).
+An optional `w` record before the overflow bitmask lists the UTF-16 boundaries of words in
+source order, including 0 and the source text length.
+Positions and dimensions are device pixels. Offsets count UTF-16 code units, and direction flags are 0 or 1.
+
+For synchronous offscreen text, the guest sends `{"type":"measure_text","id":n,"request":{...}}`
+even before its first tree. The request carries `density`, the four pixel `constraints` in the same
+order, Text `props`, and optional `fonts` in the same format as `fontResources`.
+The host replies on the same channel with `{"type":"text_measurement","id":n,"result":"..."}`.
+The result uses the layout string above. An optional `intrinsic` of -1 or 1 requests a single pixel
+width (minimum or maximum). An optional `paint` instead requests premultiplied RGBA bytes in base64.
+`paint` carries integer `width` and `height` plus `origin: [x,y]` and `clip: [left,top,right,bottom]`
+in pixels. A null result means the host rejected the request. The browser uses the same request object
+and result encoding through its synchronous guest bridge.
 
 Arrangement: `{"type":"start"|"end"|"center"|"spaceBetween"|"spaceAround"|"spaceEvenly"}` or
 `{"type":"spacedBy","space":dp,"align":bias}` (main axis; Column `start` = Top).

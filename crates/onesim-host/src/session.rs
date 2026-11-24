@@ -198,6 +198,8 @@ pub struct Session {
     pub sent_positions: BTreeMap<String, Option<String>>,
     /// SwiftUI: last `geometry` box sent per reader id, so a stable frame is not sent again.
     pub sent_geometry: BTreeMap<String, GeoBox>,
+    /// Compose measurement callbacks already delivered to this guest.
+    pub sent_text_layouts: Vec<onesim_protocol::ComposeTextLayout>,
     /// React Native: `false` (live viewers, set per call by the v2 API) skips every wait for the guest:
     /// inputs return once sent and snapshots take one layout pass; later trees come as `render.updated`.
     pub settle: bool,
@@ -263,6 +265,7 @@ impl Session {
             rn: RnInput::default(),
             sent_positions: BTreeMap::new(),
             sent_geometry: BTreeMap::new(),
+            sent_text_layouts: Vec::new(),
             settle: true,
             layout_cache: SwiftUiLayoutCache::default(),
             layout_cache_gen: 0,
@@ -478,6 +481,7 @@ impl Session {
 
         let sh = self.shared.clone();
         let (fonts, stdin) = (self.fonts.clone(), self.stdin.clone());
+        let compose = self.is_compose();
         std::thread::spawn(move || {
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 match serde_json::from_str::<GuestMessage>(&line) {
@@ -508,6 +512,23 @@ impl Session {
                         sh.cv.notify_all();
                     }
                     Ok(GuestMessage::Error { message }) => sh.push_error("guest", message),
+                    Ok(GuestMessage::MeasureText { id, request }) => {
+                        if !compose {
+                            sh.push_error("host", "measure_text requires a Compose guest".into());
+                            continue;
+                        }
+                        let result = {
+                            let mut fonts = fonts.lock().unwrap_or_else(|e| e.into_inner());
+                            onesim_render::layout::compose::measure_text(
+                                *request, fonts.get_or_insert_with(onesim_render::Fonts::new),
+                            )
+                        };
+                        let mut line = serde_json::to_string(&HostMessage::TextMeasurement { id, result }).expect("serialize");
+                        line.push('\n');
+                        if let Err(e) = write_line(&stdin, &line) {
+                            sh.push_error("host", e.message);
+                        }
+                    }
                     Ok(GuestMessage::Hello { protocol }) if protocol != onesim_protocol::PROTOCOL_VERSION => {
                         sh.push_error("guest", format!("unexpected guest protocol version {protocol}"))
                     }
@@ -664,6 +685,9 @@ impl Session {
             Effect::TextInput { field, version, text } => {
                 let m = HostMessage::TextInput { field, version, text };
                 if self.is_rn() { self.send_and_settle(&m).map(drop) } else { self.send_and_wait_tree(&m).map(drop) }
+            }
+            Effect::TextClick { id, version, offset } => {
+                self.send_and_wait_tree(&HostMessage::TextClick { id, version, offset }).map(drop)
             }
             // The guest answers every touch event with a tree. A whole synthesized gesture waits for the trees to stop.
             Effect::Gesture(touches) => {

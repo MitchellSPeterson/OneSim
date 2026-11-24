@@ -34,6 +34,14 @@ function step(sim, flag, v) {
     case "--click": return click(sim, v);
     case "--type": return sim.type(v);
     case "--key": return sim.key(v);
+    case "--hold":
+    case "--long-press": {
+      const [x, y] = nums(v, 2) ?? sim.find(v);
+      sim.pointer("down", x, y);
+      for (let i = 0; i < 6; i++) sim.tick(100);
+      if (flag === "--long-press") sim.pointer("up", x, y);
+      return;
+    }
     case "--scroll": {
       const a = nums(v, 4);
       if (!a) throw new Error(`--scroll wants X,Y,DX,DY, got ${JSON.stringify(v)}`);
@@ -77,7 +85,7 @@ async function cli(argv) {
     else if (f === "--screenshot") shot = val();
     else if (f === "--inspect") inspect = true;
     else if (f === "--expect") expects.push(val());
-    else if (["--click", "--type", "--key", "--scroll", "--drag"].includes(f)) steps.push([f, val()]);
+    else if (["--click", "--type", "--key", "--scroll", "--drag", "--hold", "--long-press"].includes(f)) steps.push([f, val()]);
     else throw new Error(`unknown argument ${f}`);
   }
   const sim = await boot(o.wasm, o);

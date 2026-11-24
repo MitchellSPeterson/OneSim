@@ -21,9 +21,10 @@ env_logger = "0.11"
 
 winit = { version = "0.30", optional = true }
 softbuffer = { version = "0.4", optional = true }
+arboard = { version = "3.6", default-features = false, optional = true }
 onesim-render-gpu = { path = "../onesim-render-gpu", optional = true }
 
 [features]
 gpu = ["onesim-host/gpu"]
 # `onesim window` / `onesim expo --window`: a native window (winit + softbuffer), GPU first via wgpu.
-window = ["gpu", "dep:winit", "dep:softbuffer", "dep:onesim-render-gpu"]
+window = ["gpu", "dep:winit", "dep:softbuffer", "dep:arboard", "dep:onesim-render-gpu"]

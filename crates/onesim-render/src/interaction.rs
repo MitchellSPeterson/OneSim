@@ -3,6 +3,7 @@
 //! Owns scroll offsets, text focus, software-keyboard shift and the press target. Feed it pointer
 //! and keyboard events together with the scene they hit; it returns what the transport must do:
 //! the native host sends the effect over the guest wire, the browser calls the Swift callbacks.
+use crate::text_links::{Link, TextLinks};
 use crate::{autocap, chrome::Keypad, ChromeParams, Role, Scene, SheetPos};
 use onesim_protocol::{Axis, GestureTarget, GestureTouch, KeyboardEvent, PointerEvent, PointerKind, TouchPhase};
 use std::collections::HashMap;
@@ -16,6 +17,8 @@ pub enum Effect {
     Action { id: u64, version: u64 },
     /// Deliver new text for a field to the guest.
     TextInput { field: u64, version: u64, text: String },
+    /// Deliver a tap on Compose text at a UTF-16 offset.
+    TextClick { id: u64, version: u64, offset: u32 },
     /// Deliver touches to SwiftUI gesture views, in order (protocol section L). Not version-gated.
     Gesture(Vec<GestureTouch>),
     /// Only interaction state changed (scroll, focus, shift): re-layout, no guest call.
@@ -38,6 +41,8 @@ pub struct Interaction {
     pub hit: Option<String>,
     /// Whether the last `pointer` was an action (control fired or keyboard key tapped).
     pub acted: bool,
+    text_selection: crate::text_selection::TextSelection,
+    text_links: TextLinks,
     pressed: Option<String>,
     slider_drag: Option<String>,
     /// Finger currently scrolling (or holding) a scroller.
@@ -351,9 +356,56 @@ impl Interaction {
         self.forget_gone(scene);
         self.hit = None;
         self.acted = false;
+        if ev.kind == PointerKind::Hover {
+            let hovered = Link::at(scene, ev.x, ev.y);
+            let changed = hovered != self.text_links.hovered;
+            self.text_links.hovered = hovered;
+            return if changed { Effect::Redraw } else { Effect::None };
+        }
+        if ev.kind == PointerKind::Cancel {
+            self.pressed = None;
+            self.text_selection.cancel_press();
+            return if self.text_links.pressed.take().is_some() { Effect::Redraw } else { Effect::None };
+        }
+        let link = Link::at(scene, ev.x, ev.y);
+        let (link_release, link_changed) = match ev.kind {
+            PointerKind::Down => {
+                let changed = self.text_links.pressed != link;
+                self.text_links.pressed = link.clone();
+                (true, changed)
+            }
+            PointerKind::Up => {
+                let pressed = self.text_links.pressed.take();
+                (link.is_none() || pressed == link, pressed.is_some())
+            }
+            _ => (true, false),
+        };
+        let link_blurred = matches!(ev.kind, PointerKind::Click | PointerKind::Down)
+            && self.text_links.focused.as_ref().is_some_and(|focused| Some(focused) != link.as_ref())
+            && self.text_links.focused.take().is_some();
         if let Some(e) = self.gesture_pointer(scene, &ev) {
             return e;
         }
+        if let Some(id) = self.text_selection.pointer_control(scene, ev) {
+            self.hit = Some(id);
+            self.acted = matches!(ev.kind, PointerKind::Click | PointerKind::Up);
+            return Effect::Redraw;
+        }
+        let selected = match ev.kind {
+            PointerKind::Down => {
+                self.text_selection.down(scene, ev.x, ev.y, now_ms());
+                None
+            }
+            PointerKind::LongPress if ev.duration.unwrap_or(1.0) >= 0.5 => self.text_selection.word(scene, ev.x, ev.y),
+            PointerKind::Up => self.text_selection.release(scene, ev.x, ev.y, now_ms()),
+            _ => None,
+        };
+        if let Some(id) = selected {
+            self.pressed = None;
+            self.hit = Some(id);
+            return Effect::Redraw;
+        }
+        let cleared_selection = matches!(ev.kind, PointerKind::Click | PointerKind::Up) && self.text_selection.clear();
         if let Some(e) = self.slide(scene, &ev) {
             return e;
         }
@@ -428,11 +480,39 @@ impl Interaction {
             self.acted = fire.is_some();
             return Effect::Action { id, version: self.version };
         }
-        if before != (self.focus.clone(), self.shift) {
+        if released && link_release && matches!(ev.kind, PointerKind::Click | PointerKind::Up) {
+            if let Some((id, offset)) = hit.and_then(|n| {
+                let layout = n.compose_text.as_ref()?;
+                let text = &n.text.as_ref()?.text;
+                let offset = layout.click_offset(text, ev.x - n.bounds.x, ev.y - n.bounds.y)?;
+                Some((layout.action?, offset as u32))
+            }) {
+                self.acted = true;
+                return Effect::TextClick { id, version: self.version, offset };
+            }
+        }
+        if link_changed || link_blurred || cleared_selection || before != (self.focus.clone(), self.shift) {
             Effect::Redraw
         } else {
             Effect::None
         }
+    }
+
+    pub fn compose_link_focused(&self, scene: &Scene) -> bool {
+        self.text_links.focused_in(scene).is_some()
+    }
+
+    pub fn styled_compose_tree<'a>(&self, root: &'a onesim_protocol::ViewNode) -> std::borrow::Cow<'a, onesim_protocol::ViewNode> {
+        self.text_links.styled_tree(root)
+    }
+
+    /// Apply host-side selection highlights to a freshly laid out scene.
+    pub fn apply_text_selection(&self, scene: &mut Scene) {
+        self.text_selection.apply(scene);
+    }
+
+    pub fn take_selection_output(&mut self) -> Option<crate::SelectionOutput> {
+        self.text_selection.take_output()
     }
 
     /// A tap (click / up) or a drag starting on a slider sets its value where the finger ends.
@@ -491,8 +571,23 @@ impl Interaction {
     /// past the edges; on release it carries on with the finger's velocity (see `tick`).
     pub fn drag(&mut self, scene: &Scene, phase: DragPhase, x: f64, y: f64, t: f64) -> Effect {
         self.forget_gone(scene);
+        let link_cancelled = self.text_links.pressed.take().is_some();
+        let effect = self.drag_inner(scene, phase, x, y, t);
+        if link_cancelled && effect == Effect::None { Effect::Redraw } else { effect }
+    }
+
+    fn drag_inner(&mut self, scene: &Scene, phase: DragPhase, x: f64, y: f64, t: f64) -> Effect {
         if let Some(e) = self.touch_drag(scene, phase, x, y, t) {
             return e;
+        }
+        let text_hit = match phase {
+            DragPhase::Begin => self.text_selection.begin_drag(scene, x, y),
+            DragPhase::Move | DragPhase::End => self.text_selection.drag(scene, x, y, phase == DragPhase::End),
+        };
+        if let Some(id) = text_hit {
+            self.pressed = None;
+            self.hit = Some(id);
+            return Effect::Redraw;
         }
         if phase == DragPhase::Begin {
             self.slider_drag = scene
@@ -760,6 +855,8 @@ impl Interaction {
         self.pressed = None;
         self.slider_drag = None;
         self.pending = None;
+        self.text_selection.cancel_press();
+        let link_released = self.text_links.pressed.take().is_some();
         if let Some(touch) = self.touch.take() {
             return Effect::Gesture(vec![Self::touch_event(&touch, TouchPhase::Cancel)]);
         }
@@ -768,14 +865,14 @@ impl Interaction {
         let t = match (&self.drag, &self.sheet_drag) {
             (Some(d), _) => last(&d.samples),
             (None, Some(d)) => last(&d.samples),
-            (None, None) => return Effect::None,
+            (None, None) => return if link_released { Effect::Redraw } else { Effect::None },
         } + VELOCITY_WINDOW + 1.0;
         self.drag(scene, DragPhase::End, 0.0, 0.0, t)
     }
 
-    /// Whether a finger is down on a gesture view (call `hold` every frame meanwhile).
+    /// Whether a finger is down on a gesture view or waiting for a text long press.
     pub fn holding(&self) -> bool {
-        self.touch.is_some()
+        self.touch.is_some() || self.text_selection.waiting()
     }
 
     /// Whole pointer gestures on gesture views. Times are wall-clock ms, never before the previous gesture's end.
@@ -856,7 +953,7 @@ impl Interaction {
                     return Some(if self.hit.is_some() { Effect::Redraw } else { Effect::None });
                 }
             }
-            PointerKind::Scroll => return None,
+            PointerKind::Scroll | PointerKind::Hover | PointerKind::Cancel => return None,
         }
         self.clock = out.last().map_or(t0, |e| e.time);
         self.acted = true;
@@ -976,15 +1073,15 @@ impl Interaction {
         }
     }
 
-    /// Advance scroll momentum and bounces by `dt` seconds. Returns true while anything is moving
-    /// (keep calling every frame), after updating `scroll`: re-layout when it returns true.
+    /// Advance text selection, scroll momentum and bounces by `dt` seconds.
+    /// Returns true when the scene needs to be laid out again.
     pub fn tick(&mut self, scene: &Scene, dt: f64) -> bool {
+        let mut moving = self.text_selection.tick(scene, dt);
         if self.motion.is_empty() && self.scroll.is_empty() {
-            return false;
+            return moving;
         }
         self.forget_gone(scene);
         let held = self.drag.as_ref().map(|d| d.id.clone());
-        let mut moving = false;
         for (i, n) in scene.nodes.iter().enumerate() {
             let Some(info) = n.scroll else { continue };
             if held.as_ref() == Some(&n.id) {
@@ -1105,6 +1202,31 @@ impl Interaction {
     /// Keyboard input for the focused text field.
     pub fn keyboard(&mut self, scene: &Scene, ev: KeyboardEvent) -> Result<Effect, &'static str> {
         self.forget_gone(scene);
+        if let KeyboardEvent::Key { key } = &ev {
+            if matches!(key.as_str(), "tab" | "shift_tab") {
+                if let Some(focused) = self.text_links.traverse(scene, key == "shift_tab") {
+                    if focused { self.focus = None; }
+                    return Ok(Effect::Redraw);
+                }
+            }
+            if let Some(link) = self.text_links.focused_in(scene) {
+                if matches!(key.as_str(), "enter" | "space") {
+                    return Ok(Effect::TextClick { id: link.action, version: self.version, offset: link.range[0] as u32 });
+                }
+                if key == "escape" {
+                    self.text_links.focused = None;
+                    return Ok(Effect::Redraw);
+                }
+            }
+            if matches!(key.as_str(), "copy" | "select_all") {
+                return Ok(if self.text_selection.shortcut(scene, key) { Effect::Redraw } else { Effect::None });
+            }
+        }
+        if let Some(link) = self.text_links.focused_in(scene) {
+            if matches!(&ev, KeyboardEvent::Text { text } if text == " ") {
+                return Ok(Effect::TextClick { id: link.action, version: self.version, offset: link.range[0] as u32 });
+            }
+        }
         let node = self.focused_field(scene).ok_or("no focused text field (click a text field first)")?;
         match ev {
             KeyboardEvent::Text { text } => Ok(self.append(node, &text)),

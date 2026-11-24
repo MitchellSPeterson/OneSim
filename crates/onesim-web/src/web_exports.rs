@@ -65,6 +65,18 @@ pub extern "C" fn simcore_web_submit_tree(len: usize, version: f64) -> i32 {
     }
 }
 
+/// The Kotlin guest can measure text during composition using the scratch buffer.
+/// On success the request is replaced by the measured geometry.
+#[no_mangle]
+pub extern "C" fn simcore_web_measure_text(len: usize) -> *const u8 {
+    with(|s| {
+        let result = s.buf.get(..len).and_then(|input| serde_json::from_slice(input).ok())
+            .and_then(|request| onesim_render::layout::compose::measure_text(request, s.fonts.get_or_insert_with(|| onesim_render::Fonts::with_fallback(true))));
+        s.buf = result.unwrap_or_default().into_bytes();
+        s.buf.as_ptr()
+    })
+}
+
 /// Evaluate the app and render the first frame. Call once, after `_initialize`.
 /// `width` x `height` = viewport in points; `scale` = device pixels per point.
 #[no_mangle]
@@ -80,7 +92,7 @@ pub extern "C" fn simcore_web_init(width: f64, height: f64, scale: f64, dark: i3
     });
     #[cfg(all(target_family = "wasm", feature = "js-guest"))]
     {
-        unsafe { on_init(if dark != 0 { 1 } else { 0 }, w, h, safe_top, safe_bottom) }
+        unsafe { on_init(if dark != 0 { 1 } else { 0 }, w, h, safe_top, safe_bottom, scale.clamp(1.0, 4.0)) }
     }
     #[cfg(not(all(target_family = "wasm", feature = "js-guest")))]
     {
@@ -169,14 +181,17 @@ pub extern "C" fn simcore_web_set_scale(scale: f64) {
         s.scale = scale.clamp(1.0, 4.0);
         update_scene(s);
     });
+    send_layout();
 }
 
-/// kind: 0 down, 1 up, 2 click. x, y in points. Returns 1 if the interaction changed anything.
+/// kind: 0 down, 1 up, 2 click, 3 hover, 4 cancel. x, y in points. Returns 1 if the interaction changed anything.
 #[no_mangle]
 pub extern "C" fn simcore_web_pointer(kind: i32, x: f64, y: f64) -> i32 {
     let kind = match kind {
         0 => PointerKind::Down,
         1 => PointerKind::Up,
+        3 => PointerKind::Hover,
+        4 => PointerKind::Cancel,
         _ => PointerKind::Click,
     };
     rn_pointer(PointerEvent::new(kind, x, y)).unwrap_or_else(|| {
@@ -304,6 +319,9 @@ pub extern "C" fn simcore_web_key(kind: i32, len: usize) -> i32 {
     let ev = match (kind, payload.as_str()) {
         (0 | 2, _) => KeyboardEvent::Text { text: payload },
         (1, "backspace" | "enter") => KeyboardEvent::Key { key: payload },
+        (1, "copy" | "select_all" | "tab" | "shift_tab" | "space" | "escape") if cfg!(feature = "js-guest") => {
+            KeyboardEvent::Key { key: payload }
+        }
         _ => return 0,
     };
     if with(|s| s.rn.is_some()) {
@@ -349,6 +367,12 @@ pub extern "C" fn simcore_web_take_pasteboard() -> usize {
         }
         None => 0,
     })
+}
+
+/// 1 while a Compose link is focused.
+#[no_mangle]
+pub extern "C" fn simcore_web_link_focused() -> i32 {
+    i32::from(with(|s| s.scene.as_ref().is_some_and(|scene| s.inter.compose_link_focused(scene))))
 }
 
 /// 1 while a text field is focused (the software keyboard is showing).

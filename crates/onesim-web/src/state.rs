@@ -39,6 +39,8 @@ pub(crate) struct State {
     pub(crate) on_layout: LayoutCb,
     /// Guards against infinite re-entry when a layout callback submits a new tree.
     pub(crate) in_layout: bool,
+    #[cfg(all(target_family = "wasm", feature = "js-guest"))]
+    sent_text_layouts: Vec<onesim_protocol::ComposeTextLayout>,
     pub(crate) version: Option<u64>,
     pub(crate) tree: Option<ViewNode>,
     pub(crate) layout_cache: SwiftUiLayoutCache,
@@ -108,6 +110,8 @@ thread_local! {
         fonts: None, device: device(DEFAULT_DEVICE).unwrap(), viewport: (402.0, 874.0), scale: 3.0, dark: false, dynamic_type: DynamicTypeSize::Large, ios: IosVersion::Ios27, inter: Interaction::default(),
         anim: Animator::new(), animation_target: None, clock_ms: 0.0, guest_clock_ms: 0.0, guest_due_ms: None, pasteboard_out: None, scene_phase: ScenePhase::Active, last_anim_ver: None, live: onesim_render::Live::new(), live_base: None, live_moving: false,
         stale: false, defer_scene: false, scene_dirty: false, initialized: false, tree_json: String::new(), fb: Vec::new(), fb_size: (0, 0), frame_version: 0, frame_dirty: false,
+        #[cfg(all(target_family = "wasm", feature = "js-guest"))]
+        sent_text_layouts: Vec::new(),
         output: 0, builder: Builder::new(), dl: Vec::new(), unread: None, buf: Vec::new(), rn: None,
     });
     pub(crate) static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
@@ -122,10 +126,13 @@ extern "C" {
 #[cfg(all(target_family = "wasm", feature = "js-guest"))]
 #[link(wasm_import_module = "onesim_guest")]
 extern "C" {
-    pub(crate) fn on_init(dark: i32, width: f64, height: f64, safe_top: f64, safe_bottom: f64) -> i32;
+    pub(crate) fn on_init(dark: i32, width: f64, height: f64, safe_top: f64, safe_bottom: f64, scale: f64) -> i32;
     pub(crate) fn on_env(dark: i32, width: f64, height: f64, safe_top: f64, safe_bottom: f64) -> i32;
     pub(crate) fn on_action(id: f64);
     pub(crate) fn on_text(field: f64, ptr: *const u8, len: usize);
+    fn on_text_click(id: f64, offset: u32);
+    fn on_text_layouts(ptr: *const u8, len: usize);
+    fn on_selection_output(kind: u32, ptr: *const u8, len: usize);
 }
 
 pub(crate) fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
@@ -155,7 +162,10 @@ pub(crate) fn update_scene(s: &mut State) {
             status_bar: true,
             chrome: inter.chrome(),
         };
-        build_scene_reusing_layout(root, &params, fonts, &mut s.layout_cache)
+        let root = inter.styled_compose_tree(root);
+        let mut scene = build_scene_reusing_layout(&root, &params, fonts, &mut s.layout_cache);
+        inter.apply_text_selection(&mut scene);
+        scene
     };
     let mut scene = layout(&s.inter);
     if s.rn.is_none() && s.version.is_some_and(|version| s.inter.sync_text_focus(&scene, version)) {
@@ -278,8 +288,43 @@ pub(crate) fn submit(json: &[u8], version: u64) -> Result<(), String> {
     Ok(())
 }
 
+fn sync_text_layouts() {
+    #[cfg(all(target_family = "wasm", feature = "js-guest"))]
+    {
+        if with(|s| s.in_layout) {
+            return;
+        }
+        let mut negotiating = false;
+        for round in 0..64 {
+            let message = with(|s| {
+                let version = s.version?;
+                let scene = s.scene.as_ref()?;
+                let pending = scene.pending_compose_auto_size();
+                if round >= 4 && !pending && !negotiating { return None; }
+                negotiating = pending;
+                let layouts = scene.compose_text_layouts();
+                if layouts == s.sent_text_layouts {
+                    return None;
+                }
+                let changed = layouts.iter().filter(|layout| !s.sent_text_layouts.contains(layout)).cloned().collect::<Vec<_>>();
+                s.sent_text_layouts = layouts;
+                if changed.is_empty() {
+                    return None;
+                }
+                let message = serde_json::to_vec(&HostMessage::TextLayout { version, layouts: changed }).ok()?;
+                s.in_layout = true;
+                Some(message)
+            });
+            let Some(message) = message else { break };
+            unsafe { on_text_layouts(message.as_ptr(), message.len()); }
+            with(|s| s.in_layout = false);
+        }
+    }
+}
+
 /// Supply size-dependent drawing and effect closures after guest and host layout changes.
 pub(crate) fn send_layout() {
+    sync_text_layouts();
     let pending = STATE.with(|s| {
         let mut s = s.borrow_mut();
         if s.in_layout {
@@ -355,6 +400,14 @@ pub(crate) fn push_environment() -> i32 {
 /// Apply an interaction effect: guest callbacks for actions/text, a redraw otherwise.
 /// Returns 1 if anything happened.
 pub(crate) fn dispatch(e: Effect) -> i32 {
+    #[cfg(all(target_family = "wasm", feature = "js-guest"))]
+    if let Some(output) = with(|s| s.inter.take_selection_output()) {
+        let (kind, text) = match output {
+            onesim_render::SelectionOutput::Copy(text) => (0, text),
+            onesim_render::SelectionOutput::ReadAloud(text) => (1, text),
+        };
+        unsafe { on_selection_output(kind, text.as_ptr(), text.len()); }
+    }
     #[cfg(not(all(target_family = "wasm", feature = "js-guest")))]
     let (ctx, on_action, on_text) = with(|s| (s.ctx, s.on_action, s.on_text));
     if !matches!(e, Effect::None | Effect::Redraw) && with(|s| s.rn.is_some()) {
@@ -390,6 +443,15 @@ pub(crate) fn dispatch(e: Effect) -> i32 {
             if let (Some(cb), Ok(t)) = (on_text, CString::new(text.replace('\0', ""))) {
                 unsafe { cb(ctx as *mut c_void, field, t.as_ptr()) };
             }
+        }
+        Effect::TextClick { id, offset, .. } => {
+            with(|s| s.stale = true);
+            #[cfg(all(target_family = "wasm", feature = "js-guest"))]
+            unsafe {
+                on_text_click(id as f64, offset);
+            }
+            #[cfg(not(all(target_family = "wasm", feature = "js-guest")))]
+            let _ = (id, offset);
         }
         Effect::Gesture(touches) => {
             with(|s| s.stale = true);

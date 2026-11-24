@@ -26,11 +26,13 @@ FW_DIR="$HOME_DIR/target/compose/framework-$HASH"
 if [ ! -f "$FW_DIR/onesim-compose.jar" ]; then
   echo "onesim: compiling the Compose framework" >&2
   rm -rf "$FW_DIR.tmp" && mkdir -p "$FW_DIR.tmp"
-  "$KOTLINC/bin/kotlinc" "${KFLAGS[@]}" -cp "$CP" -module-name onesim-compose \
+  COMMON_FILES="$(find "$HERE/src" -name '*.kt' -type f | LC_ALL=C sort | tr '\n' ',')"
+  "$KOTLINC/bin/kotlinc" "${KFLAGS[@]}" -Xmulti-platform -Xcommon-sources="${COMMON_FILES%,}" -cp "$CP" -module-name onesim-compose \
     $(find "$HERE/src" "$HERE/jvm" -name '*.kt' -type f) -d "$FW_DIR.tmp/onesim-compose.jar"
   rm -rf "$FW_DIR" && mv "$FW_DIR.tmp" "$FW_DIR"
 fi
 FW="$FW_DIR/onesim-compose.jar"
+source "$HERE/scripts/android-resources.sh"
 
 # 2. App sources.
 if [ -d "$APP" ]; then
@@ -74,6 +76,9 @@ else
   PKG="$(pkg_of "$FILE")"
   ACTIVITY="${PKG:+$PKG.}$NAME"
 fi
+
+emit_android_resources "$APP" "$PKG" "$BUILD/OneSimResources.kt"
+if [ -f "$BUILD/OneSimResources.kt" ]; then SOURCES+=("$BUILD/OneSimResources.kt"); fi
 
 "$KOTLINC/bin/kotlinc" "${KFLAGS[@]}" -cp "$CP$FW" -module-name app "${SOURCES[@]}" -d "$BUILD/app.jar"
 

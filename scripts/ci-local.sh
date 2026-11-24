@@ -101,6 +101,7 @@ check_swiftui() {
 
 check_compose() {
   step compose_counter
+  step bash frameworks/compose/tests/text_wire_test.sh
   if ! fast; then
     need_pillow
     step scripts/compare-android.sh

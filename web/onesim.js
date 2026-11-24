@@ -45,7 +45,7 @@ function makeWasi(getMem, log) {
  * For JS-hosted guests (e.g. Kotlin/Wasm Compose), `guest` or `guestUrl` supplies the guest module
  * (defaults to `./guest/guest.mjs` next to `app.wasm`).
  */
-export async function load(source, { log = (level, t) => console[level](t), guest = null, guestUrl = null } = {}) {
+export async function load(source, { log = (level, t) => console[level](t), guest = null, guestUrl = null, selectionOutput } = {}) {
   const mod = typeof Response !== "undefined" && source instanceof Response
     ? await WebAssembly.compileStreaming(source)
     : await WebAssembly.compile(source);
@@ -67,9 +67,18 @@ export async function load(source, { log = (level, t) => console[level](t), gues
       if (rc !== 0) log("error", "onesim: simcore_web_submit_tree failed");
       return rc;
     };
+    const host = {
+      measureText(request) {
+        const input = enc.encode(request);
+        const ptr = exports.simcore_web_buf(input.length);
+        new Uint8Array(exports.memory.buffer, ptr, input.length).set(input);
+        const result = exports.simcore_web_measure_text(input.length);
+        return dec.decode(new Uint8Array(exports.memory.buffer, result, exports.simcore_web_buf_len()));
+      }
+    };
     imports.onesim_guest = {
-      on_init(dark, _w, _h, safeTop, safeBottom) {
-        return submitTree(guest.onesimStart(dark !== 0, safeTop, safeBottom));
+      on_init(dark, _w, _h, safeTop, safeBottom, scale) {
+        return submitTree(guest.onesimStart(dark !== 0, safeTop, safeBottom, scale, host));
       },
       on_env(dark, _w, _h, safeTop, safeBottom) {
         return submitTree(guest.onesimEnvironment(dark !== 0, safeTop, safeBottom));
@@ -80,6 +89,22 @@ export async function load(source, { log = (level, t) => console[level](t), gues
       on_text(field, ptr, len) {
         const text = dec.decode(new Uint8Array(exports.memory.buffer, ptr, len));
         submitTree(guest.onesimTextInput(field, text));
+      },
+      on_text_click(id, offset) {
+        submitTree(guest.onesimTextClick(id, offset));
+      },
+      on_text_layouts(ptr, len) {
+        const message = dec.decode(new Uint8Array(exports.memory.buffer, ptr, len));
+        submitTree(guest.onesimTextLayouts(message));
+      },
+      on_selection_output(kind, ptr, len) {
+        const text = dec.decode(new Uint8Array(exports.memory.buffer, ptr, len));
+        if (selectionOutput) selectionOutput(kind === 0 ? "copy" : "read_aloud", text);
+        else if (kind === 0) {
+          globalThis.navigator?.clipboard?.writeText(text).catch((error) => log("warn", error.message));
+        } else if (globalThis.speechSynthesis && globalThis.SpeechSynthesisUtterance) {
+          globalThis.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+        }
       },
     };
   }
@@ -191,7 +216,7 @@ export class OneSim {
   }
 
   /** Pointer event in points: kind "down" | "up" | "click". Returns whether anything changed. */
-  pointer(kind, x, y) { return this.wasm.simcore_web_pointer({ down: 0, up: 1, click: 2 }[kind], x, y) === 1; }
+  pointer(kind, x, y) { return this.wasm.simcore_web_pointer({ down: 0, up: 1, click: 2, hover: 3, cancel: 4 }[kind], x, y) === 1; }
   click(x, y) { return this.pointer("click", x, y); }
   /** Scroll the scroller under (x, y) by (dx, dy) points; positive dy reveals later content. */
   scroll(x, y, dx, dy) { return this.wasm.simcore_web_scroll(x, y, dx, dy) === 1; }
@@ -209,13 +234,15 @@ export class OneSim {
   type(text) { return this.#key(0, text); }
   /** Text typed by a person (physical keyboard): software-keyboard shift follows auto-capitalization. */
   typeByUser(text) { return this.#key(2, text); }
-  /** "backspace" | "enter" in the focused field. */
+  /** "backspace" | "enter" in a text field, or "copy" | "select_all" with a Compose selection. */
   key(name) { return this.#key(1, name); }
-  #key(kind, s) {
+  keyIfFocused(name) { return this.#key(1, name, false); }
+  #key(kind, s, requireFocus = true) {
     const r = this.wasm.simcore_web_key(kind, this.#put(s));
-    if (r < 0) throw new Error("no focused text field (click a text field first)");
+    if (r < 0 && requireFocus) throw new Error("no focused text field (click a text field first)");
     return r === 1;
   }
+  get linkFocused() { return this.wasm.simcore_web_link_focused() === 1; }
   get focused() { return this.wasm.simcore_web_focused() === 1; }
 
   /** Point (points) of a control by label, with the CLI's `--click` syntax (`Label`, `Label#increment`, keys). */

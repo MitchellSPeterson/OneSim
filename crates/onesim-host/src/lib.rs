@@ -323,7 +323,10 @@ impl Host {
                 status_bar: true,
                 chrome: inter.chrome(),
             };
-            build_scene_reusing_layout(&root, &params, fonts, cache)
+            let root = inter.styled_compose_tree(&root);
+            let mut scene = build_scene_reusing_layout(&root, &params, fonts, cache);
+            inter.apply_text_selection(&mut scene);
+            scene
         };
         if s.layout_cache_gen != gen {
             s.layout_cache.clear();
@@ -568,9 +571,12 @@ impl Host {
     pub fn keyboard(&mut self, id: &str, ev: KeyboardEvent) -> Result<(), ApiError> {
         self.get(id)?.require_input()?;
         self.sync_guest_clock(id)?;
+        let session = self.get(id)?;
         if let KeyboardEvent::Key { key } = &ev {
-            if !matches!(key.as_str(), "backspace" | "enter") {
-                return Err(err(ErrorCode::Unsupported, format!("unknown key {key:?} (backspace, enter)")));
+            let standard = matches!(key.as_str(), "backspace" | "enter" | "copy" | "select_all");
+            let compose = session.is_compose() && matches!(key.as_str(), "tab" | "shift_tab" | "escape" | "space");
+            if !standard && !compose {
+                return Err(err(ErrorCode::Unsupported, format!("unknown key {key:?}")));
             }
         }
         let (scene, version, _) = self.scene(id)?;
@@ -588,6 +594,11 @@ impl Host {
         let effect = s.inter.keyboard(&scene, ev).map_err(|m| err(ErrorCode::InvalidState, m))?;
         s.invalidate_scene();
         s.send_effect(effect)
+    }
+
+    /// A copy or speech request from the simulated selection toolbar.
+    pub fn take_selection_output(&mut self, id: &str) -> Result<Option<onesim_render::SelectionOutput>, ApiError> {
+        Ok(self.get(id)?.inter.take_selection_output())
     }
 
     /// PNG bytes plus pixel size.
