@@ -1,21 +1,22 @@
 //! OneSim API v2: JSON-RPC 2.0 dispatcher over `Host` (docs/api.md).
 //!
 //! Concurrency: the server owns a registry of sessions, each with its **own** `Host` behind its own
-//! mutex (a `Host` with exactly one session) plus an `EventLog`. A call locks the registry only to look
-//! the session up, then blocks on that session's host alone, so a 30 s `runtime.load` never delays
-//! another session. Calls on the *same* session serialize. Events bypass the host lock entirely.
-// ponytail: one `Host` (and font cache) per session, and `runtime.status` / `session.destroy` wait for a
-// call in flight on the same session; `session.get`/`list` answer from a cached `SessionInfo` instead.
-// Upgrade: share `Fonts` across hosts and make sessions individually lockable inside one `Host`.
+//! mutex (sharing a single `Arc<Mutex<Option<Fonts>>>` across all sessions) plus an `EventLog`. A
+//! call locks the registry only to look the session up, then blocks on that session's host alone,
+//! so a 30 s `runtime.load` never delays another session. Calls on the *same* session serialize.
+//! Events bypass the host lock entirely.
 
 use crate::events::EventLog;
-use crate::{Host, DEVICES, STARTUP_MAX};
+use crate::settle::STARTUP_MAX;
+use crate::{Host, DEVICES};
+use base64::Engine;
+use onesim_protocol::{
+    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, IosVersion, KeyboardEvent, PointerEvent, PointerKind, ScenePhase, UiNode,
+    Viewport,
+};
+use onesim_render::Fonts;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use onesim_protocol::{
-    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, IosVersion, KeyboardEvent, PointerEvent, PointerKind, UiNode, Viewport,
-};
-use base64::Engine;
 use std::collections::BTreeMap;
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -28,16 +29,18 @@ pub const API_VERSION: &str = "2.0";
 pub const METHODS: &[&str] = &[
     "initialize", "session.create", "session.list", "session.get", "session.destroy",
     "runtime.load", "runtime.reload", "runtime.pause", "runtime.resume", "runtime.stop", "runtime.status",
-    "input.tap", "input.press", "input.type", "input.key", "input.scroll", "input.swipe",
+    "runtime.tick", "runtime.wait",
+    "input.tap", "input.press", "input.type", "input.key", "input.scroll", "input.swipe", "input.drag",
     "render.screenshot", "render.frame", "render.backend", "render.tree", "render.inspect",
-    "device.list", "device.set", "device.rotate", "device.appearance", "device.keyboard",
+    "device.list", "device.set", "device.rotate", "device.appearance", "device.keyboard", "device.pasteboard",
+    "app.setScenePhase", "app.openURL",
     "modules.list", "modules.simulate", "events.subscribe", "events.unsubscribe",
 ];
 
 pub const EVENTS: &[&str] = &[
     "runtime.ready", "runtime.error", "runtime.stopped", "runtime.paused", "runtime.resumed", "bundle.loaded",
     "bundle.reloaded", "bundle.error", "refresh.applied", "render.updated", "navigation.changed", "module.unsupported",
-    "module.called",
+    "module.called", "pasteboard.changed",
 ];
 
 /// A JSON-RPC error: `code` is the JSON-RPC code, `kind` the OneSim `data.code`.
@@ -74,10 +77,55 @@ fn args<T: serde::de::DeserializeOwned>(p: &Value) -> Result<T, RpcError> {
     serde_json::from_value(p.clone()).map_err(|x| bad(format!("invalid params: {x}")))
 }
 
-/// All input/render/device params in one bag; each method checks what it needs.
+/// Restores `Session::settle = true` on drop so panics can never leave `settle == false`.
+struct SettleGuard<'a> {
+    host: &'a mut Host,
+    sid: &'a str,
+}
+
+impl<'a> SettleGuard<'a> {
+    fn new(host: &'a mut Host, sid: &'a str, settle: bool) -> Self {
+        host.set_settle(sid, settle);
+        Self { host, sid }
+    }
+}
+
+impl Drop for SettleGuard<'_> {
+    fn drop(&mut self) {
+        self.host.set_settle(self.sid, true);
+    }
+}
+
+// --- typed parameter structs ---------------------------------------------------------------------------
+
 #[derive(Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-struct P {
+struct SessionIdP {
+    #[serde(default)]
+    session_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EventsSubscribeP {
+    #[serde(default)]
+    session_id: String,
+    names: Option<Vec<String>>,
+    since: Option<u64>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeLoadP {
+    #[serde(default)]
+    session_id: String,
+    metro_url: Option<String>,
+    app_path: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TargetP {
     #[serde(default)]
     session_id: String,
     x: Option<f64>,
@@ -88,31 +136,159 @@ struct P {
     settle: Option<bool>,
     dx: Option<f64>,
     dy: Option<f64>,
-    text: Option<String>,
-    key: Option<String>,
-    from: Option<Pt>,
-    to: Option<Pt>,
-    format: Option<String>,
-    renderer: Option<String>,
-    scale: Option<f64>,
-    width: Option<u32>,
-    height: Option<u32>,
-    device: Option<String>,
-    mode: Option<Appearance>,
-    orientation: Option<String>,
-    visible: Option<bool>,
-    module: Option<String>,
-    state: Option<Value>,
-    metro_url: Option<String>,
-    app_path: Option<String>,
-    names: Option<Vec<String>>,
-    since: Option<u64>,
 }
 
 #[derive(Deserialize)]
 struct Pt {
     x: f64,
     y: f64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SwipeP {
+    #[serde(default)]
+    session_id: String,
+    from: Option<Pt>,
+    to: Option<Pt>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DragP {
+    #[serde(default)]
+    session_id: String,
+    phase: Option<onesim_protocol::DragPhaseKind>,
+    x: Option<f64>,
+    y: Option<f64>,
+    time_ms: Option<f64>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TickP {
+    #[serde(default)]
+    session_id: String,
+    dt_ms: Option<f64>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WaitP {
+    #[serde(default)]
+    session_id: String,
+    ms: Option<f64>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TypeP {
+    #[serde(default)]
+    session_id: String,
+    text: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KeyP {
+    #[serde(default)]
+    session_id: String,
+    key: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RenderP {
+    #[serde(default)]
+    session_id: String,
+    format: Option<String>,
+    scale: Option<f64>,
+    width: Option<u32>,
+    height: Option<u32>,
+    settle: Option<bool>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BackendP {
+    #[serde(default)]
+    session_id: String,
+    renderer: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InspectP {
+    #[serde(default)]
+    session_id: String,
+    element: Option<String>,
+    x: Option<f64>,
+    y: Option<f64>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceSetP {
+    #[serde(default)]
+    session_id: String,
+    device: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceRotateP {
+    #[serde(default)]
+    session_id: String,
+    orientation: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ScenePhaseP {
+    #[serde(default)]
+    session_id: String,
+    phase: Option<ScenePhase>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenUrlP {
+    #[serde(default)]
+    session_id: String,
+    url: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AppearanceP {
+    #[serde(default)]
+    session_id: String,
+    mode: Option<Appearance>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PasteboardP {
+    #[serde(default)]
+    session_id: String,
+    items: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KeyboardP {
+    #[serde(default)]
+    session_id: String,
+    visible: Option<bool>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ModuleSimulateP {
+    #[serde(default)]
+    session_id: String,
+    module: Option<String>,
+    state: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -125,6 +301,8 @@ struct CreateP {
     dynamic_type_size: Option<DynamicTypeSize>,
     os_version: Option<IosVersion>,
     metro_url: Option<String>,
+    #[serde(alias = "launchURL")]
+    launch_url: Option<String>,
     app_path: Option<String>,
     root_view: Option<String>,
     viewport: Option<Viewport>,
@@ -134,6 +312,8 @@ struct CreateP {
     /// Test hook, like v1: spawn `appPath` directly without building.
     #[serde(default)]
     prebuilt: bool,
+    #[serde(default)]
+    pasteboard: Option<String>,
 }
 
 /// `iphone-17-pro` -> `iPhone 17 Pro`.
@@ -174,6 +354,7 @@ impl Entry {
             "device": display_name(s.device.name), "osVersion": s.os_version(), "viewport": s.viewport, "scale": s.scale,
             "appearance": s.appearance, "status": s.state().as_str(), "treeVersion": s.tree_version().unwrap_or(0),
             "metroUrl": s.params.metro_url, "appPath": (!s.params.app_path.is_empty()).then_some(&s.params.app_path),
+            "scenePhase": (s.is_swiftui() || s.is_rn()).then_some(s.scene_phase.as_str()),
         });
         let v = Value::Object(v.as_object().expect("object").iter().filter(|(_, v)| !v.is_null()).map(|(k, v)| (k.clone(), v.clone())).collect());
         *lock(&self.info) = v.clone();
@@ -186,6 +367,12 @@ impl Entry {
         let r = f(&mut h);
         let _ = self.info(&mut h);
         r.map_err(|x| RpcError { session: Some(self.id.clone()), ..RpcError::from(x) })
+    }
+
+    /// Run `f` on the session's host without rebuilding `info` JSON (for read-only / high-frequency input calls).
+    fn with_ro<T>(&self, f: impl FnOnce(&mut Host) -> Result<T, ApiError>) -> Result<T, RpcError> {
+        let mut h = lock(&self.host);
+        f(&mut h).map_err(|x| RpcError { session: Some(self.id.clone()), ..RpcError::from(x) })
     }
 
     fn set_status(&self, status: &str) {
@@ -212,11 +399,16 @@ struct Registry {
 pub struct Server {
     reg: Mutex<Registry>,
     conns: AtomicU64,
+    fonts: Arc<Mutex<Option<Fonts>>>,
 }
 
 impl Server {
     pub fn new() -> Arc<Self> {
-        Arc::new(Self { reg: Mutex::new(Registry { next: 1, ..Registry::default() }), conns: AtomicU64::new(1) })
+        Arc::new(Self {
+            reg: Mutex::new(Registry { next: 1, ..Registry::default() }),
+            conns: AtomicU64::new(1),
+            fonts: Arc::new(Mutex::new(None)),
+        })
     }
 
     /// A new connection; notifications for its subscriptions are queued on `tx` as JSON text.
@@ -248,11 +440,13 @@ impl Server {
             device: p.device.as_deref().map(resolve_device).transpose()?.map(String::from),
             prebuilt: p.prebuilt,
             metro_url: p.metro_url,
+            pasteboard: p.pasteboard,
+            launch_url: p.launch_url,
         };
         let entry = {
             let mut reg = lock(&self.reg);
             let id = format!("s{}", reg.next);
-            let mut host = Host::new();
+            let mut host = Host::with_shared_fonts(self.fonts.clone());
             host.create_session_as(id.clone(), params)?;
             let entry = Arc::new(Entry { log: host.events(&id)?, id, host: Mutex::new(host), info: Mutex::new(Value::Null) });
             let n = reg.next;
@@ -352,25 +546,21 @@ impl Conn {
         match method {
             "session.create" => srv.create(args(p)?),
             "session.list" => Ok(json!({"sessions": srv.entries().iter().map(|en| en.snapshot()).collect::<Vec<_>>()})),
-            "session.get" => Ok(srv.entry(&args::<P>(p)?.session_id)?.snapshot()),
-            "session.destroy" => srv.destroy(&args::<P>(p)?.session_id),
+            "session.get" => Ok(srv.entry(&args::<SessionIdP>(p)?.session_id)?.snapshot()),
+            "session.destroy" => srv.destroy(&args::<SessionIdP>(p)?.session_id),
             "device.list" => Ok(json!({"devices": DEVICES.iter().map(|d| json!({
                 "name": d.name, "displayName": display_name(d.name), "platform": if d.android { "android" } else { "ios" }, "viewport": d.viewport, "scale": d.scale,
                 "safeArea": {"top": d.safe_top, "bottom": d.safe_bottom}})).collect::<Vec<_>>()})),
             "events.subscribe" => {
-                let a: P = args(p)?;
+                let a: EventsSubscribeP = args(p)?;
                 let last = srv.entry(&a.session_id)?.log.subscribe(self.id, self.tx.clone(), a.names, a.since);
                 Ok(json!({"subscribed": true, "lastSeq": last}))
             }
             "events.unsubscribe" => {
-                srv.entry(&args::<P>(p)?.session_id)?.log.unsubscribe(self.id);
+                srv.entry(&args::<SessionIdP>(p)?.session_id)?.log.unsubscribe(self.id);
                 Ok(json!({}))
             }
-            m if METHODS.contains(&m) => {
-                let a: P = args(p)?;
-                let en = srv.entry(&a.session_id)?;
-                session_call(&srv, &en, m, a)
-            }
+            m if METHODS.contains(&m) => session_call(&srv, m, p),
             m => Err(e(-32601, "method_not_found", format!("unknown method {m:?}"))),
         }
     }
@@ -418,7 +608,7 @@ fn center(n: &UiNode) -> (f64, f64) {
 }
 
 /// Where an input lands: `element` (UiNode centre), `label` (CLI `--click` syntax) or a point.
-fn target(h: &mut Host, sid: &str, a: &P) -> Result<(f64, f64), ApiError> {
+fn target(h: &mut Host, sid: &str, a: &TargetP) -> Result<(f64, f64), ApiError> {
     if let Some(el) = &a.element {
         let (_, root) = h.inspect(sid)?;
         let mut chain = vec![];
@@ -435,78 +625,161 @@ fn target(h: &mut Host, sid: &str, a: &P) -> Result<(f64, f64), ApiError> {
     }
 }
 
-fn session_call(srv: &Server, en: &Arc<Entry>, method: &str, a: P) -> R {
-    let sid = en.id.as_str();
+fn session_call(srv: &Server, method: &str, p: &Value) -> R {
     let b64 = |png: Vec<u8>| base64::engine::general_purpose::STANDARD.encode(png);
     match method {
         "runtime.load" => {
-            srv.load(en, a.metro_url, a.app_path)?;
+            let a: RuntimeLoadP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
+            srv.load(&en, a.metro_url, a.app_path)?;
             Ok(json!({"status": "running"}))
         }
-        "runtime.reload" => en.with(|h| {
-            let s = h.get(sid)?;
-            if !s.is_rn() {
-                return Err(ApiError::new(ErrorCode::Unsupported, "reload exists only for react-native sessions"));
-            }
-            s.reload()?;
-            let _ = h.scene_within(sid, STARTUP_MAX);
-            Ok(json!({"status": "running"}))
-        }),
-        "runtime.pause" => en.with(|h| h.get(sid)?.pause()).map(|_| json!({"status": "paused"})),
-        "runtime.resume" => en.with(|h| h.get(sid)?.resume()).map(|_| json!({"status": "running"})),
-        "runtime.stop" => en.with(|h| h.stop_session(sid)).map(|_| json!({"status": "stopped"})),
-        "runtime.status" => en.with(|h| {
-            let errors = h.errors(sid)?;
-            let s = h.get(sid)?;
-            Ok(json!({"status": s.state().as_str(), "treeVersion": s.tree_version().unwrap_or(0), "errors": errors}))
-        }),
-        "input.tap" | "input.press" | "input.scroll" => en.with(|h| {
-            h.set_settle(sid, a.settle != Some(false));
-            let r = (|| {
-                h.get(sid)?.require_running()?;
-                let (x, y) = target(h, sid, &a)?;
-                let hit = match method {
-                    "input.tap" => h.pointer(sid, PointerEvent::new(PointerKind::Click, x, y))?.0,
-                    "input.press" => {
-                        h.pointer(sid, PointerEvent::new(PointerKind::Down, x, y))?;
-                        std::thread::sleep(Duration::from_millis(a.duration_ms.unwrap_or(500).min(60_000)));
-                        h.pointer(sid, PointerEvent::new(PointerKind::Up, x, y))?.0
-                    }
-                    _ => {
-                        let ev = PointerEvent::moved(PointerKind::Scroll, x, y, a.dx.unwrap_or(0.0), a.dy.unwrap_or(0.0));
-                        h.pointer(sid, ev)?;
-                        return Ok(json!({}));
-                    }
-                };
+        "runtime.reload" => {
+            let en = srv.entry(&args::<SessionIdP>(p)?.session_id)?;
+            let sid = en.id.as_str();
+            en.with(|h| {
+                let s = h.get(sid)?;
+                if !s.is_rn() {
+                    return Err(ApiError::new(ErrorCode::Unsupported, "reload exists only for react-native sessions"));
+                }
+                s.reload()?;
+                let _ = h.scene_within(sid, STARTUP_MAX);
+                Ok(json!({"status": "running"}))
+            })
+        }
+        "runtime.pause" => {
+            let en = srv.entry(&args::<SessionIdP>(p)?.session_id)?;
+            en.with(|h| h.get(&en.id)?.pause()).map(|_| json!({"status": "paused"}))
+        }
+        "runtime.resume" => {
+            let en = srv.entry(&args::<SessionIdP>(p)?.session_id)?;
+            en.with(|h| h.get(&en.id)?.resume()).map(|_| json!({"status": "running"}))
+        }
+        "runtime.stop" => {
+            let en = srv.entry(&args::<SessionIdP>(p)?.session_id)?;
+            en.with(|h| h.stop_session(&en.id)).map(|_| json!({"status": "stopped"}))
+        }
+        "runtime.status" => {
+            let en = srv.entry(&args::<SessionIdP>(p)?.session_id)?;
+            let sid = en.id.as_str();
+            en.with_ro(|h| {
+                let errors = h.errors(sid)?;
+                let s = h.get(sid)?;
+                Ok(json!({"status": s.state().as_str(), "treeVersion": s.tree_version().unwrap_or(0), "errors": errors}))
+            })
+        }
+        "runtime.tick" => {
+            let a: TickP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
+            let dt_ms = a.dt_ms.filter(|v| v.is_finite() && *v >= 0.0).ok_or_else(|| bad("dtMs (non-negative number) required"))?;
+            let sid = en.id.as_str();
+            en.with_ro(|h| {
+                let animating = h.tick(sid, dt_ms / 1000.0)?;
+                let clock_ms = h.clock_ms(sid)?;
+                Ok(json!({"clockMs": clock_ms, "animating": animating}))
+            })
+        }
+        "runtime.wait" => {
+            let a: WaitP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
+            let ms = a.ms.filter(|v| v.is_finite() && *v >= 0.0).ok_or_else(|| bad("ms (non-negative number) required"))?;
+            let sid = en.id.as_str();
+            en.with_ro(|h| {
+                h.wait(sid, ms)?;
+                let clock_ms = h.clock_ms(sid)?;
+                let animating = h.is_animating(sid);
+                Ok(json!({"clockMs": clock_ms, "animating": animating}))
+            })
+        }
+        "input.tap" | "input.scroll" => {
+            let a: TargetP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
+            let sid = en.id.as_str();
+            en.with_ro(|h| {
+                let g = SettleGuard::new(h, sid, a.settle != Some(false));
+                g.host.get(sid)?.require_running()?;
+                let (x, y) = target(g.host, sid, &a)?;
+                if method == "input.tap" {
+                    let hit = g.host.pointer(sid, PointerEvent::new(PointerKind::Click, x, y))?.0;
+                    Ok(json!({"hit": hit}))
+                } else {
+                    let ev = PointerEvent::moved(PointerKind::Scroll, x, y, a.dx.unwrap_or(0.0), a.dy.unwrap_or(0.0));
+                    g.host.pointer(sid, ev)?;
+                    Ok(json!({}))
+                }
+            })
+        }
+        "input.press" => {
+            let a: TargetP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
+            let sid = en.id.as_str();
+            let settle = a.settle != Some(false);
+            let (x, y) = en.with_ro(|h| {
+                let g = SettleGuard::new(h, sid, settle);
+                g.host.get(sid)?.require_running()?;
+                let (x, y) = target(g.host, sid, &a)?;
+                g.host.pointer(sid, PointerEvent::new(PointerKind::Down, x, y))?;
+                Ok((x, y))
+            })?;
+            // Release `en.host` mutex while sleeping so status/other reads aren't blocked.
+            std::thread::sleep(Duration::from_millis(a.duration_ms.unwrap_or(500).min(60_000)));
+            en.with_ro(|h| {
+                let g = SettleGuard::new(h, sid, settle);
+                let hit = g.host.pointer(sid, PointerEvent::new(PointerKind::Up, x, y))?.0;
                 Ok(json!({"hit": hit}))
-            })();
-            h.set_settle(sid, true);
-            r
-        }),
+            })
+        }
         "input.swipe" => {
+            let a: SwipeP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
             let (Some(f), Some(t)) = (&a.from, &a.to) else { return Err(bad("from and to ({x,y}) required")) };
             let ev = PointerEvent::moved(PointerKind::Scroll, f.x, f.y, f.x - t.x, f.y - t.y);
-            en.with(|h| h.pointer(sid, ev)).map(|_| json!({}))
+            en.with_ro(|h| h.pointer(&en.id, ev)).map(|_| json!({}))
+        }
+        "input.drag" => {
+            let a: DragP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
+            let phase = match a.phase.ok_or_else(|| bad("phase (\"begin\", \"move\", or \"end\") required"))? {
+                onesim_protocol::DragPhaseKind::Begin => onesim_render::DragPhase::Begin,
+                onesim_protocol::DragPhaseKind::Move => onesim_render::DragPhase::Move,
+                onesim_protocol::DragPhaseKind::End => onesim_render::DragPhase::End,
+            };
+            let (Some(x), Some(y)) = (a.x, a.y) else { return Err(bad("x and y required")) };
+            let sid = en.id.as_str();
+            en.with_ro(|h| {
+                let t_ms = match a.time_ms {
+                    Some(t) if t.is_finite() => t,
+                    Some(_) => return Err(ApiError::new(ErrorCode::BadRequest, "timeMs must be finite")),
+                    None => h.clock_ms(sid)?,
+                };
+                let changed = h.drag(sid, phase, x, y, t_ms)?;
+                Ok(json!({"changed": changed}))
+            })
         }
         "input.type" => {
+            let a: TypeP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
             let text = a.text.ok_or_else(|| bad("text required"))?;
-            en.with(|h| h.keyboard(sid, KeyboardEvent::Text { text })).map(|_| json!({}))
+            en.with_ro(|h| h.keyboard(&en.id, KeyboardEvent::Text { text })).map(|_| json!({}))
         }
         "input.key" => {
+            let a: KeyP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
             let key = a.key.filter(|k| matches!(k.as_str(), "enter" | "backspace")).ok_or_else(|| bad("key must be \"enter\" or \"backspace\""))?;
-            en.with(|h| h.keyboard(sid, KeyboardEvent::Key { key })).map(|_| json!({}))
+            en.with_ro(|h| h.keyboard(&en.id, KeyboardEvent::Key { key })).map(|_| json!({}))
         }
         "render.screenshot" | "render.frame" => {
+            let a: RenderP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
+            let sid = en.id.as_str();
             if a.format.as_deref().is_some_and(|f| f != "png") {
                 return Err(e(-32000, "unsupported", "screenshot format must be \"png\""));
             }
             let frame = method == "render.frame";
             let (scale, width, height) = if frame { (None, None, None) } else { (a.scale, a.width, a.height) };
-            let (w, h_, png, v) = en.with(|h| {
-                h.set_settle(sid, a.settle != Some(false));
-                let r = h.screenshot_sized(sid, scale, width, height);
-                h.set_settle(sid, true);
-                r
+            let (w, h_, png, v) = en.with_ro(|h| {
+                let g = SettleGuard::new(h, sid, a.settle != Some(false));
+                g.host.screenshot_sized(sid, scale, width, height)
             })?;
             Ok(if frame {
                 json!({"treeVersion": v, "width": w, "height": h_, "data": b64(png)})
@@ -515,23 +788,30 @@ fn session_call(srv: &Server, en: &Arc<Entry>, method: &str, a: P) -> R {
             })
         }
         "render.backend" => {
+            let a: BackendP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
             let pref = a.renderer.as_deref().map(|r| r.parse::<onesim_render::BackendPref>().map_err(bad)).transpose()?;
-            let d = en.with(|h| {
+            let d = en.with_ro(|h| {
                 if let Some(p) = pref {
                     h.set_renderer(p);
                 }
                 h.renderer_diagnostics()
             })?;
-            let ms = |d: std::time::Duration| d.as_secs_f64() * 1000.0;
+            let ms = |d: Duration| d.as_secs_f64() * 1000.0;
             Ok(json!({
                 "backend": d.backend, "adapter": d.adapter, "limitations": d.limitations,
                 "fallbackReason": d.fallback_reason, "frames": d.frames,
                 "lastFrameMs": {"encode": ms(d.last_frame.encode), "gpu": ms(d.last_frame.gpu), "readback": ms(d.last_frame.readback)},
             }))
         }
-        "render.tree" => en.with(|h| h.inspect(sid)).map(|(v, root)| json!({"treeVersion": v, "root": root})),
+        "render.tree" => {
+            let en = srv.entry(&args::<SessionIdP>(p)?.session_id)?;
+            en.with_ro(|h| h.inspect(&en.id)).map(|(v, root)| json!({"treeVersion": v, "root": root}))
+        }
         "render.inspect" => {
-            let (_, root) = en.with(|h| h.inspect(sid))?;
+            let a: InspectP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
+            let (_, root) = en.with_ro(|h| h.inspect(&en.id))?;
             let mut chain = vec![];
             let found = match (&a.element, a.x, a.y) {
                 (Some(el), ..) => find_chain(&root, &|n| &n.id == el, &mut chain),
@@ -540,43 +820,84 @@ fn session_call(srv: &Server, en: &Arc<Entry>, method: &str, a: P) -> R {
             };
             match chain.last().filter(|_| found) {
                 Some(n) => Ok(json!({"node": n, "path": chain.iter().map(|n| &n.id).collect::<Vec<_>>()})),
-                None => Err(RpcError { session: Some(sid.into()), ..e(-32000, "not_found", "nothing there") }),
+                None => Err(RpcError { session: Some(en.id.clone()), ..e(-32000, "not_found", "nothing there") }),
             }
         }
         "device.set" => {
+            let a: DeviceSetP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
             let d = resolve_device(a.device.as_deref().ok_or_else(|| bad("device required"))?)?;
-            en.with(|h| h.set_device(sid, d))?;
+            en.with(|h| h.set_device(&en.id, d))?;
             Ok(en.snapshot())
         }
-        "device.rotate" => match a.orientation.as_deref() {
-            Some("portrait") => Ok(json!({})),
-            Some("landscape") => Err(e(-32000, "unsupported", "landscape is not supported in v0.2")),
-            _ => Err(bad("orientation must be \"portrait\" or \"landscape\"")),
-        },
+        "device.rotate" => {
+            let a: DeviceRotateP = args(p)?;
+            let _ = srv.entry(&a.session_id)?;
+            match a.orientation.as_deref() {
+                Some("portrait") => Ok(json!({})),
+                Some("landscape") => Err(e(-32000, "unsupported", "landscape is not supported in v0.2")),
+                _ => Err(bad("orientation must be \"portrait\" or \"landscape\"")),
+            }
+        }
         "device.appearance" => {
+            let a: AppearanceP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
             let m = a.mode.ok_or_else(|| bad("mode must be \"light\" or \"dark\""))?;
-            en.with(|h| h.set_appearance(sid, m)).map(|_| json!({}))
+            en.with(|h| h.set_appearance(&en.id, m)).map(|_| json!({}))
+        }
+        "device.pasteboard" => {
+            let a: PasteboardP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
+            let items = a.items.ok_or_else(|| bad("items (array of strings) required"))?;
+            en.with(|h| h.set_pasteboard(&en.id, items)).map(|_| json!({}))
         }
         "device.keyboard" => {
+            let a: KeyboardP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
             let visible = a.visible.ok_or_else(|| bad("visible (bool) required"))?;
-            en.with(|h| {
+            en.with_ro(|h| {
                 if visible {
-                    let s = h.get(sid)?;
+                    let s = h.get(&en.id)?;
                     s.require_running()?;
                     if s.inter.focus.is_none() {
                         return Err(ApiError::new(ErrorCode::InvalidState, "no focused text field to show the keyboard for"));
                     }
                     return Ok(());
                 }
-                h.hide_keyboard(sid)
+                h.hide_keyboard(&en.id)
             })
             .map(|_| json!({}))
         }
-        "modules.list" => en.with(|h| h.modules(sid)).map(|m| json!({"modules": m})),
+        "app.setScenePhase" => {
+            let a: ScenePhaseP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
+            let phase = a.phase.ok_or_else(|| bad("phase must be \"active\", \"inactive\" or \"background\""))?;
+            en.with(|h| {
+                h.set_scene_phase(&en.id, phase)?;
+                h.scene_phase(&en.id)
+            })
+            .map(|ph| json!({"phase": ph.as_str()}))
+        }
+        "app.openURL" => {
+            let a: OpenUrlP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
+            let url = a.url.ok_or_else(|| bad("url required"))?;
+            en.with(|h| {
+                h.open_url(&en.id, &url)?;
+                h.scene_phase(&en.id)
+            })
+            .map(|ph| json!({"phase": ph.as_str()}))
+        }
+        "modules.list" => {
+            let en = srv.entry(&args::<SessionIdP>(p)?.session_id)?;
+            en.with_ro(|h| h.modules(&en.id)).map(|m| json!({"modules": m}))
+        }
         "modules.simulate" => {
+            let a: ModuleSimulateP = args(p)?;
+            let en = srv.entry(&a.session_id)?;
             let module = a.module.ok_or_else(|| bad("module required"))?;
             let state = a.state.filter(Value::is_object).ok_or_else(|| bad("state (object) required"))?;
-            en.with(|h| h.simulate(sid, module, state)).map(|_| json!({}))
+            en.with_ro(|h| h.simulate(&en.id, module, state)).map(|_| json!({}))
         }
         m => Err(e(-32601, "method_not_found", format!("unknown method {m:?}"))),
     }

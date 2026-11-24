@@ -3,11 +3,7 @@
 //! `layout::swiftui::layout` turns a protocol `ViewNode` into a framework-neutral
 //! [`Scene`]; everything else works on the scene only.
 
-pub mod layout {
-    pub mod compose;
-    pub mod rn;
-    pub mod swiftui;
-}
+pub mod layout;
 pub mod animation;
 pub mod backend;
 mod chrome;
@@ -17,18 +13,22 @@ mod compose_text;
 mod device;
 pub mod display;
 mod display_build;
+mod effects;
 pub mod glass;
-mod image;
+pub mod image;
 pub use image::put as put_image;
+pub mod live;
+pub mod guest_request;
+pub use live::Live;
 mod interaction;
 mod line_break;
 pub mod look;
 mod raster;
+mod paint;
 pub mod rn_input;
 mod scene;
 mod selection_chrome;
 mod symbols;
-mod symbols_map;
 mod text;
 mod text_selection;
 mod text_layout;
@@ -44,8 +44,8 @@ pub use device::{device, Device, StatusBar, DEFAULT_ANDROID_DEVICE, DEFAULT_DEVI
 pub use interaction::{resolve_label, scroll_anchor_offset, DragPhase, Effect, Interaction};
 pub use text_selection::SelectionOutput;
 pub use layout::swiftui::{SceneParams, SwiftUiLayoutCache};
-pub use scene::{Color, Glyph, Gradient, ImageRun, Node, NodeAnim, Rect, Role, Scene, ScrollInfo, SheetInfo, SheetPos, Shadow, SymbolRun, TextRun};
-pub use text::{fonts_capability, inter_tracking_em, tracking_em, FontSpec, Fonts, Span, TextAlign};
+pub use scene::{Color, Glyph, Gradient, ImageFrames, ImageRun, Node, NodeAnim, Rect, Role, Scene, ScrollInfo, SheetInfo, SheetPos, Shadow, SymbolRun, TextRun};
+pub use text::{fonts_capability, inter_tracking_em, put_font, tracking_em, CustomFace, FontSpec, Fonts, Span, TextAlign};
 
 use onesim_protocol::ViewNode;
 

@@ -49,6 +49,10 @@ enum Cmd {
         #[command(flatten)]
         opts: Opts,
     },
+    /// Answer one guest `request` line from stdin with a `response` line on stdout (protocol section H; for guest
+    /// tests that run the React Native guest without a host).
+    #[command(hide = true)]
+    GuestRequest,
     /// Run an Expo / React Native app served by Metro headlessly (same options as `run`).
     Expo {
         /// Metro dev server (default http://localhost:8081).
@@ -77,6 +81,15 @@ struct Opts {
     /// Write a PNG screenshot (after all interactions).
     #[arg(long)]
     screenshot: Option<String>,
+    /// Record an animation frame sequence (PNGs + manifest.json) into DIR after all interactions.
+    #[arg(long, value_name = "DIR")]
+    record: Option<String>,
+    /// Duration in milliseconds to record when `--record` is set (default 600).
+    #[arg(long = "record-ms", value_name = "MS", default_value_t = 600.0)]
+    record_ms: f64,
+    /// Frame rate in frames per second when `--record` is set (default 60).
+    #[arg(long = "record-fps", value_name = "FPS", default_value_t = 60.0)]
+    record_fps: f64,
     /// Click "X,Y" (points) or a control by label: button, navigation link, toggle (its switch),
     /// text field (placeholder; focuses it), or a stepper half as "LABEL#increment" / "LABEL#decrement"
     /// where LABEL is the stepper's current label. Repeatable.
@@ -108,9 +121,21 @@ struct Opts {
     /// Turn two fingers centred on "X,Y" or a labelled view by DEGREES (clockwise). Repeatable.
     #[arg(long = "rotate", value_name = "LABEL_OR_X,Y,DEGREES")]
     rotations: Vec<String>,
-    /// Advance SwiftUI animations, transitions, and timelines by MS milliseconds. Repeatable.
+    /// Advance animations by MS milliseconds: SwiftUI animations, transitions and timelines, React Native
+    /// LayoutAnimation, spinners and animated GIF / WebP. Repeatable.
     #[arg(long = "wait", value_name = "MS")]
     waits: Vec<String>,
+    /// Move a SwiftUI app to a scene phase (through inactive, as iOS does). Repeatable.
+    #[arg(long = "scene-phase", value_name = "active|inactive|background")]
+    scene_phases: Vec<String>,
+    /// Open a URL in the app: SwiftUI `onOpenURL` (a backgrounded app comes to the front first), React Native
+    /// `Linking`'s `url` event (iOS). Repeatable.
+    #[arg(long = "open-url", value_name = "URL")]
+    open_urls: Vec<String>,
+    /// Launch the app to open this URL: SwiftUI gets it in `onOpenURL` after the first frame, React Native (iOS) from
+    /// `Linking.getInitialURL` (Expo Router starts at its route).
+    #[arg(long = "launch-url", value_name = "URL")]
+    launch_url: Option<String>,
     /// Print the UI tree as JSON on stdout.
     #[arg(long)]
     inspect: bool,
@@ -134,6 +159,9 @@ struct Opts {
     /// Simulated iOS release: 26.5 or 27.2 (default).
     #[arg(long = "ios", value_name = "VERSION")]
     ios: Option<String>,
+    /// SwiftUI: text on the pasteboard at launch (what `PasteButton` pastes).
+    #[arg(long, value_name = "TEXT")]
+    pasteboard: Option<String>,
 }
 
 /// One interaction, in command-line order.
@@ -149,6 +177,8 @@ enum Step {
     Pinch(String),
     Rotate(String),
     Wait(String),
+    ScenePhase(String),
+    OpenUrl(String),
 }
 
 /// Collect the repeatable interaction flags in the order they were given.
@@ -169,6 +199,8 @@ fn steps(m: &ArgMatches) -> Vec<Step> {
     add("pinches", Step::Pinch);
     add("rotations", Step::Rotate);
     add("waits", Step::Wait);
+    add("scene_phases", Step::ScenePhase);
+    add("open_urls", Step::OpenUrl);
     all.sort_by_key(|(i, _)| *i);
     all.into_iter().map(|(_, s)| s).collect()
 }
@@ -208,6 +240,17 @@ fn main() -> Result<()> {
             let listener = std::net::TcpListener::bind(&addr).with_context(|| format!("listen on {addr}"))?;
             eprintln!("listening on ws://{}/", listener.local_addr()?);
             onesim_host::serve_ws(listener, onesim_host::Server::new())?;
+            Ok(())
+        }
+        Cmd::GuestRequest => {
+            let mut line = String::new();
+            std::io::stdin().read_line(&mut line)?;
+            let Ok(onesim_protocol::GuestMessage::Request { id, method, params }) = serde_json::from_str(&line) else { bail!("not a guest request: {line}") };
+            let (result, error) = match onesim_render::guest_request::handle(&mut onesim_render::Fonts::new(), &method, &params) {
+                Ok(v) => (Some(v), None),
+                Err(e) => (None, Some(e)),
+            };
+            println!("{}", serde_json::to_string(&onesim_protocol::HostMessage::Response { id, result, error })?);
             Ok(())
         }
         Cmd::Serve { listen: None } => {
@@ -266,6 +309,8 @@ fn params(framework: &str) -> CreateSessionParams {
         os_version: None,
         prebuilt: false,
         metro_url: None,
+        pasteboard: None,
+        launch_url: None,
     }
 }
 
@@ -290,6 +335,8 @@ fn prepare(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: &mut
         .map(|d| DynamicTypeSize::parse(&d).with_context(|| format!("unknown --dynamic-type {d:?}")))
         .transpose()?;
     p.device = o.device.take();
+    p.pasteboard = o.pasteboard.take();
+    p.launch_url = o.launch_url.take();
     p.os_version = o
         .ios
         .take()
@@ -302,8 +349,9 @@ fn prepare(matches: &ArgMatches, name: &str, mut p: CreateSessionParams, o: &mut
 
 /// Create a session from the shared options, drive it in command-line order, then shut down.
 fn run(matches: &ArgMatches, name: &str, p: CreateSessionParams, mut o: Opts, appearance: Option<Appearance>, report: bool) -> Result<()> {
+    let rec = o.record.take().map(|dir| RecordOpts { dir, ms: o.record_ms, fps: o.record_fps });
     let (mut host, id, steps) = prepare(matches, name, p, &mut o, appearance)?;
-    let result = drive(&mut host, &id, o.screenshot, &steps, o.inspect, report);
+    let result = drive(&mut host, &id, o.screenshot, rec, &steps, o.inspect, report);
     if result.is_err() {
         for e in host.errors(&id).unwrap_or_default() {
             eprintln!("[{}] {}", e.source, e.message);
@@ -313,6 +361,12 @@ fn run(matches: &ArgMatches, name: &str, p: CreateSessionParams, mut o: Opts, ap
     result
 }
 
+struct RecordOpts {
+    dir: String,
+    ms: f64,
+    fps: f64,
+}
+
 /// Start the session, apply any `--click`/`--type`/... steps, then hand it to the native window.
 #[cfg(feature = "window")]
 fn open_window(matches: &ArgMatches, name: &str, p: CreateSessionParams, mut o: Opts, appearance: Option<Appearance>, title: String) -> Result<()> {
@@ -320,14 +374,16 @@ fn open_window(matches: &ArgMatches, name: &str, p: CreateSessionParams, mut o: 
     let pref = onesim_render::BackendPref::from_env().map_err(anyhow::Error::msg)?;
     let (rn, dark) = (p.framework == "react-native", o.dark || appearance == Some(Appearance::Dark));
     let compose = p.framework == "compose";
+    // The window follows the host clipboard (SwiftUI) unless `--pasteboard` fixed the app's pasteboard.
+    let clipboard = p.framework == "swiftui" && o.pasteboard.is_none();
     let (mut host, id, steps) = prepare(matches, name, p, &mut o, appearance)?;
     // `drive` starts the session and applies the steps; the window then takes over the running session.
-    if let Err(e) = drive(&mut host, &id, None, &steps, false, false) {
+    if let Err(e) = drive(&mut host, &id, None, None, &steps, false, false) {
         host.shutdown();
         return Err(e);
     }
     let stats = std::env::var_os("SIMCORE_FRAME_STATS").is_some_and(|v| v != "0");
-    window::run(host, id, window::Config { pref, rn, compose, title, stats, dark })
+    window::run(host, id, window::Config { pref, rn, compose, title, stats, dark, clipboard })
 }
 
 #[cfg(not(feature = "window"))]
@@ -335,7 +391,7 @@ fn open_window(_: &ArgMatches, _: &str, _: CreateSessionParams, _: Opts, _: Opti
     bail!("this build has no native window: rebuild with `cargo build -p onesim-cli --features window`")
 }
 
-fn drive(host: &mut Host, id: &str, shot: Option<String>, steps: &[Step], inspect: bool, report: bool) -> Result<()> {
+fn drive(host: &mut Host, id: &str, shot: Option<String>, rec: Option<RecordOpts>, steps: &[Step], inspect: bool, report: bool) -> Result<()> {
     host.start_session(id).context("start_session")?;
     for step in steps {
         match step {
@@ -400,11 +456,44 @@ fn drive(host: &mut Host, id: &str, shot: Option<String>, steps: &[Step], inspec
                     bail!("nothing scrollable at {x},{y}");
                 }
             }
+            Step::ScenePhase(s) => {
+                let phase: onesim_protocol::ScenePhase = s.parse().map_err(anyhow::Error::msg)?;
+                host.set_scene_phase(id, phase).context("--scene-phase")?;
+            }
+            Step::OpenUrl(u) => host.open_url(id, u).context("--open-url")?,
             Step::Wait(s) => {
                 let ms: f64 = s.trim().parse().with_context(|| format!("--wait wants milliseconds, got {s:?}"))?;
                 host.wait(id, ms).context("--wait")?;
             }
         }
+    }
+    if let Some(rec) = rec {
+        if !(rec.fps.is_finite() && rec.fps > 0.0 && rec.fps <= 240.0) {
+            bail!("--record-fps must be in (0, 240], got {}", rec.fps);
+        }
+        if !(rec.ms.is_finite() && rec.ms >= 0.0) {
+            bail!("--record-ms must be non-negative, got {}", rec.ms);
+        }
+        let dir = std::path::PathBuf::from(&rec.dir);
+        std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
+        let dt_ms = 1000.0 / rec.fps;
+        let count = (rec.ms / dt_ms).floor() as usize + 1;
+        let t0 = host.clock_ms(id)?;
+        let mut frames = Vec::with_capacity(count);
+        for i in 0..count {
+            if i > 0 {
+                host.tick(id, dt_ms / 1000.0)?;
+            }
+            let t_ms = host.clock_ms(id)? - t0;
+            let file = format!("frame_{i:04}.png");
+            let (w, h, png) = host.screenshot(id)?;
+            std::fs::write(dir.join(&file), png).with_context(|| format!("writing {file}"))?;
+            frames.push(serde_json::json!({"index": i, "file": file, "t_ms": t_ms, "width": w, "height": h}));
+        }
+        let manifest = serde_json::json!({"fps": rec.fps, "duration_ms": rec.ms, "frames": frames});
+        std::fs::write(dir.join("manifest.json"), serde_json::to_string_pretty(&manifest)?)
+            .with_context(|| format!("writing {}/manifest.json", dir.display()))?;
+        eprintln!("recorded {} frames to {} ({:.0} fps, {:.0} ms)", count, dir.display(), rec.fps, rec.ms);
     }
     if let Some(path) = shot {
         let (w, h, png) = host.screenshot(id)?;
@@ -445,7 +534,7 @@ mod tests {
     fn steps_keep_command_line_order() {
         let m = Cli::command().get_matches_from([
             "onesim", "run", "app", "--click", "New todo", "--type", "hi", "--key", "enter", "--click", "Add",
-            "--scroll", "1,2,0,50", "--type", "x",
+            "--scroll", "1,2,0,50", "--scene-phase", "background", "--open-url", "app://x", "--type", "x",
         ]);
         let got = steps(m.subcommand_matches("run").unwrap());
         assert_eq!(
@@ -456,6 +545,8 @@ mod tests {
                 Step::Key("enter".into()),
                 Step::Click("Add".into()),
                 Step::Scroll("1,2,0,50".into()),
+                Step::ScenePhase("background".into()),
+                Step::OpenUrl("app://x".into()),
                 Step::Type("x".into()),
             ]
         );

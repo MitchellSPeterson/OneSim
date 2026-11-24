@@ -35,6 +35,6 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Shape.transform` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `Shape.trim` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `Shape.union` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
-| `TextInputBorderShape` | 13 | ⬜ |  |  |
+| `TextInputBorderShape` | 27 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Automatic, capsule and rounded rectangle presets. Radii approximate iOS. |
 | `TransformedShape` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `UnevenRoundedRectangle` | 16 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |

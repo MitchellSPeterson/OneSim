@@ -18,7 +18,20 @@ OUT="$(mktemp -d)"; trap 'rm -rf "$OUT"' EXIT
 "$ROOT/scripts/build-swift-app.sh" "$(dirname "$0")/AnimationLab.swift" "$OUT/animlab" AnimationLab
 "$ROOT/scripts/build-swift-app.sh" "$(dirname "$0")/ControlLab.swift" "$OUT/controllab" ControlLab
 "$ROOT/scripts/build-swift-app.sh" "$ROOT/examples/swiftui-pages" "$OUT/pages"
-for exe in counter entry showcase dataflow presentation tabs tabsmodern gesturelab layoutlab shapelab typelab animlab statelab controllab pages; do
+"$ROOT/scripts/build-swift-app.sh" "$(dirname "$0")/EffectsLab.swift" "$OUT/effectslab" EffectsLab
+"$ROOT/scripts/build-swift-app.sh" "$(dirname "$0")/TextInputLab.swift" "$OUT/textinputlab" TextInputLab
+"$ROOT/scripts/build-swift-app.sh" "$ROOT/examples/swiftui-pickers" "$OUT/pickers"
+"$ROOT/scripts/build-swift-app.sh" "$(dirname "$0")/PickerLab.swift" "$OUT/pickerlab" PickerLab
+"$ROOT/scripts/build-swift-app.sh" "$ROOT/examples/swiftui-navigation" "$OUT/navigation"
+"$ROOT/scripts/build-swift-app.sh" "$(dirname "$0")/NavigationLab.swift" "$OUT/navigationlab" NavigationLab
+"$ROOT/scripts/build-swift-app.sh" "$(dirname "$0")/FormLab.swift" "$OUT/formlab" FormLab
+"$ROOT/scripts/build-swift-app.sh" "$ROOT/examples/swiftui-forms" "$OUT/forms"
+"$ROOT/scripts/build-swift-app.sh" "$(dirname "$0")/AccessibilityLab.swift" "$OUT/accessibilitylab" AccessibilityLab
+"$ROOT/scripts/build-swift-app.sh" "$(dirname "$0")/SceneLab.swift" "$OUT/scenelab"
+"$ROOT/scripts/build-swift-app.sh" "$(dirname "$0")/SceneDataLab.swift" "$OUT/scenedatalab"
+"$ROOT/scripts/build-swift-app.sh" "$(dirname "$0")/SceneOptLab.swift" "$OUT/sceneoptlab"
+"$ROOT/scripts/build-swift-app.sh" "$(dirname "$0")/PresentationLab.swift" "$OUT/presentationlab" PresentationLab
+for exe in counter entry showcase dataflow presentation tabs tabsmodern gesturelab layoutlab shapelab typelab animlab statelab controllab pages effectslab textinputlab pickers pickerlab navigation navigationlab formlab forms accessibilitylab scenelab scenedatalab sceneoptlab presentationlab; do
   if otool -L "$OUT/$exe" | grep -q 'SwiftUI.framework'; then echo "FAIL: $exe links Apple SwiftUI" >&2; exit 1; fi
 done
-/usr/bin/python3 -I "$(dirname "$0")/wire_test.py" "$OUT/counter" "$OUT/entry" "$OUT/showcase" "$OUT/dataflow" "$OUT/presentation" "$OUT/tabs" "$OUT/tabsmodern" "$OUT/gesturelab" "$OUT/layoutlab" "$OUT/shapelab" "$OUT/typelab" "$OUT/animlab" "$OUT/statelab" "$OUT/controllab" "$OUT/pages"
+/usr/bin/python3 -I "$(dirname "$0")/wire_test.py" "$OUT/counter" "$OUT/entry" "$OUT/showcase" "$OUT/dataflow" "$OUT/presentation" "$OUT/tabs" "$OUT/tabsmodern" "$OUT/gesturelab" "$OUT/layoutlab" "$OUT/shapelab" "$OUT/typelab" "$OUT/animlab" "$OUT/statelab" "$OUT/controllab" "$OUT/pages" "$OUT/effectslab" "$OUT/textinputlab" "$OUT/pickers" "$OUT/pickerlab" "$OUT/navigation" "$OUT/navigationlab" "$OUT/formlab" "$OUT/forms" "$OUT/accessibilitylab" "$OUT/scenelab" "$OUT/scenedatalab" "$OUT/sceneoptlab" "$OUT/presentationlab"

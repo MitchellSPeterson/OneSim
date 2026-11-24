@@ -47,23 +47,134 @@ public struct ViewBuilder {
     public static func buildEither<T: View, F: View>(first: T) -> _ConditionalContent<T, F> { .init(.first(first)) }
     public static func buildEither<T: View, F: View>(second: F) -> _ConditionalContent<T, F> { .init(.second(second)) }
     public static func buildLimitedAvailability<C: View>(_ c: C) -> C { c }
-    public static func buildBlock<A: View, B: View>(_ a: A, _ b: B) -> TupleView<(A, B)> { .init((a, b)) }
-    public static func buildBlock<A: View, B: View, C: View>(_ a: A, _ b: B, _ c: C) -> TupleView<(A, B, C)> { .init((a, b, c)) }
-    public static func buildBlock<A: View, B: View, C: View, D: View>(_ a: A, _ b: B, _ c: C, _ d: D) -> TupleView<(A, B, C, D)> { .init((a, b, c, d)) }
-    public static func buildBlock<A: View, B: View, C: View, D: View, E: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E) -> TupleView<(A, B, C, D, E)> { .init((a, b, c, d, e)) }
-    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F) -> TupleView<(A, B, C, D, E, F)> { .init((a, b, c, d, e, f)) }
-    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View, G: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F, _ g: G) -> TupleView<(A, B, C, D, E, F, G)> { .init((a, b, c, d, e, f, g)) }
-    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View, G: View, H: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F, _ g: G, _ h: H) -> TupleView<(A, B, C, D, E, F, G, H)> { .init((a, b, c, d, e, f, g, h)) }
-    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View, G: View, H: View, I: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F, _ g: G, _ h: H, _ i: I) -> TupleView<(A, B, C, D, E, F, G, H, I)> { .init((a, b, c, d, e, f, g, h, i)) }
-    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View, G: View, H: View, I: View, J: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F, _ g: G, _ h: H, _ i: I, _ j: J) -> TupleView<(A, B, C, D, E, F, G, H, I, J)> { .init((a, b, c, d, e, f, g, h, i, j)) }
+    public static func buildBlock<A: View, B: View>(_ a: A, _ b: B) -> TupleView<(A, B)> {
+        .init((a, b)) { path in
+            var out: [Node] = []
+            out.reserveCapacity(2)
+            out += SwiftUI._children(a, "\(path)/0")
+            out += SwiftUI._children(b, "\(path)/1")
+            return out
+        }
+    }
+    public static func buildBlock<A: View, B: View, C: View>(_ a: A, _ b: B, _ c: C) -> TupleView<(A, B, C)> {
+        .init((a, b, c)) { path in
+            var out: [Node] = []
+            out.reserveCapacity(3)
+            out += SwiftUI._children(a, "\(path)/0")
+            out += SwiftUI._children(b, "\(path)/1")
+            out += SwiftUI._children(c, "\(path)/2")
+            return out
+        }
+    }
+    public static func buildBlock<A: View, B: View, C: View, D: View>(_ a: A, _ b: B, _ c: C, _ d: D) -> TupleView<(A, B, C, D)> {
+        .init((a, b, c, d)) { path in
+            var out: [Node] = []
+            out.reserveCapacity(4)
+            out += SwiftUI._children(a, "\(path)/0")
+            out += SwiftUI._children(b, "\(path)/1")
+            out += SwiftUI._children(c, "\(path)/2")
+            out += SwiftUI._children(d, "\(path)/3")
+            return out
+        }
+    }
+    public static func buildBlock<A: View, B: View, C: View, D: View, E: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E) -> TupleView<(A, B, C, D, E)> {
+        .init((a, b, c, d, e)) { path in
+            var out: [Node] = []
+            out.reserveCapacity(5)
+            out += SwiftUI._children(a, "\(path)/0")
+            out += SwiftUI._children(b, "\(path)/1")
+            out += SwiftUI._children(c, "\(path)/2")
+            out += SwiftUI._children(d, "\(path)/3")
+            out += SwiftUI._children(e, "\(path)/4")
+            return out
+        }
+    }
+    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F) -> TupleView<(A, B, C, D, E, F)> {
+        .init((a, b, c, d, e, f)) { path in
+            var out: [Node] = []
+            out.reserveCapacity(6)
+            out += SwiftUI._children(a, "\(path)/0")
+            out += SwiftUI._children(b, "\(path)/1")
+            out += SwiftUI._children(c, "\(path)/2")
+            out += SwiftUI._children(d, "\(path)/3")
+            out += SwiftUI._children(e, "\(path)/4")
+            out += SwiftUI._children(f, "\(path)/5")
+            return out
+        }
+    }
+    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View, G: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F, _ g: G) -> TupleView<(A, B, C, D, E, F, G)> {
+        .init((a, b, c, d, e, f, g)) { path in
+            var out: [Node] = []
+            out.reserveCapacity(7)
+            out += SwiftUI._children(a, "\(path)/0")
+            out += SwiftUI._children(b, "\(path)/1")
+            out += SwiftUI._children(c, "\(path)/2")
+            out += SwiftUI._children(d, "\(path)/3")
+            out += SwiftUI._children(e, "\(path)/4")
+            out += SwiftUI._children(f, "\(path)/5")
+            out += SwiftUI._children(g, "\(path)/6")
+            return out
+        }
+    }
+    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View, G: View, H: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F, _ g: G, _ h: H) -> TupleView<(A, B, C, D, E, F, G, H)> {
+        .init((a, b, c, d, e, f, g, h)) { path in
+            var out: [Node] = []
+            out.reserveCapacity(8)
+            out += SwiftUI._children(a, "\(path)/0")
+            out += SwiftUI._children(b, "\(path)/1")
+            out += SwiftUI._children(c, "\(path)/2")
+            out += SwiftUI._children(d, "\(path)/3")
+            out += SwiftUI._children(e, "\(path)/4")
+            out += SwiftUI._children(f, "\(path)/5")
+            out += SwiftUI._children(g, "\(path)/6")
+            out += SwiftUI._children(h, "\(path)/7")
+            return out
+        }
+    }
+    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View, G: View, H: View, I: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F, _ g: G, _ h: H, _ i: I) -> TupleView<(A, B, C, D, E, F, G, H, I)> {
+        .init((a, b, c, d, e, f, g, h, i)) { path in
+            var out: [Node] = []
+            out.reserveCapacity(9)
+            out += SwiftUI._children(a, "\(path)/0")
+            out += SwiftUI._children(b, "\(path)/1")
+            out += SwiftUI._children(c, "\(path)/2")
+            out += SwiftUI._children(d, "\(path)/3")
+            out += SwiftUI._children(e, "\(path)/4")
+            out += SwiftUI._children(f, "\(path)/5")
+            out += SwiftUI._children(g, "\(path)/6")
+            out += SwiftUI._children(h, "\(path)/7")
+            out += SwiftUI._children(i, "\(path)/8")
+            return out
+        }
+    }
+    public static func buildBlock<A: View, B: View, C: View, D: View, E: View, F: View, G: View, H: View, I: View, J: View>(_ a: A, _ b: B, _ c: C, _ d: D, _ e: E, _ f: F, _ g: G, _ h: H, _ i: I, _ j: J) -> TupleView<(A, B, C, D, E, F, G, H, I, J)> {
+        .init((a, b, c, d, e, f, g, h, i, j)) { path in
+            var out: [Node] = []
+            out.reserveCapacity(10)
+            out += SwiftUI._children(a, "\(path)/0")
+            out += SwiftUI._children(b, "\(path)/1")
+            out += SwiftUI._children(c, "\(path)/2")
+            out += SwiftUI._children(d, "\(path)/3")
+            out += SwiftUI._children(e, "\(path)/4")
+            out += SwiftUI._children(f, "\(path)/5")
+            out += SwiftUI._children(g, "\(path)/6")
+            out += SwiftUI._children(h, "\(path)/7")
+            out += SwiftUI._children(i, "\(path)/8")
+            out += SwiftUI._children(j, "\(path)/9")
+            return out
+        }
+    }
 }
 
 public struct TupleView<T>: View, _Flattenable {
     public typealias Body = Never
     public var body: Never { fatalError() }
     let value: T
-    init(_ v: T) { value = v }
+    let emit: ((String) -> [Node])?
+    init(_ v: T) { value = v; emit = nil }
+    init(_ v: T, _ emit: @escaping (String) -> [Node]) { value = v; self.emit = emit }
     func _children(_ path: String) -> [Node] {
+        if let emit { return emit(path) }
         var out: [Node] = []
         for (i, ch) in Mirror(reflecting: value).children.enumerated() {
             if let v = ch.value as? any View { out += SwiftUI._children(v, "\(path)/\(i)") }
@@ -117,6 +228,8 @@ final class _Runtime {
     var render: () -> Node = { [:] }
     // Per-evaluation context (reset every submit; set while walking modifier subtrees).
     var fields: [UInt64: (String) -> Void] = [:]
+    var textInput = _TextInputContext()
+    var textFocus: [String: [_TextFocus]] = [:]
     var disabled = false
     var buttonStyle = "automatic"
     var pickerStyle = "menu"
@@ -125,7 +238,14 @@ final class _Runtime {
     var pageIndexStyle = PageIndexViewStyle()
     var pageIsActive = true   // adjacent pages are laid out for swiping but do not appear or present yet
     var tags: [String: AnyHashable] = [:]   // `.tag(_:)` values by node id, read by `Picker`
+    var rowMeta: [String: _RowMeta] = [:]   // list row delete/move/swipe actions by node id, read by `List` (section T)
+    var pasteboard: [String] = []   // the session pasteboard (SIMCORE_PASTEBOARD at launch, then `pasteboard` lines)
+    var rowContextMenu: _RowContextMenu?   // `contextMenu(forSelectionType:)` for the ForEach rows below
+    var rowActions = _RowActions()          // `onDelete` / `onMove` for the ForEach being evaluated
     var nav: _NavState?
+    // Container modifiers finish after their navigation node has been emitted.
+    var emittedNavigationStates: [String: _NavState] = [:]
+    var navigationPreferences: Node?
     var envObjects: [ObjectIdentifier: Any] = [:]   // `.environmentObject` / `.environment` objects and EnvironmentKey values
     var envLocal = Set<ObjectIdentifier>()   // envObjects keys set inside the enclosing NavigationStack (pushed screens re-apply only these)
     // Presentation layer: set by .alert / .sheet while evaluating; hoisted above the tree by `_evaluate`.
@@ -145,6 +265,8 @@ final class _Runtime {
     var gesturesOff = false
     var touch: _TouchSession?   // the touch sequence in progress (spans evaluations)
     // Custom shapes (section N): laid-out sizes sent by the host via `layout` messages, keyed by node id.
+    var visualEffectFrames: [String: CGRect] = [:]
+    var visualEffectIDs: Set<String> = []
     var shapeSizes: [String: CGSize] = [:]
     // Layout direction for `Shape.layoutDirectionBehavior`.
     var layoutDirection: LayoutDirection = .leftToRight
@@ -170,9 +292,15 @@ final class _Runtime {
     var lastScheduledMs: Double? = nil
     var tickHandlers: [() -> Void] = []
     var completions: [(dueMs: Double, fn: () -> Void)] = []
+    /// The app's scene phase (host `scene_phase`). `App.main` launches inactive; a bare root view starts active.
+    var scenePhase = ScenePhase.active
+    /// `.defaultAppStorage` in scope (nil = `UserDefaults.standard`).
+    var appStorage: UserDefaults?
     #if !os(WASI)
     /// `AsyncImage` HTTP loads. Nil uses `URLSession.shared`. Set by `.asyncImageURLSession`.
     var imageSession: URLSession?
+    /// `onOpenURL` handlers of this evaluation, in view order.
+    var urlHandlers: [(URL) -> Void] = []
     #endif
 
     var currentDate: Date { Date(timeIntervalSince1970: baseEpoch + clockMs / 1000.0) }
@@ -256,21 +384,48 @@ final class _Runtime {
         return nextAction
     }
 
+    /// Launch: the scene's first body runs while the app is still inactive (state, `onChange(initial:)`), so the
+    /// change to active is seen by `onChange(of: scenePhase)` in the first submitted pass, as on iOS.
+    func primeEvaluation() {
+        _pool {
+            _ = _evaluate()
+            let fire = changePending; changePending = []
+            fire.forEach { $0() }
+        }
+    }
+
+    /// Set by `_onesimStart`; the first submission (native: at once; web: when the page pushes the environment)
+    /// connects the scene: one pass while inactive for an `App`, then active.
+    var launching = false
+
     /// Re-evaluate the whole root, drop stale actions/state, and submit.
-    func submitTree(emitSchedule: Bool = true) { _pool { _submitTree(emitSchedule: emitSchedule) } }
+    func submitTree(emitSchedule: Bool = true) {
+        if launching {
+            launching = false
+            if scenePhase != .active { primeEvaluation() }   // an `App`: its scene connects inactive
+            _sceneDidBecomeActive()
+        }
+        _pool { _submitTree(emitSchedule: emitSchedule) }
+    }
 
     private func _evaluate() -> Node {
         actions.removeAll(keepingCapacity: true)
         fields.removeAll(keepingCapacity: true)
-        disabled = false; buttonStyle = "automatic"; pickerStyle = "menu"; styles = _Styles(); tags = [:]; nav = nil; envObjects = [:]; envLocal = []
+        let previousFocus = textFocus
+        textFocus.removeAll(keepingCapacity: true)
+        textInput = _TextInputContext()
+        disabled = false; buttonStyle = "automatic"; pickerStyle = "menu"; styles = _Styles(); tags = [:]; rowMeta = [:]; rowActions = _RowActions(); nav = nil; envObjects = [:]; envLocal = []
         pageTabStyle = nil; pageIndexStyle = .init(); pageIsActive = true
         #if !os(WASI)
         imageSession = nil
+        urlHandlers.removeAll(keepingCapacity: true)
         #endif
+        appStorage = nil
         layers = []; autoDismiss = nil; dismissHook = nil
         lifecycleNow = [:]; lifecycleOrder = []; changeNow = [:]; changePending = []
         animNow = [:]; contentTransition = .identity; contentTransitionAddsDrawingGroup = false
         nextScheduleMs = nil; tickHandlers = []
+        visualEffectIDs.removeAll(keepingCapacity: true)
         gestures = [:]; gesturesOff = false
         scrollStack.removeAll(keepingCapacity: true)
         anchorScrollNow.removeAll(keepingCapacity: true)
@@ -278,12 +433,17 @@ final class _Runtime {
         touched.removeAll(keepingCapacity: true)
         // Any `@Observable` property read while evaluating dirties the tree when it next changes (one-shot; re-armed each pass).
         var tree = withObservationTracking(render) { _Runtime.shared.dirty = true }
+        emittedNavigationStates.removeAll(keepingCapacity: true)
         if !layers.isEmpty { tree = ["kind": "presentation", "id": "presentation", "content": tree, "layers": layers] }
         slots = slots.filter { touched.contains($0.key) }
+        visualEffectFrames = visualEffectFrames.filter { visualEffectIDs.contains($0.key) }
         changeSeen = changeNow
         animSeen = animNow
         anchorScroll = anchorScrollNow   // a later button action (stack empty) can still scrollTo
         dirty = false
+        for target in previousFocus.values.joined() where target.isFocused() {
+            if !textFocus.values.joined().contains(where: { $0.matches(target) }) { target.blur() }
+        }
         return tree
     }
 
@@ -337,6 +497,7 @@ final class _Runtime {
         version += 1
         #if os(WASI)
         var json = ""
+        json.reserveCapacity(4096)
         _json(tree, &json)
         let rc = json.withCString { p in
             p.withMemoryRebound(to: UInt8.self, capacity: json.utf8.count) { simcore_submit_tree($0, json.utf8.count, version) }
@@ -370,17 +531,23 @@ func _pool(_ f: () -> Void) {
     #endif
 }
 
+/// Entry point of generated mains (a root view without an `App`).
+public func _onesimRun<V: View>(_ root: V) -> _Done {
+    _onesimStart { _withEditMode("0") { _eval(root, "0") } }
+}
+
 #if os(WASI)
 /// Entry point on WASI (reactor): registers the app and returns. The first render happens when
 /// onesim-web pushes the environment (simcore_web_init); the browser is the event loop.
-public func _onesimRun<V: View>(_ root: V) {
+func _onesimStart(_ render: @escaping () -> Node) {
     let rt = _Runtime.shared
-    rt.render = { _eval(root, "0") }
+    rt.render = render
     _onesimRegisterCallbacks()
+    rt.launching = true
 }
 #else
-/// Entry point used by `App.main()` and generated mains. Never returns.
-public func _onesimRun<V: View>(_ root: V) -> Never {
+/// Starts the runtime with `render` as the root and runs the event loop. Never returns.
+func _onesimStart(_ render: @escaping () -> Node) -> Never {
     let rt = _Runtime.shared
     if simcore_runtime_init() != 0 {
         FileHandle.standardError.write(Data("onesim init failed: \(simcore_last_error().map { String(cString: $0) } ?? "?")\n".utf8))
@@ -395,14 +562,16 @@ public func _onesimRun<V: View>(_ root: V) -> Never {
         rt.safeTop = ins[0]; rt.safeBottom = ins[1]
     }
     if let d = env["SIMCORE_DYNAMIC_TYPE"], let s = DynamicTypeSize.allCases.first(where: { "\($0)" == d }) { rt.dynamicType = s }
+    if let pb = env["SIMCORE_PASTEBOARD"] { rt.pasteboard = [pb] }
     if let t = env["SIMCORE_TIME"].flatMap(Double.init) { rt.baseEpoch = t } else { rt.baseEpoch = Date().timeIntervalSince1970 }
-    rt.render = { _eval(root, "0") }
+    rt.render = render
     _onesimRegisterCallbacks()
-    #if !os(WASI)
     _installImageWake()
-    #endif
+    rt.launching = true
     rt.submitTree()
-    exit(simcore_runtime_run())
+    let rc = simcore_runtime_run()
+    _appWillTerminate()
+    exit(rc)
 }
 #endif
 
@@ -486,7 +655,13 @@ func _applyLayout(_ line: String) {
         for (id, raw) in frames {
             guard let box = raw as? [Any], box.count == 4 else { continue }
             let size = CGSize(width: _f64(box[2]), height: _f64(box[3]))
-            if rt.shapeSizes[id] != size { rt.shapeSizes[id] = size; rt.dirty = true }
+            if rt.visualEffectIDs.contains(id) {
+                let frame = CGRect(x: _f64(box[0]), y: _f64(box[1]), width: size.width, height: size.height)
+                if rt.visualEffectFrames[id] != frame { rt.visualEffectFrames[id] = frame; rt.dirty = true }
+            } else if rt.shapeSizes[id] != size {
+                rt.shapeSizes[id] = size
+                rt.dirty = true
+            }
         }
     } else if type == "geometry" {
         guard let frames = obj["frames"] as? [String: Any] else { return }
@@ -497,6 +672,17 @@ func _applyLayout(_ line: String) {
                          safeLeading: _f64(box["safeLeading"]), safeTrailing: _f64(box["safeTrailing"]))
             if rt.geometries[id] != g { rt.geometries[id] = g; rt.dirty = true }
         }
+    } else if type == "pasteboard" {
+        let items = (obj["items"] as? [Any])?.compactMap { $0 as? String } ?? []
+        if rt.pasteboard != items { rt.pasteboard = items; rt.dirty = true }
+    } else if type == "scene_phase" {
+        _applyScenePhase(obj["phase"] as? String ?? "")
+    } else if type == "open_url" {
+        #if os(WASI)
+        rt.submitTree()   // no Foundation `URL` on the web build: nothing receives it
+        #else
+        _applyOpenURL(obj["url"] as? String ?? "")
+        #endif
     } else if type == "scroll_position", let scroll = obj["scroll"] as? String {
         rt.scrollPos[scroll]?(obj["target"] as? String)   // NSNull target becomes nil
     } else if type == "tick" {

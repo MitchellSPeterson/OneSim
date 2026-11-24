@@ -9,12 +9,14 @@ description = "In-process OneSim runtime for WebAssembly: the onesim-runtime C A
 crate-type = ["staticlib", "rlib"]
 
 [features]
-default = []
+default = ["font-inter", "font-roboto"]
+font-inter = ["onesim-render/font-inter"]
+font-roboto = ["onesim-render/font-roboto"]
 # Standalone browser module for JS-hosted guests (Kotlin/Wasm Compose, React Native in a Worker): no linked Swift
 # main; guest callbacks are Wasm imports from `"onesim_guest"` (unused in React Native mode).
 js-guest = []
 
 [dependencies]
 onesim-protocol = { path = "../onesim-protocol" }
-onesim-render = { path = "../onesim-render" }
+onesim-render = { path = "../onesim-render", default-features = false }
 serde_json.workspace = true

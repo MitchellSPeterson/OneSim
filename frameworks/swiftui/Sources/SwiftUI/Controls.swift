@@ -39,16 +39,27 @@ public struct Divider: View, _Primitive {
 
 // MARK: - Lists
 
-public struct ForEach<Data: RandomAccessCollection, ID: Hashable, Content: View>: View, _Flattenable {
+public struct ForEach<Data: RandomAccessCollection, ID: Hashable, Content: View>: DynamicViewContent, _Flattenable {
     public typealias Body = Never
     public var body: Never { fatalError() }
-    let data: Data, id: KeyPath<Data.Element, ID>, content: (Data.Element) -> Content
+    public let data: Data
+    let id: KeyPath<Data.Element, ID>, content: (Data.Element) -> Content
     public init(_ data: Data, id: KeyPath<Data.Element, ID>, @ViewBuilder content: @escaping (Data.Element) -> Content) {
         self.data = data; self.id = id; self.content = content
     }
     // Element id goes into the structural path so @State follows items, not positions.
     func _children(_ path: String) -> [Node] {
-        data.flatMap { SwiftUI._children(content($0), "\(path)/\($0[keyPath: id])") }
+        let rt = _Runtime.shared, actions = rt.rowActions, count = data.count
+        // Delete and move handlers belong to this ForEach's rows, not to a nested ForEach's.
+        rt.rowActions = _RowActions()
+        defer { rt.rowActions = actions }
+        return data.enumerated().flatMap { i, e -> [Node] in
+            let nodes = _selectionRow(content(e), AnyHashable(e[keyPath: id]), "\(path)/\(e[keyPath: id])")
+            rt.rowActions = actions
+            _registerElementRows(nodes, index: i, count: count)
+            rt.rowActions = _RowActions()
+            return nodes
+        }
     }
 }
 extension ForEach where ID == Data.Element.ID, Data.Element: Identifiable {
@@ -58,114 +69,18 @@ extension ForEach where Data == Range<Int>, ID == Int {
     public init(_ data: Range<Int>, @ViewBuilder content: @escaping (Int) -> Content) { self.init(data, id: \.self, content: content) }
 }
 
-public struct Group<Content: View>: View, _Flattenable, _ModifierTransparent {
+/// Groups views, or scenes (`Group { WindowGroup ... }`), with no effect on layout.
+public struct Group<Content> {
     public typealias Body = Never
     public var body: Never { fatalError() }
     let content: Content
+}
+extension Group: View, _Flattenable, _ModifierTransparent where Content: View {
     public init(@ViewBuilder content: () -> Content) { self.content = content() }
     func _children(_ path: String) -> [Node] { SwiftUI._children(content, path) }
 }
 
-public struct Section<Content: View>: View, _Flattenable {
-    public typealias Body = Never
-    public var body: Never { fatalError() }
-    let header: String?, content: Content
-    public init(@ViewBuilder content: () -> Content) { header = nil; self.content = content() }
-    public init(_ header: String, @ViewBuilder content: () -> Content) { self.header = header; self.content = content() }
-    func _children(_ path: String) -> [Node] {
-        var n: Node = ["kind": "_section", "rows": SwiftUI._children(content, path)]
-        if let header { n["header"] = header }
-        return [n]
-    }
-}
-
-public struct List<Content: View>: View, _Primitive {
-    public typealias Body = Never
-    public var body: Never { fatalError() }
-    let content: Content
-    public init(@ViewBuilder content: () -> Content) { self.content = content() }
-    func _emit(_ path: String) -> Node {
-        var sections: [Node] = [], loose: [Node] = []
-        let rows = _without({ $0.inList = true }) { _children(content, path) }
-        for n in rows {
-            if n["kind"] as? String == "_section" {
-                if !loose.isEmpty { sections.append(["rows": loose]); loose = [] }
-                var s = n; s["kind"] = nil; sections.append(s)
-            } else { loose.append(n) }
-        }
-        if !loose.isEmpty { sections.append(["rows": loose]) }
-        return ["kind": "list", "id": path, "style": "insetGrouped", "sections": sections]
-    }
-}
-
-extension List {
-    public init<Data: RandomAccessCollection, ID: Hashable, RowContent: View>(
-        _ data: Data, id: KeyPath<Data.Element, ID>, @ViewBuilder rowContent: @escaping (Data.Element) -> RowContent
-    ) where Content == ForEach<Data, ID, RowContent> {
-        self.init { ForEach(data, id: id, content: rowContent) }
-    }
-    public init<Data: RandomAccessCollection, RowContent: View>(
-        _ data: Data, @ViewBuilder rowContent: @escaping (Data.Element) -> RowContent
-    ) where Content == ForEach<Data, Data.Element.ID, RowContent>, Data.Element: Identifiable {
-        self.init { ForEach(data, content: rowContent) }
-    }
-    public init<RowContent: View>(_ data: Range<Int>, @ViewBuilder rowContent: @escaping (Int) -> RowContent)
-    where Content == ForEach<Range<Int>, Int, RowContent> {
-        self.init { ForEach(data, content: rowContent) }
-    }
-}
-
 // MARK: - Controls
-
-public struct TextField: View, _Primitive {
-    public typealias Body = Never
-    public var body: Never { fatalError() }
-    let placeholder: String, text: Binding<String>, secure: Bool
-    public init(_ placeholder: String, text: Binding<String>) { self.placeholder = placeholder; self.text = text; secure = false }
-    init(_ placeholder: String, text: Binding<String>, secure: Bool) { self.placeholder = placeholder; self.text = text; self.secure = secure }
-    func _emit(_ path: String) -> Node {
-        let b = text
-        var n: Node = ["kind": "text_field", "id": path, "placeholder": placeholder, "text": b.wrappedValue,
-                       "field": _Runtime.shared.registerField { b.wrappedValue = $0 }]
-        if secure { n["secure"] = true }
-        return n
-    }
-}
-
-/// A `TextField` whose text the host draws as bullets.
-public struct SecureField: View {
-    let placeholder: String, text: Binding<String>
-    public init(_ placeholder: String, text: Binding<String>) { self.placeholder = placeholder; self.text = text }
-    public var body: some View { TextField(placeholder, text: text, secure: true) }
-}
-
-/// `Form` is an inset-grouped `List` on iOS.
-public struct Form<Content: View>: View, _Primitive {
-    public typealias Body = Never
-    public var body: Never { fatalError() }
-    let content: Content
-    public init(@ViewBuilder content: () -> Content) { self.content = content() }
-    func _emit(_ path: String) -> Node { List { content }._emit(path) }
-}
-
-/// Label leading, content trailing in the secondary style (a list row's trailing value).
-public struct LabeledContent<Label: View, Content: View>: View {
-    let label: Label, content: Content
-    public init(@ViewBuilder content: () -> Content, @ViewBuilder label: () -> Label) { self.content = content(); self.label = label() }
-    public var body: some View {
-        HStack {
-            label
-            Spacer()
-            content.foregroundStyle(.secondary)
-        }
-    }
-}
-extension LabeledContent where Label == Text {
-    public init(_ title: String, @ViewBuilder content: () -> Content) { self.init(content: content) { Text(title) } }
-}
-extension LabeledContent where Label == Text, Content == Text {
-    public init(_ title: String, value: String) { self.init(title) { Text(value) } }
-}
 
 /// `Slider`: the host sets the value through the `field` id (a `text_input` carrying the number). Value labels
 /// sit beside it in an `hstack`; `onEditingChanged` brackets each change (true, set, false).
@@ -498,11 +413,13 @@ public struct NavigationPath {
 /// Guest-owned path stack, persisted in the state registry. Root is depth 0; pushed screens have ids `<stack>/s<depth>`.
 /// With `NavigationStack(path:)` the binding is the source of truth for depth and screens are built from its values.
 final class _NavState {
+    static func slotKey(_ path: String) -> String { path + "#NavigationStack" }
     /// Destination-style screens. With a bound path they sit on top of the path-driven screens (back pops them first).
     var stack: [_NavScreen] = []
     var titles: [Int: String] = [:]   // last evaluated title per depth, for the back label
     var destinations: [ObjectIdentifier: (Any, String) -> Node] = [:]   // kept across evaluations: hidden screens register nothing
     var ext: _NavPath?
+    var rootBack: (() -> Void)?
     var depth: Int { (ext?.count() ?? 0) + stack.count }
     func push(_ s: _NavScreen) { stack.append(s); _Runtime.shared.dirty = true }
     func pushValue(_ v: Any) {
@@ -525,7 +442,7 @@ final class _NavState {
         destinations[ObjectIdentifier(type(of: v))]?(v, path) ?? ["kind": "empty", "id": path]
     }
     func pop() {
-        if !stack.isEmpty { stack.removeLast() } else if let ext, ext.count() > 0 { ext.removeLast() }
+        if !stack.isEmpty { stack.removeLast() } else if let ext, ext.count() > 0 { ext.removeLast() } else { rootBack?() }
         _Runtime.shared.dirty = true
     }
 }
@@ -550,38 +467,58 @@ public struct NavigationStack<Root: View>: View, _Primitive {
     }
 
     func _emit(_ path: String) -> Node {
-        let rt = _Runtime.shared
-        let key = "\(path)#NavigationStack"
-        rt.touched.insert(key)
-        let st = (rt.slots[key] as? _NavState) ?? _NavState()
-        rt.slots[key] = st
-        st.ext = self.path
-        let depth = st.depth
-        // Screens below the top are not evaluated; keep their @State alive.
-        for d in 0..<depth {
-            let prefix = d == 0 ? "\(path)/0" : "\(path)/s\(d)"
-            for k in rt.slots.keys where k.hasPrefix(prefix + "/") || k.hasPrefix(prefix + "#") { rt.touched.insert(k) }
-        }
-        let saved = (rt.nav, rt.disabled, rt.buttonStyle, rt.envLocal, rt.styles.inList)
-        rt.nav = st; rt.disabled = false; rt.buttonStyle = "automatic"; rt.envLocal = []; rt.styles.inList = false
-        defer { (rt.nav, rt.disabled, rt.buttonStyle, rt.envLocal, rt.styles.inList) = saved }
-        var content = depth == 0 ? _eval(root, "\(path)/0") : st.screen(depth - 1, "\(path)/s\(depth)")
-
-        var title: String?, mode = "large"
-        let mods = (content["modifiers"] as? [Node]) ?? []
-        for m in mods {
-            if let t = m["navigationTitle"] as? String { title = t }
-            if let d = m["navigationBarTitleDisplayMode"] as? String { mode = d }
-        }
-        content["modifiers"] = mods.filter { $0["navigationBarTitleDisplayMode"] == nil }
-        st.titles[depth] = title
-        var nav: Node = ["kind": "navigation", "id": path, "displayMode": mode, "content": content]
-        if let title { nav["title"] = title }
-        if depth > 0 {
-            nav["back"] = ["action": rt.registerAction { st.pop() }, "label": st.titles[depth - 1] ?? "Back"] as Node
-        }
-        return nav
+        _navigation(path, externalPath: self.path) { _eval(root, $0) }
     }
+}
+
+func _navigation(_ path: String, columnPath: String? = nil, externalPath: _NavPath? = nil, rootBack: (() -> Void)? = nil,
+                 backLabel: String = "Back", root: (String) -> Node) -> Node {
+    let rt = _Runtime.shared
+    let screenPath = columnPath ?? path
+    let key = _NavState.slotKey(screenPath)
+    rt.touched.insert(key)
+    let st = (rt.slots[key] as? _NavState) ?? _NavState()
+    rt.slots[key] = st
+    st.ext = externalPath
+    st.rootBack = rootBack
+    let depth = st.depth
+    // Screens below the top are not evaluated; keep their @State alive.
+    for d in 0..<depth {
+        let prefix = d == 0 ? "\(screenPath)/0" : "\(screenPath)/s\(d)"
+        for k in rt.slots.keys where k.hasPrefix(prefix + "/") || k.hasPrefix(prefix + "#") { rt.touched.insert(k) }
+    }
+    let saved = (rt.nav, rt.disabled, rt.buttonStyle, rt.envLocal, rt.styles.inList)
+    rt.nav = st; rt.disabled = false; rt.buttonStyle = "automatic"; rt.envLocal = []; rt.styles.inList = false
+    defer { (rt.nav, rt.disabled, rt.buttonStyle, rt.envLocal, rt.styles.inList) = saved }
+    let preferences = rt.navigationPreferences
+    rt.navigationPreferences = [:]
+    defer { rt.navigationPreferences = preferences }
+    // Each screen has its own edit mode (EditButton, List editing), unless `\.editMode` is set with `.environment`
+    // around the stack, which reaches every screen.
+    let screen = depth == 0 ? "\(screenPath)/0" : "\(screenPath)/s\(depth)"
+    let k = ObjectIdentifier(_EditModeKey.self), outer = rt.envObjects[k]
+    if !saved.3.contains(k) { rt.envObjects[k] = nil }
+    var content = _withEditMode(screen) { depth == 0 ? root(screen) : st.screen(depth - 1, screen) }
+    rt.envObjects[k] = outer
+
+    var title: String?, mode = "large"
+    let mods = (content["modifiers"] as? [Node]) ?? []
+    for m in mods {
+        if let t = m["navigationTitle"] as? String { title = t }
+        if let d = m["navigationBarTitleDisplayMode"] as? String { mode = d }
+    }
+    content["modifiers"] = mods.filter { $0["navigationBarTitleDisplayMode"] == nil }
+    st.titles[depth] = title
+    var nav: Node = ["kind": "navigation", "id": path, "displayMode": mode, "content": content]
+    if let title { nav["title"] = title }
+    if depth > 0 {
+        nav["back"] = ["action": rt.registerAction { st.pop() }, "label": st.titles[depth - 1] ?? "Back"] as Node
+    }
+    if depth == 0, rootBack != nil {
+        nav["back"] = ["action": rt.registerAction { st.pop() }, "label": backLabel] as Node
+    }
+    rt.emittedNavigationStates[path] = st
+    return _applyNavigationPreferences(rt.navigationPreferences ?? [:], to: nav)
 }
 
 struct _DestinationView<Content: View, T: Hashable, D: View>: View, _Flattenable {
@@ -671,7 +608,7 @@ extension _ConditionalContent: _TabSource {
     }
 }
 
-extension Group: _TabSource {
+extension Group: _TabSource where Content: View {
     func _tabs(_ path: String) -> [_TabEntry] { _tabEntries(content, path) }
 }
 

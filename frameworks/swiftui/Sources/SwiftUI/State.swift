@@ -7,11 +7,20 @@ final class _Slot<V> { var value: V; init(_ v: V) { value = v } }
 
 protocol _StateProperty { func _bind(_ key: String) }
 
+nonisolated(unsafe) private var _noStateTypes = Set<ObjectIdentifier>()
+
 /// Bind every @State in `view` to the registry slot for (path, type, label).
 func _bindState<V>(_ view: V, _ path: String) {
+    let typeID = ObjectIdentifier(V.self)
+    if _noStateTypes.contains(typeID) { return }
+    var found = false
     for ch in Mirror(reflecting: view).children {
-        if let s = ch.value as? _StateProperty { s._bind("\(path)#\(V.self).\(ch.label ?? "?")") }
+        if let s = ch.value as? _StateProperty {
+            found = true
+            s._bind("\(path)#\(V.self).\(ch.label ?? "?")")
+        }
     }
+    if !found { _noStateTypes.insert(typeID) }
 }
 
 @propertyWrapper
@@ -47,6 +56,8 @@ public struct Binding<Value> {
     let getter: () -> Value
     let setter: (Value) -> Void
     public init(get: @escaping () -> Value, set: @escaping (Value) -> Void) { getter = get; setter = set }
+    /// Lets a closure take a binding as `$value` (`WindowGroup(for:) { $value in ... }`).
+    public init(projectedValue: Binding<Value>) { self = projectedValue }
     public var wrappedValue: Value { get { getter() } nonmutating set { setter(newValue) } }
     public var projectedValue: Binding<Value> { self }
     public static func constant(_ v: Value) -> Binding<Value> { Binding(get: { v }, set: { _ in }) }
@@ -176,7 +187,7 @@ struct _VSizeKey: EnvironmentKey {
 }
 
 public enum ScenePhase: Comparable, Hashable, Sendable { case background, inactive, active }
-struct _ScenePhaseKey: EnvironmentKey { static let defaultValue = ScenePhase.active }
+struct _ScenePhaseKey: EnvironmentKey { static var defaultValue: ScenePhase { _Runtime.shared.scenePhase } }
 
 #if !os(WASI)
 /// Without a handler (or when it returns `.systemAction`) the URL goes to the system: the guest reports it as a
@@ -234,7 +245,7 @@ public struct EnvironmentValues {
     /// Pops a pushed screen, else dismisses the enclosing sheet.
     public var dismiss: DismissAction {
         let n = nav, s = sheetDismiss
-        return DismissAction { if let n, n.depth > 0 { n.pop() } else if let s { s() } else { n?.pop() } }
+        return DismissAction { if let n, n.depth > 0 || n.rootBack != nil { n.pop() } else if let s { s() } else { n?.pop() } }
     }
 }
 
@@ -364,7 +375,13 @@ struct _TapView<Content: View>: View, _Primitive {
             let g = TapGesture(count: count).onEnded(action)
             return _attachGesture([node], path, .normal) { g._recognizer($0) }[0]
         }
-        return ["kind": "button", "id": path, "action": rt.disabled ? 0 : rt.registerAction(action), "label": _eval(content, path + "/0"),
+        let inner = _eval(content, path + "/0")
+        if let mods = inner["modifiers"] as? [Node], mods.contains(where: { $0["gesture"] != nil }) {
+            guard !rt.disabled else { return inner }
+            let g = TapGesture(count: 1).onEnded(action)
+            return _attachGesture([inner], path, .normal) { g._recognizer($0) }[0]
+        }
+        return ["kind": "button", "id": path, "action": rt.disabled ? 0 : rt.registerAction(action), "label": inner,
                 "style": "plain", "disabled": rt.disabled]
     }
 }
@@ -372,40 +389,55 @@ struct _TapView<Content: View>: View, _Primitive {
 // MARK: - AppStorage
 
 #if os(WASI)
-// No Foundation on WASI: an in-memory store (lives for the session, not persisted).
-var _defaultsStore: [String: Any] = [:]
-func _defaultsGet(_ key: String) -> Any? { _defaultsStore[key] }
-func _defaultsSet(_ key: String, _ v: Any) { _defaultsStore[key] = v }
-#else
-func _defaultsGet(_ key: String) -> Any? { UserDefaults.standard.object(forKey: key) }
-func _defaultsSet(_ key: String, _ v: Any) { UserDefaults.standard.set(v, forKey: key) }
+/// No Foundation on WASI: an in-memory `UserDefaults` (lives for the session, not persisted).
+public final class UserDefaults: @unchecked Sendable {
+    nonisolated(unsafe) static var domains: [String: [String: Any]] = [:]
+    let domain: String
+    init(domain: String) { self.domain = domain }
+    public static let standard = UserDefaults(domain: "")
+    public init?(suiteName: String?) { domain = suiteName ?? "" }
+    public func object(forKey key: String) -> Any? { Self.domains[domain]?[key] }
+    public func set(_ value: Any?, forKey key: String) { Self.domains[domain, default: [:]][key] = value }
+    public func removeObject(forKey key: String) { Self.domains[domain]?[key] = nil }
+    public func string(forKey key: String) -> String? { object(forKey: key) as? String }
+    public func integer(forKey key: String) -> Int { object(forKey: key) as? Int ?? 0 }
+    public func double(forKey key: String) -> Double { object(forKey: key) as? Double ?? 0 }
+    public func bool(forKey key: String) -> Bool { object(forKey: key) as? Bool ?? false }
+    public func removePersistentDomain(forName domainName: String) { Self.domains[domainName] = nil }
+}
 #endif
 
-/// Persists in `UserDefaults.standard` (in memory on the web build). Bool/Int/Double/String and RawRepresentable with String/Int raw values.
+/// Persists in the store given with `store:`, else the `.defaultAppStorage` in scope, else `UserDefaults.standard`
+/// (in memory on the web build). Bool/Int/Double/String and RawRepresentable with String/Int raw values.
 @propertyWrapper
-public struct AppStorage<Value> {
-    let key: String, fallback: Value
+public struct AppStorage<Value>: _StateProperty {
+    final class Box { var store: UserDefaults? }
+    let key: String, fallback: Value, explicit: UserDefaults?
     let read: (Any) -> Value?, write: (Value) -> Any
-    init(_ key: String, _ fallback: Value, read: @escaping (Any) -> Value?, write: @escaping (Value) -> Any) {
-        self.key = key; self.fallback = fallback; self.read = read; self.write = write
+    let box = Box()
+    init(_ key: String, _ fallback: Value, _ store: UserDefaults?, read: @escaping (Any) -> Value?, write: @escaping (Value) -> Any) {
+        self.key = key; self.fallback = fallback; self.explicit = store; self.read = read; self.write = write
     }
+    /// The store is fixed when the owning view's body runs (like `@Environment`), so actions later use the same one.
+    func _bind(_ key: String) { box.store = explicit ?? _Runtime.shared.appStorage }
+    var store: UserDefaults { box.store ?? explicit ?? .standard }
     public var wrappedValue: Value {
-        get { _defaultsGet(key).flatMap(read) ?? fallback }
-        nonmutating set { _defaultsSet(key, write(newValue)); _Runtime.shared.markDirty() }
+        get { store.object(forKey: key).flatMap(read) ?? fallback }
+        nonmutating set { store.set(write(newValue), forKey: key); _Runtime.shared.markDirty() }
     }
     public var projectedValue: Binding<Value> { Binding(get: { self.wrappedValue }, set: { self.wrappedValue = $0 }) }
 }
 
 extension AppStorage {
-    public init(wrappedValue: Value, _ key: String) where Value == Bool { self.init(key, wrappedValue, read: { $0 as? Bool }, write: { $0 }) }
-    public init(wrappedValue: Value, _ key: String) where Value == Int { self.init(key, wrappedValue, read: { $0 as? Int }, write: { $0 }) }
-    public init(wrappedValue: Value, _ key: String) where Value == Double { self.init(key, wrappedValue, read: { $0 as? Double }, write: { $0 }) }
-    public init(wrappedValue: Value, _ key: String) where Value == String { self.init(key, wrappedValue, read: { $0 as? String }, write: { $0 }) }
-    public init(wrappedValue: Value, _ key: String) where Value: RawRepresentable, Value.RawValue == String {
-        self.init(key, wrappedValue, read: { ($0 as? String).flatMap(Value.init(rawValue:)) }, write: { $0.rawValue })
+    public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) where Value == Bool { self.init(key, wrappedValue, store, read: { $0 as? Bool }, write: { $0 }) }
+    public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) where Value == Int { self.init(key, wrappedValue, store, read: { $0 as? Int }, write: { $0 }) }
+    public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) where Value == Double { self.init(key, wrappedValue, store, read: { $0 as? Double }, write: { $0 }) }
+    public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) where Value == String { self.init(key, wrappedValue, store, read: { $0 as? String }, write: { $0 }) }
+    public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) where Value: RawRepresentable, Value.RawValue == String {
+        self.init(key, wrappedValue, store, read: { ($0 as? String).flatMap(Value.init(rawValue:)) }, write: { $0.rawValue })
     }
-    public init(wrappedValue: Value, _ key: String) where Value: RawRepresentable, Value.RawValue == Int {
-        self.init(key, wrappedValue, read: { ($0 as? Int).flatMap(Value.init(rawValue:)) }, write: { $0.rawValue })
+    public init(wrappedValue: Value, _ key: String, store: UserDefaults? = nil) where Value: RawRepresentable, Value.RawValue == Int {
+        self.init(key, wrappedValue, store, read: { ($0 as? Int).flatMap(Value.init(rawValue:)) }, write: { $0.rawValue })
     }
 }
 

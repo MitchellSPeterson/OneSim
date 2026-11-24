@@ -10,6 +10,7 @@ public struct Text: View, _Primitive {
     var runs: [Run]
     public init(_ content: String) { runs = [Run(text: content, attrs: [:])] }
     public init(verbatim content: String) { self.init(content) }
+    var _plainText: String { runs.map(\.text).joined() }
 
     /// `Text + Text`: keeps each side's own styling.
     public static func + (l: Text, r: Text) -> Text { var t = l; t.runs += r.runs; return t }
@@ -25,7 +26,10 @@ public struct Text: View, _Primitive {
     public func fontWeight(_ weight: Font.Weight?) -> Text { _with("fontWeight", weight?.name ?? "regular") }
     public func font(_ font: Font?) -> Text { _with("font", font?.json ?? ["style": "body"] as Node) }
     public func foregroundColor(_ color: Color?) -> Text { _with("foregroundColor", color?.json ?? ["semantic": "primary"] as Node) }
-    public func foregroundStyle<S: ShapeStyle>(_ style: S) -> Text { _with("foregroundColor", style._json) }
+    public func foregroundStyle<S: ShapeStyle>(_ style: S) -> Text {
+        let (key, paint) = _foregroundPaint(style._json)
+        return _with(key, paint)
+    }
     public func italic() -> Text { _with("italic", true) }
     public func italic(_ isActive: Bool) -> Text { _with("italic", isActive) }
     public func underline(_ active: Bool = true) -> Text { _with("underline", active) }
@@ -332,12 +336,14 @@ extension View {
     public func frame(minWidth: CGFloat? = nil, maxWidth: CGFloat? = nil, minHeight: CGFloat? = nil, maxHeight: CGFloat? = nil, alignment: Alignment = .center) -> some View {
         _modified { ["frame": _frame(nil, nil, minWidth, maxWidth, minHeight, maxHeight, alignment)] }
     }
-    public func foregroundStyle<S: ShapeStyle>(_ style: S) -> some View { _modified { ["foregroundColor": style._json] } }
+    public func foregroundStyle<S: ShapeStyle>(_ style: S) -> some View {
+        _modified { let (key, paint) = _foregroundPaint(style._json); return [key: paint] }
+    }
     public func foregroundColor(_ color: Color?) -> some View {
         _modified { ["foregroundColor": color?.json ?? ["semantic": "primary"]] }
     }
     public func background<B: View>(_ view: B, alignment: Alignment = .center) -> some View {
-        _BackgroundView(content: self, background: view)
+        _BackgroundView(content: self, background: view, alignment: alignment)
     }
     public func cornerRadius(_ radius: CGFloat) -> some View { _modified { ["cornerRadius": Double(radius)] } }
     public func opacity(_ opacity: Double) -> some View { _modified { ["opacity": opacity] } }
@@ -356,10 +362,15 @@ struct _BackgroundView<Content: View, B: View>: View, _Flattenable {
     var body: Never { fatalError() }
     let content: Content
     let background: B
+    let alignment: Alignment
     func _children(_ path: String) -> [Node] {
         _modTargets(content, path).enumerated().map { i, c in
             var n = c
-            n["modifiers"] = ((n["modifiers"] as? [Node]) ?? []) + [["background": _eval(background, path + (i == 0 ? "/bg" : "/bg\(i)"))]]
+            let bg = _eval(background, path + (i == 0 ? "/bg" : "/bg\(i)"))
+            let modifier: Node = alignment.name == Alignment.center.name
+                ? ["background": bg]
+                : ["alignedBackground": ["view": bg, "alignment": alignment.name]]
+            n["modifiers"] = ((n["modifiers"] as? [Node]) ?? []) + [modifier]
             return n
         }
     }

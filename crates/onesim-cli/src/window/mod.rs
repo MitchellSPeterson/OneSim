@@ -3,6 +3,7 @@
 //! The host owns the frame scheduler ([`scheduler`]): rendering is on demand, so a static screen costs nothing.
 //! Input goes through the same `Host` calls the headless steps use; only presentation differs ([`present`]).
 
+mod clipboard;
 mod gesture;
 mod present;
 mod scheduler;
@@ -14,7 +15,7 @@ use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
-use onesim_host::Host;
+use onesim_host::{Host, HostEvent};
 use onesim_protocol::{Appearance, KeyboardEvent, PointerEvent, PointerKind};
 use onesim_render::{BackendPref, DragPhase, RenderError};
 use winit::application::ApplicationHandler;
@@ -46,11 +47,15 @@ pub struct Config {
     pub stats: bool,
     /// Start in dark appearance (the session was created with it).
     pub dark: bool,
+    /// Keep a SwiftUI app's pasteboard in step with the host clipboard (both ways).
+    pub clipboard: bool,
 }
 
 enum UserEvent {
     Tree(u64),
     Stopped(String),
+    /// The app put these on its pasteboard (`pasteboard.changed`).
+    Pasteboard(Vec<String>),
 }
 
 pub fn run(mut host: Host, id: String, cfg: Config) -> Result<()> {
@@ -74,16 +79,17 @@ pub fn run(mut host: Host, id: String, cfg: Config) -> Result<()> {
 
 /// Wake the event loop when the guest commits a tree or stops.
 fn forward_events(host: &mut Host, id: &str, proxy: EventLoopProxy<UserEvent>) -> Result<()> {
-    let (tx, rx) = std::sync::mpsc::channel::<String>();
-    host.events(id)?.subscribe(u64::MAX, tx, Some(vec!["render.updated".into(), "runtime.stopped".into()]), None);
+    let (tx, rx) = std::sync::mpsc::channel::<HostEvent>();
+    host.events(id)?.subscribe_typed(tx);
     std::thread::spawn(move || {
-        for line in rx {
-            let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
-            let p = &v["params"];
-            let ev = match p["name"].as_str() {
-                Some("render.updated") => UserEvent::Tree(p["data"]["treeVersion"].as_u64().unwrap_or(u64::MAX)),
-                Some("runtime.stopped") => UserEvent::Stopped(p["data"]["reason"].as_str().unwrap_or("stopped").to_string()),
-                _ => continue,
+        for ev in rx {
+            let ev = match ev {
+                HostEvent::RenderUpdated { tree_version } => UserEvent::Tree(tree_version),
+                HostEvent::RuntimeStopped { reason } => UserEvent::Stopped(reason),
+                HostEvent::Other { name, data } if name == "pasteboard.changed" => UserEvent::Pasteboard(
+                    data["items"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect()).unwrap_or_default(),
+                ),
+                HostEvent::Other { .. } => continue,
             };
             if proxy.send_event(ev).is_err() {
                 break;
@@ -111,6 +117,8 @@ struct App {
     gesture: Gesture,
     mods: ModifiersState,
     left_down: bool,
+    /// The host clipboard text last exchanged with the app's pasteboard (unchanged text is not resent).
+    clipboard: Option<String>,
     /// Cursor in physical pixels.
     cursor: PhysicalPosition<f64>,
     /// Wheel deltas (points) and the finger drag position since the last frame: applied once per draw.
@@ -128,7 +136,7 @@ struct App {
     dark: bool,
     stopped: bool,
     fatal: Option<anyhow::Error>,
-    clipboard: Option<arboard::Clipboard>,
+    selection_clipboard: Option<arboard::Clipboard>,
 }
 
 impl App {
@@ -150,6 +158,7 @@ impl App {
             gesture: Gesture::default(),
             mods: ModifiersState::default(),
             left_down: false,
+            clipboard: None,
             cursor: PhysicalPosition::new(0.0, 0.0),
             pending_scroll: None,
             pending_drag: None,
@@ -163,7 +172,7 @@ impl App {
             dark: false,
             stopped: false,
             fatal: None,
-            clipboard: None,
+            selection_clipboard: None,
         }
     }
 
@@ -271,7 +280,7 @@ impl App {
         }
         self.selection_output();
         self.sched.invalidate(Reason::Input);
-        if !self.cfg.rn && self.host.is_animating(&self.id) {
+        if self.host.is_animating(&self.id) {
             self.sched.set_animating(true);
             self.last_tick = Instant::now();
         }
@@ -286,8 +295,9 @@ impl App {
         match self.timed(|h, id| h.drag(id, phase, p.0, p.1, t)) {
             Ok(_) => {
                 self.sched.invalidate(Reason::Input);
-                if phase == DragPhase::End && !self.cfg.rn {
-                    self.sched.set_animating(true); // momentum / bounce: the first tick says whether there is any
+                if phase == DragPhase::End {
+                    // Momentum / bounce (React Native scroll views too): the first tick says whether there is any.
+                    self.sched.set_animating(true);
                     self.last_tick = Instant::now();
                 }
             }
@@ -314,9 +324,8 @@ impl App {
                 self.gesture.press(p);
                 if !self.cfg.rn {
                     // SwiftUI: the finger is down now (gesture views see it, a long press can fire while held).
+                    // `self.pointer` enables animation only when `host.is_animating(&self.id)` is true.
                     self.pointer(PointerEvent::new(PointerKind::Down, p.0, p.1));
-                    self.sched.set_animating(true);
-                    self.last_tick = Instant::now();
                 }
             }
             ElementState::Released => {
@@ -425,13 +434,13 @@ impl App {
         use onesim_render::SelectionOutput;
         match self.host.take_selection_output(&self.id) {
             Ok(Some(SelectionOutput::Copy(text))) => {
-                if self.clipboard.is_none() {
+                if self.selection_clipboard.is_none() {
                     match arboard::Clipboard::new() {
-                        Ok(clipboard) => self.clipboard = Some(clipboard),
+                        Ok(clipboard) => self.selection_clipboard = Some(clipboard),
                         Err(e) => log::warn!("clipboard: {e}"),
                     }
                 }
-                if let Some(clipboard) = &mut self.clipboard {
+                if let Some(clipboard) = &mut self.selection_clipboard {
                     if let Err(e) = clipboard.set_text(text) {
                         log::warn!("clipboard: {e}");
                     }
@@ -554,7 +563,7 @@ impl App {
             Err(e) => {
                 // No tree (the guest died, or has not drawn yet): nothing to show; wait for the next one.
                 log::debug!("frame: {e}");
-                self.sched.drawn(Instant::now(), 0);
+                self.sched.drawn(started, 0);
                 return;
             }
         };
@@ -564,8 +573,8 @@ impl App {
                 self.drew = true;
                 if d.shown {
                     self.hidden = None;
-                    self.sched.drawn(Instant::now(), version);
-                    if !self.cfg.rn && !self.sched.animating() && self.host.is_animating(&self.id) {
+                    self.sched.drawn(started, version);
+                    if !self.sched.animating() && self.host.is_animating(&self.id) {
                         self.sched.set_animating(true);
                         self.last_tick = Instant::now();
                     }
@@ -575,7 +584,7 @@ impl App {
                     // Nothing was shown. Hidden window (minimized, covered, screen locked): poll slowly, never
                     // per frame. A transient acquire timeout: try again at the next interval.
                     self.stats.skip();
-                    self.sched.drawn(Instant::now(), 0);
+                    self.sched.drawn(started, 0);
                     if d.occluded {
                         self.hidden = Some(Instant::now() + HIDDEN_POLL);
                     } else {
@@ -593,7 +602,7 @@ impl App {
             }
             Err(e) if presenter_is_gpu(&self.presenter) => self.fall_back(e.to_string()),
             Err(e) => {
-                self.sched.drawn(Instant::now(), version);
+                self.sched.drawn(started, version);
                 eprintln!("render error: {e}");
             }
         }
@@ -610,6 +619,19 @@ fn earlier(flow: ControlFlow, t: Instant) -> ControlFlow {
 
 fn presenter_is_gpu(p: &Option<Presenter>) -> bool {
     p.as_ref().is_some_and(|p| p.name() == "gpu")
+}
+
+impl App {
+    /// Hands the host clipboard's text to a SwiftUI app's pasteboard when it changed (other frameworks: no-op).
+    fn sync_clipboard_in(&mut self) {
+        if !self.cfg.clipboard {
+            return;
+        }
+        let Some(text) = clipboard::read() else { return };
+        if self.clipboard.as_deref() != Some(text.as_str()) && self.host.set_pasteboard(&self.id, vec![text.clone()]).is_ok() {
+            self.clipboard = Some(text);
+        }
+    }
 }
 
 impl ApplicationHandler<UserEvent> for App {
@@ -660,6 +682,13 @@ impl ApplicationHandler<UserEvent> for App {
             UserEvent::Tree(v) => {
                 self.sched.invalidate(Reason::Tree(v));
             }
+            UserEvent::Pasteboard(items) => {
+                // What the app copies goes on the host clipboard (and is not read back as new).
+                let text = items.join("\n");
+                if self.cfg.clipboard && !text.is_empty() && clipboard::write(&text) {
+                    self.clipboard = Some(text);
+                }
+            }
             UserEvent::Stopped(reason) => {
                 if !std::mem::replace(&mut self.stopped, true) {
                     eprintln!("session stopped ({reason}); the window shows the last frame");
@@ -671,6 +700,8 @@ impl ApplicationHandler<UserEvent> for App {
     fn window_event(&mut self, el: &ActiveEventLoop, _: WindowId, ev: WindowEvent) {
         match ev {
             WindowEvent::CloseRequested => el.exit(),
+            // Coming back to the window: the app's pasteboard picks up what was copied elsewhere meanwhile.
+            WindowEvent::Focused(true) => self.sync_clipboard_in(),
             WindowEvent::RedrawRequested => self.redraw(),
             WindowEvent::Resized(s) => {
                 if let Some(p) = &mut self.presenter {

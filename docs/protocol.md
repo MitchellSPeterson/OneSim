@@ -32,14 +32,19 @@ Mismatched major version → `protocol_version` error.
 | method | params | result |
 |---|---|---|
 | `get_capabilities` | – | `{"frameworks":["swiftui"],"platforms":["ios"],"commands":[...],"headless":true}` |
-| `create_session` | `{"framework":"swiftui","platform":"ios","app_path":"<file or dir>","root_view":"CounterView"?,"viewport":{"width":393,"height":852}?,"scale":2.0?,"appearance":"light"\|"dark"?,"dynamic_type_size":"large"?,"device":"iphone-18-pro"?,"os_version":"27.2"?}` | `{"session_id":"s1"}` |
+| `create_session` | `{"framework":"swiftui","platform":"ios","app_path":"<file or dir>","root_view":"CounterView"?,"viewport":{"width":393,"height":852}?,"scale":2.0?,"appearance":"light"\|"dark"?,"dynamic_type_size":"large"?,"device":"iphone-18-pro"?,"os_version":"27.2"?,"launch_url":"app://x"?}` | `{"session_id":"s1"}` (`launch_url`: SwiftUI, section V, and iOS React Native, section H Linking) |
 | `start_session` | `{"session_id"}` | `{"state":"running"}` (blocks until first tree or failure) |
 | `stop_session` | `{"session_id"}` | `{"state":"stopped"}` |
-| `get_session_status` | `{"session_id"}` | `{"session_id","state","framework","platform","app_path","viewport","scale","appearance","tree_version"}` |
+| `get_session_status` | `{"session_id"}` | `{"session_id","state","framework","platform","app_path","viewport","scale","appearance","tree_version","scene_phase"}` |
 | `set_viewport` | `{"session_id","width","height"}` | `{}` |
 | `set_appearance` | `{"session_id","mode":"light"\|"dark"}` | `{}` |
+| `set_scene_phase` | `{"session_id","phase":"active"\|"inactive"\|"background"}` | `{"scene_phase"}` (SwiftUI, section V; React Native: AppState, section H) |
+| `open_url` | `{"session_id","url"}` | `{"scene_phase"}` (SwiftUI, section V; iOS React Native: Linking, section H) |
 | `send_pointer_event` | `{"session_id","event":{"kind":"down"\|"up"\|"click","x","y"}}` | `{"hit": <node id or null>, "action": <bool>}` |
+| `send_drag_phase` | `{"session_id","phase":"begin"\|"move"\|"end","x","y","time_ms"?:f64}` | `{"changed": <bool>}` (incremental finger drag; `time_ms` defaults to `clock_ms`) |
 | `send_keyboard_event` | `{"session_id","event":{...}}` | `unsupported` error in v1 |
+| `tick` | `{"session_id","dt_ms":f64}` | `{"clock_ms":f64,"animating":bool}` (advance deterministic clock by one step) |
+| `wait` | `{"session_id","ms":f64}` | `{"clock_ms":f64,"animating":bool}` (advance clock in 16 ms frames) |
 | `capture_screenshot` | `{"session_id","path":"out.png"?}` | `{"width","height","path"}` or `{"width","height","png_base64"}` |
 | `inspect_ui_tree` | `{"session_id"}` | `{"tree_version", "root": UiNode}` |
 | `get_errors` | `{"session_id"}` | `{"errors":[{"message","source"}]}` |
@@ -53,8 +58,8 @@ Session states: `created → starting → running → stopping → stopped`, plu
 returns only once the guest has submitted the next tree (or 2 s timeout), so
 a following `capture_screenshot` reflects the update.
 
-`UiNode`: `{"id","kind","frame":{"x","y","width","height"},"text"?,"role"?,"label"?,"action"?,"children":[...]}`
-(`role`: `"button"`, `"text"`, `"image"`, `"none"`).
+`UiNode`: `{"id","kind","frame":{"x","y","width","height"},"opacity"?,"text"?,"role"?,"label"?,"action"?,"accessibility"?,"children":[...]}`
+(`role`: `"button"`, `"text"`, `"image"`, `"none"`; `opacity` omitted when `1.0`). `accessibility` is section U.
 
 ---
 
@@ -78,6 +83,8 @@ Host → guest (guest stdin):
 - `{"type":"action","id":<u64>,"version":<u64>}` — `version` = tree version the
   action id came from. Guest ignores actions whose version is not current.
 - `{"type":"environment","appearance":"light"|"dark","viewport":{"width","height"},"dynamicTypeSize"?:"large"}` — guest re-evaluates and sends a new tree. `dynamicTypeSize` is omitted at the default (`large`); the guest also gets `SIMCORE_DYNAMIC_TYPE` at launch. The host does the text sizing (below); the guest may later expose it as `@Environment(\.dynamicTypeSize)`.
+- `{"type":"scene_phase","phase":"active"|"inactive"|"background"}` and `{"type":"open_url","url"}` — app lifecycle
+  (SwiftUI: section V; React Native: AppState and Linking, section H); the guest answers each with a tree.
 - `{"type":"shutdown"}` — guest exits 0.
 
 ### ViewNode (normalized view tree, produced by Swift, consumed by Rust)
@@ -165,14 +172,23 @@ Hosts ignore unknown modifier keys. Guests never send kinds a host doesn't list 
 
 | kind | fields |
 |---|---|
-| `shape` | `"shape": "rectangle"\|"circle"\|"capsule"\|"roundedRectangle"`, `"cornerRadius"?`, `"fill"?: Color`, `"stroke"?: {"color": Color, "lineWidth"}`. Greedy like `rectangle`. Neither fill nor stroke means fill with the current foreground color. (`rectangle` kind stays accepted.) |
+| `shape` | `"shape": "rectangle"\|"circle"\|"capsule"\|"roundedRectangle"`, `"cornerRadius"?`, `"fill"?: Color`, `"stroke"?: {"color": Color, "lineWidth"}`. Greedy like `rectangle`. Neither fill nor stroke means fill with the current foreground style. Section R extends both paint fields. (`rectangle` kind stays accepted.) |
 | `divider` | – (hairline, 1px at device scale, separator color; spans the cross axis of the enclosing stack) |
 | `scroll` | `"axis": "vertical"\|"horizontal"`, `"child": ViewNode`. Child is proposed unbounded on the axis. Host keeps the scroll offset per node id across trees; it changes via `scroll` pointer events. Clips. |
-| `list` | `"style": "insetGrouped"\|"plain"`, `"sections": [{"header": String?, "footer": String?, "rows": [ViewNode]}]`. Rows outside any `Section` form their own headerless section. `ForEach`/`if` inside lists are already flattened into rows by the guest. Scrolls like `scroll` (vertical). |
-| `navigation` | `"title": String?`, `"displayMode": "large"\|"inline"`, `"back": {"action": u64, "label": String}?`, `"content": ViewNode`. The top of the stack only. The guest owns the push/pop path. |
+| `list` | `"style": "insetGrouped"\|"grouped"\|"plain"\|"inset"\|"sidebar"`, `"sections": [{"header": String?, "footer": String?, "rows": [ViewNode]}]` (view headers, collapsible sections and row state: section T). Rows outside any `Section` form their own headerless section. `ForEach`/`if` inside lists are already flattened into rows by the guest. Scrolls like `scroll` (vertical). |
+| `navigation` | `"title": String?`, `"displayMode": "large"\|"inline"`, `"back": {"action": u64, "label": String}?`, `"content": ViewNode`. The top of the stack only. The guest owns the push/pop path. Optional `"chrome"` carries the active screen’s toolbar and search configuration. |
 | `toggle` | `"isOn": bool`, `"action": u64` (flips it), `"label": ViewNode`, `"disabled"?: bool` |
 | `stepper` | `"label": ViewNode`, `"decrement": u64?`, `"increment": u64?` (null = at bound, rendered disabled) |
 | `text_field` | `"placeholder": String`, `"text": String`, `"field": u64` |
+
+Navigation `chrome` has an optional `items` array of `{region, content}` records. The `region` is
+`leading`, `principal`, `trailing`, or `bottom` and `content` is a ViewNode. The optional
+`navigationBarVisibility`, `bottomBarVisibility`, `navigationBarBackgroundVisibility`, and
+`bottomBarBackgroundVisibility` fields accept `automatic`, `visible`, or `hidden`.
+`navigationBarBackground` and `bottomBarBackground` accept shape paint. `titleMenu` is an
+optional ViewNode. Optional `search` contains a text-field ViewNode in `field` and a `cancel` ViewNode during
+presentation. The guest sends `placement` as `drawer`, `always`, `toolbar`, or `principal`. The host
+currently uses the drawer for each placement. Search focus and edits use the text input wire actions. A text field with `"search_field": true` has a search key that enables when the query is nonempty.
 
 ### `button` additions
 
@@ -196,9 +212,19 @@ Text styles and weights follow Apple's iOS Dynamic Type "Large" defaults (body 1
 ### Input additions
 
 - Pointer event kind `"scroll"`: `{"kind":"scroll","x","y","dx","dy"}` in points. Scrolls the innermost scroll or list under the point, clamped.
-- Tapping a `text_field` focuses it. The host tracks focus by node id. Tapping elsewhere unfocuses.
-- `send_keyboard_event` is now supported: `{"kind":"text","text":"abc"}` inserts at the end, and `{"kind":"key","key":"backspace"|"enter"}` edits or ends editing (enter unfocuses). It returns `unsupported` only for unknown keys, and `invalid_state` when nothing is focused.
+- Tapping a `text_field` focuses it. The host tracks focus by node ID. A SwiftUI field with a `FocusState` binding publishes `"focused": bool` and versioned `"focus_action"` and `"blur_action"` callback IDs. On a new tree the host applies the focused field, if any. A tap that moves focus invokes the destination's focus action or the previous field's blur action. The destination's action also clears the other bindings.
+- `send_keyboard_event` is now supported: `{"kind":"text","text":"abc"}` inserts at the end, and `{"kind":"key","key":"backspace"|"enter"}` deletes the last grapheme or performs the Return behavior below. It returns `unsupported` only for unknown keys, and `invalid_state` when nothing is focused.
 - Guest wire, host → guest: `{"type":"text_input","field": u64, "version": u64, "text": "<full new text>"}`. The guest sets the bound String, re-evaluates, and sends a tree. It is version-gated like `action`.
+
+SwiftUI text fields accept optional flat keys on `text_field`. `input_style` is
+`automatic`, `plain`, `bordered`, or `rounded_border`. The optional
+`input_border_shape` is `automatic`, `capsule`, or `rounded_rectangle`. A `prompt`
+is a Text node and supersedes the placeholder visually. `axis: "vertical"`
+enables multiline editing, and `editor: true` selects the flexible-height
+TextEditor layout. `keyboard_type`, `autocapitalization`, `submit_label`, and
+`content_type` are strings. `autocorrection_disabled` is a boolean. All fields
+are optional and the legacy wire format still works. Secure input is passed to
+the guest's binding as typed and is masked in the inspection tree and on screen.
 
 ### Device profile and platform chrome (host)
 
@@ -242,7 +268,7 @@ host draws a rounded-square outline placeholder and records one `get_errors` ent
 
 When a `text_field` is focused, the host draws the iOS keyboard for the device profile (light or dark). The keyboard rises from the bottom, so the bottom safe-area inset becomes the keyboard height (keyboard avoidance), and focused content stays above it. Key taps are ordinary pointer clicks on the keyboard:
 - Letter, space and backspace keys edit the text through `text_input`.
-- Return is `enter`: it unfocuses and the keyboard hides.
+- Return is `enter`: it sends the versioned `"submit_action"` (when present) so the guest can submit or move focus. Without a submit action a multiline field inserts a newline, a bound single-line field keeps focus, and a legacy unbound single-line field dismisses the keyboard.
 - Shift toggles case. Auto-capitalization turns shift on at the start of the text and after ". ".
 
 `send_keyboard_event` keeps working and bypasses the keys. `inspect_ui_tree` includes the keyboard as `kind: "keyboard"` with a child per key (`role: "key"`, `label`). The CLI `--click q` matches a key label when the keyboard is up.
@@ -312,7 +338,7 @@ System chrome uses the same effect:
 | `sheet` | `"content"`, `"detents"?: [Detent]`, `"dragIndicator"?: bool`, `"dismiss"?: u64` |
 | `cover` | `"content"` (`.fullScreenCover`) |
 | `alert` | `"title"`, `"message"?: ViewNode`, `"actions": [button ViewNode]` |
-| `dialog` | `"title"`, `"titleVisible"`, `"message"?`, `"actions"`, `"anchor"?: node id`, `"dismiss"?: u64` (`.confirmationDialog`) |
+| `dialog` | `"title"`, `"titleVisible"`, `"message"?`, `"actions"`, `"anchor"?: node id`, `"dismiss"?: u64`, `"appearance"?: "light"\|"dark"` (`.confirmationDialog`; React Native `ActionSheetIOS`, section H) |
 
   `Detent` is `{"kind":"medium"|"large"}`, `{"kind":"fraction","value"}` (of the large detent's height) or `{"kind":"height","value"}` (points); any order, the host sorts by height and starts at the smallest. Empty = large only. `dismiss` is a guest action that clears the binding (the guest then runs `onDismiss`); a sheet without it is `interactiveDismissDisabled`. `presentationDetents` / `presentationDragIndicator` / `interactiveDismissDisabled` are lifted off the sheet content's top node by the guest and never appear as modifiers. `actions` are buttons in source order; the host orders them. A dialog gets a Cancel button appended when the app gave none; its `dismiss` is that button's action id (tapping outside the popover cancels), and `anchor` is the id of the view the `.confirmationDialog` modifier is attached to. Tapping any alert/dialog button runs its action id and the guest clears the binding. The guest evaluates presented content under `<path>/sheet`, `<path>/cover` and `<path>/alert`, so its `@State` lives only while shown; `onDismiss` fires through the lifecycle machinery when the layer stops being evaluated (dismiss(), a swipe, or app code clearing the binding). A host that receives `presentation` nested below the root ignores the layer.
 - Layer ids are `layer<i>` (index in `layers`). The host keeps a detent and a drag position per sheet layer id, like scroll offsets, in `Interaction::sheets`, and passes them to layout as `SceneParams::sheets`.
@@ -360,9 +386,10 @@ It loads the app bundle from Metro and runs React Native's own Fabric renderer; 
 
 `SIMCORE_METRO_URL`, `SIMCORE_PLATFORM` (`ios` or `android`), `SIMCORE_VIEWPORT`, `SIMCORE_APPEARANCE`,
 `SIMCORE_SESSION_ID`, `SIMCORE_SCALE`, and `SIMCORE_INSETS=top,bottom` (profile insets used on Android).
+`SIMCORE_LAUNCH_URL`: the URL the app was launched to open (`create_session` `launch_url`, iOS only; see Linking).
 Optional: `SIMCORE_HMR=1` (connect Metro `/hot`), `SIMCORE_DEBUG=1`.
-`SIMCORE_BUNDLE_URL` loads that prebuilt bundle instead (`npx expo export --platform <p> --no-bytecode --no-minify`,
-the `_expo/static/js/<p>/*.js` file): no manifest, no HMR.
+`SIMCORE_BUNDLE_URL` loads that prebuilt bundle instead (`npx expo export --platform <p> --no-bytecode`, minified or
+`--no-minify`, the `_expo/static/js/<p>/*.js` file): no manifest, no HMR.
 The guest loads `launchAsset.url` from the Expo manifest at `GET <metro>/` with `expo-platform` set
 to the session platform. Plain Metro uses `/index.bundle?platform=<platform>&dev=true&minify=false`.
 
@@ -432,10 +459,25 @@ its existing focus + software-keyboard machinery.
   `setTextAndSelection` / `setNativeProps({text})` update the guest's text and re-emit.
 
 **ScrollView** (`RCTScrollView`). Host keeps the offset.
-- Host → guest `{"type":"scroll","tag","phase":"begin"|"scroll"|"end","x","y","contentWidth","contentHeight","width","height"}`
-  (x/y = content offset) → `topScrollBeginDrag` / `topScroll` / `topScrollEndDrag` +
-  `topMomentumScrollEnd`, nativeEvent `{contentOffset,contentSize,layoutMeasurement,contentInset:{0,0,0,0},zoomScale:1}`.
-  One `--scroll` gesture = begin, scroll, end.
+- Host → guest `{"type":"scroll","tag","phase":"begin"|"scroll"|"end"|"release"|"momentum_end","x","y","contentWidth","contentHeight","width","height"}`
+  (x/y = content offset) → `topScrollBeginDrag` / `topScroll` / `topScrollEndDrag` + `topMomentumScrollEnd` /
+  `topScrollEndDrag` + `topMomentumScrollBegin` / `topMomentumScrollEnd`, nativeEvent
+  `{contentOffset,contentSize,layoutMeasurement,contentInset:{0,0,0,0},zoomScale:1}`.
+  One `--scroll` gesture = begin, scroll, end. A finger drag on a scroll view first goes to JS as touches. Once it
+  has moved 10 pt along the axis of a scroll view under it (the innermost one scrolling that way, so a vertical drag on
+  a horizontal carousel scrolls the list around it; a drag across every scroll view's axis stays JS's), the host
+  sends `{"type":"touch_ask","ask":n}` after that touch `move`, keeps sending JS the moves, and waits for the guest's
+  `{"type":"touch_answer","ask":n,"captured":bool}`, sent once it has dispatched every touch before the ask.
+  `captured`: a react-native-gesture-handler recognizer activated (a pan, a long press already held). JS keeps the
+  touch when `captured`, or when a JS responder that blocks native ones contains the scroll view: guest → host
+  `{"type":"js_responder","tag"}` on `setIsJSResponder(node, true, blockNativeResponder: true)` (a PanResponder's
+  grant), `"tag": null` when released, like RCTScrollView's `_shouldDisableScrollInteraction` (a responder inside the
+  scroll view, such as a pressable row, does not stop it). Otherwise the scroll view takes the pan: JS gets `cancel`,
+  and the content follows from where the finger passed the slop, reporting begin, scroll…, then `end`, or `release`,
+  the momentum's `scroll`s and `momentum_end` when the content carries on after the finger lifts. An answer for an
+  older ask is ignored; with no answer after 250 ms of finger time the scroll view takes the pan anyway; a finger
+  lifted before the answer ends the JS touch. The CLI's whole `--drag` runs as these live phases (moves at 5 pt and
+  11 pt, then 8 steps), settling between them (so the answer is always in), and lifts at rest.
   A vertical scroll pulling down past the top (offset already 0) is reported like iOS rubber-banding:
   begin at 0, `scroll` with the negative overscroll `y`, end at 0. Pulled 100 pt or more, the guest fires
   `topRefresh` on the scroll view's `PullToRefreshView` child (RN `RefreshControl`) unless it is already refreshing.
@@ -443,15 +485,22 @@ its existing focus + software-keyboard machinery.
   (`scrollToEnd`: `x`/`y` = `"end"`); host sets the offset (clamped), re-renders and replies
   with a `scroll` message (phase `end`).
 - `contentOffset` prop sets the initial offset.
+- `scrollEnabled={false}`: the user cannot scroll it. Drags and the wheel skip it (the touch stays JS's, or an outer
+  scroll view takes a drag its way); `scrollTo` and `contentOffset` still apply.
 
 **Image** (`RCTImageView`). The guest downloads `source[0].uri` (http(s), `data:`, Metro
-assets) with Node `fetch` into `$TMPDIR/onesim-images/<sha1(uri)>.<ext>` and adds
+assets) with Node `fetch` into `$TMPDIR/onesim-images/<sha1(uri)>-<sha1(bytes)>.<ext>` (new bytes, new
+file: the host caches decodes by path) and adds
 `props.__simcoreImage = {"path","width","height"}` (pixels) to the node, dispatching
 `topLoadStart`, `topLoad` `{source:{uri,width,height}}`, `topLoadEnd` (or `topError`
-`{error}`). Host decodes PNG/JPEG from `path` and draws with `resizeMode`
-`cover` (default) / `contain` / `stretch` / `center`, clipped to `borderRadius`; until
+`{error}`). Host decodes PNG, JPEG, GIF and WebP from `path` and draws with `resizeMode`
+`cover` (default) / `contain` / `stretch` / `center` / `repeat` (tiled from the top-left at one bitmap pixel per device
+pixel), clipped to `borderRadius`; until
 `__simcoreImage` exists it draws only the background. `ImageLoader.getSize`/`prefetch` use the
-same cache.
+same cache. An animated GIF or WebP plays on the session clock from when its node first appears (each frame composited
+onto the canvas the earlier ones left; a delay under 20 ms shows for 100 ms; its loop count of plays, forever for 0 /
+no limit, then the last frame stays); expo-image's `autoplay: false` shows the first frame. While one plays the
+session is animating (`--wait` steps it; live viewers tick).
 
 **Switch** (`RCTSwitch`, props `value`, `onTintColor`, `thumbTintColor`, `disabled`). Host draws
 the iOS 26 switch (same look and size as SwiftUI `Toggle`: 63×28, knob 37×24). The guest handles the tap: a touch `end`
@@ -464,7 +513,10 @@ everything else (transparent → no backdrop; otherwise background color of the 
 visible; `topRequestClose` is not generated (no hardware back on iOS).
 
 **ActivityIndicator** (`ActivityIndicatorView`, props `animating`, `hidesWhenStopped`, `color`, `size`; size from style:
-20×20 small, 36×36 large). Host draws the iOS spinner's 8 spokes at rest (a static frame); stopped + `hidesWhenStopped` → nothing.
+20×20 small, 36×36 large). Host draws the iOS spinner's 8 spokes, the brightest leading clockwise and the rest fading behind
+it; while `animating` it steps one spoke every 125 ms of session clock from when the node appears (the session is animating
+meanwhile); stopped + `hidesWhenStopped` → nothing, stopped otherwise → the resting frame. The refresh control's spinner turns
+the same way.
 
 **RefreshControl** (`PullToRefreshView`, iOS: first child of its `RCTScrollView`; props `refreshing`, `tintColor`).
 Outside the content flow. While `refreshing` the scroll view opens a band above the content (extra top inset) with a spinner
@@ -544,6 +596,91 @@ JS-driven push/pop needs no message. The guest spaces appear events by 350 ms
   re-emits the tree and calls the `alertWithArgs` callback with the button key (Alert.js runs that button's `onPress`).
 - `Alert.prompt` (`type` other than `default`) is unsupported (diagnostic).
 
+### `ActionSheetIOS` (ActionSheetManager, issue #50)
+
+- `showActionSheetWithOptions` adds a section G `dialog` layer (with the alerts, in order): `title` / `titleVisible`,
+  `message`, one `button` per option in option order (`role` `cancel` for `cancelButtonIndex`, `destructive` for
+  `destructiveButtonIndex(es)`, `disabled` for `disabledButtonIndices`, a `foregroundColor` modifier on the label for
+  `tintColor` / `cancelButtonTintColor`), `dismiss` (only with a cancel button), `anchor` (the `anchor` view's tag) and
+  `appearance` (`userInterfaceStyle`). Over React Native the host draws a `dialog` without `anchor` as the iOS 26+ iPhone
+  action sheet: the alert's dim and centred 320 pt card, Liquid Glass with the popover's shadow, buttons stacked with the
+  cancel button last, every label regular weight and plain ones in the label color; a tap on the dim runs `dismiss`.
+  iPhone ignores `anchor` (iPad would point a popover at it). `appearance` draws that layer alone light or dark.
+- `showShareActionSheetWithOptions` adds a section W `share` layer (`items`: `message`, then `url`; `url` when the URL is
+  the only item; `activities` without the `excludedActivityTypes`, whose cells the host leaves out; `appearance`). Over
+  React Native a link item is drawn as iOS shows a link it has no page preview for: its host name by a white tile with a
+  gray compass (the guest fetches no preview).
+- A button's `action` (or `dismiss`) drops the layer and calls back: the option index; for the share sheet
+  `(completed, activityType)` (Copy puts the URL or message on the simulated clipboard; dismissing is `false, null`).
+  `dismissActionSheet` drops the topmost sheet without a callback.
+
+### `LayoutAnimation` (issue #50)
+
+- `nativeFabricUIManager.configureNextLayoutAnimation(config, onEnd, onFail)` applies to the next `completeRoot`: the
+  tree emitted for that commit carries `__simcoreLayoutAnimation` on the root's props, `{...config, token}` (`token`
+  increases per configured commit; later trees omit it). `onEnd` runs once the longest of `create` / `update` / `delete`
+  (`duration` + `delay`, default the config's `duration`) has passed.
+- The host gives every node of that commit's scene a section P animation: `update` animates frames (bounds) of nodes
+  that stay; `create` / `delete` are the insertion / removal transition of inserted / removed nodes (`property` `opacity`
+  → opacity 0, `scaleXY` → scale 0, `scaleX` / `scaleY` → that axis 0; nothing configured → immediate). Curves: `linear`,
+  `easeIn`, `easeOut`, `easeInEaseOut`, `keyboard` (UIKit's keyboard curve), `spring` (Fabric's spring interpolation,
+  `springDamping`, sampled). A removal in a later, unconfigured commit is immediate.
+
+### Linking (iOS, issue #50)
+
+- `LinkingManager.getInitialURL` is `SIMCORE_LAUNCH_URL` (null without one); expo-linking's `getLinkingURL` is that, then
+  the last URL received (`clearInitialURL` clears it).
+- Host → guest `{"type":"open_url","url"}` (API `open_url`, CLI `--open-url`) delivers a URL: RN's `url` event and
+  expo-linking's `onURLReceived`. `create_session` `launch_url` / `--launch-url` starts the app with one.
+- `openURL` of the app's own scheme (`expo.scheme`, the iOS bundle id; `exp` / `exps` with a manifest) comes back the
+  same way. System schemes (`http(s)`, `tel`, `sms`, `mailto`, FaceTime, Maps, App Store, `app-settings` from
+  `openSettings`, ...) belong to the simulated phone's Apple apps: they resolve `true`, emit `module.called`
+  `{"module":"Linking","method":"openURL","args":[url]}`, and the app goes to that app and comes back: AppState
+  `inactive`, `background`, `inactive`, `active`. No other app is installed: any other scheme rejects (`canOpenURL`
+  false, whether or not the app declares it), as does a string that is not a URL.
+- AppState follows host `scene_phase` (`set_scene_phase`; `open_url` brings a backgrounded app forward first, as for
+  SwiftUI): `appStateDidChange` `{app_state}`; a touch in progress is cancelled as the app resigns active (its later
+  moves are dropped until the next finger).
+
+### Guest requests (issue #50)
+
+Guest → host `{"type":"request","id","method","params"}`, host → guest `{"type":"response","id","result"?,"error"?}`
+(the guest rejects with `error`): work that needs the host's decoders or fonts. The native host answers on its guest
+reader (it may be waiting for a tree meanwhile), the browser host through its outbox; `onesim guest-request` answers
+one request from stdin (guest tests without a host).
+- `image.blurhash` `{path, x, y}` → the blurhash string (expo-image `generateBlurhashAsync`; components 1...9; the
+  full-size premultiplied bitmap, as expo-image's Swift encoder: the same string as iOS).
+- `image.thumbhash` `{path}` → base64 ThumbHash (`generateThumbhashAsync`; the image drawn into at most 100 x 100 first,
+  bilinear where iOS uses Core Graphics, so the bytes can differ slightly).
+- `image.decode_hash` `{uri, width?, height?}` → `{png, width, height}` (base64 PNG): a `blurhash:/` source at
+  `width` x `height` (default 16) or a `thumbhash:/` source at its own size.
+- `text.render` `{text, family?, fonts?: [path], size, color: 0xAARRGGBB, lineHeight?, scale}` →
+  `{png, width, height, scale}` (expo-font `renderToImageAsync`): the string at its size in points, `family` a family name
+  among the loaded `fonts`, else the system font; `lineHeight` fixes each line's height.
+
+### expo-image (issue #50)
+
+- A `source` (and `placeholder`) may be an image ref's shared-object id (`Image.loadAsync`, `readFromCacheAsync`), a
+  `blurhash:/` or `thumbhash:/` URI (decoded with `image.decode_hash`), or carry a `cacheKey` (the cache's key instead
+  of the URI). Until the source is in (or when it fails), the placeholder is drawn with `placeholderContentFit`.
+- Guest-added `__simcoreAnimating` (boolean): the view functions `startAnimating` / `stopAnimating` ran. Without it an
+  animation plays unless `autoplay` is false. A held animation keeps the frame it reached (the first when it never
+  played); resuming carries on from there.
+- `lockResourceAsync` keeps the loaded image when the source changes; `reloadAsync` loads the source again with its
+  events.
+
+### expo-font / expo-asset (issue #50)
+
+- `ExpoAsset.downloadAsync(url, md5, type)` downloads into the session's Caches as `ExponentAsset-<md5>.<type>` and
+  returns its `file:` URL (a cached file is reused while its md5 matches).
+- `ExpoFontLoader.loadAsync(alias, localUri)` / `loadFontFamilyAsync(alias, faces)` check the files are TrueType /
+  OpenType and set the root's `__simcoreFonts` `{alias: [path, ...]}`. The host loads those files into its font database
+  (the browser host: from the guest's file writes) and resolves a `fontFamily` on text, spans and text inputs: an alias
+  takes its face nearest `fontWeight` / `fontStyle`; otherwise a family or PostScript name inside a loaded file; otherwise
+  the system font.
+- `ExpoFontUtils.renderToImageAsync(glyphs, {fontFamily, size, color, lineHeight})` asks the host for `text.render` and
+  writes the PNG to the session's `tmp/<UUID>.png`: `{uri, width, height, scale}` (points; `scale` is the device's).
+
 ### react-native-gesture-handler (issue #10)
 
 - No wire change: the guest recognizes Tap / Pan / LongPress / native-button gestures itself from
@@ -560,7 +697,7 @@ JS-driven push/pop needs no message. The guest spaces appear events by 350 ms
 - New layer `menu` (in `presentation.layers`, section G): `{"kind":"menu","anchor": picker id,"items":[{"text","action","checked"?: bool}],"dismiss": u64}`, present while a menu picker is open. The host draws a glass card at the anchor; an item's action selects and closes, `dismiss` (tap outside) only closes.
 - New kind `slider`: `{"kind":"slider","id","value","min","max","step"?,"field"?: u64,"disabled"}`. The host sets the value by sending `text_input` (section B) to `field` with the number as decimal text; the guest clamps it to `min...max` and snaps it to `step`. A tap on the slider or a `drag` pointer gesture that starts on it sends the value under the point where the finger ends (thumb centre travels between half a thumb width from each end). Disabled sliders have no `field`.
 - New kind `progress`: `{"kind":"progress","id","value": fraction 0...1 | null,"label"?: ViewNode}` (`ProgressView`). With a value: a linear capsule bar (label above it). Null: the activity indicator, drawn as a static frame (label below it).
-- `LabeledContent` and `Form` add no wire kinds: they are an `hstack` (label, spacer, content with `foregroundColor` secondary) and an inset-grouped `list`.
+- `LabeledContent` and `Form` add no wire kinds: they are an `hstack` (label, spacer, content with `foregroundColor` secondary) and an inset-grouped `list` (a columns form: section T).
 - Inspection: the picker row is a `button` labelled with the picker label (its `value` is the selected text), segments and menu items are `button`s labelled with their text, a slider has role `slider` and its value as `value`.
 
 ## J. v1 additions: tab views (additive, protocol version stays 1)
@@ -880,7 +1017,7 @@ Existing view trees parse unchanged. New modifiers are omitted when absent.
 | JSON | SwiftUI |
 |---|---|
 | `{"animation": AnimationSpec \| null}` | `withAnimation` (on root), `.animation(_:value:)`, `.animation(_:)`, `.transaction`. `null` disables animation for the subtree. `AnimationSpec` is `{"curve", "duration", "delay", "speed", "repeat"?: u32 \| "forever", "autoreverses", "token"}`. `curve` is `"linear"`, `"easeIn"`, `"easeOut"`, `"easeInOut"`, `{"bezier": [x1, y1, x2, y2]}`, `{"spring": {"mass", "stiffness", "damping", "initialVelocity", "settling"}}`, or `{"samples": [f64...]}` (for `CustomAnimation`). `token > 0` fires once when bumped; `token == 0` animates any property change. |
-| `{"transition": {"insertion": Effect, "removal": Effect, "animation"?: AnimationSpec}}` | `.transition(_:)`. `Effect` holds optional `opacity`, `scale`, `anchor`, `offset` (`[x, y]`), and `edge` (`"top"\|"bottom"\|"leading"\|"trailing"`). |
+| `{"transition": {"insertion": Effect, "removal": Effect, "animation"?: AnimationSpec}}` | `.transition(_:)`. `Effect` holds optional `opacity`, `scale`, `scaleX` / `scaleY` (one axis; React Native LayoutAnimation), `anchor`, `offset` (`[x, y]`), and `edge` (`"top"\|"bottom"\|"leading"\|"trailing"`). |
 | `{"matchedGeometry": {"id", "namespace", "properties": "frame"\|"position"\|"size", "anchor": [x, y], "isSource": bool}}` | `.matchedGeometryEffect(id:in:properties:anchor:isSource:)` with `@Namespace`. |
 | `{"contentTransition": "identity"\|"interpolate"\|"opacity"\|"numericTextUp"\|"numericTextDown"\|"symbolEffect"}` | `.contentTransition(_:)`. Inherited by `text` and `image` descendants. |
 
@@ -921,3 +1058,242 @@ Menu, Link, control styles and Gauge (`frameworks/swiftui/Sources/SwiftUI/Styles
 - `progress` gains `"currentValueLabel"?: ViewNode`, drawn under a linear bar (caption, secondary). `.circular` is sent with `value: null` (the spinner).
 - New kind `gauge`: `{"kind":"gauge","id","style": "automatic"|"linearCapacity"|"accessoryLinear"|"accessoryLinearCapacity"|"accessoryCircular"|"accessoryCircularCapacity","value": fraction 0...1,"label"?,"currentValueLabel"?,"minimumValueLabel"?,"maximumValueLabel"?}` (labels are ViewNodes; `EmptyView` ones are omitted). `automatic` and `linearCapacity`: label centred above a 16 pt accent capacity bar, min/max labels beside it, the current value centred below. `accessoryLinearCapacity`: label leading above a 4 pt bar. `accessoryLinear`: an 8 pt primary bar with a dot at the value, no label. `accessoryCircularCapacity`: a 58 pt ring filled clockwise from the top, the current value inside. `accessoryCircular`: a 58 pt arc open at the bottom with a dot at the value, the current value inside and the label in the opening. Inspection value: the fraction.
 - Slider value labels add no kind: the guest sends an `hstack` of the minimum label, the `slider` (id `<id>/s`) and the maximum label. `onEditingChanged` runs `true` then `false` around each `text_input`.
+
+## R. v1 additions: SwiftUI gradients, Canvas and effects
+
+The host lists `canvas`, `canvasItem` and `visualEffect` in `get_capabilities.views`.
+A shape's `fill` and `stroke.color` accept a paint. Existing `Color` objects still work.
+A paint may also be `{"style":"foreground" | "background" | "tint" | ...}` for an inherited or
+semantic style, or `{"gradient": GradientPaint}`. The `foregroundPaint`, `backgroundPaint`
+and optional `tint` modifiers set the inherited styles. `foregroundPalette` carries a
+`primary`, `secondary`, and optional `tertiary` paint for the respective hierarchical levels.
+`alignedBackground` uses the same
+`{view, alignment}` representation as `overlay`. A `background` without alignment centers
+its view. A semantic color with `hierarchical: true` first resolves against the inherited
+foreground style. With the field omitted, semantic colors keep their original meaning.
+
+A `GradientPaint` uses these fields:
+
+| `kind` | Geometry |
+| --- | --- |
+| `linear` | `start`, `end`, each a two-element point |
+| `radial` | `center`, optional `startCenter`, `startRadius`, `endRadius`, optional `elliptical` |
+| `angular` | `center`, `startAngle`, `endAngle` in radians |
+| `mesh` | `width`, `height`, row-major `points` and `colors`, `background`, and `smoothsColors` |
+
+The first three kinds carry `stops: [{location, color}]`. A point is relative to the painted
+bounds unless `absolute` is true, which uses Canvas coordinates in points. Circular radii are
+in points. Elliptical radii are fractions of each axis. `options` is a bitset with repeat (2)
+and mirror (4). `colorSpace` defaults to `device` and also accepts `perceptual` and `linear`.
+Each mesh point has `position` and optional `controls` ordered leading, top, trailing, bottom.
+An invalid mesh grid draws its background. Duplicate stop locations create a hard stop.
+
+`canvas` carries `children` in draw order and an optional `proposal: [width,height]` from the
+last draw. The host places commands at the Canvas origin and clips the isolated layer to the
+Canvas bounds. `opaque` uses an opaque backing. `canvasItem` places its `child` at a local
+`origin: [x,y]` relative to an `anchor: [u,v]`. An optional `size: [width,height]` proposes a
+rectangle in which the host centers the child. Canvas commands and mask content are
+decorative and do not contribute actions, gestures, or inspection nodes.
+
+`visualEffect` carries `child`, `frame: [x,y,width,height]` and an ordered `effects` array.
+The host sends Canvas size changes and visual-effect frame changes in the existing `layout`
+message. Canvas uses the returned size for its renderer. The visual-effect closure uses the
+returned origin and size with `GeometryProxy`. The child determines the view's layout size.
+
+The `effect` modifier takes one effect object. The same objects can appear in the
+`visualEffect` array.
+
+| `kind` | Fields |
+| --- | --- |
+| `affine` | `matrix: [a,b,c,d,tx,ty]`, `anchor: [x,y]` in unit coordinates |
+| `projection` | Row-major 3 × 3 `matrix` with translation in the last row |
+| `blur` | `radius` in points and `opaque` |
+| `blend` | `mode`, the lower camel case blend mode |
+| `colorMultiply` | `color` |
+| `alphaThreshold` | `min`, `max`, `color` |
+| `brightness`, `contrast`, `grayscale`, `saturation`, `opacity`, `colorInvert` | `amount` (optional for `colorInvert`, defaults to 1) |
+| `hueRotation` | `radians` |
+| `luminanceToAlpha` | None |
+| `group` | `opaque` |
+
+`mask` and `invertedMask` take `{view, alignment}` and multiply the rendered content by the
+mask's alpha or its complement. Canvas source-domain blend modes use the clip and path
+coverage when compositing, including when the drawing paint is transparent.
+Effects preserve layout size. The host resolves these
+layers with the CPU rasterizer and submits the resulting RGBA frame to GPU clients.
+
+## S. v1 additions for SwiftUI date and color pickers
+
+The guest owns date selection, calendar navigation, formatting and color bindings. It emits standard buttons,
+text, shapes and sheets for most of the interface. This section adds three wire elements.
+
+- `wheel` draws multiple drums in one selection band. Optional `width` and `height` default to the proposed
+  width and 216 pt. `columns` is an array of objects with `options` (picker options in display order), `selected`
+  (zero-based index), `width` (points), and optional `align` (`leading`, `center`, or `trailing`, default `center`).
+  Optional `inset` and `selectedInset` set the regular and selected text offsets for edge-aligned columns.
+  The host draws the selected row and its nearest neighbours. A tap on an enabled, unselected row runs its
+  action. `disabled` disables the wheel. `popover` chooses the band fill for a wheel over glass.
+- A root presentation layer with `kind: "popover"` contains `content`, optional `anchor` (view id), and
+  optional `dismiss` (guest action). The host positions the card beside the anchor and sends `dismiss` for a
+  tap outside. The underlying view stays visible.
+- A `rowMinHeight` modifier holds a number in points. A list or form uses it as the minimum height of that
+  row alongside its content height and padding. Color picker rows use 58 pt.
+
+## T. v1 additions for SwiftUI forms and containers
+
+The guest builds `GroupBox`, `DisclosureGroup`, `LabeledContent`, `ControlGroup`, `ContentUnavailableView`,
+`OutlineGroup`, `Table` (a plain list of its first column, as on every iPhone) and the columns `Form` (a
+`viewThatFits` of a centred `grid` and a scrolling one) from existing kinds, and owns edit mode, swipe state and
+disclosure state. This section extends `list`, its sections and rows.
+
+- `list` `style` is one of `insetGrouped` (default; also `.automatic` and every grouped `Form`), `grouped`
+  (full-width white sections with hairlines on the grouped background), `plain` and `inset` (rows on the plain
+  background, a separator under each row, 22 pt between sections; a `plain` footer is drawn as one more row) and
+  `sidebar` (inset grouped, with collapsible section headers).
+- A section may carry `headerView` / `footerView` (any `ViewNode`, drawn in the header / footer style) in place of
+  the text `header` / `footer`. `expanded` (Bool) makes it collapsible: the header is a button running `toggle`
+  (guest action) with a chevron, and the guest sends no rows while it is collapsed.
+- A row's `listRow` modifier holds its state:
+  - `swipe`: `leading` / `trailing` actions (`{label, action, tint?, role?}`, outermost first), `open`
+    (`"leading"` / `"trailing"`: that edge's actions show at rest), `offset` (the finger's movement on top, points)
+    and `full` (past the full-swipe point: the outermost action stretches across the row). The host draws the
+    moved row as a clipped, highlighted cell over the list background with the actions as pills beside it.
+  - `gesture`: a gesture (section L) on the whole row, the swipe pan.
+  - `reorder`: a gesture on a strip at the row's trailing edge, as tall as the row (edit mode's reorder handle).
+  - `lift`: points a row being reordered is drawn below its place, above the other rows.
+- A gesture's optional `axis` (`"horizontal"` / `"vertical"`) locks its pan to that axis: a finger that first leaves
+  the touch slop mostly along the other axis is handed to the scroller under it (the gesture sees `cancel`).
+
+## U. v1 additions for SwiftUI accessibility
+
+`PROTOCOL_VERSION` stays 1. Each `.accessibility*` call adds one `accessibility` modifier. The fields are partial.
+The host merges them outermost-last: a later label, value, hint, identifier, trait edit or flag replaces the earlier
+one; actions, custom content and rotors append. `isEnabled: false` emits no modifier.
+
+The spoken label overwrites `UiNode.label`. The spoken value overwrites `UiNode.value` and leaves the scene node's
+editable text alone, so a later keystroke still appends to the control. Visible `text` stays the drawn string.
+A modifier after a layout-only wrapper (opacity, clip, shadow, gesture, transition) or a background, overlay, or
+mask attaches to the inspectable content. Any other semantics are an `accessibility` object on the inspection node.
+That object is omitted when label and value are the only semantics. Inspect children are sorted by `sortPriority`
+descending (default 0, stable). Paint order is unchanged.
+
+`accessibility` fields: `hint`, `identifier`, `hidden`, `suppressed`, `traits`, `sortPriority`, `heading`,
+`inputLabels`, `children` (`ignore`, `contain`, `combine`), `actions` (`{name, action, category?}`),
+`custom` (`{key, value?, id?, importance?}`),
+`elements`, `focused`, `textContentType`, `scrollStatus`, `rotors` (`{name, entries: [{label, id?}]}`), `chart`, `ignoresInvertColors`, `responds`,
+`directTouch`, `directTouchOptions`, `linked`, `pair` (`{role, id}`), `largeContent`, `largeLabel`, `activation`
+(`{x, y, unit?, description?}`), `adjustable` (`{increment, decrement}`), `scroll` (`top`, `bottom`, `leading`,
+`trailing`), `zoom` (`in`, `out`), `rotorEntry`, `technologies`, `drag`, `drop`, `defaultFocus`.
+
+`ignore` and `combine`, and a node with `elements`, suppress strict descendants. `combine` without an explicit label
+joins descendant labels with `", "`. A labeled pair speaks the content as `"label, content"` and suppresses the
+label node. Hidden propagates to descendants. `resolve_label` skips hidden and suppressed nodes, then matches an
+accessibility label or identifier, and returns the activation point when one is set (unit point or absolute offset
+from the frame origin). A finger tap does not run the default accessibility action.
+
+These fields are stored and do not change hit testing or pixels: direct touch, drag and drop points, invert colors,
+large content, chart, linked group, rotor entries, and `responds`. Zoom is two actions. The guest calls the handler
+with a synthetic `AccessibilityZoomGestureAction` at location `.center` and point `.zero`. Rotor `prepare` is not
+called. A text-range rotor entry with no text uses `String(describing:)` of the range as its label. Text, when the entry has it, stays the label. `AccessibilityFocusState` technologies
+are stored and not filtered.
+
+## V. v1 additions for SwiftUI scenes and the app lifecycle
+
+The guest evaluates the `App` every pass: its `@State`, `@StateObject` and `@Environment` live under `app`, scene
+state under `app/body/...`, and the first scene with a window (`WindowGroup`) is the root, its views at `0` as
+before. Scene modifiers set the environment of the window's views; window-only ones (sizes, commands, toolbar
+label style) build and change nothing on iPhone.
+
+- Host → guest `{"type":"scene_phase","phase":"active"|"inactive"|"background"}`: the app moved to that phase. The
+  guest updates `scenePhase` (and `UIApplication.applicationState`), posts the `UIApplication` notification for
+  the step (`willResignActive`, `didEnterBackground`, `willEnterForeground`, `didBecomeActive`), runs the
+  `onChange` handlers that see it, and answers a tree. An unknown phase is reported with `error` and answered with
+  the unchanged tree. The host sends one step at a time: `active` and `background` always pass through `inactive`.
+- Host → guest `{"type":"open_url","url"}`: every `.onOpenURL` handler of the current window runs, in view order,
+  with `URL(string: url)`; then the guest answers a tree. A string `URL(string:)` rejects is reported with `error`.
+  The web build has no Foundation `URL`, so nothing receives it there.
+- C ABI: both lines reach the guest through `simcore_runtime_set_layout_callback`, like `tick`.
+- Launch: `App.main` makes the app (and its `@UIApplicationDelegateAdaptor` delegate), calls the delegate's
+  `application(_:willFinishLaunchingWithOptions:)` and `application(_:didFinishLaunchingWithOptions:)` (no launch
+  options) while `inactive`, evaluates the window once while still `inactive` (state, `onChange(initial: true)`), then
+  becomes `active` (posting `didFinishLaunching` then `didBecomeActive`) and sends the first tree, in which
+  `onChange(of: scenePhase)` sees `inactive -> active` (on the web build this happens at the first render, when the
+  page pushes the environment; a phase or URL line before then connects the scene first). `UIApplication.shared.delegate` is a SwiftUI-owned delegate
+  that forwards to the adaptor's instance, as on iOS.
+  On `shutdown` or stdin EOF it calls `applicationWillTerminate(_:)` and posts `willTerminate`, unless the app is in
+  the `background` (iOS suspends a backgrounded app without telling it).
+- Host: the session keeps the phase (`active` from launch; `get_session_status` `scene_phase`, v2 `scenePhase`).
+  `set_scene_phase` steps through the phases; the same phase sends nothing. `open_url` on an app that is not
+  `active` first brings it forward: from `background` it sends `inactive`, then `open_url`, then `active`, as iOS
+  delivers a URL to a foregrounding scene. A `launch_url` is sent as `open_url` right after the first tree. A URL
+  must have a scheme (`letter (letter | digit | + - .)* :`), no surrounding whitespace and no control characters,
+  else `bad_request`. Leaving `active` cancels the touches in progress (a gesture gets `cancel`, a scroll or sheet
+  drag settles as if lifted). Pointer and keyboard input on an app that is not `active` is `invalid_state`. Other
+  frameworks answer `unsupported`.
+- CLI: `--scene-phase active|inactive|background` and `--open-url URL` are ordered steps like `--click`;
+  `--launch-url URL` launches the app to open it.
+- Web: `simcore_web_set_scene_phase(0 active | 1 inactive | 2 background)` steps the same way through the layout
+  callback, and `simcore_web_scene_phase()` reads it; the page maps a hidden tab to `background`.
+
+## W. v1 additions for SwiftUI popovers, context menus, sharing and the pasteboard
+
+Additive; `PROTOCOL_VERSION` stays 1. Extends the presentation layers of section G.
+
+- **Presentation modifiers** (`presentationDetents`, `presentationDragIndicator`, `interactiveDismissDisabled`,
+  `presentationBackground`, `presentationCornerRadius`, `presentationBackgroundInteraction`,
+  `presentationContentInteraction`, `presentationCompactAdaptation`, `presentationSizing`, `presentationPlacement`)
+  are lifted by the guest from any node of the presented content (the outermost wins, as with SwiftUI preferences)
+  and never appear as modifiers. Sizing and placement only apply in regular width, so they reach no layer.
+- `sheet` layer gains:
+
+  | field | |
+  |---|---|
+  | `"background"?: ViewNode` | `presentationBackground`: laid out at the card's size behind the content, replacing the system fill or glass (a `ShapeStyle` arrives as a filled `rectangle`) |
+  | `"cornerRadius"?: number` | `presentationCornerRadius`; absent keeps the system radius |
+  | `"backgroundInteraction"?` | `{"kind":"automatic"\|"disabled"}` or `{"kind":"enabled","upThrough"?: Detent}`: while the sheet rests at or below `upThrough` (every detent when absent) the host draws no dim and no `scrim`, so the screen below stays live |
+  | `"contentInteraction"?` | `"automatic"\|"resizes"\|"scrolls"`: `scrolls` lets a drag on scrollable content scroll it at any detent before the sheet resizes (`SheetInfo::scrolls_first`) |
+
+- `.popover` is a `sheet` layer on iPhone unless its content sets `presentationCompactAdaptation` (horizontal):
+  `.popover` / `.none` give a `popover` layer, `.fullScreenCover` a `cover`, `.sheet` a sheet. The guest evaluates
+  it under `<path>/popover`. A `.popover` `popover` layer adds `"arrow": true`, `"attachment"?:
+  {"rect":[x,y,w,h]}|{"point":[ux,uy]}` (in the anchor's space; absent = its bounds), `"arrowEdge"?: "top"|"leading"|"bottom"|"trailing"`
+  (the bubble edge with the arrow; `top` puts the bubble below) and `"background"?`. The host draws a glass bubble the
+  content's width and 7.83 pt taller above and below, radius 26, the arrow's tip 0.33 pt past the attachment, below
+  when it fits, else above; no dim; a tap outside runs `dismiss`. Without `arrow` it is the compact `DatePicker` card.
+- New layer `contextMenu`: `{"kind":"contextMenu","anchor","items":[PickerOption],"preview"?: ViewNode,"dismiss"}`.
+  `items` are menu items as for `menu` (section Q). The guest opens it on a 0.5 s long press of the view
+  (`.simultaneousGesture`, so a `Button` still taps) and closes it when an item runs or `dismiss` runs; an empty menu
+  never opens. The host dims the screen (0.20 light / 0.46 dark; prominent tints keep their color), draws a copy of the
+  anchor's laid-out nodes grown 1.15× about its centre (the original is hidden while lifted; the copy takes no taps),
+  or the `preview` on a system-background platter (radius 28) centred on the anchor, and the menu card 16 pt under
+  that, centred (above when there is no room). `contextMenu(forSelectionType:)` wraps each `ForEach` row below it
+  whose id is of the selection type: its long press opens the menu built for `[id]`, its tap runs `primaryAction`.
+- New layer `share` (`ShareLink`): `{"kind":"share","anchor","items":[String],"title"?,"subject"?,"message"?,"image"?:
+  ViewNode,"icon"?: ViewNode,"url"?: bool,"dismiss","copy","activities":{name: u64},"appearance"?}`. `items` are the items' text
+  (each item's first transfer representation that has one); `title`, `image` and `icon` come from the `SharePreview`
+  (the image and icon as their `image` view); `url` is set when every item is a `URL`. The host draws the Simulator's
+  share sheet: a floating glass card (9 pt from the sides and bottom) with a header tile and title, an app row and an
+  action row. Text items get Reminders, More / Copy, Save to Files; links get the release's link activities
+  (`look::ShareLook`: iOS 27.2 Reminders, Safari, More / Copy, Open in Safari, Add to Reading List; iOS 26.5
+  Reminders, More / Copy, Add to Reading List). The tile shows a text glyph for text, and for links or previews a
+  blank tile, or the preview's bitmap when it has one (a symbol image draws nothing, as on device). A preview
+  title is primary and semibold; an item's own text secondary. Copy runs `copy` (the guest puts the items on the
+  pasteboard and closes the sheet); every other cell runs its `activities` action: the guest reports
+  `module.called` `{"module":"ShareSheet","method":<activity>,"args":items}` (handed to the system, like
+  `openURL`) and closes the sheet. A guest that sends `activities` gets cells only for those (and Copy only with `copy`);
+the rest close up. A tap outside and a swipe down run `dismiss`. `subject` and `message` are not
+  shown, as on device (Mail and Messages use them).
+- `button` `style` `"pasteButton"` (`PasteButton`): a white `Label("Paste", systemImage: "doc.on.clipboard")` on an
+  accent rounded rect (radius 5, 13.33 pt side padding, 34.67 tall; gray 133 / 140 under a presented layer). iOS draws
+  it enabled whatever the pasteboard holds; its action pastes the items that convert to the payload type, or does
+  nothing.
+- **Pasteboard.** The session pasteboard is a list of strings in the guest. The host seeds it at launch with
+  `SIMCORE_PASTEBOARD` (`create_session` `"pasteboard"`, CLI `--pasteboard TEXT`); host → guest
+  `{"type":"pasteboard","items":[String]}` replaces it (C ABI: the layout callback; API `device.pasteboard`;
+  web `sim.setPasteboard(items)`). When the app replaces it (the share sheet's Copy) the guest sends the same line
+  to the host, which emits `pasteboard.changed` `{"items"}` on the client event stream (web: `sim.takePasteboard()`).
+  The native window keeps it in step with the host clipboard (read when the window gains focus, written on
+  `pasteboard.changed`) unless `--pasteboard` fixed it; the web page does the same with the browser clipboard as far
+  as the browser allows. Text converts through the payload type's transfer representations: `String` as is, `URL`
+  when it has a scheme and no spaces, `Data` as UTF-8, a `CodableRepresentation` as JSON, a `ProxyRepresentation`
+  through its proxy.

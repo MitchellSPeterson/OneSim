@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Usage: serve-web.sh [--no-build] [port]
-# Builds every SwiftUI, Jetpack Compose, and Expo / React Native example into target/web-all/,
+# Builds the Prism showcase apps (SwiftUI, Jetpack Compose, and Expo / React Native) into target/web-all/,
 # writes an index page split by platform (iOS & Android), and serves it on http://localhost:<port>/ (default 8000).
 # Pass --no-build to refresh the web shell and index page using existing Wasm and Expo bundles.
 # Needs the toolchain in docs/web.md.
@@ -14,28 +14,14 @@ SITE="${CARGO_TARGET_DIR:-$ROOT/target}/web-all"
 # Native Wasm builds (SwiftUI & Compose)
 # example|platform|root_view|title|tag|description  (root_view '-' = @main / ComponentActivity entry point)
 NATIVE_BUILDS="
-swiftui-showcase|ios|-|Showcase|Featured|Multi-screen tour of SwiftUI controls, typography, todos, alerts, sheets, and Liquid Glass.
-swiftui-counter|ios|CounterView|Counter||Minimal stateful counter demonstrating @State updates and button actions.
-swiftui-app-entry|ios|-|App Entry||Custom @main App entry point with reusable interactive badge subviews.
-swiftui-dataflow|ios|-|Dataflow||@EnvironmentObject, @AppStorage, onChange, lazy stacks, and value-based navigation.
-swiftui-gestures|ios|-|Gestures||Interactive drag with @GestureState, long press, double tap, and pinch-rotate.
-swiftui-presentation|ios|-|Presentation||Sheets with detents, locked modals, full-screen covers, alerts, and confirmation dialogs.
-swiftui-tabs|ios|-|Tabs||Three-tab TabView with nested navigation stack, preserved state, and badges.
-compose-showcase|android|-|Showcase|Featured|Material 3 components, cards, switches, buttons, and adaptive light and dark theming.
-compose-counter|android|-|Counter||Edge-to-edge Material 3 counter built with ComponentActivity and Compose state.
-compose-input|android|-|Input||Interactive text fields, software keyboard input, and Material 3 sliders.
+swiftui-prism|ios|-|Prism|SwiftUI Showcase|Playful, colorful SwiftUI studio showcasing gradients, spring animations, gestures, Liquid Glass, sheets, and navigation.
+compose-prism|android|-|Prism|Compose Showcase|Playful Material 3 studio showcasing live color schemes, cards, sliders, switches, text input, and M3 buttons.
 "
 
 # Expo / React Native builds (exported per platform, served via shared target/web-all/expo/)
 # example|platforms|title|tag|ios_desc|android_desc
 EXPO_BUILDS="
-expo-showcase|ios,android|Showcase|Featured|Multi-screen React Native tour of layout, typography, controls, scroll, images, and gradients.|Multi-screen React Native tour of layout, typography, controls, scroll, images, and gradients.
-expo-ui|ios,android|Expo UI||Native SwiftUI components from @expo/ui hosted seamlessly inside React Native views.|Native Jetpack Compose components from @expo/ui hosted seamlessly inside React Native views.
-expo-router-stack|ios,android|Router Stack||Expo Router native stack navigation with large titles and dynamic detail routes.|Expo Router stack navigation with header transitions and dynamic detail routes.
-expo-default|ios|Starter Template||Default Expo Router template with Liquid Glass tabs, themed surfaces, and interactive assets.|
-expo-counter|ios,android|Counter||Minimal stateful React Native counter built with Pressable and useState.|Minimal stateful React Native counter built with Pressable and useState.
-expo-gestures|ios,android|Gestures||react-native-gesture-handler and Reanimated tap, pan, long press, and swipeable rows.|react-native-gesture-handler and Reanimated tap, pan, long press, and swipeable rows.
-expo-modules|ios,android|SDK Modules||Expo SDK modules demo: Clipboard, FileSystem, SecureStore, AsyncStorage, and Crypto.|Expo SDK modules demo: Clipboard, FileSystem, SecureStore, AsyncStorage, and Crypto.
+expo-prism|ios,android|Prism|Expo Showcase|Playful React Native studio with gradients, BlurView, Animated orbs, modals, alerts, and pull-to-refresh.|Playful React Native studio with gradients, BlurView, Animated orbs, modals, and pull-to-refresh on Android.
 "
 
 mkdir -p "$SITE" "$SITE/assets"
@@ -63,16 +49,44 @@ PY
 }
 
 # 1. SwiftUI & Jetpack Compose builds
+# Warm the first SwiftUI and first Compose build sequentially so shared caches
+# (libonesim_web.a, SwiftUI.o, onesim-compose.klib, gpu/) are populated without races,
+# then build the remaining native examples in parallel.
+WARMED_SWIFTUI=0; WARMED_COMPOSE=0
+NATIVE_PIDS=(); NATIVE_NAMES=()
 while IFS='|' read -r ex platform view title tag desc; do
   [ -n "$ex" ] || continue
   if [ "$NO_BUILD" -eq 1 ] && [ -f "$SITE/$ex/app.wasm" ]; then
     cp "$ROOT/web/index.html" "$ROOT/web/main.js" "$ROOT/web/onesim.js" "$ROOT/web/renderer.js" "$SITE/$ex/"
-  else
-    echo "== $ex"
-    [ "$view" = - ] && view=""
-    SIMCORE_WEB_OUT="$SITE/$ex" "$ROOT/scripts/build-web.sh" "$ROOT/examples/$ex" $view
+    continue
   fi
+  [ "$view" = - ] && view=""
+  fw="${ex%%-*}"
+  if [ "$fw" = "compose" ] && [ "$WARMED_COMPOSE" -eq 0 ]; then
+    echo "== $ex (warm)"
+    SIMCORE_WEB_OUT="$SITE/$ex" "$ROOT/scripts/build-web.sh" "$ROOT/examples/$ex" $view
+    WARMED_COMPOSE=1
+  elif [ "$fw" != "compose" ] && [ "$WARMED_SWIFTUI" -eq 0 ]; then
+    echo "== $ex (warm)"
+    SIMCORE_WEB_OUT="$SITE/$ex" "$ROOT/scripts/build-web.sh" "$ROOT/examples/$ex" $view
+    WARMED_SWIFTUI=1
+  else
+    echo "== $ex (parallel)"
+    (SIMCORE_WEB_OUT="$SITE/$ex" "$ROOT/scripts/build-web.sh" "$ROOT/examples/$ex" $view) &
+    NATIVE_PIDS+=($!)
+    NATIVE_NAMES+=("$ex")
+  fi
+done <<< "$NATIVE_BUILDS"
 
+for i in "${!NATIVE_PIDS[@]}"; do
+  if ! wait "${NATIVE_PIDS[$i]}"; then
+    echo "error: build failed for ${NATIVE_NAMES[$i]}" >&2
+    exit 1
+  fi
+done
+
+while IFS='|' read -r ex platform view title tag desc; do
+  [ -n "$ex" ] || continue
   fw="${ex%%-*}"
   if [ "$fw" = "compose" ]; then fw_label="Compose"; else fw_label="SwiftUI"; fi
   patch_index "$SITE/$ex/index.html" "../" "$title" "$fw_label"
@@ -100,20 +114,37 @@ else
 fi
 patch_index "$SITE/expo/index.html" "../"
 
+EXPO_PIDS=(); EXPO_NAMES=()
 while IFS='|' read -r ex platforms title tag ios_desc android_desc; do
   [ -n "$ex" ] || continue
   bundle_dir="$SITE/expo/bundles/$ex"
   if [ "$NO_BUILD" -eq 0 ] || [ ! -f "$bundle_dir/metadata.json" ]; then
-    echo "== $ex ($platforms)"
-    if [ ! -d "$ROOT/examples/$ex/node_modules" ]; then
-      npm ci --prefix "$ROOT/examples/$ex" --prefer-offline --no-audit --no-fund --loglevel=error
-    fi
-    plat_args=()
-    [[ ",$platforms," == *,ios,* ]] && plat_args+=(--platform ios)
-    [[ ",$platforms," == *,android,* ]] && plat_args+=(--platform android)
-    rm -rf "$bundle_dir"
-    (cd "$ROOT/examples/$ex" && CI=1 EXPO_OFFLINE=1 EXPO_NO_TELEMETRY=1 npx expo export "${plat_args[@]}" --no-bytecode --no-minify --output-dir "$bundle_dir" >/dev/null)
+    echo "== $ex ($platforms, parallel)"
+    (
+      if [ ! -d "$ROOT/examples/$ex/node_modules" ]; then
+        npm ci --prefix "$ROOT/examples/$ex" --prefer-offline --no-audit --no-fund --loglevel=error
+      fi
+      plat_args=()
+      [[ ",$platforms," == *,ios,* ]] && plat_args+=(--platform ios)
+      [[ ",$platforms," == *,android,* ]] && plat_args+=(--platform android)
+      rm -rf "$bundle_dir"
+      cd "$ROOT/examples/$ex" && CI=1 EXPO_OFFLINE=1 EXPO_NO_TELEMETRY=1 npx expo export "${plat_args[@]}" --no-bytecode --output-dir "$bundle_dir" >/dev/null
+    ) &
+    EXPO_PIDS+=($!)
+    EXPO_NAMES+=("$ex")
   fi
+done <<< "$EXPO_BUILDS"
+
+for i in "${!EXPO_PIDS[@]}"; do
+  if ! wait "${EXPO_PIDS[$i]}"; then
+    echo "error: expo export failed for ${EXPO_NAMES[$i]}" >&2
+    exit 1
+  fi
+done
+
+while IFS='|' read -r ex platforms title tag ios_desc android_desc; do
+  [ -n "$ex" ] || continue
+  bundle_dir="$SITE/expo/bundles/$ex"
   if [ -d "$bundle_dir/assets" ]; then
     cp -f "$bundle_dir/assets/"* "$SITE/assets/" 2>/dev/null || true
   fi
@@ -615,7 +646,7 @@ cat > "$SITE/index.html" <<HTML
   <header class="hero">
     <div class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span><span>Client-side WebAssembly · WebGPU</span></div>
     <h1>OneSim Web Builds</h1>
-    <p class="hero-sub">Interactive iOS and Android apps running locally in your browser—SwiftUI, Jetpack Compose, and Expo / React Native powered by the OneSim WebAssembly renderer.</p>
+    <p class="hero-sub">Each platform runs <strong>Prism</strong> — one unified showcase app displaying all currently supported features for SwiftUI, Jetpack Compose, and Expo / React Native, running locally in your browser via WebAssembly.</p>
   </header>
 
   <section class="platform" data-platform="ios" aria-labelledby="heading-ios">

@@ -237,7 +237,7 @@ sec = next(m for m in walk(t["root"]) if m.get("kind") == "text_field" and m.get
 assert sec["text"] == "hunter2" and sec["placeholder"] == "Password", sec
 assert ["Version", "1.0"] == alltexts(lst["sections"][0]["rows"][2]), alltexts(lst["sections"][0]["rows"][2])
 ver = next(m for m in walk(lst["sections"][0]["rows"][2]) if m.get("text") == "1.0")
-assert {"foregroundColor": {"semantic": "secondary"}} in ver["modifiers"], ver
+assert {"foregroundColor": {"semantic": "secondary", "hierarchical": True}} in ver["modifiers"], ver
 pk = lambda t, style: next(m for m in walk(t["root"]) if m.get("kind") == "picker" and m["style"] == style)
 fl = pk(t, "menu")
 assert fl["label"]["text"] == "Flavor" and [o["text"] for o in fl["options"]] == ["Vanilla", "Chocolate", "Strawberry"] and fl["selected"] == 0, fl
@@ -820,4 +820,931 @@ t = act(p, t, wh["options"][2]["action"]); assert has(t, "hour 2")
 fl = next(m for m in node(t, "picker") if m["style"] == "menu"); assert fl["label"]["kind"] == "empty", "labelsHidden"
 assert any(m["label"]["kind"] == "empty" for m in node(t, "toggle")), "labelsHidden hides a toggle's label"
 finish(p)
+# --- Canvas and visual effects (protocol section R)
+p = spawn(sys.argv[16])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+canvas = lambda t: next(n for n in walk(t["root"]) if n["kind"] == "canvas")
+effect = lambda t: next(n for n in walk(t["root"]) if n["kind"] == "visualEffect")
+cid, eid = canvas(t)["id"], effect(t)["id"]
+palette = next(m["foregroundPalette"] for n in walk(t["root"]) for m in n.get("modifiers", []) if "foregroundPalette" in m)
+assert palette["primary"]["r"] == 1 and palette["secondary"]["b"] == 1
+assert palette["tertiary"]["g"] > palette["tertiary"]["r"]
+assert canvas(t)["children"] == [], "initial Canvas waits for its layout size"
+send(p, type="layout", frames={cid: [3, 4, 44, 28], eid: [7, 11, 80, 20]})
+t = recv(p)
+assert canvas(t)["proposal"] == [44, 28]
+clipped, clean, symbol, masked, resolved = canvas(t)["children"]
+assert clipped["path"][2] == {"l": [44, 28]}, clipped
+assert [{"effect": {"kind": "affine", "matrix": [1, 0, 0, 1, 3, -2], "anchor": [0, 0]}}] == clipped["modifiers"][:1]
+assert clipped["modifiers"][1] == {"effect": {"kind": "opacity", "amount": 0.25}} and "invertedMask" in clipped["modifiers"][2]
+assert "modifiers" not in clean and clean["stroke"]["dash"] == [1, 2], "clip changes stay on a context copy"
+assert symbol["origin"] == [22, 14] and symbol["child"]["text"] == "星", symbol
+assert masked["path"][2] == {"l": [22, 28]}, "clipBoundingRect follows the layer's half-width fill"
+assert resolved["child"]["modifiers"][0]["foregroundColor"]["r"] == 1, "resolved shading preserves explicit red"
+assert effect(t)["frame"] == [7, 11, 80, 20]
+translation, scale, blend = effect(t)["effects"]
+assert translation["matrix"] == [1, 0, 0, 1, 87, 0]
+assert scale["matrix"] == [-1, 0, 0, 0, 0, 0] and scale["anchor"] == [1, 0]
+assert blend == {"kind": "blend", "mode": "multiply"}
+assert effect(t)["child"]["fill"]["gradient"]["colorSpace"] == "perceptual"
+t = act(p, t, button(t, "Draw more")["action"])
+assert len(canvas(t)["children"]) == 304, "a state update redraws every Canvas command"
+send(p, type="layout", frames={cid: [0, 0, 0, 0], eid: [-6, 3, 120, 20]})
+t = recv(p)
+assert canvas(t)["proposal"] == [0, 0]
+assert canvas(t)["children"][-3]["origin"] == [0, 0]
+assert effect(t)["effects"][0]["matrix"][4] == 114
+finish(p)
+# --- text input: modifier scopes, Unicode bindings, focus movement, and submission
+p = spawn(sys.argv[17])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+
+def input_field(t, placeholder):
+    return next(m for m in walk(t["root"]) if m["kind"] == "text_field" and m["placeholder"] == placeholder)
+
+def input_action(t, placeholder, action):
+    return act(p, t, input_field(t, placeholder)[action])
+
+name = input_field(t, "Full name")
+assert name["input_style"] == "rounded_border" and name["prompt"]["text"] == "Full name", name
+assert name["keyboard_type"] == "emailAddress" and name["autocapitalization"] == "never", name
+assert name["submit_label"] == "next" and name["autocorrection_disabled"], name
+assert not name["focused"] and not input_field(t, "Other")["focused"]
+assert "submit_action" not in input_field(t, "Other")
+assert input_field(t, "Other")["input_style"] == "plain"
+disabled = input_field(t, "Disabled")
+assert disabled["disabled"] and disabled["field"] == 0 and "submit_action" not in disabled
+assert disabled["input_style"] == "bordered" and disabled["input_border_shape"] == "rounded_rectangle"
+
+t = act(p, t, button(t, "Focus name")["action"])
+assert input_field(t, "Full name")["focused"]
+t = act(p, t, button(t, "Focus full name")["action"])
+assert input_field(t, "Full name")["focused"]
+name = input_field(t, "Full name")
+value = "李 García 👩🏽‍💻"
+send(p, type="text_input", field=name["field"], version=t["version"], text=value)
+t = recv(p)
+assert input_field(t, "Full name")["text"] == value
+t = input_action(t, "Full name", "submit_action")
+assert "outer inner " in alltexts(t["root"])
+assert not input_field(t, "Full name")["focused"]
+password = input_field(t, "Enter password")
+assert password["secure"] and password["focused"] and password["content_type"] == "password"
+assert "keyboard_type" not in password
+secret = "秘密 🔐"
+send(p, type="text_input", field=password["field"], version=t["version"], text=secret)
+t = recv(p)
+assert input_field(t, "Enter password")["text"] == secret
+t = input_action(t, "Enter password", "submit_action")
+assert "outer inner outer " in alltexts(t["root"])
+
+t = input_action(t, "Other", "focus_action")
+assert input_field(t, "Other")["focused"] and not input_field(t, "Enter password")["focused"]
+assert "No enum focus" in alltexts(t["root"])
+t = input_action(t, "", "focus_action")
+assert input_field(t, "")["focused"] and not input_field(t, "Other")["focused"]
+editor = input_field(t, "")
+assert editor["editor"] and editor["axis"] == "vertical" and editor["input_style"] == "plain"
+assert "submit_action" not in editor
+value = ("א👩🏽‍💻\n" * 2048) + "Last line"
+send(p, type="text_input", field=editor["field"], version=t["version"], text=value)
+t = recv(p)
+assert input_field(t, "")["text"] == value
+t = input_action(t, "", "blur_action")
+assert not input_field(t, "")["focused"] and "No enum focus" in alltexts(t["root"])
+editor = input_field(t, "")
+send(p, type="text_input", field=editor["field"], version=t["version"], text="")
+t = recv(p)
+assert input_field(t, "")["text"] == ""
+
+t = input_action(t, "Enter password", "focus_action")
+assert input_field(t, "Enter password")["focused"]
+t = act(p, t, button(t, "Hide password")["action"])
+assert "No enum focus" in alltexts(t["root"])
+finish(p)
+print("text input: secure and multiline bindings, inherited submission, focus transfer, disabled controls ok")
+
+
+# --- DatePicker, MultiDatePicker and ColorPicker
+p = spawn(sys.argv[18])
+assert recv(p)["type"] == "hello"
+recv(p)
+send(p, type="environment", appearance="light", viewport={"width": 402, "height": 874})
+t = recv(p)
+
+def picker_button(root, label):
+    return next(n for n in walk(root) if n["kind"] == "button" and label in alltexts(n))
+
+# Compact date and time share a binding with Alarm. Date changes preserve time
+# and a time-wheel selection leaves the date unchanged.
+t = act(p, t, picker_button(tree(t), "Mar 14, 2025")["action"])
+layer, = layers(t)
+assert layer["kind"] == "popover"
+t = act(p, t, picker_button(layer["content"], "15")["action"])
+assert "Mar 15, 2025" in alltexts(tree(t))
+if layers(t):
+    t = act(p, t, layers(t)[0]["dismiss"])
+t = act(p, t, picker_button(tree(t), "2:30\u202fPM")["action"])
+layer, = layers(t)
+wheel = next(n for n in walk(layer["content"]) if n["kind"] == "wheel")
+minute = next(n for n in wheel["columns"][1]["options"] if n["text"] == "31")
+t = act(p, t, minute["action"])
+assert alltexts(tree(t)).count("2:31\u202fPM") == 2 and "Mar 15, 2025" in alltexts(tree(t))
+
+def picker_drag(t, node, start, end, frame, time):
+    key = next(m["gesture"]["key"] for m in node["modifiers"] if "gesture" in m)
+    for offset, phase, point in [(0, "start", start), (16, "move", end), (32, "end", end)]:
+        send(p, type="gesture", phase=phase, time=time + offset, points=[list(point)],
+             targets=[{"key": key, "frame": frame}])
+        t = recv(p)
+    return t
+
+wheel = next(n for n in walk(layers(t)[0]["content"]) if n["kind"] == "wheel")
+t = picker_drag(t, wheel, (100, 150), (100, -42), [0, 0, 218, 172], 100)
+assert alltexts(tree(t)).count("2:37\u202fPM") == 2, "a drag can advance beyond the visible options"
+t = act(p, t, layers(t)[0]["dismiss"])
+assert not layers(t)
+
+# A date outside the graphical picker's upper bound is disabled. Month navigation
+# keeps the previous month available and prevents advancing beyond the upper bound.
+t = act(p, t, picker_button(tree(t), "Graphical")["action"])
+assert picker_button(tree(t), "25")["disabled"]
+assert not picker_button(tree(t), "24")["disabled"]
+prev = next(n for n in walk(tree(t)) if n["kind"] == "button" and n["id"].endswith("/prev"))
+t = act(p, t, prev["action"])
+assert "February 2025" in alltexts(tree(t))
+t = act(p, t, t["root"]["back"]["action"])
+
+# March's exclusive upper bound prevents April navigation. Repeated toggles
+# remove and restore the day, including entries supplied without a calendar.
+t = act(p, t, picker_button(tree(t), "Multiple")["action"])
+assert "3 days" in alltexts(tree(t))
+next_month = next(n for n in walk(tree(t)) if n["kind"] == "button" and n["id"].endswith("/next"))
+assert next_month["disabled"]
+t = act(p, t, picker_button(tree(t), "14")["action"])
+assert "2 days" in alltexts(tree(t))
+t = act(p, t, picker_button(tree(t), "14")["action"])
+assert "3 days" in alltexts(tree(t))
+t = act(p, t, t["root"]["back"]["action"])
+
+# Palette colors and both opacity endpoints update the same binding.
+t = act(p, t, picker_button(tree(t), "Tint")["action"])
+layer, = layers(t)
+assert layer["kind"] == "sheet"
+white = next(n for n in walk(layer["content"]) if n["kind"] == "button" and n["id"].endswith("/g/0/0"))
+t = act(p, t, white["action"])
+assert picker_button(tree(t), "Tint")["value"] == "#FFFFFF"
+for label, expected in [("0%", "#FFFFFF00"), ("100%", "#FFFFFF")]:
+    action = next(n["action"] for n in walk(layers(t)[0]["content"]) if n.get("value") == label)
+    t = act(p, t, action)
+    assert picker_button(tree(t), "Tint")["value"] == expected
+track = next(n for n in walk(layers(t)[0]["content"]) if n["id"].endswith("/op/track"))
+t = picker_drag(t, track, (170, 16), (74, 16), [0, 0, 279, 32.7], 200)
+assert picker_button(tree(t), "Tint")["value"] == "#FFFFFF3C"
+action = next(n["action"] for n in walk(layers(t)[0]["content"]) if n.get("value") == "100%")
+t = act(p, t, action)
+t = act(p, t, picker_button(layers(t)[0]["content"], "Sliders")["action"])
+red = next(n for n in walk(layers(t)[0]["content"]) if n["kind"] == "slider")
+send(p, type="text_input", field=red["field"], version=t["version"], text="0")
+t = recv(p)
+assert picker_button(tree(t), "Tint")["value"] == "#00FFFF"
+def hex_input(t):
+    return next(n for n in walk(layers(t)[0]["content"]) if n["kind"] == "text_field")
+
+def edit_hex(t, text, expected_color):
+    send(p, type="text_input", field=hex_input(t)["field"], version=t["version"], text=text)
+    t = recv(p)
+    assert hex_input(t)["text"] == text
+    assert picker_button(tree(t), "Tint")["value"] == expected_color
+    return t
+
+draft = hex_input(t)["text"]
+assert draft == "#00FFFF"
+while draft:
+    draft = draft[:-1]
+    t = edit_hex(t, draft, "#00FFFF")
+t = edit_hex(t, "##bad", "#00FFFF")
+t = edit_hex(t, "", "#00FFFF")
+for char in "a103fd":
+    draft += char
+    t = edit_hex(t, draft, "#A103FD" if len(draft) == 6 else "#00FFFF")
+favorite = next(n for n in walk(layers(t)[0]["content"]) if n.get("value") == "Add favorite")
+t = act(p, t, favorite["action"])
+assert any(n.get("value") == "#A103FD" for n in walk(layers(t)[0]["content"]))
+
+# An RGB slider change replaces a partial draft with the new selection.
+t = edit_hex(t, "a103f", "#A103FD")
+red = next(n for n in walk(layers(t)[0]["content"]) if n["kind"] == "slider")
+send(p, type="text_input", field=red["field"], version=t["version"], text="0")
+t = recv(p)
+assert hex_input(t)["text"] == "#0003FD"
+
+t = act(p, t, picker_button(layers(t)[0]["content"], "Spectrum")["action"])
+spectrum = next(n for n in walk(layers(t)[0]["content"]) if n["id"].endswith("/spectrum"))
+t = picker_drag(t, spectrum, (50, 150), (185, 0), [0, 0, 370, 308], 400)
+assert picker_button(tree(t), "Tint")["value"] == "#FFFFFF"
+t = act(p, t, layers(t)[0]["dismiss"])
+t = act(p, t, picker_button(tree(t), "Paper")["action"])
+assert "OPACITY" not in alltexts(layers(t)[0]["content"])
+finish(p)
+# A custom style can delegate to Apple's corresponding built-in style API.
+# For a same-day range, the wheel must disable times as well as dates.
+p = spawn(sys.argv[19], {**os.environ, "SIMCORE_TIME": "1746057600"})
+assert recv(p)["type"] == "hello"
+t = recv(p)
+wheel = next(n for n in walk(tree(t)) if n["kind"] == "wheel")
+hours, minutes, _ = wheel["columns"]
+assert next(n for n in hours["options"] if n["text"] == "3")["disabled"]
+assert next(n for n in minutes["options"] if n["text"] == "29")["disabled"]
+assert not next(n for n in minutes["options"] if n["text"] == "31")["disabled"]
+
+# An empty selection with a past exclusive midnight bound opens on the last
+# available month. An empty calendar in April would have no selectable days.
+assert "March 2025" in alltexts(tree(t))
+assert not picker_button(tree(t), "31")["disabled"]
+
+# 02:30 is skipped by the Pacific DST transition on March 9, 2025.
+t = act(p, t, picker_button(tree(t), "Mar 8, 2025")["action"])
+t = act(p, t, picker_button(layers(t)[0]["content"], "9")["action"])
+assert "Mar 9, 2025" in alltexts(tree(t)) and "3:30\u202fAM" in alltexts(tree(t))
+t = act(p, t, layers(t)[0]["dismiss"])
+
+# The selection starts before the range. Both calendars can reach the first
+# allowed month without writing a new date through the binding.
+header = picker_button(tree(t), "March 2030")
+next_id = header["id"][:-len("/title")] + "/next"
+t = act(p, t, next(n["action"] for n in walk(tree(t)) if n["id"] == next_id))
+assert "April 2030" in alltexts(tree(t))
+t = act(p, t, picker_button(tree(t), "Mar 14, 2025")["action"])
+assert "March 2030" in alltexts(layers(t)[0]["content"])
+assert picker_button(layers(t)[0]["content"], "4")["disabled"]
+assert not picker_button(layers(t)[0]["content"], "5")["disabled"]
+t = act(p, t, layers(t)[0]["dismiss"])
+
+# Changing the range leaves the binding alone and clamps both the cached
+# graphical month and the compact popover to the new upper bound's month.
+t = act(p, t, picker_button(tree(t), "Change range")["action"])
+assert "January 2020" in alltexts(tree(t))
+t = act(p, t, picker_button(tree(t), "Mar 14, 2025")["action"])
+assert "January 2020" in alltexts(layers(t)[0]["content"])
+assert picker_button(layers(t)[0]["content"], "21")["disabled"]
+t = act(p, t, picker_button(layers(t)[0]["content"], "20")["action"])
+assert "Jan 20, 2020" in alltexts(tree(t))
+finish(p)
+# --- compact navigation, toolbar actions, and search binding/focus
+p = spawn(sys.argv[20])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+assert title(t) == "Library" and "back" not in tree(t)
+split_id = tree(t)["id"]
+item, = tree(t)["chrome"]["items"]
+assert item["region"] == "trailing" and "About" in alltexts(item["content"]["label"]["title"])
+t = act(p, t, item["content"]["action"])
+assert title(t) == "Detail" and tree(t)["displayMode"] == "inline"
+assert tree(t)["id"] == split_id and tree(t)["back"]["label"] == "Library"
+chrome = tree(t)["chrome"]
+item, = chrome["items"]
+assert item["region"] == "bottom"
+assert chrome["navigationBarBackgroundVisibility"] == chrome["bottomBarBackgroundVisibility"] == "visible"
+assert "navigationBarBackground" in chrome and "bottomBarBackground" in chrome
+t = act(p, t, item["content"]["action"])
+assert "Book marked" in alltexts(tree(t))
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Library"
+t = act(p, t, button(t, "Open detail")["action"])
+assert "Book marked" in alltexts(tree(t)), "compact columns retain their state when hidden"
+t = act(p, t, tree(t)["chrome"]["titleMenu"]["action"])
+menu = layers(t)[0]
+assert menu["kind"] == "menu"
+reset, = menu["items"]
+t = act(p, t, reset["action"])
+assert "Choose a book" in alltexts(tree(t))
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Library"
+
+t = act(p, t, button(t, "Legacy")["action"])
+assert tree(t)["content"]["kind"] == "navigation"
+assert tree(t)["content"]["title"] == "Archive"
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Library"
+
+t = act(p, t, button(t, "Search")["action"])
+assert title(t) == "Search"
+search = lambda t: tree(t)["chrome"]["search"]
+assert search(t)["placement"] == "always"
+assert "cancel" not in search(t) and not search(t)["field"]["focused"]
+assert "Reset search" not in alltexts(tree(t))
+t = act(p, t, search(t)["field"]["focus_action"])
+assert search(t)["field"]["focused"]
+assert "Close" in alltexts(search(t)["cancel"]["label"]["title"])
+assert "Reset search" in alltexts(tree(t))
+for query in ("書📚 مرحبا", "é" * 1024, ""):
+    send(p, type="text_input", field=search(t)["field"]["field"], version=t["version"], text=query)
+    t = recv(p)
+    assert search(t)["field"]["text"] == query
+    assert (query or "All books") in alltexts(tree(t))
+send(p, type="text_input", field=search(t)["field"]["field"], version=t["version"], text="Reset me")
+t = recv(p)
+t = act(p, t, button(t, "Reset search")["action"])
+assert search(t)["field"]["text"] == "" and not search(t)["field"]["focused"]
+assert "cancel" not in search(t) and "Reset search" not in alltexts(tree(t))
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Library" and "search" not in tree(t)["chrome"]
+finish(p)
+print("navigation: compact column changes, toolbar actions, and search binding and dismissal ok")
+
+p = spawn(sys.argv[21])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+assert title(t) == "Content" and search(t)["field"]["placeholder"] == "Find a title"
+assert search(t)["field"]["text"] == "Prefilled" and not search(t)["field"]["focused"]
+t = act(p, t, button(t, "Dismiss search")["action"])
+assert "Dismissed: 1" in alltexts(tree(t))
+assert search(t)["field"]["text"] == "Prefilled", "inactive dismiss must preserve the query"
+t = act(p, t, button(t, "Present search")["action"])
+assert search(t)["field"]["focused"]
+t = act(p, t, search(t)["field"]["submit_action"])
+assert "Submitted: Prefilled" in alltexts(tree(t))
+t = act(p, t, search(t)["cancel"]["action"])
+assert search(t)["field"]["text"] == "" and not search(t)["field"]["focused"]
+
+t = act(p, t, button(t, "Open detail")["action"])
+assert title(t) == "Detail" and tree(t)["back"]["label"] == "Content"
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Content" and "Submitted: Prefilled" in alltexts(tree(t))
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Sidebar" and "back" not in tree(t)
+t = act(p, t, button(t, "Open content")["action"])
+assert title(t) == "Content"
+t = act(p, t, tree(t)["back"]["action"])
+t = act(p, t, button(t, "Test toolbars")["action"])
+
+def toolbar_action(nav, label):
+    return next(item["content"]["action"] for item in nav["chrome"]["items"]
+                if label in alltexts(item["content"]))
+
+assert title(t) == "Outer"
+t = act(p, t, toolbar_action(tree(t), "Toolbar count: 0"))
+t = act(p, t, toolbar_action(tree(t), "Toolbar count: 1"))
+assert toolbar_action(tree(t), "Toolbar count: 2")
+# Queue the count action too, so an inert navigation action produces a
+# mismatched tree instead of waiting forever for the guest to respond.
+send(p, type="action", id=toolbar_action(tree(t), "Open inner"), version=t["version"])
+send(p, type="action", id=toolbar_action(tree(t), "Toolbar count: 2"), version=t["version"])
+t = recv(p)
+inner = tree(t)["content"]
+assert inner["title"] == "Inner"
+send(p, type="action", id=toolbar_action(inner, "Open inner detail"), version=t["version"])
+send(p, type="action", id=toolbar_action(tree(t), "Toolbar count: 2"), version=t["version"])
+t = recv(p)
+inner = tree(t)["content"]
+assert inner["title"] == "Inner detail" and "Inner destination 42" in alltexts(inner)
+t = act(p, t, inner["back"]["action"])
+assert tree(t)["content"]["title"] == "Inner"
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Outer" and toolbar_action(tree(t), "Toolbar count: 2")
+finish(p)
+print("navigation lab: inactive dismissal, search submission, and three compact columns ok")
+# --- forms and containers (section T)
+p = spawn(sys.argv[22])
+assert recv(p)["type"] == "hello"
+recv(p)
+send(p, type="environment", appearance="light", viewport={"width": 402, "height": 874})
+t = recv(p)
+
+def fwalk(n):
+    yield n
+    subs = list(n.get("children", []))
+    for k in ("label", "child", "content", "title", "icon", "prompt"):
+        if isinstance(n.get(k), dict): subs.append(n[k])
+    for sec in n.get("sections", []):
+        subs += sec["rows"]
+        for k in ("headerView", "footerView"):
+            if k in sec: subs.append(sec[k])
+    for row in n.get("rows", []) or []:
+        if isinstance(row, dict): subs += row.get("cells", [])
+    for m in n.get("modifiers", []) or []:
+        for a in (m.get("listRow", {}).get("swipe") or {}).get("leading", []) + (m.get("listRow", {}).get("swipe") or {}).get("trailing", []):
+            subs.append(a["label"])
+    for c in subs: yield from fwalk(c)
+def ftexts(n): return [m["text"] for m in fwalk(n) if m.get("kind") == "text"]
+def fbtn(root, label): return next(m for m in fwalk(root) if m.get("kind") == "button" and label in ftexts(m))
+def lists(t): return [m for m in fwalk(tree(t)) if m.get("kind") == "list"]
+def lrow(n): return next((m["listRow"] for m in n.get("modifiers", []) if "listRow" in m), {})
+def go(t, label):
+    return act(p, t, fbtn(tree(t), label)["action"])
+def back(t): return act(p, t, tree(t)["back"]["action"])
+def gesture(t, key, frame, *steps):
+    for time, phase, pt in steps:
+        send(p, type="gesture", phase=phase, time=time, points=[list(pt)], targets=[{"key": key, "frame": frame}])
+        t = recv(p)
+    return t
+def row_with(t, text):
+    return next(r for l in lists(t) for s in l["sections"] for r in s["rows"] if text in ftexts(r))
+
+# List and Form styles: `.automatic` and Form are inset grouped; each built-in style has its wire name.
+t = go(t, "Styles")
+styles = [l["style"] for l in lists(t)]
+assert styles == ["insetGrouped", "grouped", "plain", "inset", "sidebar", "insetGrouped", "insetGrouped", "insetGrouped"], styles
+t = back(t)
+
+# Sections: a view header, a text footer, a collapsible section whose toggle hides its rows, loose rows in their own section.
+t = go(t, "Sections")
+secs = lists(t)[0]["sections"]
+assert "headerView" in secs[0] and "header" not in secs[0] and secs[0]["footer"] == "Plain footer", secs[0].keys()
+assert secs[1]["header"] == "Folding" and secs[1]["expanded"] is True and ftexts(secs[1]["rows"][0]) == ["hidden when folded"]
+assert len(secs) == 3 and ftexts(secs[2]["rows"][0]) == ["loose row"]
+t = act(p, t, secs[1]["toggle"])
+secs = lists(t)[0]["sections"]
+assert secs[1]["expanded"] is False and secs[1]["rows"] == [], secs[1]
+t = act(p, t, secs[1]["toggle"])
+assert lists(t)[0]["sections"][1]["expanded"] is True
+t = back(t)
+
+# Edit mode: EditButton toggles it; ForEach rows with onDelete/onMove get a delete control and a reorder strip.
+t = go(t, "Editing")
+assert "Edit" in ftexts(tree(t)) and not any(m.get("id", "").endswith("#minus") for m in fwalk(tree(t)))
+a_row = row_with(t, "A")
+assert [x["label"]["kind"] for x in lrow(a_row)["swipe"]["trailing"]] == ["label"], "onDelete alone offers swipe-to-delete"
+t = act(p, t, fbtn(tree(t), "Edit")["action"])
+assert "Done" in ftexts(tree(t))
+rows = lists(t)[0]["sections"][0]["rows"]
+assert [r["kind"] for r in rows] == ["hstack"] * 4 and all(lrow(r)["reorder"]["axis"] == "vertical" for r in rows)
+assert "gesture" not in lrow(rows[0]), "no swipes while editing"
+static = row_with(t, "static x")
+assert static["kind"] == "text" and not lrow(static), "a ForEach without handlers is untouched"
+# The delete control opens the row's Delete action; Delete runs onDelete with that element's offset.
+t = act(p, t, next(m for m in fwalk(rows[1]) if m.get("id", "").endswith("#minus"))["action"])
+sw = lrow(row_with(t, "B"))["swipe"]
+assert sw["open"] == "trailing" and "Delete" in ftexts(sw["trailing"][0]["label"])
+t = act(p, t, sw["trailing"][0]["action"])
+assert "order ACD" in ftexts(tree(t)) and "log del " in ftexts(tree(t))
+# Dragging a handle down by two of its row's heights moves the element after the one two rows down.
+r = lrow(row_with(t, "A"))["reorder"]
+t = gesture(t, r["key"], [330, 150, 56, 52], (0, "start", (350, 170)), (16, "move", (350, 230)))
+assert lrow(row_with(t, "A")).get("lift") == 60, lrow(row_with(t, "A"))
+t = gesture(t, r["key"], [330, 150, 56, 52], (32, "move", (350, 274)), (48, "end", (350, 274)))
+assert "order CDA" in ftexts(tree(t)) and "log del move " in ftexts(tree(t)), ftexts(tree(t))
+assert not lrow(row_with(t, "A")).get("lift")
+# Up past the first row clamps to the top.
+r = lrow(row_with(t, "A"))["reorder"]
+t = gesture(t, r["key"], [330, 250, 56, 52], (100, "start", (350, 270)), (116, "move", (350, -400)), (132, "end", (350, -400)))
+assert "order ACD" in ftexts(tree(t))
+# Leaving edit mode closes a row its delete control opened.
+t = act(p, t, next(m for m in fwalk(row_with(t, "C")) if m.get("id", "").endswith("#minus"))["action"])
+assert lrow(row_with(t, "C"))["swipe"]["open"] == "trailing"
+t = act(p, t, fbtn(tree(t), "Done")["action"])
+assert "Edit" in ftexts(tree(t)) and row_with(t, "A")["kind"] == "text"
+assert "open" not in lrow(row_with(t, "C"))["swipe"]
+t = back(t)
+
+# Swipe actions: horizontal pans open an edge, an action runs and closes, a full swipe runs the outermost action.
+t = go(t, "Swipes")
+m1 = row_with(t, "Mail 1")
+lr = lrow(m1)
+assert lr["gesture"]["axis"] == "horizontal" and lr["gesture"]["pans"]
+assert [ftexts(a["label"]) for a in lr["swipe"]["trailing"]] == [["Delete"], ["Flag"]]
+assert lr["swipe"]["trailing"][0]["role"] == "destructive" and "tint" in lr["swipe"]["trailing"][1]
+assert [ftexts(a["label"]) for a in lr["swipe"]["leading"]] == [["Read"]] and "open" not in lr["swipe"]
+key, F = lr["gesture"]["key"], [16, 100, 370, 52]
+t = gesture(t, key, F, (0, "start", (300, 120)), (16, "move", (250, 121)))
+assert lrow(row_with(t, "Mail 1"))["swipe"]["offset"] == -50, "the row follows the finger"
+t = gesture(t, key, F, (32, "move", (220, 121)), (48, "end", (220, 121)))
+sw = lrow(row_with(t, "Mail 1"))["swipe"]
+assert sw["open"] == "trailing" and "offset" not in sw
+t = act(p, t, sw["trailing"][1]["action"])
+assert "log flag(Mail 1) " in ftexts(tree(t)) and "open" not in lrow(row_with(t, "Mail 1"))["swipe"], "an action closes the row"
+# A short drag springs back; a tap on an open row closes it.
+t = gesture(t, key, F, (100, "start", (300, 120)), (116, "move", (285, 120)), (132, "end", (285, 120)))
+assert "open" not in lrow(row_with(t, "Mail 1"))["swipe"]
+t = gesture(t, key, F, (200, "start", (100, 120)), (216, "move", (180, 120)), (232, "end", (180, 120)))
+assert lrow(row_with(t, "Mail 1"))["swipe"]["open"] == "leading"
+t = gesture(t, key, F, (300, "start", (300, 120)), (316, "end", (300, 120)))
+assert "open" not in lrow(row_with(t, "Mail 1"))["swipe"]
+# Opening another row closes the first.
+t = gesture(t, key, F, (400, "start", (300, 120)), (416, "move", (220, 120)), (432, "end", (220, 120)))
+k2 = lrow(row_with(t, "Mail 2"))["gesture"]["key"]
+t = gesture(t, k2, F, (500, "start", (300, 172)), (516, "move", (220, 172)), (532, "end", (220, 172)))
+assert "open" not in lrow(row_with(t, "Mail 1"))["swipe"] and lrow(row_with(t, "Mail 2"))["swipe"]["open"] == "trailing"
+t = gesture(t, k2, F, (550, "start", (300, 172)), (566, "end", (300, 172)))
+# Full swipe trailing runs the outermost action; leading does not allow it.
+t = gesture(t, key, F, (600, "start", (360, 120)), (616, "move", (100, 120)))
+assert lrow(row_with(t, "Mail 1"))["swipe"]["full"] is True
+t = gesture(t, key, F, (632, "move", (40, 120)), (648, "end", (40, 120)))
+assert "delete(Mail 1) " in ftexts(tree(t))[0] and "open" not in lrow(row_with(t, "Mail 1"))["swipe"]
+t = gesture(t, key, F, (700, "start", (30, 120)), (716, "move", (380, 120)), (732, "end", (380, 120)))
+sw = lrow(row_with(t, "Mail 1"))["swipe"]
+assert "read" not in ftexts(tree(t))[0] and sw["open"] == "leading" and not sw.get("full")
+# onDelete alone: a trailing Delete that runs it.
+od = lrow(row_with(t, "Only delete"))["swipe"]["trailing"]
+assert len(od) == 1 and od[0]["role"] == "destructive"
+t = act(p, t, od[0]["action"])
+assert "ondelete" in ftexts(tree(t))[0]
+t = back(t)
+
+# Disclosure groups: rows in a list (children indented), a button outside; an outline expands level by level.
+t = go(t, "Disclosure")
+lst = lists(t)[0]
+assert [r["id"].split("/")[-1] for r in lst["sections"][0]["rows"]] and len(lst["sections"][0]["rows"]) == 2
+t = act(p, t, fbtn(lists(t)[0], "Internal")["action"])
+rows = lists(t)[0]["sections"][0]["rows"]
+assert ftexts(rows[1]) == ["internal child"] and any("padding" in m for m in rows[1]["modifiers"])
+assert fbtn(rows[0], "Internal")["value"] == "expanded"
+t = act(p, t, fbtn(lists(t)[0], "Bound")["action"])
+assert "bound open" in ftexts(tree(t)) and len(lists(t)[0]["sections"][0]["rows"]) == 5
+outside = fbtn(tree(t), "Outside")
+assert outside["style"] == "automatic" and outside["value"] == "collapsed"
+t = act(p, t, outside["action"])
+assert "outside child" in ftexts(tree(t))
+outline = lists(t)[1]
+assert [ftexts(r)[0] for r in outline["sections"][0]["rows"]] == ["root", "solo"]
+t = act(p, t, fbtn(lists(t)[1], "root")["action"])
+assert [ftexts(r)[0] for r in lists(t)[1]["sections"][0]["rows"]] == ["root", "leaf", "branch", "solo"]
+t = act(p, t, fbtn(lists(t)[1], "branch")["action"])
+assert [ftexts(r)[0] for r in lists(t)[1]["sections"][0]["rows"]] == ["root", "leaf", "branch", "deep", "solo"]
+t = back(t)
+
+# Custom styles get their configurations (label, content, isExpanded); wrappers draw the default look.
+t = go(t, "Custom")
+x = ftexts(tree(t))
+for s_ in ["custom box", "Box label", "box content", "Key", "Value", "stacked", "Wrapped", "Default", "[", "One", "Two", "]", "framed form", "in framed"]:
+    assert s_ in x, (s_, x)
+assert "styled child" not in x
+t = act(p, t, fbtn(tree(t), "expand")["action"])
+assert "styled child" in ftexts(tree(t)) and "collapse" in ftexts(tree(t))
+menu = fbtn(tree(t), "Actions")
+t = act(p, t, menu["action"])
+assert any(i["text"] == "Menu item" for l in layers(t) if l["kind"] == "menu" for i in l["items"])
+t = back(t)
+
+# Columns forms, tables, empty states, nested boxes.
+t = go(t, "Misc")
+vtf = next(m for m in fwalk(tree(t)) if m.get("kind") == "viewThatFits")
+grid = vtf["children"][0]
+cells = [[c for c in r["cells"]] for r in grid["rows"]]
+assert ftexts(cells[0][1]) == ["Net"] and cells[0][0]["kind"] == "empty"
+assert ftexts(cells[1][0]) == ["Wi-Fi"] and cells[1][1]["kind"] == "toggle" and cells[1][1]["label"]["kind"] == "empty"
+assert ftexts(cells[2][0]) == ["Count"] and ftexts(cells[2][1]) == ["1,234.5"], cells[2]
+assert vtf["children"][1]["kind"] == "scroll", "falls back to scrolling when it does not fit"
+table = next(l for l in lists(t) if l["style"] == "plain")
+assert [ftexts(r) for r in table["sections"][0]["rows"]] == [["Ann"], ["Bo"]], "compact tables show the first column"
+x = ftexts(tree(t))
+assert "No Results" in x and "Gone" in x and "Nothing here" in x
+boxes = [m for m in fwalk(tree(t)) if m.get("kind") == "vstack" and any("cornerRadius" in q for q in m.get("modifiers", []))]
+fills = [next(q["background"]["color"]["r"] for q in b["modifiers"] if "background" in q) for b in boxes]
+assert len(fills) == 2 and fills[0] != fills[1], "nested group boxes alternate backgrounds"
+t = back(t)
+
+# An `.environment(\.editMode, _)` around a NavigationStack puts its lists in edit mode.
+t = go(t, "Override")
+assert any(m.get("id", "").endswith("#minus") for m in fwalk(row_with(t, "p")))
+t = back(t)
+
+# A disabled list: the delete control is disabled and inert, and no row reorders or swipes.
+t = go(t, "Disabled")
+for text in ["e1", "e2"]:
+    r = row_with(t, text)
+    minus = next(m for m in fwalk(r) if m.get("id", "").endswith("#minus"))
+    assert minus["disabled"] is True and minus["action"] == 0, minus
+    assert "reorder" not in lrow(r) and "swipe" not in lrow(r), lrow(r)
+for text in ["s1", "s2"]:
+    assert not lrow(row_with(t, text)), lrow(row_with(t, text))
+finish(p)
+
+# The forms example runs and pushes every screen.
+p = spawn(sys.argv[23])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+for screen in ["Grouped", "Plain", "Inset", "Sidebar", "Boxes", "Columns", "Empty", "Outline", "Edit", "Swipe", "Table"]:
+    t = act(p, t, fbtn(tree(t), screen)["action"])
+    assert title(t) == screen, title(t)
+    t = back(t)
+finish(p)
+print("forms: list styles, sections, edit mode, swipe actions, disclosure, outline, custom styles, columns, table ok")
+
+# Accessibility modifiers: the guest tree carries the semantics. Actions run by id.
+def ax_node(t, text):
+    return next(m for m in walk(t["root"]) if m.get("kind") == "text" and m.get("text") == text)
+
+def axs(node):
+    return [m["accessibility"] for m in node.get("modifiers") or [] if "accessibility" in m]
+
+def ax_has(node, **kw):
+    return any(all(a.get(k) == v for k, v in kw.items()) for a in axs(node))
+
+p = spawn(sys.argv[24])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+alpha = axs(ax_node(t, "Alpha"))
+assert [(k, a[k]) for a in alpha for k in ("hint", "value", "identifier", "label") if k in a] == [
+    ("hint", "Hint"), ("value", "Val"), ("identifier", "alpha"), ("label", "Outer")], alpha
+assert axs(ax_node(t, "Beta")) == [{"hidden": True}]
+pair = next(m for m in walk(t["root"]) if m.get("kind") == "vstack" and [c.get("text") for c in m.get("children", [])] == ["One", "Two"])
+assert ax_has(pair, children="combine"), axs(pair)
+go = axs(ax_node(t, "Go"))
+assert any(a.get("name") == "Run" and a.get("action") for m in go for a in m.get("actions", [])), go
+off = ax_node(t, "Off")
+assert not any("accessibility" in m for m in off.get("modifiers") or []), off
+focus = ax_node(t, "Focus me")
+assert ax_has(focus, focused=True) and ax_has(focus, defaultFocus=True), axs(focus)
+tech = ax_node(t, "Tech")
+assert ax_has(tech, focused=False, technologies=["voiceOver"]), axs(tech)
+both = ax_node(t, "Both")
+assert ax_has(both, focused=True, defaultFocus=True, technologies=["voiceOver", "switchControl"]), axs(both)
+name = ax_node(t, "Name")
+assert any(a.get("pair", {}).get("role") == "label" and str(a.get("pair", {}).get("id", "")).endswith(":pair") for a in axs(name)), axs(name)
+value = ax_node(t, "Value")
+assert any(a.get("pair", {}).get("role") == "content" and str(a.get("pair", {}).get("id", "")).endswith(":pair") for a in axs(value)), axs(value)
+extra = ax_node(t, "Extra")
+assert ax_has(extra, heading=1), axs(extra)
+assert ax_has(extra, sortPriority=5), axs(extra)
+assert ax_has(extra, textContentType="sourceCode"), axs(extra)
+assert ax_has(extra, scrollStatus="At top"), axs(extra)
+assert ax_has(extra, addTraits=["isButton", "isHeader"]), axs(extra)
+assert ax_has(extra, removeTraits=["isImage"]), axs(extra)
+assert ax_has(extra, inputLabels=["Alpha", "A"]), axs(extra)
+assert ax_has(extra, value="Count 2"), axs(extra)
+assert ax_has(extra, label="Built"), axs(extra)
+assert ax_has(extra, elements=["Rep"], children="ignore"), axs(extra)
+assert ax_has(extra, elements=["KidA", "KidB"]), axs(extra)
+assert ax_has(extra, largeLabel="Big", largeContent=True), axs(extra)
+assert ax_has(extra, chart=True, label="Sales"), axs(extra)
+assert ax_has(extra, directTouch=True, directTouchOptions=["silentOnTouch", "requiresActivation"]), axs(extra)
+assert ax_has(extra, responds=False) and ax_has(extra, responds=True), axs(extra)
+assert ax_has(extra, ignoresInvertColors=True), axs(extra)
+assert any(c.get("key") == "Note" and c.get("value") == "Hello" and c.get("id") == "note" and c.get("importance") == "high" for a in axs(extra) for c in a.get("custom", [])), axs(extra)
+assert any(a.get("customRemove") == ["note"] for a in axs(extra)), axs(extra)
+assert any(str(a.get("linked", "")).endswith(":g1") for a in axs(extra)), axs(extra)
+assert any(a.get("rotorEntry", "").endswith(":re") for a in axs(extra)), axs(extra)
+assert any(a.get("name") == "escape" for m in axs(extra) for a in m.get("actions", [])), axs(extra)
+assert any(a.get("name") == "Labeled" for m in axs(extra) for a in m.get("actions", [])), axs(extra)
+assert any(a.get("name") == "Edit" and a.get("category") == "edit" for m in axs(extra) for a in m.get("actions", [])), axs(extra)
+rotors = [r for a in axs(ax_node(t, "Rotors")) for r in a.get("rotors", [])]
+built = next(r for r in rotors if r["name"] == "Built")
+assert built["entries"][0] == {"label": "Ann", "id": "1"}, built
+assert any(e["label"] == "Bo" and e["id"] == "2" for e in built["entries"]), built
+people = next(r for r in rotors if r["name"] == "People")
+assert people["entries"] == [{"label": "Ann", "id": "7"}], people
+rows = next(r for r in rotors if r["name"] == "Rows")
+assert rows["entries"] == [{"label": "Ada", "id": "a"}], rows
+assert any(r["name"] == "links:visited" for r in rotors), rotors
+assert any(r["name"] == "Empty" and r.get("entries") == [] for r in rotors), rotors
+spans = next(r for r in rotors if r["name"] == "Spans")
+assert spans["entries"] and spans["entries"][0]["label"], spans
+pts = ax_node(t, "Points")
+assert any(a.get("activation") == {"x": 3, "y": 4} for a in axs(pts)), axs(pts)
+assert any(a.get("activation", {}).get("unit") is True and a["activation"]["y"] == 1 for a in axs(pts)), axs(pts)
+assert any(a.get("drag", {}).get("description") == "Drag me" and a["drag"].get("unit") is True for a in axs(pts)), axs(pts)
+assert any(a.get("drop", {}).get("description") == "DropAbs" and "unit" not in a["drop"] for a in axs(pts)), axs(pts)
+old = axs(ax_node(t, "Old"))
+assert any(a.get("label") == "Old" for a in old) and any(a.get("identifier") == "sel" for a in old), old
+count_id = next(a["action"] for m in axs(ax_node(t, "Count 0")) for a in m.get("actions", []) if a["name"] == "default")
+t = act(p, t, count_id)
+assert any(m.get("text") == "Count 1" for m in walk(t["root"]))
+inc = next(a["adjustable"]["increment"] for a in axs(ax_node(t, "Adjust ")) if "adjustable" in a)
+t = act(p, t, inc)
+assert any(m.get("text") == "Adjust inc" for m in walk(t["root"]))
+dec = next(a["adjustable"]["decrement"] for a in axs(ax_node(t, "Adjust inc")) if "adjustable" in a)
+t = act(p, t, dec)
+assert any(m.get("text") == "Adjust dec" for m in walk(t["root"]))
+leading = next(a["scroll"]["leading"] for a in axs(ax_node(t, "Edge ")) if "scroll" in a)
+assert all(next(a["scroll"][side] for a in axs(ax_node(t, "Edge ")) if "scroll" in a) for side in ("top", "bottom", "leading", "trailing"))
+t = act(p, t, leading)
+assert any(m.get("text") == "Edge leading" for m in walk(t["root"]))
+zin = next(a["zoom"]["in"] for a in axs(ax_node(t, "Zoom ")) if "zoom" in a)
+t = act(p, t, zin)
+assert any(m.get("text") == "Zoom in" for m in walk(t["root"]))
+zout = next(a["zoom"]["out"] for a in axs(ax_node(t, "Zoom in")) if "zoom" in a)
+t = act(p, t, zout)
+assert any(m.get("text") == "Zoom out" for m in walk(t["root"]))
+finish(p)
+print("accessibility: labels, actions, focus, rotors, traits ok")
+
+# --- presentation lab: popovers, presentation modifiers, context menus, ShareLink, PasteButton (issue #45)
+def pl_spawn(**extra):
+    env = dict(os.environ); env.update(extra)
+    q = spawn(sys.argv[28], env); assert recv(q)["type"] == "hello"; return q, recv(q)
+p, t = pl_spawn()
+PL = lambda t: layers(t)
+def pbtn(t, label): return fbtn(tree(t), label)
+def ptap(t, label): return act(p, t, pbtn(t, label)["action"])
+def ptext(t, prefix): return next(x for x in ftexts(tree(t)) if x.startswith(prefix))
+def hold(t, label, at=0):
+    # A long press: the finger rests 600 ms (LongPressGesture's 0.5 s), then lifts.
+    n = next(m for m in fwalk(tree(t)) if label in ftexts(m) and any("gesture" in x for x in m.get("modifiers", [])))
+    keys = [x["gesture"]["key"] for x in n["modifiers"] if "gesture" in x]
+    for time, phase in ((at, "start"), (at + 600, "move"), (at + 650, "end")):
+        send(p, type="gesture", phase=phase, time=time, points=[[10, 10]], targets=[{"key": k, "frame": [0, 0, 100, 40]} for k in keys])
+        t = recv(p)
+    return t
+
+# A popover is a sheet on iPhone by default; its dismiss clears the binding.
+t = ptap(t, "Pop"); l = PL(t)[0]
+assert l["kind"] == "sheet" and "Pop body" in ftexts(l["content"]) and l["dismiss"], l
+t = act(p, t, l["dismiss"]); assert not PL(t)
+# presentationCompactAdaptation(.popover) on a child keeps the bubble: arrow, anchor, attachment point, arrow edge.
+t = ptap(t, "Bubble"); l = PL(t)[0]
+assert l["kind"] == "popover" and l["arrow"] is True and l["anchor"] == pbtn(t, "Bubble")["id"], l
+assert l["attachment"] == {"point": [0.5, 1.0]} and l["arrowEdge"] == "bottom", l
+assert not any("presentationCompactAdaptation" in m for n in fwalk(l["content"]) for m in n.get("modifiers", [])), "lifted, never emitted"
+t = act(p, t, l["dismiss"]); assert not PL(t)
+# fullScreenCover adaptation (horizontal applies on iPhone); .none is a popover; a rect attachment travels.
+t = ptap(t, "CoverPop"); assert PL(t)[0]["kind"] == "cover" and "Cover body" in ftexts(PL(t)[0]["content"]), PL(t)
+p.kill(); p, t = pl_spawn()
+t = ptap(t, "Bare"); l = PL(t)[0]
+assert l["kind"] == "popover" and l["attachment"] == {"rect": [1.0, 2.0, 3.0, 4.0]} and "dismiss" not in l and "arrowEdge" not in l, l
+p.kill(); p, t = pl_spawn()
+t = ptap(t, "LockedPop"); assert PL(t)[0]["kind"] == "sheet" and "dismiss" not in PL(t)[0], PL(t)
+p.kill(); p, t = pl_spawn()
+t = ptap(t, "PopItem"); assert PL(t)[0]["kind"] == "sheet" and "Item 7" in ftexts(PL(t)[0]["content"])
+t = act(p, t, PL(t)[0]["dismiss"]); assert not PL(t)
+
+# Sheet styling: background view, corner radius (0 kept, nil omitted), background and content interaction;
+# sizing and placement are lifted (no effect in compact width). Modifiers come off any node of the content.
+t = ptap(t, "Styled"); l = PL(t)[0]
+assert l["cornerRadius"] == 0 and l["backgroundInteraction"] == {"kind": "enabled", "upThrough": {"kind": "medium"}}, l
+assert l["contentInteraction"] == "scrolls" and l["background"]["kind"] == "zstack", l
+assert sorted(d["kind"] for d in l["detents"]) == ["large", "medium"], l["detents"]
+assert not any(k.startswith("presentation") for n in fwalk(l["content"]) for m in n.get("modifiers", []) for k in m), l["content"]
+t = act(p, t, l["dismiss"])
+t = ptap(t, "Flipped"); assert PL(t)[0].get("dismiss"), "outermost interactiveDismissDisabled(false) wins: " + str(PL(t)[0])
+t = act(p, t, PL(t)[0]["dismiss"])
+t = ptap(t, "PlainStyled"); l = PL(t)[0]
+assert "cornerRadius" not in l and l["backgroundInteraction"] == {"kind": "disabled"} and "contentInteraction" not in l, l
+assert l["background"]["kind"] in ("shape", "rectangle") or "fill" in json.dumps(l["background"]), l["background"]
+t = act(p, t, l["dismiss"]); assert not PL(t)
+
+# Context menus: a long press opens items (icon, disabled, divider, destructive); an item runs and closes.
+t = hold(t, "Menu target"); l = PL(t)[0]
+assert l["kind"] == "contextMenu" and [i["text"] for i in l["items"]] == ["First", "Off", "Gone"], l
+assert l["items"][0]["systemImage"] == "star" and l["items"][1].get("disabled") and l["items"][2].get("divider") and l["items"][2].get("destructive"), l["items"]
+assert l["anchor"] and "preview" not in l
+t = act(p, t, l["items"][0]["action"]); assert not PL(t) and ptext(t, "log:") == "log: first", ptext(t, "log:")
+t = hold(t, "Menu target", 1000); t = act(p, t, PL(t)[0]["dismiss"]); assert not PL(t) and ptext(t, "log:") == "log: first"
+# On a Button the tap still runs the button; a long press opens its menu.
+t = ptap(t, "Tap target"); assert ptext(t, "log:") == "log: first tapped" and not PL(t)
+t = hold(t, "Tap target", 2000); assert [i["text"] for i in PL(t)[0]["items"]] == ["On button"], PL(t)
+t = act(p, t, PL(t)[0]["items"][0]["action"]); assert ptext(t, "log:") == "log: first tapped onbutton"
+t = hold(t, "Preview target", 3000); assert "Big preview" in ftexts(PL(t)[0]["preview"]), PL(t)
+t = act(p, t, PL(t)[0]["dismiss"])
+t = hold(t, "Empty target", 4000); assert not PL(t), "an empty menu does not open"
+t = hold(t, "Legacy target", 5000); assert [i["text"] for i in PL(t)[0]["items"]] == ["Legacy item"]; t = act(p, t, PL(t)[0]["dismiss"])
+dis = next(m for m in fwalk(tree(t)) if "Disabled target" in ftexts(m))
+assert ptext(t, "log:") == "log: first tapped onbutton"
+assert not any("gesture" in x for x in dis.get("modifiers", [])), "a disabled view takes no long press"
+# contextMenu(forSelectionType:): each ForEach row gets the menu for its own id; a tap runs primaryAction.
+t = hold(t, "Row 2", 6000); assert [i["text"] for i in PL(t)[0]["items"]] == ["Edit 2"], PL(t)
+t = act(p, t, PL(t)[0]["items"][0]["action"]); assert ptext(t, "log:").endswith("edit[2]"), ptext(t, "log:")
+row1 = next(m for m in fwalk(tree(t)) if "Row 1" in ftexts(m) and any("gesture" in x for x in m.get("modifiers", [])))
+keys = [x["gesture"]["key"] for x in row1["modifiers"] if "gesture" in x]
+for time, phase in ((7000, "start"), (7050, "end")):
+    send(p, type="gesture", phase=phase, time=time, points=[[10, 10]], targets=[{"key": k, "frame": [0, 0, 100, 40]} for k in keys]); t = recv(p)
+assert ptext(t, "log:").endswith("primary[1]"), ptext(t, "log:")
+
+# PasteButton: drawn enabled (as on iOS) on an empty pasteboard, but a tap pastes nothing.
+paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
+assert len(paste) == 7 and not any(b["disabled"] for b in paste) and ftexts(paste[0]) == ["Paste"], paste
+# (nothing changes, so the guest sends no tree; the exact "pasted:" text below shows onPaste never ran)
+send(p, type="action", id=paste[0]["action"], version=t["version"])
+# ShareLink: the default label, a share layer with items, subject, message; Copy fills the pasteboard and closes.
+share = pbtn(t, "Share\u2026"); t = act(p, t, share["action"]); l = PL(t)[0]
+assert l["kind"] == "share" and l["items"] == ["share me"] and l["subject"] == "Subj" and l["message"] == "Msg" and l["anchor"] == share["id"], l
+send(p, type="action", id=l["copy"], version=t["version"])
+ev = recv(p); assert ev == {"type": "pasteboard", "items": ["share me"]}, ev
+t = recv(p); assert not PL(t)
+paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
+send(p, type="action", id=paste[1]["action"], version=t["version"])  # plain text is not a URL: no change, no tree
+t = act(p, t, paste[0]["action"]); assert ptext(t, "pasted:") == "pasted: share me", ptext(t, "pasted:")
+paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
+t = act(p, t, paste[2]["action"]); assert ptext(t, "pasted:") == "pasted: share me providers1", "UTType form: one item provider"
+t = act(p, t, pbtn(t, "Many")["action"]); l = PL(t)[0]
+assert l["items"] == ["a", "b"] and l["title"] == "Preview a", l
+t = act(p, t, l["dismiss"]); assert not PL(t)
+t = act(p, t, pbtn(t, "Nothing")["action"]); assert not PL(t), "no items: no share sheet"
+# The host can replace the pasteboard; a URL pastes into the URL button.
+send(p, type="pasteboard", items=["https://example.com"]); t = recv(p)
+paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
+t = act(p, t, paste[1]["action"]); assert ptext(t, "urls:") == "urls: https://example.com", "only the URL, never the earlier text: " + ptext(t, "urls:")
+# Share-sheet activities other than Copy hand the items to the system: a module.called event, then the sheet closes.
+t = act(p, t, pbtn(t, "Many")["action"]); l = PL(t)[0]
+assert sorted(l["activities"]) == ["Add to Reading List", "More", "Open in Safari", "Reminders", "Safari", "Save to Files"], l
+send(p, type="action", id=l["activities"]["Save to Files"], version=t["version"])
+ev = recv(p); assert ev == {"type": "event", "name": "module.called", "detail": {"module": "ShareSheet", "method": "Save to Files", "args": ["a", "b"]}}, ev
+t = recv(p); assert not PL(t)
+# Custom Transferable types: a ProxyRepresentation shares and pastes through its proxy; a Codable one as JSON (its
+# conditional text proxy only applies when the condition holds); a DataRepresentation through async closures.
+def share_copy(t, label):
+    t = act(p, t, pbtn(t, label)["action"]); l = PL(t)[0]
+    send(p, type="action", id=l["copy"], version=t["version"]); ev = recv(p); return recv(p), ev["items"], l
+t, items, l = share_copy(t, "Share contact"); assert items == ["Ada"] and l["title"] == "Contact", (items, l)
+assert ptext(t, "imports:") == "imports: 0", "rendering with text on the pasteboard runs no importer"
+paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
+t = act(p, t, paste[4]["action"]); assert ptext(t, "pasted:").endswith("contact:Ada"), ptext(t, "pasted:")
+assert ptext(t, "imports:") == "imports: 1", "one import per tap: " + ptext(t, "imports:")
+t, items, _ = share_copy(t, "Share note"); assert json.loads(items[0]) == {"title": "Hi"}, items
+paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
+t = act(p, t, paste[5]["action"]); assert ptext(t, "pasted:").endswith("note:Hi"), ptext(t, "pasted:")
+t, items, _ = share_copy(t, "Share blob"); assert items == ["bytes"], items
+paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
+t = act(p, t, paste[6]["action"]); assert ptext(t, "pasted:").endswith("blob:bytes"), ptext(t, "pasted:")
+# An async export that hops to the main actor completes (the guest's event loop is not blocked meanwhile).
+t, items, _ = share_copy(t, "Share main"); assert items == ["main"], items
+# supportedContentTypes: [.utf8PlainText] accepts pasted text.
+paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
+t = act(p, t, paste[3]["action"]); assert ptext(t, "pasted:").endswith("utf8:1"), ptext(t, "pasted:")
+finish(p)
+# SIMCORE_PASTEBOARD seeds it at launch.
+p, t = pl_spawn(SIMCORE_PASTEBOARD="seeded")
+paste = [m for m in fwalk(tree(t)) if m.get("kind") == "button" and m.get("style") == "pasteButton"]
+t = act(p, t, paste[0]["action"]); assert ptext(t, "pasted:") == "pasted: seeded"
+finish(p)
+print("presentation lab: popover adaptations, presentation modifiers, context menus, share sheet, paste button ok")
+# --- scenes and app lifecycle (#49)
+p = spawn(sys.argv[25])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+def has(t, s): return any(s in x for x in alltexts(t["root"]))
+def line(t, prefix): return next(x for x in alltexts(t["root"]) if x.startswith(prefix))
+# Launch: the delegate ran before the first body (inactive), got no launch options, and is in the environment.
+assert line(t, "Delegate:") == "Delegate: will:inactive,did:nil,active", line(t, "Delegate:")
+assert line(t, "App delegate is SwiftUI's:") == "App delegate is SwiftUI's: true"
+assert line(t, "Phase:") == "Phase: active" and line(t, "UIKit:") == "UIKit: active"
+assert line(t, "Theme:") == "Theme: night!", line(t, "Theme:")   # environment, then transformEnvironment
+assert line(t, "Inner:").endswith("theme:NIGHT!"), line(t, "Inner:")   # View.transformEnvironment below it
+assert line(t, "Legacy:") == "Legacy: 1"
+assert line(t, "Scene log:") == "Scene log: taps,inactive>active", line(t, "Scene log:")   # initial: true once; launch activates
+# App-level @State re-renders the window; the scene's onChange sees it.
+t = act(p, t, button(t, "Tap app")["action"])
+assert line(t, "App taps:") == "App taps: 1" and line(t, "Scene log:") == "Scene log: taps,inactive>active,taps", alltexts(t["root"])
+# Scene phase: each step re-renders; onChange on the scene and the App see it; notifications post; the
+# UIApplicationDelegate's scene-era callbacks stay silent.
+for phase, log, uikit in [("inactive", "taps,inactive>active,taps,active>inactive", "inactive"),
+                          ("background", "taps,inactive>active,taps,active>inactive,inactive>background", "background"),
+                          ("inactive", "taps,inactive>active,taps,active>inactive,inactive>background,background>inactive", "inactive"),
+                          ("active", "taps,inactive>active,taps,active>inactive,inactive>background,background>inactive,inactive>active", "active")]:
+    send(p, type="scene_phase", phase=phase); t = recv(p)
+    assert t["type"] == "tree", t
+    assert line(t, "Phase:") == f"Phase: {phase}" and line(t, "UIKit:") == f"UIKit: {uikit}", alltexts(t["root"])
+    assert line(t, "Scene log:") == f"Scene log: {log}", line(t, "Scene log:")
+assert line(t, "Delegate:") == "Delegate: will:inactive,did:nil,active,resign,bg,fg,active", line(t, "Delegate:")
+assert "app-saw-background" in line(t, "Opened:"), line(t, "Opened:")
+# The same phase again changes nothing but still answers a tree.
+send(p, type="scene_phase", phase="active"); t = recv(p)
+assert line(t, "Delegate:") == "Delegate: will:inactive,did:nil,active,resign,bg,fg,active"
+# An unknown phase is reported and ignored (and still answered with a tree).
+send(p, type="scene_phase", phase="asleep"); e = recv(p)
+assert e["type"] == "error" and "asleep" in e["message"], e
+t = recv(p); assert line(t, "Phase:") == "Phase: active"
+# open_url: every onOpenURL in the window runs, outer before inner, with the exact URL.
+send(p, type="open_url", url="app://item/7?q=1#frag"); t = recv(p)
+assert line(t, "Opened:") == "Opened: app-saw-background,app://item/7?q=1#frag,inner:item", line(t, "Opened:")
+# Unicode survives (percent-encoded the way URL(string:) encodes it).
+send(p, type="open_url", url="app://x/café"); t = recv(p)
+assert line(t, "Opened:").endswith("app://x/caf%C3%A9,inner:x"), line(t, "Opened:")
+# Not a URL: reported, no handler runs.
+send(p, type="open_url", url=""); e = recv(p)
+assert e["type"] == "error" and "URL" in e["message"], e
+t = recv(p); assert line(t, "Opened:").endswith("inner:x"), line(t, "Opened:")
+# defaultAppStorage: the scene's suite, a view's own suite below it, an explicit store: .standard.
+t = act(p, t, button(t, "Store")["action"])
+assert line(t, "Stored:") == "Stored: 1 std:0 suite:1", line(t, "Stored:")
+assert line(t, "Explicit:") == "Explicit: 1 std:1", line(t, "Explicit:")
+t = act(p, t, button(t, "Store inner")["action"])
+assert line(t, "Inner:").startswith("Inner: 10 inner:10"), line(t, "Inner:")
+assert line(t, "Stored:") == "Stored: 1 std:0 suite:1", line(t, "Stored:")
+# Commands inside a builder `if` evaluate with App state; still one window.
+for _ in range(5): t = act(p, t, button(t, "Tap app")["action"])
+assert line(t, "App taps:") == "App taps: 6" and not has(t, "Secondary"), alltexts(t["root"])
+send(p, type="shutdown")
+assert p.wait(timeout=5) == 0
+assert "lab: willTerminate" in p.stderr.read(), "applicationWillTerminate runs on shutdown while in front"
+
+# A backgrounded app is not told it terminates (iOS suspends it first).
+p = spawn(sys.argv[25])
+assert recv(p)["type"] == "hello"; recv(p)
+for phase in ["inactive", "background"]:
+    send(p, type="scene_phase", phase=phase); recv(p)
+finish(p)
+assert "willTerminate" not in p.stderr.read()
+
+# WindowGroup(for:defaultValue:) is the window; its binding is scene state that survives App re-renders.
+p = spawn(sys.argv[26])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+assert has(t, "Item 5") and not has(t, "Never shown"), alltexts(t["root"])
+t = act(p, t, button(t, "Next")["action"]); assert has(t, "Item 6")
+t = act(p, t, button(t, "App")["action"]); assert has(t, "Item 6") and has(t, "App 1"), alltexts(t["root"])
+finish(p)
+
+# WindowGroup(for:) opens with nil and can set and clear it.
+p = spawn(sys.argv[27])
+assert recv(p)["type"] == "hello"
+t = recv(p); assert has(t, "Value none"), alltexts(t["root"])
+assert has(t, "Delegate true false") and not has(t, "Second in the group: never shown"), alltexts(t["root"])
+t = act(p, t, button(t, "Set")["action"]); assert has(t, "Value set")
+t = act(p, t, button(t, "Clear")["action"]); assert has(t, "Value none")
+finish(p)
+print("scenes: App state, scene modifiers, scenePhase, delegate adaptor, onOpenURL, defaultAppStorage, WindowGroup(for:) ok")
 print("PASS")

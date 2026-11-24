@@ -4,16 +4,16 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 
 | API | Since | iOS | Issue | Notes |
 |---|---|---|---|---|
-| `AccessibilityRotorContent` | 15 | ⬜ |  |  |
+| `AccessibilityRotorContent` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | `body` supplies the entries. No `ForEach` |
 | `AlignmentID` | 13 | ⬜ |  |  |
 | `Animatable` | 13 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Used by `KeyframeTimeline` and `KeyframeAnimator`; custom `Animatable` views do not interpolate per frame on `withAnimation` |
 | `AnimatableModifier` | 13 | ⬜ |  | Deprecated |
 | `AnimationStateKey` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `App` | 14 | 🟠 |  | Single scene; `@main` must start its line |
+| `App` | 14 | 🟠 | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | `@main` must start its line (the build looks for it) |
 | `AttributedTextFormattingDefinition` | 26 | ⬜ |  |  |
 | `AttributedTextValueConstraint` | 26 | ⬜ |  |  |
-| `AXChartDescriptorRepresentable` | 15 | ⬜ |  |  |
-| `Commands` | 14 | ⬜ |  |  |
+| `AXChartDescriptorRepresentable` | 15 | 🟠 | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | `makeChartDescriptor` supplies a title and summary. `updateChartDescriptor` is a no-op |
+| `Commands` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
 | `ContainerValueKey` | 18 | ⬜ |  |  |
 | `ControlWidget` | 18 | ⬜ |  |  |
 | `ControlWidgetConfiguration` | 18 | ⬜ |  |  |
@@ -21,7 +21,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `CoordinateSpaceProtocol` | 17 | ⬜ |  |  |
 | `CustomAnimation` | 17 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Sampled into a curve over up to 2 s; `shouldMerge` is not called |
 | `CustomHoverEffect` | 18 | ⬜ |  |  |
-| `CustomizableToolbarContent` | 14 | ⬜ |  |  |
+| `CustomizableToolbarContent` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Supports declaration and initial visibility. The customization editor and persisted layout are pending. |
 | `CustomPresentationDetent` | 16 | ⬜ |  |  |
 | `Document` | 27 | ⬜ |  |  |
 | `DocumentBaseBox` | 17 | ⬜ |  |  |
@@ -30,7 +30,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `DropDelegate` | 13.4 | ⬜ |  |  |
 | `DynamicProperty` | 13 | ⬜ |  |  |
 | `DynamicTableRowContent` | 16 | ⬜ |  |  |
-| `DynamicViewContent` | 13 | ⬜ |  |  |
+| `DynamicViewContent` | 13 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | `ForEach`: `onDelete`, `onMove`. |
 | `EnvironmentalModifier` | 13 | ⬜ |  |  |
 | `EnvironmentKey` | 13 | ✅ | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) |  |
 | `FileDocument` | 14 | ⬜ |  | Deprecated |
@@ -45,7 +45,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `MatchedTransitionSourceConfiguration` | 18 | ⬜ |  |  |
 | `NavigationTransition` | 18 | ⬜ |  |  |
 | `PreferenceKey` | 13 | ⬜ |  |  |
-| `PresentationSizing` | 18 | ⬜ |  |  |
+| `PresentationSizing` | 18 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Custom sizings compile; no effect in compact width |
 | `PreviewContext` | 14 | ⬜ |  |  |
 | `PreviewContextKey` | 14 | ⬜ |  |  |
 | `PreviewModifier` | 18 | ⬜ |  |  |
@@ -60,14 +60,14 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ShapeView` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) | Supports chained `.fill` / `.stroke` / `.strokeBorder` |
 | `SliderTickContent` | 26 | ⬜ |  |  |
 | `TabContent` | 18 | ⬜ |  |  |
-| `TableColumnContent` | 16 | ⬜ |  |  |
+| `TableColumnContent` | 16 | 🟠 | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | Conformed by `TableColumn`; no custom conformances. |
 | `TableRowContent` | 16 | ⬜ |  |  |
 | `TextAttribute` | 17 | ⬜ |  |  |
 | `TextRenderer` | 17 | ⬜ |  |  |
 | `TextSelectability` | 15 | ⬜ |  |  |
 | `TextVariantPreference` | 18 | ⬜ |  |  |
 | `TimelineSchedule` | 15 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `ToolbarContent` | 14 | ⬜ |  |  |
+| `ToolbarContent` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Supports compositions of renderer-backed toolbar items. Platform customization is pending. |
 | `TransactionKey` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `Transition` | 17 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Built-in transitions run natively; custom `body(content:phase:)` extracts `opacity` and `offset` |
 | `UIGestureRecognizerRepresentable` | 18 | ⬜ |  |  |
@@ -77,7 +77,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `VectorArithmetic` | 13 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `View` | 13 | ✅ |  |  |
 | `ViewModifier` | 13 | ⬜ |  |  |
-| `VisualEffect` | 17 | ⬜ |  |  |
+| `VisualEffect` | 17 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Standard geometry and color effect chains. Custom graph-based effects are a gap. |
 | `Widget` | 14 | ⬜ |  |  |
 | `WidgetBundle` | 14 | ⬜ |  |  |
 | `WidgetConfiguration` | 14 | ⬜ |  |  |

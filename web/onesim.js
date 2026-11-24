@@ -1,5 +1,6 @@
 // OneSim driver shared by the browser (main.js) and Node (test/run.mjs): a minimal WASI shim and a
 // typed wrapper over the `simcore_web_*` exports of app.wasm. No DOM, no Node APIs.
+const SCENE_PHASES = ["active", "inactive", "background"];
 const DYNAMIC_TYPE = ["xSmall", "small", "medium", "large", "xLarge", "xxLarge", "xxxLarge", "accessibility1", "accessibility2", "accessibility3", "accessibility4", "accessibility5"];
 
 const ENOSYS = 52, EBADF = 8;
@@ -115,6 +116,7 @@ export async function load(source, { log = (level, t) => console[level](t), gues
 }
 
 export class OneSim {
+  #devices = null;
   constructor(wasm, guest = null) { this.wasm = wasm; this.guest = guest; this.width = 0; this.height = 0; this.scale = 0; }
 
   get mem() { return this.wasm.memory.buffer; }
@@ -124,8 +126,11 @@ export class OneSim {
 
   /** Device profiles from the Wasm build (crates/onesim-render/src/device.rs). */
   get devices() {
-    this.wasm.simcore_web_devices();
-    return JSON.parse(dec.decode(this.#take()));
+    if (!this.#devices) {
+      this.wasm.simcore_web_devices();
+      this.#devices = JSON.parse(dec.decode(this.#take()));
+    }
+    return this.#devices;
   }
 
   /** Default device profile for this app's platform. */
@@ -165,11 +170,13 @@ export class OneSim {
   }
   /** A guest message (protocol section H). True if the frame changed (present it). */
   receive(msg) {
-    const r = this.wasm.simcore_web_rn_receive(this.#put(JSON.stringify(msg)));
-    if (r < 0 && requireFocus) throw new Error(dec.decode(this.#take()));
+    const json = typeof msg === "string" ? msg : typeof msg?.rawJson === "string" ? msg.rawJson : JSON.stringify(msg);
+    const r = this.wasm.simcore_web_rn_receive(this.#put(json));
+    if (r < 0) throw new Error(dec.decode(this.#take()));
     return r === 1;
   }
-  /** An image file the guest wrote (PNG/JPEG bytes at the path its tree names). True if it decoded (frame redrawn). */
+  /** An image (PNG, JPEG, GIF, WebP) or font file the guest wrote, at the path its tree names. True if it decoded (frame
+   *  redrawn). */
   putImage(path, bytes) {
     const p = enc.encode(path), ptr = this.wasm.simcore_web_buf(p.length + 1 + bytes.length), b = new Uint8Array(this.mem, ptr, p.length + 1 + bytes.length);
     b.set(p); b[p.length] = 0; b.set(bytes, p.length + 1);
@@ -178,6 +185,16 @@ export class OneSim {
   /** Host messages waiting for the guest (post each to it); empties the queue. */
   outbox() {
     return this.wasm.simcore_web_rn_outbox() > 0 ? JSON.parse(dec.decode(this.#take())) : [];
+  }
+
+  /** Replace the app's pasteboard (what `PasteButton` pastes) with these strings. True if the guest took it
+   *  (SwiftUI builds only). */
+  setPasteboard(items) {
+    return !!this.wasm.simcore_web_set_pasteboard && this.wasm.simcore_web_set_pasteboard(this.#put(JSON.stringify(items))) === 1;
+  }
+  /** Strings the app put on the pasteboard (the share sheet's Copy) since the last call, or null. */
+  takePasteboard() {
+    return this.wasm.simcore_web_take_pasteboard?.() > 0 ? JSON.parse(dec.decode(this.#take())) : null;
   }
 
   /** Dynamic Type size: xSmall ... large (default) ... xxxLarge, accessibility1 ... accessibility5. */
@@ -209,6 +226,8 @@ export class OneSim {
     if (p === undefined) throw new Error(`drag phase must be begin/move/end, got ${phase}`);
     return this.wasm.simcore_web_drag(p, x, y, t) === 1;
   }
+  /** Coalesced finger-drag sample: updates drag state without rebuilding the scene. */
+  dragCoalesced(x, y, t) { return this.wasm.simcore_web_drag(3, x, y, t) === 1; }
   /** Advance momentum/bounce by `ms`. True while moving: call again next frame. */
   tick(ms) { return this.wasm.simcore_web_tick(ms) === 1; }
   /** Text typed into the focused field. Throws if none is focused. */
@@ -220,7 +239,7 @@ export class OneSim {
   keyIfFocused(name) { return this.#key(1, name, false); }
   #key(kind, s, requireFocus = true) {
     const r = this.wasm.simcore_web_key(kind, this.#put(s));
-    if (r < 0) throw new Error("no focused text field (click a text field first)");
+    if (r < 0 && requireFocus) throw new Error("no focused text field (click a text field first)");
     return r === 1;
   }
   get linkFocused() { return this.wasm.simcore_web_link_focused() === 1; }
@@ -267,6 +286,14 @@ export class OneSim {
     if (mode !== "dark" && mode !== "light") throw new Error("appearance must be 'dark' or 'light'");
     return this.wasm.simcore_web_set_dark(mode === "dark" ? 1 : 0) === 0;
   }
+  /** SwiftUI scene phase: "active", "inactive" or "background" (steps through inactive, as iOS does). */
+  setScenePhase(phase) {
+    const i = SCENE_PHASES.indexOf(phase);
+    if (i < 0) throw new Error("scene phase must be 'active', 'inactive' or 'background'");
+    if (typeof this.wasm.simcore_web_set_scene_phase !== "function") return false;   // older app.wasm
+    return this.wasm.simcore_web_set_scene_phase(i) === 0;
+  }
+  get scenePhase() { return SCENE_PHASES[this.wasm.simcore_web_scene_phase?.() ?? 0]; }
   /** Whether this build of app.wasm can emit display lists for the GPU presenter. */
   get supportsDisplayList() { return typeof this.wasm.simcore_web_set_output === "function"; }
   /** Current frame version, when supported by the runtime. Reading it does not render. */

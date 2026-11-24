@@ -39,6 +39,13 @@ layout="$guests/layout"
 typeapp="$guests/type"
 anim="$guests/animation"
 controls="$guests/controls"
+effects="$guests/effects"
+textinput="$guests/text-input"
+keypads="$guests/keypads"
+pickers="$guests/pickers"
+navigation="$guests/navigation"
+forms="$guests/forms"
+popovers="$guests/popovers"
 if want swiftui; then
   scripts/build-swift-app.sh examples/swiftui-showcase "$app"
 fi
@@ -51,6 +58,13 @@ if want swiftui && [ -z "$smoke" ]; then
   scripts/build-swift-app.sh examples/swiftui-type "$typeapp"
   scripts/build-swift-app.sh examples/swiftui-animation "$anim"
   scripts/build-swift-app.sh examples/swiftui-controls "$controls"
+  scripts/build-swift-app.sh examples/swiftui-effects "$effects"
+  scripts/build-swift-app.sh examples/swiftui-text-input "$textinput"
+  scripts/build-swift-app.sh examples/swiftui-keypads "$keypads"
+  scripts/build-swift-app.sh examples/swiftui-pickers "$pickers"
+  scripts/build-swift-app.sh examples/swiftui-navigation "$navigation"
+  scripts/build-swift-app.sh examples/swiftui-forms "$forms"
+  scripts/build-swift-app.sh examples/swiftui-popovers "$popovers"
 fi
 # Every supported iOS release has its own reference set, captured on its pinned runtime and device
 # (docs/compatibility/versions.json): 27.2 on the iPhone 18 Pro in tests/fixtures/ios27/, 26.5 on the iPhone 17 Pro
@@ -189,6 +203,143 @@ for ios in ${SIMCORE_IOS:-27.2}; do
     cshot indicators-dark   --dark --click Indicators
     echo "== SwiftUI controls (swiftui-controls, iOS $ios)"
     python3 scripts/compare_ios.py $fx/swiftui-controls-ios "$cout/onesim" "$cout" || rc=1
+    eout=$out/swiftui-effects; mkdir -p "$eout/onesim"
+    eshot() {
+      local name=$1; shift
+      ./target/debug/onesim run "$effects" "${base[@]}" "$@" --screenshot "$eout/onesim/$name.png" >/dev/null
+      if [ ! -f "$fx/swiftui-effects-ios/$name.png" ]; then echo "Missing iOS reference: $fx/swiftui-effects-ios/$name.png" >&2; rc=1; fi
+    }
+    eshot effects
+    eshot effects-dark --dark
+    echo "== SwiftUI gradients, Canvas and visual effects (iOS $ios)"
+    python3 scripts/compare_ios.py "$fx/swiftui-effects-ios" "$eout/onesim" "$eout" || rc=1
+
+    iout=$out/swiftui-text-input; mkdir -p "$iout/onesim"
+    ishot() {
+      local guest=$1 name=$2; shift 2
+      ./target/debug/onesim run "$guest" "${base[@]}" "$@" --screenshot "$iout/onesim/$name.png" >/dev/null
+      if [ ! -f "$fx/swiftui-text-input-ios/$name.png" ]; then echo "Missing iOS reference: $fx/swiftui-text-input-ios/$name.png" >&2; rc=1; fi
+    }
+    ishot "$textinput" text-input
+    ishot "$textinput" text-input-focused --click "Full name"
+    ishot "$keypads" keypad-number --click Number
+    ishot "$keypads" keypad-decimal --click Decimal
+    ishot "$keypads" keypad-phone --click Phone
+    ishot "$keypads" keypad-phone-symbols --click Phone --click '+*#'
+    echo "== SwiftUI text input (iOS $ios)"
+    python3 scripts/compare_ios.py "$fx/swiftui-text-input-ios" "$iout/onesim" "$iout" || rc=1
+    # Date and color pickers. Each recipe must have an Apple SwiftUI reference.
+    pkout=$out/swiftui-pickers
+    pkfx=$fx/swiftui-pickers-ios
+    mkdir -p "$pkout/onesim"
+    pshot() {
+      local name=$1
+      shift
+      if [ ! -f "$pkfx/$name.png" ]; then
+        echo "Missing iOS $ios picker reference: $pkfx/$name.png" >&2
+        rc=1
+        return
+      fi
+      ./target/debug/onesim run "$pickers" "${base[@]}" "$@" --screenshot "$pkout/onesim/$name.png" >/dev/null
+    }
+    pshot pickers
+    pshot pickers-date --click 213,241
+    pshot pickers-time --click 322,241
+    pshot graphical    --click Graphical
+    pshot wheel        --click Wheel
+    pshot multi        --click Multiple
+    pshot colors       --click 352,492
+    echo "== SwiftUI date and color pickers (iOS $ios)"
+    python3 scripts/compare_ios.py "$pkfx" "$pkout/onesim" "$pkout" || rc=1
+    nout=$out/swiftui-navigation
+    nfx=$fx/swiftui-navigation-ios
+    mkdir -p "$nout/onesim"
+    nshot() {
+      local name=$1
+      shift
+      if [ ! -f "$nfx/$name.png" ]; then
+        echo "Missing iOS $ios navigation reference: $nfx/$name.png" >&2
+        rc=1
+        return
+      fi
+      ./target/debug/onesim run "$navigation" "${base[@]}" "$@" --screenshot "$nout/onesim/$name.png" >/dev/null
+    }
+    nshot library
+    nshot detail --click About
+    nshot detail-menu --click About --click 188,84
+    nshot legacy --click Legacy
+    nshot search --click Search
+    nshot search-active --click Search --click 100,138
+    echo "== SwiftUI navigation (iOS $ios)"
+    python3 scripts/compare_ios.py "$nfx" "$nout/onesim" "$nout" || rc=1
+    # Popovers, context menus, presentation styling, ShareLink and PasteButton (tests/fixtures/ios27/swiftui-popovers-ios/README.md).
+    pvout=$out/swiftui-popovers
+    pvfx=$fx/swiftui-popovers-ios
+    mkdir -p "$pvout/onesim"
+    pvshot() {
+      local name=$1
+      shift
+      if [ ! -f "$pvfx/$name.png" ]; then
+        echo "Missing iOS $ios popovers reference: $pvfx/$name.png" >&2
+        rc=1
+        return
+      fi
+      ./target/debug/onesim run "$popovers" "${base[@]}" "$@" --screenshot "$pvout/onesim/$name.png" >/dev/null
+    }
+    pvshot popovers
+    pvshot popovers-dark       --dark
+    pvshot popover-sheet       --click "Popover as sheet"
+    pvshot popover-bubble      --click "Popover bubble"
+    pvshot popover-bubble-dark --dark --click "Popover bubble"
+    pvshot styled-sheet        --click "Styled sheet"
+    pvshot context-menu        --long-press "Hold for menu"
+    pvshot context-menu-dark   --dark --long-press "Hold for menu"
+    pvshot context-preview     --long-press "Hold for preview"
+    pvshot share               --click "Share…"
+    pvshot share-link          --click "Share link"
+    pvshot pasted              --pasteboard "Copied text" --click Paste
+    echo "== SwiftUI popovers (iOS $ios)"
+    python3 scripts/compare_ios.py "$pvfx" "$pvout/onesim" "$pvout" || rc=1
+    # Forms and containers (tests/fixtures/ios27/swiftui-forms-ios/README.md). Screens below the fold are reached
+    # after a scroll; toggles and swipes animate, so those states wait for them to settle.
+    fmout=$out/swiftui-forms
+    fmfx=$fx/swiftui-forms-ios
+    mkdir -p "$fmout/onesim"
+    fshot() {
+      local name=$1
+      shift
+      if [ ! -f "$fmfx/$name.png" ]; then
+        echo "Missing iOS $ios forms reference: $fmfx/$name.png" >&2
+        rc=1
+        return
+      fi
+      ./target/debug/onesim run "$forms" "${base[@]}" "$@" --screenshot "$fmout/onesim/$name.png" >/dev/null
+    }
+    down=(--scroll 200,500,0,400)
+    fshot forms
+    fshot forms-dark       --dark
+    fshot forms-expanded   --click Advanced --wait 1000
+    fshot grouped          --click Grouped
+    fshot plain            --click Plain
+    fshot inset            --click Inset
+    fshot sidebar          --click Sidebar
+    fshot sidebar-dark     --dark --click Sidebar
+    fshot sidebar-expanded --click Sidebar --click 200,298 --wait 1000
+    fshot boxes            --click Boxes
+    fshot boxes-dark       --dark --click Boxes
+    fshot columns          "${down[@]}" --click Columns
+    fshot empty            "${down[@]}" --click Empty
+    fshot empty-search     "${down[@]}" --click Empty --click Search
+    fshot outline          "${down[@]}" --click Outline
+    fshot outline-expanded "${down[@]}" --click Outline --click Documents --wait 1000
+    fshot edit             "${down[@]}" --click Edit
+    fshot edit-active      "${down[@]}" --click Edit --click Edit --wait 1000
+    fshot edit-delete      "${down[@]}" --click Edit --click Edit --wait 1000 --click 47,177 --wait 1000
+    fshot swipe-trailing   "${down[@]}" --click Swipe --drag 300,177,-150,0
+    fshot swipe-leading    "${down[@]}" --click Swipe --drag 100,177,100,0
+    fshot table            "${down[@]}" --click Table
+    echo "== SwiftUI forms and containers (iOS $ios)"
+    python3 scripts/compare_ios.py "$fmfx" "$fmout/onesim" "$fmout" || rc=1
   fi
   # React Native / Expo showcase: tests/fixtures/rn-showcase-ios (see its README). Needs node + `npm install` in the example.
   if want expo; then
@@ -225,8 +376,8 @@ for ios in ${SIMCORE_IOS:-27.2}; do
       echo "== skipping React Native comparison (run npm install in $rn, needs node)"
     fi
     # Expo Router: tests/fixtures/rn-router-ios (see its README). One Metro per app; each group compares only the states it rendered.
-    rr_group() { # app-dir label; states are produced by the rr_states_* function named by $3
-      local app=$1 label=$2 o=$out/$2
+    rr_group() { # app-dir label states-fn [fixtures]; states are produced by the rr_states_* function named by $3
+      local app=$1 label=$2 o=$out/$2 fixtures=${4:-rn-router-ios}
       if ! { [ -d "$app/node_modules" ] && command -v npx >/dev/null; }; then echo "== skipping $label comparison (run npm install in $app, needs node)"; return; fi
       rm -rf "$o"; mkdir -p "$o/onesim"
       local pt; pt=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
@@ -236,8 +387,8 @@ for ios in ${SIMCORE_IOS:-27.2}; do
       rrshot() { local n=$1; shift; ./target/debug/onesim expo --url "http://localhost:$pt" "${base[@]}" "$@" --screenshot "$o/onesim/$n.png" >/dev/null || echo "onesim expo failed: $n"; }
       "$3"
       pkill -P $m 2>/dev/null; kill $m 2>/dev/null
-      echo "== Expo Router ($label, iOS $ios)"
-      python3 scripts/compare_ios.py $fx/rn-router-ios "$o/onesim" "$o" || rc=1
+      echo "== Expo ($label, iOS $ios)"
+      python3 scripts/compare_ios.py "$fx/$fixtures" "$o/onesim" "$o" || rc=1
     }
     rr_states_tabs() {
       rrshot tabs-home
@@ -252,7 +403,24 @@ for ios in ${SIMCORE_IOS:-27.2}; do
       rrshot stack-back        --click 200,192 --click 64,84
       rrshot stack-detail-dark --dark --click 200,192
     }
+    # examples/expo-apis: tests/fixtures/rn-apis-ios (see its README). LayoutAnimation is shown settled (--wait).
+    rr_states_apis() {
+      rrshot home
+      rrshot home-dark          --dark
+      rrshot layout-expanded    --click Layout --click Toggle --wait 1000
+      rrshot actionsheet        --click Sheet --click "Show sheet"
+      rrshot actionsheet-dark   --dark --click Sheet --click Share --click 200,400 --click "Show sheet"
+      rrshot actionsheet-picked --click Sheet --click "Show sheet" --click "Save to Files"
+      rrshot actionsheet-anchored --click Sheet --click "Show sheet" --click "Save to Files" --click Anchored
+      rrshot share              --click Sheet --click "Show sheet" --click Cancel --click Share
+      rrshot share-dark         --dark --click Sheet --click Share
+      rrshot images             --click Images
+      rrshot images-dark        --dark --click Images
+      rrshot fonts              --click Fonts
+      rrshot fonts-dark         --dark --click Fonts
+    }
     [ -z "$smoke" ] || continue
+    rr_group examples/expo-apis apis rr_states_apis rn-apis-ios
     rr_group examples/expo-default tabs rr_states_tabs
     rr_group examples/expo-router-stack stack rr_states_stack
     if [ -d examples/expo-ui/node_modules ]; then

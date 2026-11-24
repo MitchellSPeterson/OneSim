@@ -1,5 +1,6 @@
 //! External API (client <-> host) request/response types.
 
+use crate::view::{A11yAction, A11yAdjust, A11yCustom, A11yPair, A11yPoint, A11yRotor, A11yScroll, A11yZoom};
 use crate::wire::{Appearance, DynamicTypeSize, IosVersion, Viewport};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -94,12 +95,29 @@ pub struct CreateSessionParams {
     /// Simulated iOS release (`"26.5"` or `"27.2"`, default the newest).
     #[serde(default, alias = "osVersion")]
     pub os_version: Option<IosVersion>,
+    /// SwiftUI: text on the session pasteboard at launch (`SIMCORE_PASTEBOARD`; section W).
+    #[serde(default)]
+    pub pasteboard: Option<String>,
     /// Test hook: skip the Swift build and spawn `app_path` directly.
     #[serde(default)]
     pub prebuilt: bool,
     /// `react-native` only: Metro dev server (default `http://localhost:8081`).
     #[serde(default, alias = "metroUrl")]
     pub metro_url: Option<String>,
+    /// `swiftui` only: the app is launched to open this URL (`onOpenURL` gets it after the first frame).
+    #[serde(default, alias = "launchUrl", alias = "launchURL")]
+    pub launch_url: Option<String>,
+}
+
+/// A URL the system can hand to an app: a scheme (`letter (letter | digit | + - .)*`) then `:`, no surrounding
+/// whitespace, no control characters.
+pub fn is_openable_url(url: &str) -> bool {
+    let Some((scheme, _)) = url.split_once(':') else { return false };
+    let mut cs = scheme.chars();
+    cs.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && cs.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+        && !url.chars().any(char::is_control)
+        && url.trim() == url
 }
 
 fn default_platform() -> String {
@@ -122,6 +140,18 @@ pub struct SetViewportParams {
 pub struct SetAppearanceParams {
     pub session_id: String,
     pub mode: Appearance,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SetScenePhaseParams {
+    pub session_id: String,
+    pub phase: crate::ScenePhase,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct OpenUrlParams {
+    pub session_id: String,
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -202,6 +232,47 @@ pub struct ScreenshotParams {
     pub path: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct TickParams {
+    pub session_id: String,
+    /// Delta time in milliseconds to advance the deterministic animation clock.
+    pub dt_ms: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WaitParams {
+    pub session_id: String,
+    /// Duration in milliseconds to step the deterministic animation clock (in 16 ms frames).
+    pub ms: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DragPhaseKind {
+    Begin,
+    Move,
+    End,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DragPhaseParams {
+    pub session_id: String,
+    pub phase: DragPhaseKind,
+    pub x: f64,
+    pub y: f64,
+    /// Event timestamp in milliseconds (defaults to the session's current `clock_ms`).
+    #[serde(default)]
+    pub time_ms: Option<f64>,
+}
+
+fn default_opacity() -> f32 {
+    1.0
+}
+
+fn is_opaque(opacity: &f32) -> bool {
+    (*opacity - 1.0).abs() < 1e-3
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct UiFrame {
     pub x: f64,
@@ -215,6 +286,9 @@ pub struct UiNode {
     pub id: String,
     pub kind: String,
     pub frame: UiFrame,
+    /// Effective opacity (`0.0..=1.0`); omitted when fully opaque (`1.0`).
+    #[serde(default = "default_opacity", skip_serializing_if = "is_opaque")]
+    pub opacity: f32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -230,7 +304,84 @@ pub struct UiNode {
     pub focused: bool,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub disabled: bool,
+    /// Extra accessibility semantics. Label and value stay on the fields above.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accessibility: Option<UiAccessibility>,
     pub children: Vec<UiNode>,
+}
+
+/// Accessibility record on an inspection node (protocol section U). Omitted when the node has none.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UiAccessibility {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identifier: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hidden: Option<bool>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub suppressed: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub traits: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort_priority: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heading: Option<u8>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub input_labels: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub children: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<A11yAction>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub custom: Vec<A11yCustom>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub elements: Vec<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub focused: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text_content_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scroll_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rotors: Vec<A11yRotor>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub chart: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ignores_invert_colors: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub responds: Option<bool>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub direct_touch: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub direct_touch_options: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linked: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pair: Option<A11yPair>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub large_content: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub large_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activation: Option<A11yPoint>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adjustable: Option<A11yAdjust>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scroll: Option<A11yScroll>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zoom: Option<A11yZoom>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rotor_entry: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub technologies: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drag: Option<A11yPoint>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drop: Option<A11yPoint>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub default_focus: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -44,12 +44,13 @@ stream. Ids are strings (`"s1"`).
 
 | method | params | result |
 |---|---|---|
-| `session.create` | `{"framework":"expo"\|"react-native"\|"swiftui"\|"compose","platform"?:"ios"\|"android","device"?,"osVersion"?:"27.2"\|"26.5","appearance"?,"dynamicTypeSize"?,"metroUrl"?,"appPath"?,"rootView"?,"viewport"?:{width,height},"scale"?,"load"?:false}` | `{"sessionId","status":"created"}`; with `"load": true` it also loads (like `runtime.load`) and returns `"status":"running"` |
+| `session.create` | `{"framework":"expo"\|"react-native"\|"swiftui"\|"compose","platform"?:"ios"\|"android","device"?,"osVersion"?:"27.2"\|"26.5","appearance"?,"dynamicTypeSize"?,"metroUrl"?,"appPath"?,"rootView"?,"viewport"?:{width,height},"scale"?,"launchURL"?,"load"?:false}` | `{"sessionId","status":"created"}`; with `"load": true` it also loads (like `runtime.load`) and returns `"status":"running"` |
 | `session.list` | – | `{"sessions":[SessionInfo]}` |
 | `session.get` | `{"sessionId"}` | `SessionInfo` |
 | `session.destroy` | `{"sessionId"}` | `{}` (stops if running, frees the id) |
 
-`SessionInfo`: `{"sessionId","framework","platform","device","viewport":{width,height},"scale","appearance","status","treeVersion","metroUrl"?,"appPath"?}`.
+`SessionInfo`: `{"sessionId","framework","platform","device","viewport":{width,height},"scale","appearance","status","treeVersion","metroUrl"?,"appPath"?,"scenePhase"?}` (`scenePhase` for SwiftUI and React Native).
+`launchURL` (SwiftUI, and React Native on iOS) launches the app to open that URL: SwiftUI's `onOpenURL` gets it after the first frame; React Native reads it as `Linking.getInitialURL` (Expo Router starts at its route).
 Expo uses iOS by default. Pass `"platform": "android"` for Expo on Android. SwiftUI targets iOS and Compose targets Android.
 Device names accept a display name or profile slug. The defaults are `iphone-18-pro` on iOS and `pixel-10a` on Android.
 `osVersion` selects iOS `"27.2"` or `"26.5"`, with `"27.2"` as the default. For Android, `session.get` reports `"17"`.
@@ -66,6 +67,8 @@ Status values: `created`, `starting`, `running`, `paused`, `stopping`, `stopped`
 | `runtime.resume` | `{"sessionId"}` | `{"status":"running"}` |
 | `runtime.stop` | `{"sessionId"}` | `{"status":"stopped"}` |
 | `runtime.status` | `{"sessionId"}` | `{"status","treeVersion","errors":[{"message","source"}]}` |
+| `runtime.tick` | `{"sessionId","dtMs":number}` | `{"clockMs":number,"animating":bool}` (advance the deterministic animation clock by one step) |
+| `runtime.wait` | `{"sessionId","ms":number}` | `{"clockMs":number,"animating":bool}` (step the deterministic animation clock in 16 ms frames) |
 
 ## Input
 
@@ -87,6 +90,7 @@ SwiftUI never waits, so the flag changes nothing there. Keep the default for det
 | `input.key` | `{"sessionId","key":"enter"\|"backspace"}` | `{}` |
 | `input.scroll` | target + `{"dx","dy"}` points (positive dy reveals later content) | `{}` |
 | `input.swipe` | `{"sessionId","from":{x,y},"to":{x,y},"durationMs"?}` | `{}` (v0.2: delivered as a scroll of `from - to` at `from`) |
+| `input.drag` | `{"sessionId","phase":"begin"\|"move"\|"end","x","y","timeMs"?}` | `{"changed":bool}` (incremental finger drag; `timeMs` defaults to the session's `clockMs`) |
 
 All input params also carry `"sessionId"`.
 
@@ -100,7 +104,7 @@ All input params also carry `"sessionId"`.
 | `render.tree` | `{"sessionId"}` | `{"treeVersion","root": UiNode}` |
 | `render.inspect` | `{"sessionId"}` + `{"element"}` or `{"x","y"}` | `{"node": UiNode (with children), "path":[ids root→node]}` |
 
-`UiNode`: `{"id","kind","role","label"?,"text"?,"value"?,"frame":{x,y,width,height},"action"?,"focused"?,"disabled"?,"children":[...]}`.
+`UiNode`: `{"id","kind","role","label"?,"text"?,"value"?,"frame":{x,y,width,height},"action"?,"focused"?,"disabled"?,"accessibility"?,"children":[...]}`. `accessibility` is the extra semantics from [protocol section U](protocol.md).
 `id` is stable for the life of the element (React Native: the reactTag; SwiftUI: the structural path).
 
 ## Device
@@ -111,7 +115,20 @@ All input params also carry `"sessionId"`.
 | `device.set` | `{"sessionId","device"}` | `SessionInfo` (viewport, scale and chrome change; the app gets a dimensions change) |
 | `device.rotate` | `{"sessionId","orientation":"portrait"\|"landscape"}` | `unsupported` in v0.2 for anything but `portrait` |
 | `device.appearance` | `{"sessionId","mode":"light"\|"dark"}` | `{}` |
+| `device.pasteboard` | `{"sessionId","items":["text"]}` | `{}` (SwiftUI: replaces the app's pasteboard, what `PasteButton` pastes; also seeds relaunches; `unsupported` for other frameworks) |
 | `device.keyboard` | `{"sessionId","visible":false}` | `{}` (hide = blur the focused field; `true` without a focused field → `invalid_state`) |
+
+## App lifecycle (SwiftUI)
+
+| method | params | result |
+|---|---|---|
+| `app.setScenePhase` | `{"sessionId","phase":"active"\|"inactive"\|"background"}` | `{"phase"}` once the app is there: `active` and `background` pass through `inactive`, one tree per step, as on iOS (React Native: AppState) |
+| `app.openURL` | `{"sessionId","url"}` | `{"phase"}` after every `onOpenURL` ran; an app not in front comes forward first (it gets the URL while `inactive`, then becomes `active`). React Native (iOS): `Linking`'s `url` event and expo-linking's `onURLReceived` |
+
+A URL needs a scheme (`app:...`, `https://...`), else `bad_request`. While the app is not `active`, `input.*`
+calls fail with `invalid_state`, as a backgrounded app gets no touches. Other frameworks answer `unsupported`.
+The guest side (scenePhase, `UIApplication` notifications, the delegate adaptor) is in
+[protocol.md section V](protocol.md#v-v1-additions-for-swiftui-scenes-and-the-app-lifecycle).
 
 ## Native modules (React Native)
 
@@ -164,7 +181,8 @@ reconnects calls `events.subscribe` with the last `seq` it saw.
 | `render.updated` | `{"treeVersion"}` coalesced: at most one per 16 ms |
 | `navigation.changed` | `{"route","params"?,"stack"?:[routes]}` React Navigation / Expo Router focused route |
 | `module.unsupported` | `{"module","method","package"?}` once per module+method |
-| `module.called` | `{"module","method","args"}` simulated modules with observable side effects (haptics, clipboard writes, SwiftUI `openURL` with `module` `OpenURLAction`); `module` is the native module name (`ExpoHaptics`) |
+| `pasteboard.changed` | `{"items"}` the SwiftUI app replaced the pasteboard (the share sheet's Copy) |
+| `module.called` | `{"module","method","args"}` simulated modules with observable side effects (haptics, clipboard writes, SwiftUI `openURL` with `module` `OpenURLAction`, React Native `Linking.openURL` of another app's URL with `module` `Linking`, share-sheet activities with `module` `ShareSheet`); `module` is the native module name (`ExpoHaptics`) |
 
 ## Guest wire additions (host ↔ React Native guest)
 

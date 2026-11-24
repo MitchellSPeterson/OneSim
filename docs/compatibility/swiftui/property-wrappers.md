@@ -4,8 +4,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 
 | API | Since | iOS | Issue | Notes |
 |---|---|---|---|---|
-| `AccessibilityFocusState` | 15 | ⬜ |  |  |
-| `AppStorage` | 14 | 🟠 |  | No `store:`, optionals, `URL`/`Data`/`Date`; in-memory on WASI |
+| `AccessibilityFocusState` | 15 | 🟠 | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Bool and optional values, including default focus on appear. A technologies filter is stored and not applied |
+| `AppStorage` | 14 | 🟠 |  | No optionals, `URL`/`Data`/`Date`; in-memory on WASI |
 | `Bindable` | 17 | ✅ | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) |  |
 | `Binding` | 13 | ✅ |  |  |
 | `Environment` | 13 | ✅ | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) | Key paths, `EnvironmentKey` values, `@Observable` objects (`Environment(Model.self)`) |
@@ -14,7 +14,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `FocusedBinding` | 14 | ⬜ |  |  |
 | `FocusedObject` | 16 | ⬜ |  |  |
 | `FocusedValue` | 14 | ⬜ |  |  |
-| `FocusState` | 15 | ⬜ |  |  |
+| `FocusState` | 15 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Boolean and optional hashable focus bindings for text controls. Other focusable views are a gap. |
 | `GestureState` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
 | `Namespace` | 14 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `ObservedObject` | 13 | ✅ |  |  |
@@ -23,4 +23,4 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `SectionedFetchRequest` | 15 | ⬜ |  |  |
 | `State` | 13 | 🟠 |  | Only inside `View`s; any change re-evaluates the whole root |
 | `StateObject` | 14 | ✅ |  |  |
-| `UIApplicationDelegateAdaptor` | 14 | ⬜ |  |  |
+| `UIApplicationDelegateAdaptor` | 14 | 🟠 | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Launch and termination callbacks, environment object; no scene delegate (`configurationForConnecting`) or remote notifications; not on the web build |

@@ -1,0 +1,153 @@
+{
+  "success": true,
+  "data": {
+    "nodes": [
+      {
+        "index": 0,
+        "type": "Other",
+        "role": "_TtC7SwiftUIP33_ACC2C5639A7D76F611E170E831FCA49118SwiftUIApplication",
+        "subrole": "UIApplication",
+        "label": "OneSimNavigation",
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "width": 402,
+          "height": 874
+        },
+        "enabled": true,
+        "depth": 0,
+        "pid": 69174,
+        "hittable": false,
+        "ref": "e1",
+        "kind": "other"
+      },
+      {
+        "index": 1,
+        "parentIndex": 0,
+        "type": "NavigationBar",
+        "role": "SwiftUI.UIKitNavigationBar",
+        "subrole": "UINavigationBar",
+        "identifier": "Detail",
+        "rect": {
+          "x": 0,
+          "y": 62,
+          "width": 402,
+          "height": 54
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 69174,
+        "hittable": true,
+        "ref": "e2",
+        "kind": "navigation-bar"
+      },
+      {
+        "index": 2,
+        "parentIndex": 1,
+        "type": "Button",
+        "role": "UIAccessibilityBackButtonElement",
+        "subrole": "UIAccessibilityElement",
+        "label": "Library",
+        "identifier": "BackButton",
+        "rect": {
+          "x": 16,
+          "y": 62,
+          "width": 44,
+          "height": 44
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 69174,
+        "hittable": true,
+        "ref": "e3",
+        "kind": "button"
+      },
+      {
+        "index": 3,
+        "parentIndex": 1,
+        "type": "StaticText",
+        "role": "UILabel",
+        "label": "Detail, Actions Menu",
+        "rect": {
+          "x": 165,
+          "y": 73.66666666666666,
+          "width": 46,
+          "height": 20.66666666666667
+        },
+        "enabled": true,
+        "depth": 2,
+        "pid": 69174,
+        "hittable": true,
+        "ref": "e4",
+        "kind": "text"
+      },
+      {
+        "index": 4,
+        "parentIndex": 0,
+        "type": "StaticText",
+        "role": "SwiftUI.AccessibilityNode",
+        "subrole": "UIResponder",
+        "label": "Choose a book",
+        "rect": {
+          "x": 144,
+          "y": 441.8333333333333,
+          "width": 114,
+          "height": 20.333333333333314
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 69174,
+        "hittable": true,
+        "ref": "e5",
+        "kind": "text"
+      },
+      {
+        "index": 5,
+        "parentIndex": 0,
+        "type": "Button",
+        "role": "_UIButtonBarButton",
+        "label": "Mark",
+        "rect": {
+          "x": 182,
+          "y": 803,
+          "width": 38,
+          "height": 38
+        },
+        "enabled": true,
+        "depth": 1,
+        "pid": 69174,
+        "hittable": true,
+        "ref": "e6",
+        "kind": "button"
+      }
+    ],
+    "truncated": false,
+    "appName": "dev.simcore.navigation",
+    "appBundleId": "dev.simcore.navigation",
+    "visibility": {
+      "partial": false,
+      "visibleNodeCount": 6,
+      "totalNodeCount": 6,
+      "reasons": []
+    },
+    "viewport": {
+      "width": 402,
+      "height": 874
+    },
+    "presentedSurface": "absent",
+    "snapshotDiagnostics": {
+      "stats": {
+        "count": 24,
+        "p50Ms": 74,
+        "p95Ms": 223,
+        "maxMs": 299,
+        "slowThresholdMs": 1500,
+        "platform": "ios",
+        "backends": {
+          "xctest": 24
+        }
+      }
+    },
+    "refsGeneration": 969878
+  }
+}

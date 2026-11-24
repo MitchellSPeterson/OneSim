@@ -9,7 +9,7 @@ pub type TextCb = Option<unsafe extern "C" fn(*mut c_void, u64, *const c_char)>;
 pub type EnvCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char, f64, f64)>;
 /// (ctx, phase 0 start / 1 move / 2 end / 3 cancel, time ms, points, point count, keys, frames, target count).
 pub type GestureCb = Option<unsafe extern "C" fn(*mut c_void, i32, f64, *const f64, usize, *const *const c_char, *const f64, usize)>;
-/// (ctx, whole host JSON line for `geometry`, `scroll_position`, or `layout`).
+/// (ctx, whole host JSON line for `geometry`, `scroll_position`, `layout`, `tick`, `scene_phase`, `open_url` or `pasteboard`).
 pub type LayoutCb = Option<unsafe extern "C" fn(*mut c_void, *const c_char)>;
 /// Guest work finished off the runtime thread (an `AsyncImage` HTTP completion). Same ctx as the other callbacks.
 pub type WakeCb = Option<unsafe extern "C" fn(*mut c_void)>;
@@ -71,9 +71,17 @@ fn submit(json: &[u8], version: u64) -> Result<(), String> {
     } else {
         raw.get()
     };
-    send_line(&format!(r#"{{"type":"tree","version":{version},"root":{root}}}"#))?;
-    STATE.with(|s| s.borrow_mut().last_version = Some(version));
-    Ok(())
+    STATE.with(|s| {
+        let mut s = s.borrow_mut();
+        let out = s.out.as_mut().ok_or("runtime not initialized")?;
+        write!(out, r#"{{"type":"tree","version":{version},"root":"#)
+            .and_then(|_| out.write_all(root.as_bytes()))
+            .and_then(|_| out.write_all(b"}\n"))
+            .and_then(|_| out.flush())
+            .map_err(|e| format!("write to host failed: {e}"))?;
+        s.last_version = Some(version);
+        Ok(())
+    })
 }
 
 /// Handle one host line. Returns false when the loop should stop.
@@ -116,7 +124,7 @@ fn handle_line(line: &str) -> bool {
                 deliver_gesture(cb, ctx, &v);
             }
         }
-        Some("geometry" | "scroll_position" | "layout" | "tick") => {
+        Some("geometry" | "scroll_position" | "layout" | "tick" | "pasteboard" | "scene_phase" | "open_url") => {
             if let Some(cb) = STATE.with(|s| s.borrow().on_layout) {
                 let owned = CString::new(line).unwrap_or_default();
                 unsafe { cb(ctx as *mut c_void, owned.as_ptr()) };
@@ -169,7 +177,7 @@ pub extern "C" fn simcore_runtime_init() -> i32 {
         // The CRT fd owns a Win32 handle; write to it directly so CRT text mode never turns `\n` into `\r\n`.
         #[cfg(windows)]
         let file: std::fs::File = std::os::windows::io::FromRawHandle::from_raw_handle(libc::get_osfhandle(fd) as _);
-        match init_with(Box::new(file)) {
+        match init_with(Box::new(std::io::BufWriter::new(file))) {
             Ok(()) => 0,
             Err(e) => { set_err(e); 1 }
         }
@@ -356,9 +364,14 @@ fn read_some(fd: i32, carry: &mut Vec<u8>) -> std::io::Result<Option<Vec<String>
     }
     carry.extend_from_slice(&buf[..n as usize]);
     let mut lines = Vec::new();
-    while let Some(i) = carry.iter().position(|&b| b == b'\n') {
-        let raw: Vec<u8> = carry.drain(..=i).collect();
-        lines.push(String::from_utf8_lossy(&raw).into_owned());
+    let mut start = 0;
+    while let Some(rel) = carry[start..].iter().position(|&b| b == b'\n') {
+        let end = start + rel + 1;
+        lines.push(String::from_utf8_lossy(&carry[start..end]).into_owned());
+        start = end;
+    }
+    if start > 0 {
+        carry.drain(..start);
     }
     Ok(Some(lines))
 }
@@ -427,6 +440,9 @@ mod tests {
         assert!(handle_line(r#"{"type":"geometry","frames":{}}"#));
         assert!(handle_line(r#"{"type":"scroll_position","scroll":"0","target":"row"}"#));
         assert!(handle_line(r#"{"type":"tick","time":120.0}"#));
+        assert!(handle_line(r#"{"type":"pasteboard","items":["hi"]}"#));
+        assert!(handle_line(r#"{"type":"scene_phase","phase":"inactive"}"#));
+        assert!(handle_line(r#"{"type":"open_url","url":"app://x"}"#));
         SEEN.with(|s| {
             assert_eq!(
                 s.borrow().as_slice(),
@@ -434,6 +450,9 @@ mod tests {
                     r#"l{"type":"geometry","frames":{}}"#,
                     r#"l{"type":"scroll_position","scroll":"0","target":"row"}"#,
                     r#"l{"type":"tick","time":120.0}"#,
+                    r#"l{"type":"pasteboard","items":["hi"]}"#,
+                    r#"l{"type":"scene_phase","phase":"inactive"}"#,
+                    r#"l{"type":"open_url","url":"app://x"}"#,
                 ]
             )
         });

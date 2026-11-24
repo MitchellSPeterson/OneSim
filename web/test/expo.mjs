@@ -93,8 +93,9 @@ try {
       type: () => `onesim.type(${JSON.stringify(v)})`,
       key: () => `onesim.key(${JSON.stringify(v)})`,
       scroll: () => `onesim.scroll(${nums().join(",")})`,
-      // A touch drag as web/main.js makes it: pointer down, drag begin, 8 moves 16 ms apart, end (like the native --drag).
-      drag: () => { const [x, y, dx, dy] = nums(); return `(() => { const t = performance.now(); onesim.pointer("down", ${x}, ${y}); onesim.drag("begin", ${x}, ${y}, t); for (let i = 1; i <= 8; i++) onesim.drag("move", ${x} + ${dx} * i / 8, ${y} + ${dy} * i / 8, t + 16 * i); onesim.drag("end", ${x + dx}, ${y + dy}, t + 144); })()`; },
+      // A touch drag as web/main.js makes it: pointer down, drag begin, moves 16 ms apart in real time (so the guest
+      // can answer between them, e.g. claim the touch), lifted at rest: no fling (like the native --drag).
+      drag: () => { const [x, y, dx, dy] = nums(); return `(async () => { const t = performance.now(); onesim.pointer("down", ${x}, ${y}); onesim.drag("begin", ${x}, ${y}, t); for (let i = 1; i <= 8; i++) { await new Promise((r) => setTimeout(r, 16)); onesim.drag("move", ${x} + ${dx} * i / 8, ${y} + ${dy} * i / 8, t + 16 * i); } onesim.drag("end", ${x + dx}, ${y + dy}, t + 1144); })()`; },
     }[kind]();
     try { await ev(call); } catch (e) { fail(`--${kind} ${v}: ${e.message}`); break; }
     trees = await settle(trees, 2000);

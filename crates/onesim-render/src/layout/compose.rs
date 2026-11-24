@@ -5,8 +5,7 @@
 //! them, as in AndroidX), so this module only models `androidx.compose.ui` + `foundation.layout` semantics:
 //! constraints flow down, sizes flow up, parents place children. Units are dp (= scene points).
 
-use super::rn::{ModalLayers, Placement};
-use super::swiftui::SceneParams;
+use super::common::{Embedded, ModalLayers, Placement, SceneParams};
 use crate::chrome::{android_nav_handle, android_status_bar};
 use crate::compose_text::{self, ComposeText};
 use crate::scene::{Color, Node, Rect, Role, Scene, ScrollInfo, Shadow, TextRun};
@@ -33,11 +32,11 @@ pub fn measure_text(request: onesim_protocol::ComposeMeasureText, fonts: &mut Fo
     let node = ViewNode {
         id: String::new(),
         modifiers: vec![],
-        kind: ViewKind::Compose { component: "Text".into(), props, children: vec![] },
+        kind: ViewKind::Compose { component: "Text".into(), props: Box::new(props), children: vec![] },
     };
     let measured = cx.text(&node, parts(&node).1, c);
     if let Some(paint) = request.paint {
-        return paint_text(&measured, paint, density, cx.fonts);
+        return paint_text(measured, paint, density, cx.fonts);
     }
     let Deco::Text(run, Some(layout)) = measured.deco else { return None };
     if request.intrinsic != 0 {
@@ -49,7 +48,7 @@ pub fn measure_text(request: onesim_protocol::ComposeMeasureText, fonts: &mut Fo
 }
 
 fn paint_text(
-    measured: &Laid,
+    measured: Laid,
     paint: onesim_protocol::ComposeTextPaint,
     density: f32,
     fonts: &mut Fonts,
@@ -152,7 +151,7 @@ enum Deco {
     Click { action: Option<u64>, role: Role, label: Option<String> },
     Text(TextRun, Option<Box<ComposeText>>),
     Control(Box<Node>),
-    Embedded(super::rn::Embedded),
+    Embedded(Embedded),
     /// The component's own node (`Box`, `Column`, `Row`).
     Core(&'static str),
     SelectionContainer,
@@ -251,7 +250,7 @@ impl Cx<'_> {
     /// Modifier `i` (outermost first) wraps everything after it.
     fn chain(&mut self, n: &ViewNode, mods: &[Value], i: usize, c: C) -> Laid {
         let Some(m) = mods.get(i) else { return self.core(n, c) };
-        let id = format!("{}#m{i}", n.id);
+        let make_id = || format!("{}#m{i}", n.id);
         let next = |cx: &mut Self, c: C| cx.chain(n, mods, i + 1, c);
         if let Some(vertical) = m.get("scroll").and_then(Value::as_bool) {
             let inner = next(self, if vertical { C { max_h: INF, ..c } } else { C { max_w: INF, ..c } });
@@ -277,11 +276,16 @@ impl Cx<'_> {
             next(cx, c.constrain(t))
         };
         if let Some(p) = m.get("padding").and_then(Value::as_array) {
-            let p: Vec<f64> = (0..4).map(|k| self.px(p.get(k).and_then(Value::as_f64).unwrap_or(0.0))).collect();
+            let p = [
+                self.px(p.first().and_then(Value::as_f64).unwrap_or(0.0)),
+                self.px(p.get(1).and_then(Value::as_f64).unwrap_or(0.0)),
+                self.px(p.get(2).and_then(Value::as_f64).unwrap_or(0.0)),
+                self.px(p.get(3).and_then(Value::as_f64).unwrap_or(0.0)),
+            ];
             let (h, v) = (p[0] + p[2], p[1] + p[3]);
             let inner = next(self, c.shrink(h, v));
             let (w, ht) = c.size(inner.w + h, inner.h + v);
-            return Laid { id, w, h: ht, deco: Deco::None, kids: vec![(p[0], p[1], inner)] };
+            return Laid { id: make_id(), w, h: ht, deco: Deco::None, kids: vec![(p[0], p[1], inner)] };
         }
         if let Some(w) = self.opx(f(m, "width")) {
             return sized(self, Some(w), Some(w), None, None);
@@ -302,12 +306,12 @@ impl Cx<'_> {
         if let Some(w) = self.opx(f(m, "requiredWidth")) {
             let inner = next(self, C { min_w: w, max_w: w, ..c });
             let (ow, oh) = c.size(inner.w, inner.h);
-            return Laid { id, w: ow, h: oh, deco: Deco::None, kids: vec![(self.bias(ow, inner.w, 0.0), 0.0, inner)] };
+            return Laid { id: make_id(), w: ow, h: oh, deco: Deco::None, kids: vec![(self.bias(ow, inner.w, 0.0), 0.0, inner)] };
         }
         if let Some(h) = self.opx(f(m, "requiredHeight")) {
             let inner = next(self, C { min_h: h, max_h: h, ..c });
             let (ow, oh) = c.size(inner.w, inner.h);
-            return Laid { id, w: ow, h: oh, deco: Deco::None, kids: vec![(0.0, self.bias(oh, inner.h, 0.0), inner)] };
+            return Laid { id: make_id(), w: ow, h: oh, deco: Deco::None, kids: vec![(0.0, self.bias(oh, inner.h, 0.0), inner)] };
         }
         if let Some(d) = m.get("defaultMinSize") {
             let (w, h) = pair(d);
@@ -350,14 +354,14 @@ impl Cx<'_> {
             let (w, h) = (inner.w.max(c.min_w), inner.h.max(c.min_h));
             let x = bh.map_or(0.0, |bias| self.bias(w, inner.w, bias));
             let y = bv.map_or(0.0, |bias| self.bias(h, inner.h, bias));
-            return Laid { id, w, h, deco: Deco::None, kids: vec![(x, y, inner)] };
+            return Laid { id: make_id(), w, h, deco: Deco::None, kids: vec![(x, y, inner)] };
         }
         if let Some(min) = self.opx(f(m, "minInteractive")) {
             // `minimumInteractiveComponentSize`: at least `min` on each side, content centred; may exceed the
             // incoming constraints (Material buttons are 40 dp tall inside a 48 dp slot).
             let inner = next(self, c);
             let (w, h) = (inner.w.max(min), inner.h.max(min));
-            return Laid { id, w, h, deco: Deco::None, kids: vec![(self.bias(w, inner.w, 0.0), self.bias(h, inner.h, 0.0), inner)] };
+            return Laid { id: make_id(), w, h, deco: Deco::None, kids: vec![(self.bias(w, inner.w, 0.0), self.bias(h, inner.h, 0.0), inner)] };
         }
         if m.get("weight").is_some() || m.get("align").is_some() {
             return next(self, c); // parent data, read by the parent
@@ -366,7 +370,7 @@ impl Cx<'_> {
             let (x, y) = pair(o);
             let (x, y) = (self.opx(x), self.opx(y));
             let inner = next(self, c);
-            return Laid { id, w: inner.w, h: inner.h, deco: Deco::None, kids: vec![(x.unwrap_or(0.0), y.unwrap_or(0.0), inner)] };
+            return Laid { id: make_id(), w: inner.w, h: inner.h, deco: Deco::None, kids: vec![(x.unwrap_or(0.0), y.unwrap_or(0.0), inner)] };
         }
         let deco = if let Some(b) = m.get("background") {
             Deco::Background(color(b.get("color")).unwrap_or(Color::rgba(0.0, 0.0, 0.0, 0.0)), Shape::parse(b.get("shape")))
@@ -392,7 +396,7 @@ impl Cx<'_> {
             Deco::None
         };
         let inner = next(self, c);
-        Laid::wrap(id, deco, inner)
+        Laid::wrap(make_id(), deco, inner)
     }
 
     /// The component itself, under all of its modifiers.
@@ -813,37 +817,38 @@ fn label_of(l: &Laid, out: &mut Vec<String>) {
     }
 }
 
-fn flatten(l: &Laid, x: f64, y: f64, parent: usize, opacity: f32, out: &mut Vec<Node>, modals: &mut ModalLayers) {
-    let mut n = Node::new(&l.id, "layer");
-    n.bounds = Rect { x, y, w: l.w, h: l.h };
+fn flatten(l: Laid, x: f64, y: f64, parent: usize, opacity: f32, out: &mut Vec<Node>, modals: &mut ModalLayers) {
+    let Laid { id, w, h, deco, kids } = l;
+    let mut n = Node::new(id, "layer");
+    n.bounds = Rect { x, y, w, h };
     n.parent = Some(parent);
     n.inspect = false;
     let mut op = opacity;
-    match &l.deco {
+    match deco {
         Deco::None => {}
         Deco::Background(c, s) => {
             n.kind = "background";
-            n.fill = Some(*c);
-            n.radius = s.radius(l.w, l.h);
+            n.fill = Some(c);
+            n.radius = s.radius(w, h);
         }
-        Deco::Border(w, c, s) => {
+        Deco::Border(bw, c, s) => {
             // Compose draws the border inside the bounds; the scene strokes on the outline.
             n.kind = "border";
-            n.stroke = Some((*c, *w));
-            n.radius = (s.radius(l.w, l.h) - w / 2.0).max(0.0);
-            n.bounds = Rect { x: x + w / 2.0, y: y + w / 2.0, w: (l.w - w).max(0.0), h: (l.h - w).max(0.0) };
+            n.stroke = Some((c, bw));
+            n.radius = (s.radius(w, h) - bw / 2.0).max(0.0);
+            n.bounds = Rect { x: x + bw / 2.0, y: y + bw / 2.0, w: (w - bw).max(0.0), h: (h - bw).max(0.0) };
         }
         Deco::Clip(s) => {
             n.kind = "clip";
-            n.clip_radius = Some(s.radius(l.w, l.h));
+            n.clip_radius = Some(s.radius(w, h));
         }
-        Deco::Shadow(e, s) if *e > 0.0 => {
+        Deco::Shadow(e, s) if e > 0.0 => {
             // Android's elevation shadow: an ambient shadow plus a spot shadow cast by a light above the top of the
             // screen, so it shifts down more the lower the element sits. Fitted (RMS 1.3/255) to an elevated card
             // (1 dp) and an extended FAB (6 dp) on the Android 17 emulator.
-            let r = s.radius(l.w, l.h);
-            let mut layer = |id: String, bounds: Rect, radius: f64, sh: Shadow| {
-                let mut m = Node::new(&id, "shadow");
+            let r = s.radius(w, h);
+            let mut layer = |lid: String, bounds: Rect, radius: f64, sh: Shadow| {
+                let mut m = Node::new(lid, "shadow");
                 m.bounds = bounds;
                 m.parent = Some(parent);
                 m.inspect = false;
@@ -853,24 +858,26 @@ fn flatten(l: &Laid, x: f64, y: f64, parent: usize, opacity: f32, out: &mut Vec<
                 out.push(m);
             };
             let black = |a: f32| Color::rgba(0.0, 0.0, 0.0, a);
-            layer(format!("{}#ambient", l.id), n.bounds, r, Shadow { color: black(0.088), radius: 0.285 * e, dx: 0.0, dy: 0.0 });
+            layer(format!("{}#ambient", n.id), n.bounds, r, Shadow { color: black(0.088), radius: 0.285 * e, dx: 0.0, dy: 0.0 });
             const LIGHT_Z: f64 = 398.0;
-            let inset = (0.686 * e).min(l.w / 2.0).min(l.h / 2.0);
-            let spot = Rect { x: x + inset, y: y + inset, w: l.w - 2.0 * inset, h: l.h - 2.0 * inset };
-            let dy = e * (y + l.h / 2.0) / (LIGHT_Z - e).max(1.0);
-            layer(format!("{}#spot", l.id), spot, (r - inset).max(0.0), Shadow { color: black(0.199), radius: 0.861 * e, dx: 0.0, dy });
+            let inset = (0.686 * e).min(w / 2.0).min(h / 2.0);
+            let spot = Rect { x: x + inset, y: y + inset, w: w - 2.0 * inset, h: h - 2.0 * inset };
+            let dy = e * (y + h / 2.0) / (LIGHT_Z - e).max(1.0);
+            layer(format!("{}#spot", n.id), spot, (r - inset).max(0.0), Shadow { color: black(0.199), radius: 0.861 * e, dx: 0.0, dy });
         }
         Deco::Shadow(..) => {}
         Deco::Alpha(a) => op *= a,
         Deco::Click { action, role, label } => {
             n.kind = "clickable";
             n.inspect = true;
-            n.action = *action;
+            n.action = action;
             n.disabled = action.is_none();
-            n.role = *role;
-            n.label = label.clone().or_else(|| {
+            n.role = role;
+            n.label = label.or_else(|| {
                 let mut parts = vec![];
-                label_of(l, &mut parts);
+                for (_, _, k) in &kids {
+                    label_of(k, &mut parts);
+                }
                 (!parts.is_empty()).then(|| parts.join(" "))
             });
         }
@@ -883,8 +890,8 @@ fn flatten(l: &Laid, x: f64, y: f64, parent: usize, opacity: f32, out: &mut Vec<
             {
                 n.clip_radius = Some(0.0);
             }
-            n.text = Some(t.clone());
-            n.compose_text = interactive.clone();
+            n.text = Some(t);
+            n.compose_text = interactive;
         }
         Deco::Bullet(bullet, color, density) => {
             use crate::scene::{VectorFill, VectorGeom, VectorShape};
@@ -898,8 +905,8 @@ fn flatten(l: &Laid, x: f64, y: f64, parent: usize, opacity: f32, out: &mut Vec<
             });
             let ink = if bullet.wire.brush.is_some() {
                 Color::rgba(1.0, 1.0, 1.0, bullet.wire.alpha.unwrap_or(1.0))
-            } else { *color };
-            let stroke = bullet.wire.stroke_style.as_ref().map(|style| crate::compose_paint::stroke(style, ink, *density));
+            } else { color };
+            let stroke = bullet.wire.stroke_style.as_ref().map(|style| crate::compose_paint::stroke(style, ink, density));
             n.kind = "bullet";
             let shape = bullet.wire.shape.as_ref().unwrap_or(&Value::Null);
             let geom = if let Ok(ops) = serde_json::from_value(shape["path"].clone()) {
@@ -927,7 +934,7 @@ fn flatten(l: &Laid, x: f64, y: f64, parent: usize, opacity: f32, out: &mut Vec<
         }
         Deco::Control(control) => {
             let (bounds, parent) = (n.bounds, n.parent);
-            n = (**control).clone();
+            n = *control;
             n.bounds = bounds;
             n.parent = parent;
             op *= n.opacity;
@@ -944,7 +951,7 @@ fn flatten(l: &Laid, x: f64, y: f64, parent: usize, opacity: f32, out: &mut Vec<
     n.opacity = op;
     let idx = out.len();
     out.push(n);
-    for (dx, dy, k) in &l.kids {
+    for (dx, dy, k) in kids {
         flatten(k, x + dx, y + dy, idx, op, out, modals);
     }
 }
@@ -964,10 +971,11 @@ pub(super) fn embedded(
         min_w: 0.0, max_w: available.0.unwrap_or(INF),
         min_h: 0.0, max_h: available.1.unwrap_or(INF),
     });
+    let size = (laid.w, laid.h);
     if let Some(Placement { bounds, parent, opacity, nodes, modals }) = place {
-        flatten(&laid, bounds.x, bounds.y, parent, opacity, nodes, modals);
+        flatten(laid, bounds.x, bounds.y, parent, opacity, nodes, modals);
     }
-    (laid.w, laid.h)
+    size
 }
 
 /// Lay out a Compose tree full screen (edge to edge) and add the Android system bars.
@@ -986,7 +994,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     // The content view gets the window's constraints, like ComposeView in an Activity: loose, bounded by the screen.
     let laid = cx.measure(root, C { min_w: 0.0, max_w: w, min_h: 0.0, max_h: h });
     let mut modals = ModalLayers::default();
-    flatten(&laid, 0.0, 0.0, 0, 1.0, &mut nodes, &mut modals);
+    flatten(laid, 0.0, 0.0, 0, 1.0, &mut nodes, &mut modals);
     modals.paint(&mut nodes);
     if params.status_bar {
         android_status_bar(&mut nodes, params, cx.fonts, dark);

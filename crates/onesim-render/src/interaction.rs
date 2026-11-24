@@ -4,9 +4,10 @@
 //! and keyboard events together with the scene they hit; it returns what the transport must do:
 //! the native host sends the effect over the guest wire, the browser calls the Swift callbacks.
 use crate::text_links::{Link, TextLinks};
-use crate::{autocap, ChromeParams, Role, Scene, SheetPos};
-use onesim_protocol::{GestureTarget, GestureTouch, KeyboardEvent, PointerEvent, PointerKind, TouchPhase};
+use crate::{autocap, chrome::Keypad, ChromeParams, Role, Scene, SheetPos};
+use onesim_protocol::{Axis, GestureTarget, GestureTouch, KeyboardEvent, PointerEvent, PointerKind, TouchPhase};
 use std::collections::HashMap;
+use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Effect {
@@ -54,8 +55,14 @@ pub struct Interaction {
     motion: HashMap<String, (f64, Option<f64>)>,
     /// Fingers on SwiftUI gesture views (section L).
     touch: Option<Touch>,
+    /// A finger down on a control inside an axis-locked pan (a list row's swipe): the control keeps a tap, the pan
+    /// takes the touch once the finger leaves the slop along its axis.
+    armed: Option<Armed>,
     /// Time (ms) of the last synthesized touch (`pointer`), so whole gestures never overlap in time.
     clock: f64,
+    focus_tree: Option<u64>,
+    keypad: Option<Keypad>,
+    phone_symbols: bool,
 }
 
 /// A touch sequence owned by SwiftUI gesture views.
@@ -64,6 +71,10 @@ struct Touch {
     targets: Vec<GestureTarget>,
     /// Whether any target follows a moving finger; if none does, a scroller under it takes a moving touch.
     pans: bool,
+    /// The panning targets follow only this axis (a list row's swipe): a finger first moving mostly along the other
+    /// axis goes to the scroller under it. Settled once the finger leaves the slop.
+    axis: Option<onesim_protocol::Axis>,
+    decided: bool,
     start: (f64, f64),
     points: Vec<[f64; 2]>,
     time: f64,
@@ -72,6 +83,16 @@ struct Touch {
     /// First caller timestamp seen and the touch time it maps to: a touch begun by `pointer` (wall clock) and
     /// continued by `drag` (the transport's clock) keeps one time line.
     base: Option<(f64, f64)>,
+}
+
+/// See `Interaction::armed`.
+#[derive(Debug)]
+struct Armed {
+    start: (f64, f64),
+    time: f64,
+    axis: onesim_protocol::Axis,
+    /// The scroller under the finger and its offset at the down, restored if the pan takes over.
+    scroll: Option<(String, Option<(f64, f64)>)>,
 }
 
 impl Touch {
@@ -83,7 +104,7 @@ impl Touch {
 }
 
 /// A finger must move this far (pt) before a scroller takes a touch from a tap-only gesture view (UIScrollView's slop).
-const PAN_SLOP: f64 = 10.0;
+pub(crate) const PAN_SLOP: f64 = 10.0;
 /// Synthesized whole gestures (`drag`, `pinch`, `rotate`) move in this many steps, one per frame.
 const GESTURE_STEPS: u32 = 8;
 const FRAME_MS: f64 = 16.0;
@@ -95,7 +116,7 @@ const LIVE_HOLD_MS: f64 = 50.0;
 const FINGER_GAP: f64 = 100.0;
 
 /// Wall-clock milliseconds. ponytail: 0 on wasm32-unknown-unknown (no clock); only the GPU presenter builds there and it sends no input.
-fn now_ms() -> f64 {
+pub(crate) fn now_ms() -> f64 {
     #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
     return 0.0;
     #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -123,6 +144,7 @@ struct SheetDrag {
     detent: usize,
     top0: f64,
     dismiss: Option<u64>,
+    scrolls_first: bool,
     start: (f64, f64),
     last: f64,
     samples: Vec<(f64, f64)>,
@@ -188,10 +210,11 @@ fn unshown(o: f64, max: f64, d: f64) -> f64 {
 pub fn step(mut o: f64, mut v: f64, max: f64, dt: f64, to: Option<f64>) -> (f64, f64) {
     // 1 ms sub-steps: exact enough, and momentum hands over to the spring the moment it crosses an edge.
     let h = 0.001;
+    let decay = (-DECEL * h).exp();
     for _ in 0..(dt / h).round().max(1.0) as usize {
         let edge = to.unwrap_or(o.clamp(0.0, max));
         if to.is_none() && o == edge {
-            v *= (-DECEL * h).exp();
+            v *= decay;
             if v.abs() < MIN_V {
                 return (o, 0.0);
             }
@@ -281,6 +304,11 @@ fn under(scene: &Scene, mut i: usize, ancestor: usize) -> bool {
 }
 
 impl Interaction {
+    /// Whether the scroller `id` is still moving on its own (momentum or a bounce).
+    pub fn moving(&self, id: &str) -> bool {
+        self.motion.contains_key(id)
+    }
+
     pub fn has_drag_target(&self) -> bool {
         self.slider_drag.is_some() || self.drag.is_some()
     }
@@ -292,7 +320,34 @@ impl Interaction {
 
     /// Chrome parameters for the next layout (pair with `focus.as_deref()`).
     pub fn chrome(&self) -> ChromeParams {
-        ChromeParams { keyboard: self.focus.is_some(), shift: self.shift }
+        ChromeParams { keyboard: self.focus.is_some(), shift: self.shift, keypad: self.keypad.is_some(), phone_symbols: self.phone_symbols }
+    }
+
+    /// Apply guest focus requests once per tree. Unbound inputs keep host-owned focus.
+    pub fn sync_text_focus(&mut self, scene: &Scene, version: u64) -> bool {
+        if self.focus_tree == Some(version) {
+            return false;
+        }
+        self.focus_tree = Some(version);
+        let inputs = || scene.nodes.iter().filter(|n| n.field.is_some() && !n.disabled && n.kind == "text_field");
+        let requested = || inputs().filter(|n| n.input.as_ref().and_then(|i| i.focused) == Some(true));
+        let next = requested().find(|n| self.focus.as_ref() == Some(&n.id))
+            .or_else(|| requested().next())
+            .or_else(|| inputs().find(|n| self.focus.as_ref() == Some(&n.id) && n.input.as_ref().and_then(|i| i.focused).is_none()));
+        self.set_text_focus(next)
+    }
+
+    fn set_text_focus(&mut self, node: Option<&crate::Node>) -> bool {
+        let focus = node.map(|n| n.id.clone());
+        let keypad = node.and_then(|n| Keypad::for_input(n.input.as_deref()?));
+        if self.focus == focus && self.keypad == keypad {
+            return false;
+        }
+        self.focus = focus;
+        self.keypad = keypad;
+        self.phone_symbols = false;
+        self.shift = node.is_some_and(|n| input_shift(n, n.value.as_deref().unwrap_or_default()));
+        true
     }
 
     /// `click` = down + up. A hit on a text field focuses it; any other click unfocuses. `scroll`
@@ -410,15 +465,19 @@ impl Interaction {
             return self.press_key(&label, shifted, scene);
         }
         let before = (self.focus.clone(), self.shift);
+        let previous = self.focused_field(scene);
+        let mut focus_action = None;
         if ev.kind != PointerKind::Down && !on_keyboard {
-            let new = hit.filter(|n| n.field.is_some()).map(|n| n.id.clone());
-            if new != self.focus {
-                self.shift = hit.and_then(|n| n.value.as_deref()).is_some_and(autocap);
+            let next = hit.filter(|n| n.field.is_some() && !n.disabled);
+            // A control can move or clear a bound focus explicitly in its action.
+            let retain = fire.is_some() && previous.is_some_and(|n| n.input.as_ref().is_some_and(|i| i.focused.is_some()));
+            if !retain && self.set_text_focus(next) {
+                focus_action = next.and_then(|n| n.input.as_ref()?.focus_action)
+                    .or_else(|| previous.and_then(|n| n.input.as_ref()?.blur_action));
             }
-            self.focus = new;
         }
-        if let Some(id) = fire {
-            self.acted = true;
+        if let Some(id) = fire.or(focus_action) {
+            self.acted = fire.is_some();
             return Effect::Action { id, version: self.version };
         }
         if released && link_release && matches!(ev.kind, PointerKind::Click | PointerKind::Up) {
@@ -478,17 +537,26 @@ impl Interaction {
     /// screen pushed at the same depth reuses them; like the guest's `@State`, a popped screen's
     /// offsets must not carry over (iOS starts every pushed view at the top).
     fn forget_gone(&mut self, scene: &Scene) {
-        let live: std::collections::HashSet<&str> = scene.nodes.iter().filter(|n| n.scroll.is_some()).map(|n| n.id.as_str()).collect();
-        self.scroll.retain(|id, _| live.contains(id.as_str()));
-        self.motion.retain(|id, _| live.contains(id.as_str()));
-        let sheets: std::collections::HashSet<&str> = scene.nodes.iter().filter(|n| n.sheet.is_some()).map(|n| n.id.as_str()).collect();
-        self.sheets.retain(|id, _| sheets.contains(id.as_str()));
-        if self.pending.as_ref().or(self.sheet_drag.as_ref()).is_some_and(|d| !sheets.contains(d.id.as_str())) {
-            self.pending = None;
-            self.sheet_drag = None;
+        let has_scroll = !self.scroll.is_empty() || !self.motion.is_empty() || self.drag.is_some();
+        let has_sheet = !self.sheets.is_empty() || self.pending.is_some() || self.sheet_drag.is_some();
+        if !has_scroll && !has_sheet {
+            return;
         }
-        if self.drag.as_ref().is_some_and(|d| !live.contains(d.id.as_str())) {
-            self.drag = None;
+        if has_scroll {
+            let live: std::collections::HashSet<&str> = scene.nodes.iter().filter(|n| n.scroll.is_some()).map(|n| n.id.as_str()).collect();
+            self.scroll.retain(|id, _| live.contains(id.as_str()));
+            self.motion.retain(|id, _| live.contains(id.as_str()));
+            if self.drag.as_ref().is_some_and(|d| !live.contains(d.id.as_str())) {
+                self.drag = None;
+            }
+        }
+        if has_sheet {
+            let sheets: std::collections::HashSet<&str> = scene.nodes.iter().filter(|n| n.sheet.is_some()).map(|n| n.id.as_str()).collect();
+            self.sheets.retain(|id, _| sheets.contains(id.as_str()));
+            if self.pending.as_ref().or(self.sheet_drag.as_ref()).is_some_and(|d| !sheets.contains(d.id.as_str())) {
+                self.pending = None;
+                self.sheet_drag = None;
+            }
         }
     }
 
@@ -620,15 +688,24 @@ impl Interaction {
     /// control (button, field, slider, key) above the innermost one takes the touch, as a `Button` inside a view with
     /// gestures does on iOS. Sets `hit` to the innermost gesture view.
     fn touch_at(&mut self, scene: &Scene, x: f64, y: f64, time: f64) -> Option<Touch> {
+        self.touch_through(scene, x, y, time, false)
+    }
+
+    /// `touch_at`, optionally past a control above the gesture views (an armed pan taking over).
+    fn touch_through(&mut self, scene: &Scene, x: f64, y: f64, time: f64, over_controls: bool) -> Option<Touch> {
         let targets = scene.gesture_targets(x, y);
         let &inner = targets.first()?;
-        if scene.hit_test(x, y).is_some_and(|c| c > inner) {
+        if !over_controls && scene.hit_test(x, y).is_some_and(|c| c > inner) {
             return None;
         }
         self.hit = Some(scene.nodes[inner].id.clone());
         let nodes = targets.iter().map(|&i| &scene.nodes[i]);
+        let panning: Vec<_> = nodes.clone().filter_map(|n| n.gesture.as_ref().filter(|g| g.pans)).collect();
+        let axis = panning.first().and_then(|g| g.axis).filter(|a| panning.iter().all(|g| g.axis == Some(*a)));
         Some(Touch {
-            pans: nodes.clone().any(|n| n.gesture.as_ref().is_some_and(|g| g.pans)),
+            axis,
+            decided: false,
+            pans: !panning.is_empty(),
             targets: nodes
                 .map(|n| GestureTarget { key: n.gesture.as_ref().map(|g| g.key.clone()).unwrap_or_default(), frame: [n.bounds.x, n.bounds.y, n.bounds.w, n.bounds.h] })
                 .collect(),
@@ -638,6 +715,59 @@ impl Interaction {
             held: time,
             base: Some((time, time)),
         })
+    }
+
+    /// Arm the pan under a control at (x, y) when every panning gesture view there follows one axis.
+    fn arm(&self, scene: &Scene, x: f64, y: f64, time: f64) -> Option<Armed> {
+        let targets = scene.gesture_targets(x, y);
+        let &inner = targets.first()?;
+        scene.hit_test(x, y).filter(|&c| c > inner)?;
+        let mut panning = targets.iter().filter_map(|&i| scene.nodes[i].gesture.as_ref().filter(|g| g.pans));
+        let axis = panning.next()?.axis?;
+        if !panning.all(|g| g.axis == Some(axis)) {
+            return None;
+        }
+        let scroll = scene.scroll_target(x, y).map(|i| {
+            let id = scene.nodes[i].id.clone();
+            let offset = self.scroll.get(&id).copied();
+            (id, offset)
+        });
+        Some(Armed { start: (x, y), time, axis, scroll })
+    }
+
+    /// An armed pan whose finger moved to (x, y): past the slop along its axis it takes the touch from the control
+    /// and the scroller (which go back to how they were at the down); across the axis it disarms.
+    fn take_armed(&mut self, scene: &Scene, x: f64, y: f64, t: f64) -> Option<Effect> {
+        let a = self.armed.as_ref()?;
+        let (sx, sy) = a.start;
+        if (x - sx).hypot(y - sy) <= PAN_SLOP {
+            return None;
+        }
+        let along = match a.axis {
+            onesim_protocol::Axis::Horizontal => (x - sx).abs() >= (y - sy).abs(),
+            onesim_protocol::Axis::Vertical => (y - sy).abs() >= (x - sx).abs(),
+        };
+        let a = self.armed.take()?;
+        if !along {
+            return None;
+        }
+        let mut touch = self.touch_through(scene, sx, sy, a.time, true)?;
+        touch.decided = true;
+        self.pressed = None;
+        self.drag = None;
+        if let Some((id, offset)) = a.scroll {
+            self.motion.remove(&id);
+            match offset {
+                Some(o) => self.scroll.insert(id, o),
+                None => self.scroll.remove(&id),
+            };
+        }
+        let start = Self::touch_event(&touch, TouchPhase::Start);
+        touch.points = vec![[x, y]];
+        touch.at(t);
+        let moved = Self::touch_event(&touch, TouchPhase::Move);
+        self.touch = Some(touch);
+        Some(Effect::Gesture(vec![start, moved]))
     }
 
     fn touch_event(t: &Touch, phase: TouchPhase) -> GestureTouch {
@@ -655,7 +785,11 @@ impl Interaction {
                     return Some(Effect::None);
                 }
                 self.touch = None;
-                let touch = self.touch_at(scene, x, y, t)?;
+                self.armed = None;
+                let Some(touch) = self.touch_at(scene, x, y, t) else {
+                    self.armed = self.arm(scene, x, y, t);
+                    return None;
+                };
                 self.pressed = None;
                 self.drag = None;
                 self.pending = None;
@@ -666,9 +800,19 @@ impl Interaction {
                 Some(Effect::Gesture(vec![e]))
             }
             DragPhase::Move => {
+                if self.touch.is_none() {
+                    return self.take_armed(scene, x, y, t);
+                }
                 let touch = self.touch.as_mut()?;
                 let (sx, sy) = touch.start;
-                if !touch.pans && scene.scroll_target(sx, sy).is_some() && (x - sx).hypot(y - sy) > PAN_SLOP {
+                let out = (x - sx).hypot(y - sy) > PAN_SLOP;
+                // An axis-locked pan gives a finger moving mostly across its axis to the scroller.
+                let crosses = !touch.decided && out && touch.axis.is_some_and(|a| match a {
+                    onesim_protocol::Axis::Horizontal => (y - sy).abs() > (x - sx).abs(),
+                    onesim_protocol::Axis::Vertical => (x - sx).abs() > (y - sy).abs(),
+                });
+                touch.decided |= out;
+                if (!touch.pans || crosses) && scene.scroll_target(sx, sy).is_some() && out {
                     // The scroller takes over from where the finger came down; the gesture views see a cancel.
                     let mut touch = self.touch.take()?;
                     touch.at(t);
@@ -681,6 +825,7 @@ impl Interaction {
                 Some(Effect::Gesture(vec![Self::touch_event(touch, TouchPhase::Move)]))
             }
             DragPhase::End => {
+                self.armed = None;
                 let mut touch = self.touch.take()?;
                 touch.points = vec![[x, y]];
                 touch.at(t);
@@ -703,6 +848,28 @@ impl Interaction {
         Effect::Gesture(vec![Self::touch_event(touch, TouchPhase::Move)])
     }
 
+    /// The app left the foreground (iOS cancels its touches): a gesture touch ends in `cancel`, a press, slider drag or
+    /// armed pan is dropped, and a scroll or sheet drag settles as if the finger lifted at rest.
+    pub fn cancel_touches(&mut self, scene: &Scene) -> Effect {
+        self.armed = None;
+        self.pressed = None;
+        self.slider_drag = None;
+        self.pending = None;
+        self.text_selection.cancel_press();
+        let link_released = self.text_links.pressed.take().is_some();
+        if let Some(touch) = self.touch.take() {
+            return Effect::Gesture(vec![Self::touch_event(&touch, TouchPhase::Cancel)]);
+        }
+        // Past the velocity window of the last sample, so the release carries no speed.
+        let last = |s: &[(f64, f64)]| s.last().map_or(0.0, |p| p.0);
+        let t = match (&self.drag, &self.sheet_drag) {
+            (Some(d), _) => last(&d.samples),
+            (None, Some(d)) => last(&d.samples),
+            (None, None) => return if link_released { Effect::Redraw } else { Effect::None },
+        } + VELOCITY_WINDOW + 1.0;
+        self.drag(scene, DragPhase::End, 0.0, 0.0, t)
+    }
+
     /// Whether a finger is down on a gesture view or waiting for a text long press.
     pub fn holding(&self) -> bool {
         self.touch.is_some() || self.text_selection.waiting()
@@ -716,6 +883,7 @@ impl Interaction {
         match ev.kind {
             PointerKind::Down => return self.touch_drag(scene, DragPhase::Begin, x, y, t0),
             PointerKind::Up => {
+                self.armed = None;
                 let touch = self.touch.as_mut()?;
                 touch.base = Some((t0, t0)); // wall clock again, as at the down
                 let e = self.touch_drag(scene, DragPhase::End, x, y, t0);
@@ -754,8 +922,14 @@ impl Interaction {
                 out.push(Self::touch_event(&touch, TouchPhase::End));
             }
             PointerKind::Drag => {
-                let Some(Effect::Gesture(start)) = self.touch_drag(scene, DragPhase::Begin, x, y, t0) else { return None };
-                out.extend(start);
+                match self.touch_drag(scene, DragPhase::Begin, x, y, t0) {
+                    Some(Effect::Gesture(start)) => out.extend(start),
+                    // A control over an axis-locked pan: the scroller starts as usual; the pan may take over.
+                    _ if self.armed.is_some() => {
+                        self.drag(scene, DragPhase::Begin, x, y, t0);
+                    }
+                    _ => return None,
+                }
                 let mut t = t0;
                 for i in 1..=GESTURE_STEPS {
                     let f = f64::from(i) / f64::from(GESTURE_STEPS);
@@ -773,6 +947,11 @@ impl Interaction {
                     Effect::Action { .. } => return Some(e),
                     _ => {}
                 }
+                if out.is_empty() {
+                    // An armed pan that stayed with the scroller: an ordinary scroll drag.
+                    self.pressed = None;
+                    return Some(if self.hit.is_some() { Effect::Redraw } else { Effect::None });
+                }
             }
             PointerKind::Scroll | PointerKind::Hover | PointerKind::Cancel => return None,
         }
@@ -782,7 +961,15 @@ impl Interaction {
     }
 
     fn scroll_begin(&mut self, scene: &Scene, x: f64, y: f64, t: f64) -> Effect {
-        let Some(n) = scene.scroll_target(x, y).map(|i| &scene.nodes[i]) else { return Effect::None };
+        let Some(i) = scene.scroll_target(x, y) else { return Effect::None };
+        self.begin_scroll(scene, i, x, y, t)
+    }
+
+    /// A finger at (x, y) starts dragging the scroller `scene.nodes[i]` (an outer one when the drag's direction is not
+    /// the innermost's). Follow with `drag` moves and an end.
+    pub fn begin_scroll(&mut self, scene: &Scene, i: usize, x: f64, y: f64, t: f64) -> Effect {
+        self.forget_gone(scene);
+        let n = &scene.nodes[i];
         self.pressed = None;
         self.motion.remove(&n.id);
         if self.drag.as_ref().is_none_or(|d| d.id != n.id) {
@@ -816,6 +1003,7 @@ impl Interaction {
                     detent: info.detent,
                     top0: info.top,
                     dismiss: info.dismiss,
+                    scrolls_first: info.scrolls_first,
                     start: (x, y),
                     last: y,
                     samples: vec![(t, y)],
@@ -834,7 +1022,7 @@ impl Interaction {
                         self.pending = Some(p);
                         return Some(Effect::None);
                     }
-                    let at_largest = p.detent + 1 >= p.tops.len();
+                    let at_largest = p.detent + 1 >= p.tops.len() || p.scrolls_first;
                     let content = scene.scroll_target(p.start.0, p.start.1).map(|i| &scene.nodes[i]);
                     let scrolls = at_largest && content.and_then(|n| n.scroll).is_some_and(|s| dy < 0.0 || s.offset.1 > 0.0);
                     if scrolls {
@@ -885,12 +1073,15 @@ impl Interaction {
         }
     }
 
-    /// Advance scroll momentum and bounces by `dt` seconds. Returns true while anything is moving
-    /// (keep calling every frame), after updating `scroll`: re-layout when it returns true.
+    /// Advance text selection, scroll momentum and bounces by `dt` seconds.
+    /// Returns true when the scene needs to be laid out again.
     pub fn tick(&mut self, scene: &Scene, dt: f64) -> bool {
+        let mut moving = self.text_selection.tick(scene, dt);
+        if self.motion.is_empty() && self.scroll.is_empty() {
+            return moving;
+        }
         self.forget_gone(scene);
         let held = self.drag.as_ref().map(|d| d.id.clone());
-        let mut moving = self.text_selection.tick(scene, dt);
         for (i, n) in scene.nodes.iter().enumerate() {
             let Some(info) = n.scroll else { continue };
             if held.as_ref() == Some(&n.id) {
@@ -933,39 +1124,84 @@ impl Interaction {
         moving
     }
 
-    fn focused_field(&self, scene: &Scene) -> Option<(u64, String)> {
-        let n = self.focus.as_ref().and_then(|f| scene.nodes.iter().find(|n| &n.id == f && n.field.is_some()))?;
-        Some((n.field.expect("filtered"), n.value.clone().unwrap_or_default()))
+    /// Dismiss the keyboard and clear a SwiftUI focus binding, if present.
+    pub fn blur_text(&mut self, scene: &Scene) -> Effect {
+        let action = self.focused_field(scene).and_then(|n| n.input.as_ref()?.blur_action);
+        self.set_text_focus(None);
+        action.map_or(Effect::Redraw, |id| Effect::Action { id, version: self.version })
+    }
+
+    fn focused_field<'a>(&self, scene: &'a Scene) -> Option<&'a crate::Node> {
+        self.focus.as_ref().and_then(|f| scene.nodes.iter().find(|n| &n.id == f && n.field.is_some() && !n.disabled))
     }
 
     /// A tap on a software-keyboard key (`label` as exposed by the inspection tree).
     fn press_key(&mut self, label: &str, shifted: bool, scene: &Scene) -> Effect {
-        let Some((field, mut text)) = self.focused_field(scene) else { return Effect::None };
+        let Some(node) = self.focused_field(scene) else { return Effect::None };
         match label {
             "shift" => {
                 self.shift = !shifted;
-                return Effect::Redraw;
+                Effect::Redraw
             }
-            "return" => {
-                self.focus = None;
-                return Effect::Redraw;
+            "+*#" | "123" if self.keypad == Some(Keypad::Phone) => {
+                self.phone_symbols = !self.phone_symbols;
+                Effect::Redraw
             }
-            "delete" => {
-                text.pop();
+            "return" => self.enter(node),
+            "delete" => self.backspace(node),
+            "space" => self.append(node, " "),
+            "pause" if self.phone_symbols => self.append(node, ","),
+            "wait" if self.phone_symbols => self.append(node, ";"),
+            l if l.chars().count() == 1 => {
+                let text = if shifted { l.to_uppercase() } else { l.to_string() };
+                self.append(node, &text)
             }
-            "space" => text.push(' '),
-            // ponytail: no number/emoji/dictation layers; those keys are inert.
-            l if l.chars().count() == 1 => text.push_str(&if shifted { l.to_uppercase() } else { l.to_string() }),
-            _ => return Effect::None,
+            _ => Effect::None,
         }
-        // Typing a letter drops shift; a space after a sentence end or an empty field raises it.
-        self.shift = if label.chars().count() == 1 { false } else { autocap(&text) };
-        Effect::TextInput { field, version: self.version, text }
     }
 
-    /// Keyboard input for the focused text field: text is appended, `backspace` pops, any other
-    /// key (`enter`) unfocuses. Err when no field is focused.
+    fn enter(&mut self, node: &crate::Node) -> Effect {
+        if let Some(input) = &node.input {
+            if let Some(id) = input.submit_action {
+                return Effect::Action { id, version: self.version };
+            }
+            if input.editor || input.axis == Some(Axis::Vertical) {
+                return self.append(node, "\n");
+            }
+            if input.focused.is_some() {
+                return Effect::None;
+            }
+        }
+        self.set_text_focus(None);
+        Effect::Redraw
+    }
+
+    fn append(&mut self, node: &crate::Node, suffix: &str) -> Effect {
+        let mut text = node.value.clone().unwrap_or_default();
+        text.push_str(suffix);
+        self.edit(node, text)
+    }
+
+    fn backspace(&mut self, node: &crate::Node) -> Effect {
+        let mut text = node.value.clone().unwrap_or_default();
+        if let Some((start, _)) = text.grapheme_indices(true).next_back() {
+            text.truncate(start);
+        }
+        self.edit(node, text)
+    }
+
+    fn edit(&mut self, node: &crate::Node, text: String) -> Effect {
+        if node.input.as_ref().is_some_and(|input| input.editor || input.axis == Some(Axis::Vertical)) {
+            self.scroll.remove(&node.id);
+            self.motion.remove(&node.id);
+        }
+        self.shift = input_shift(node, &text);
+        Effect::TextInput { field: node.field.expect("focused field"), version: self.version, text }
+    }
+
+    /// Keyboard input for the focused text field.
     pub fn keyboard(&mut self, scene: &Scene, ev: KeyboardEvent) -> Result<Effect, &'static str> {
+        self.forget_gone(scene);
         if let KeyboardEvent::Key { key } = &ev {
             if matches!(key.as_str(), "tab" | "shift_tab") {
                 if let Some(focused) = self.text_links.traverse(scene, key == "shift_tab") {
@@ -986,26 +1222,28 @@ impl Interaction {
                 return Ok(if self.text_selection.shortcut(scene, key) { Effect::Redraw } else { Effect::None });
             }
         }
-        self.forget_gone(scene);
         if let Some(link) = self.text_links.focused_in(scene) {
             if matches!(&ev, KeyboardEvent::Text { text } if text == " ") {
                 return Ok(Effect::TextClick { id: link.action, version: self.version, offset: link.range[0] as u32 });
             }
         }
-        let (field, mut text) = self.focused_field(scene).ok_or("no focused text field (click a text field first)")?;
+        let node = self.focused_field(scene).ok_or("no focused text field (click a text field first)")?;
         match ev {
-            KeyboardEvent::Text { text: t } => text.push_str(&t),
-            KeyboardEvent::Key { key } if key == "backspace" => {
-                text.pop();
-            }
-            KeyboardEvent::Key { .. } => {
-                self.focus = None;
-                return Ok(Effect::Redraw);
-            }
+            KeyboardEvent::Text { text } => Ok(self.append(node, &text)),
+            KeyboardEvent::Key { key } if key == "backspace" => Ok(self.backspace(node)),
+            KeyboardEvent::Key { .. } => Ok(self.enter(node)),
         }
-        // Text arrives through the software keyboard, so its shift follows like for key taps.
-        self.shift = autocap(&text);
-        Ok(Effect::TextInput { field, version: self.version, text })
+    }
+
+}
+
+fn input_shift(node: &crate::Node, text: &str) -> bool {
+    match node.input.as_ref().and_then(|i| i.autocapitalization.as_deref()) {
+        Some("never") => false,
+        Some("characters") => true,
+        Some("words") => text.chars().next_back().is_none_or(char::is_whitespace),
+        _ if node.secure => false,
+        _ => autocap(text),
     }
 }
 
@@ -1020,29 +1258,42 @@ pub fn resolve_label(tree: &onesim_protocol::UiNode, spec: &str) -> Result<(f64,
         }
         n.children.iter().find_map(|c| find(c, pred))
     }
+    let skipped = |n: &UiNode| n.accessibility.as_ref().is_some_and(|a| a.hidden == Some(true) || a.suppressed);
     let center = |n: &UiNode| (n.frame.x + n.frame.width / 2.0, n.frame.y + n.frame.height / 2.0);
+    let point = |n: &UiNode| {
+        if let Some(p) = n.accessibility.as_ref().and_then(|a| a.activation.as_ref()) {
+            if p.unit {
+                return (n.frame.x + p.x * n.frame.width, n.frame.y + p.y * n.frame.height);
+            }
+            return (n.frame.x + p.x, n.frame.y + p.y);
+        }
+        center(n)
+    };
     if let Some((label, part)) = spec.rsplit_once('#') {
         if matches!(part, "increment" | "decrement") {
-            let st = find(tree, &|n| n.role.as_deref() == Some("stepper") && n.label.as_deref() == Some(label))
+            let st = find(tree, &|n| !skipped(n) && n.role.as_deref() == Some("stepper") && n.label.as_deref() == Some(label))
                 .ok_or_else(|| format!("no stepper labelled {label:?}"))?;
             let b = find(st, &|n| n.id.ends_with(&format!("#{part}"))).ok_or("stepper half not found")?;
             return Ok(center(b));
         }
     }
     // Software keyboard keys (`h`, `space`, `delete`, `shift`, `return`, `123`) win when it is up.
-    let key = find(tree, &|n| n.role.as_deref() == Some("key") && n.label.as_deref().is_some_and(|l| l.eq_ignore_ascii_case(spec)));
+    let key = find(tree, &|n| !skipped(n) && n.role.as_deref() == Some("key") && n.label.as_deref().is_some_and(|l| l.eq_ignore_ascii_case(spec)));
     let n = match key {
         Some(k) => k,
         None => find(tree, &|n| {
-            matches!(n.role.as_deref(), Some("button" | "toggle" | "textfield")) && n.label.as_deref() == Some(spec)
+            !skipped(n) && matches!(n.role.as_deref(), Some("button" | "toggle" | "textfield")) && n.label.as_deref() == Some(spec)
         })
         // A native stack header's back pill is labelled with the previous title; `Back` always finds it.
-        .or_else(|| find(tree, &|n| spec.eq_ignore_ascii_case("back") && n.id.ends_with("#back")))
+        .or_else(|| find(tree, &|n| !skipped(n) && spec.eq_ignore_ascii_case("back") && n.id.ends_with("#back")))
         // Any other view by its text (views with gestures have no control role).
-        .or_else(|| find(tree, &|n| n.role.as_deref() == Some("text") && n.label.as_deref() == Some(spec)))
+        .or_else(|| find(tree, &|n| !skipped(n) && n.role.as_deref() == Some("text") && n.label.as_deref() == Some(spec)))
+        // A combined container has role `none`. Its accessibility label is still a click target.
+        .or_else(|| find(tree, &|n| !skipped(n) && n.accessibility.is_some() && n.label.as_deref() == Some(spec)))
+        .or_else(|| find(tree, &|n| !skipped(n) && n.accessibility.as_ref().and_then(|a| a.identifier.as_deref()) == Some(spec)))
         .ok_or_else(|| format!("no button, toggle, text field, key or text labelled {spec:?}"))?,
     };
-    Ok(center(n))
+    Ok(point(n))
 }
 
 /// A scroller along its axis: (offset, max offset, viewport length, finger coordinate).
@@ -1069,6 +1320,221 @@ mod tests {
             }
         }
         panic!("still moving after 10 s: o={o} v={v}");
+    }
+
+    #[test]
+    fn swiftui_input_return_distinguishes_submit_from_newline() {
+        let mut node = crate::Node::new("entry", "text_field");
+        node.field = Some(1);
+        node.value = Some("👩🏾‍💻".into());
+        node.input = Some(Box::new(onesim_protocol::TextInputOptions {
+            focused: Some(true),
+            submit_action: Some(2),
+            ..Default::default()
+        }));
+        let mut scene = Scene {
+            size: (402.0, 874.0),
+            appearance: onesim_protocol::Appearance::Light,
+            ios: onesim_protocol::IosVersion::Ios27,
+            nodes: vec![node],
+            unsupported_symbols: vec![],
+            notes: vec![],
+        };
+        let mut inter = Interaction { focus: Some("entry".into()), version: 3, ..Default::default() };
+        let enter = KeyboardEvent::Key { key: "enter".into() };
+        assert_eq!(inter.keyboard(&scene, enter.clone()), Ok(Effect::Action { id: 2, version: 3 }));
+        assert_eq!(inter.focus.as_deref(), Some("entry"));
+        let input = scene.nodes[0].input.as_mut().unwrap();
+        input.editor = true;
+        input.submit_action = None;
+        assert_eq!(inter.keyboard(&scene, enter), Ok(Effect::TextInput { field: 1, version: 3, text: "👩🏾‍💻\n".into() }));
+        let delete = KeyboardEvent::Key { key: "backspace".into() };
+        assert_eq!(inter.keyboard(&scene, delete), Ok(Effect::TextInput { field: 1, version: 3, text: String::new() }));
+
+        let mut second = scene.nodes[0].clone();
+        second.id = "second".into();
+        second.input.as_mut().unwrap().blur_action = Some(4);
+        scene.nodes.push(second);
+        inter.focus = None;
+        assert!(inter.sync_text_focus(&scene, 4));
+        assert_eq!(inter.focus.as_deref(), Some("entry"));
+        inter.focus = Some("second".into());
+        assert!(!inter.sync_text_focus(&scene, 5));
+        assert_eq!(inter.focus.as_deref(), Some("second"));
+        assert_eq!(inter.blur_text(&scene), Effect::Action { id: 4, version: 3 });
+        assert!(inter.focus.is_none());
+        scene.nodes.iter_mut().for_each(|n| n.input.as_mut().unwrap().focused = Some(false));
+        assert!(!inter.sync_text_focus(&scene, 6));
+        assert!(inter.focus.is_none());
+    }
+
+    #[test]
+    fn editing_a_scrolled_vertical_field_brings_the_caret_back_into_view() {
+        let device = crate::device(crate::DEFAULT_DEVICE).unwrap();
+        let mut input: onesim_protocol::ViewNode = serde_json::from_str(
+            r#"{"kind":"text_field","id":"entry","field":1,"axis":"vertical",
+                "text":"First\nSecond\nThird","modifiers":[{"lineLimit":{"max":2}}]}"#,
+        ).unwrap();
+        let mut fonts = crate::Fonts::with_fallback(true);
+        let mut interaction = Interaction { focus: Some("entry".into()), ..Default::default() };
+        let mut layout = |root: &onesim_protocol::ViewNode, state: &Interaction| {
+            crate::build_scene(root, &crate::SceneParams {
+                viewport: (120.0, 200.0),
+                device,
+                scale: 1.0,
+                appearance: onesim_protocol::Appearance::Light,
+                dynamic_type: Default::default(),
+                ios: Default::default(),
+                scroll: &state.scroll,
+                sheets: &state.sheets,
+                focus: state.focus.as_deref(),
+                overscroll: false,
+                status_bar: false,
+                chrome: ChromeParams::default(),
+            }, &mut fonts)
+        };
+        let caret_visible = |scene: &Scene| {
+            let field = scene.nodes.iter().find(|n| n.id == "entry").unwrap().bounds;
+            let caret = scene.nodes.iter().find(|n| n.id == "entry#caret").unwrap().bounds;
+            field.contains(caret.x, caret.y)
+        };
+        let initial = layout(&input, &interaction);
+        let field = initial.nodes.iter().find(|n| n.id == "entry").unwrap().bounds;
+        let up = PointerEvent::moved(PointerKind::Scroll, field.x + 5.0, field.y + 5.0, 0.0, -100.0);
+        assert_eq!(interaction.pointer(&initial, up), Effect::Redraw);
+        let scrolled = layout(&input, &interaction);
+        assert!(!caret_visible(&scrolled));
+
+        let effect = interaction.keyboard(&scrolled, KeyboardEvent::Text { text: " line".into() }).unwrap();
+        let Effect::TextInput { text, .. } = effect else { panic!("expected text update, got {effect:?}") };
+        let onesim_protocol::ViewKind::TextField { text: value, .. } = &mut input.kind else { unreachable!() };
+        *value = text;
+        assert!(caret_visible(&layout(&input, &interaction)));
+    }
+
+    #[test]
+    fn leaving_the_foreground_cancels_touches() {
+        use crate::scene::{Node, Rect, ScrollInfo};
+        let mut list = Node::new("list", "list");
+        list.bounds = Rect { x: 0.0, y: 0.0, w: 400.0, h: 800.0 };
+        list.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, 0.0), max: (0.0, 500.0), snap: None, content: None, page: None, aligned: false });
+        let mut held = Node::new("held", "held");
+        held.parent = Some(0);
+        held.bounds = Rect { x: 16.0, y: 100.0, w: 370.0, h: 52.0 };
+        held.gesture = Some(Box::new(onesim_protocol::GestureMod { key: "held#press".into(), pans: false, axis: None }));
+        let scene = Scene { size: (400.0, 800.0), appearance: onesim_protocol::Appearance::Light, ios: Default::default(),
+            nodes: vec![list, held], unsupported_symbols: vec![], notes: vec![] };
+
+        // A finger resting on a long-press view: the gesture gets `cancel`, and holding reports nothing after.
+        let mut it = Interaction::default();
+        it.drag(&scene, DragPhase::Begin, 200.0, 126.0, 0.0);
+        assert!(it.holding());
+        match it.cancel_touches(&scene) {
+            Effect::Gesture(g) => assert_eq!(g.iter().map(|t| t.phase).collect::<Vec<_>>(), vec![TouchPhase::Cancel]),
+            other => panic!("{other:?}"),
+        }
+        assert!(!it.holding());
+        assert!(matches!(it.hold(1.0), Effect::None));
+        assert!(matches!(it.cancel_touches(&scene), Effect::None), "nothing left to cancel");
+
+        // A scroll drag past the top edge settles at rest instead of staying stranded under a lifted finger.
+        let mut it = Interaction::default();
+        it.drag(&scene, DragPhase::Begin, 200.0, 400.0, 0.0);
+        it.drag(&scene, DragPhase::Move, 200.0, 500.0, 16.0);
+        it.drag(&scene, DragPhase::Move, 200.0, 600.0, 32.0);
+        assert!(it.has_drag_target());
+        let pulled = it.scroll["list"].1;
+        assert!(pulled < -50.0, "pulled past the top: {pulled}");
+        let mut laid_out = scene.clone();
+        laid_out.nodes[0].scroll.as_mut().unwrap().offset = (0.0, pulled);   // the host lays out the drag
+        it.cancel_touches(&laid_out);
+        assert!(!it.has_drag_target());
+        assert!(it.moving("list"), "a settle back to the edge is queued");
+    }
+
+    #[test]
+    fn axis_locked_pan_hands_cross_axis_drags_to_the_scroller() {
+        use crate::scene::{Node, Rect, ScrollInfo};
+        // A list (vertical scroller) holding a row whose swipe follows only horizontal movement.
+        let mut list = Node::new("list", "list");
+        list.bounds = Rect { x: 0.0, y: 0.0, w: 400.0, h: 800.0 };
+        list.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, 0.0), max: (0.0, 500.0), snap: None, content: None, page: None, aligned: false });
+        let mut row = Node::new("row", "row");
+        row.parent = Some(0);
+        row.bounds = Rect { x: 16.0, y: 100.0, w: 370.0, h: 52.0 };
+        row.gesture = Some(Box::new(onesim_protocol::GestureMod { key: "row#swipe".into(), pans: true, axis: Some(onesim_protocol::Axis::Horizontal) }));
+        let scene = Scene { size: (400.0, 800.0), appearance: onesim_protocol::Appearance::Light, ios: Default::default(),
+            nodes: vec![list, row], unsupported_symbols: vec![], notes: vec![] };
+        let phases = |e: Effect| match e { Effect::Gesture(g) => g.into_iter().map(|t| t.phase).collect::<Vec<_>>(), other => panic!("{other:?}") };
+
+        // Vertical: the row sees a cancel and the list scrolls.
+        let mut it = Interaction::default();
+        assert_eq!(phases(it.drag(&scene, DragPhase::Begin, 200.0, 126.0, 0.0)), vec![TouchPhase::Start]);
+        assert_eq!(phases(it.drag(&scene, DragPhase::Move, 202.0, 96.0, 16.0)), vec![TouchPhase::Cancel]);
+        it.drag(&scene, DragPhase::Move, 202.0, 66.0, 32.0);
+        assert!(it.scroll.get("list").is_some_and(|o| o.1 > 30.0), "list scrolled: {:?}", it.scroll);
+
+        // Horizontal: the row keeps the touch.
+        let mut it = Interaction::default();
+        it.drag(&scene, DragPhase::Begin, 200.0, 126.0, 0.0);
+        assert_eq!(phases(it.drag(&scene, DragPhase::Move, 170.0, 128.0, 16.0)), vec![TouchPhase::Move]);
+        assert_eq!(phases(it.drag(&scene, DragPhase::Move, 120.0, 160.0, 32.0)), vec![TouchPhase::Move], "decided once");
+        assert_eq!(phases(it.drag(&scene, DragPhase::End, 120.0, 160.0, 48.0)), vec![TouchPhase::End]);
+        assert!(it.scroll.get("list").is_none_or(|o| o.1 == 0.0));
+
+        // Within the slop nothing is decided yet.
+        let mut it = Interaction::default();
+        it.drag(&scene, DragPhase::Begin, 200.0, 126.0, 0.0);
+        assert_eq!(phases(it.drag(&scene, DragPhase::Move, 201.0, 129.0, 16.0)), vec![TouchPhase::Move]);
+    }
+
+    #[test]
+    fn row_swipe_takes_horizontal_drags_from_a_button_in_the_row() {
+        use crate::scene::{Node, Rect, ScrollInfo};
+        // A list row (NavigationLink / Button) whose button spans the row, under the row's horizontal swipe.
+        let mut list = Node::new("list", "list");
+        list.bounds = Rect { x: 0.0, y: 0.0, w: 400.0, h: 800.0 };
+        list.scroll = Some(ScrollInfo { vertical: true, offset: (0.0, 0.0), max: (0.0, 500.0), snap: None, content: None, page: None, aligned: false });
+        let mut row = Node::new("row", "row");
+        row.parent = Some(0);
+        row.bounds = Rect { x: 16.0, y: 100.0, w: 370.0, h: 52.0 };
+        row.gesture = Some(Box::new(onesim_protocol::GestureMod { key: "row#swipe".into(), pans: true, axis: Some(onesim_protocol::Axis::Horizontal) }));
+        let mut button = Node::new("button", "link");
+        button.parent = Some(1);
+        button.bounds = row.bounds;
+        button.action = Some(7);
+        let scene = Scene { size: (400.0, 800.0), appearance: onesim_protocol::Appearance::Light, ios: Default::default(),
+            nodes: vec![list, row, button], unsupported_symbols: vec![], notes: vec![] };
+        let phases = |e: Effect| match e { Effect::Gesture(g) => g.into_iter().map(|t| t.phase).collect::<Vec<_>>(), other => panic!("{other:?}") };
+        let down = |kind| PointerEvent::new(kind, 300.0, 126.0);
+
+        // A tap still fires the button.
+        let mut it = Interaction::default();
+        assert!(matches!(it.pointer(&scene, down(PointerKind::Click)), Effect::Action { id: 7, .. }));
+
+        // A live horizontal drag: the press is dropped and the swipe sees the whole touch from where it came down.
+        let mut it = Interaction::default();
+        assert!(matches!(it.pointer(&scene, down(PointerKind::Down)), Effect::None));
+        assert!(!matches!(it.drag(&scene, DragPhase::Begin, 300.0, 126.0, 0.0), Effect::Gesture(_)));
+        assert!(!matches!(it.drag(&scene, DragPhase::Move, 296.0, 127.0, 8.0), Effect::Gesture(_)), "within the slop");
+        assert_eq!(phases(it.drag(&scene, DragPhase::Move, 260.0, 128.0, 16.0)), vec![TouchPhase::Start, TouchPhase::Move]);
+        assert!(it.scroll.get("list").is_none_or(|o| o.1 == 0.0), "the list stays put: {:?}", it.scroll);
+        assert_eq!(phases(it.drag(&scene, DragPhase::Move, 200.0, 160.0, 32.0)), vec![TouchPhase::Move]);
+        assert_eq!(phases(it.drag(&scene, DragPhase::End, 200.0, 160.0, 48.0)), vec![TouchPhase::End]);
+        assert!(!matches!(it.pointer(&scene, PointerEvent::new(PointerKind::Up, 200.0, 160.0)), Effect::Action { .. }));
+
+        // A vertical drag on the button scrolls the list and never reaches the swipe.
+        let mut it = Interaction::default();
+        it.drag(&scene, DragPhase::Begin, 300.0, 126.0, 0.0);
+        assert!(!matches!(it.drag(&scene, DragPhase::Move, 302.0, 96.0, 16.0), Effect::Gesture(_)));
+        assert!(!matches!(it.drag(&scene, DragPhase::Move, 260.0, 66.0, 32.0), Effect::Gesture(_)), "decided once");
+        assert!(it.scroll.get("list").is_some_and(|o| o.1 > 30.0), "list scrolled: {:?}", it.scroll);
+
+        // A whole synthesized drag swipes the row too.
+        let mut it = Interaction::default();
+        let e = it.pointer(&scene, PointerEvent::moved(PointerKind::Drag, 300.0, 126.0, -120.0, 0.0));
+        let p = phases(e);
+        assert_eq!((p.first(), p.last()), (Some(&TouchPhase::Start), Some(&TouchPhase::End)), "{p:?}");
     }
 
     #[test]

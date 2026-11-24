@@ -4,28 +4,28 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 
 | API | Since | iOS | Issue | Notes |
 |---|---|---|---|---|
-| `AccessibilityActionCategory` | 18 | ⬜ |  |  |
-| `AccessibilityActionKind` | 13 | ⬜ |  |  |
-| `AccessibilityAdjustmentDirection` | 13 | ⬜ |  |  |
-| `AccessibilityAttachmentModifier` | 13 | ⬜ |  |  |
-| `AccessibilityChildBehavior` | 13 | ⬜ |  |  |
-| `AccessibilityCustomContentKey` | 15 | ⬜ |  |  |
-| `AccessibilityDirectTouchOptions` | 17 | ⬜ |  |  |
-| `AccessibilityHeadingLevel` | 15 | ⬜ |  |  |
-| `AccessibilityLabeledPairRole` | 14 | ⬜ |  |  |
-| `AccessibilityRotorContentBuilder` | 15 | ⬜ |  |  |
-| `AccessibilityRotorEntry` | 15 | ⬜ |  |  |
-| `AccessibilitySystemRotor` | 15 | ⬜ |  |  |
-| `AccessibilityTechnologies` | 15 | ⬜ |  |  |
-| `AccessibilityTextContentType` | 15 | ⬜ |  |  |
-| `AccessibilityTraits` | 13 | ⬜ |  |  |
-| `AccessibilityZoomGestureAction` | 13 | ⬜ |  |  |
+| `AccessibilityActionCategory` | 18 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityActionKind` | 13 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Includes macOS `delete` and `showMenu` |
+| `AccessibilityAdjustmentDirection` | 13 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityAttachmentModifier` | 13 | 🟠 | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Empty type. Modifiers return `some View`, not `ModifiedContent<_, AccessibilityAttachmentModifier>` |
+| `AccessibilityChildBehavior` | 13 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityCustomContentKey` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityDirectTouchOptions` | 17 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityHeadingLevel` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityLabeledPairRole` | 14 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityRotorContentBuilder` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | A block concatenates every entry, plus optional, if/else and availability. No `ForEach` |
+| `AccessibilityRotorEntry` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | Not generic; the id is formatted as a string. `prepare` is not called |
+| `AccessibilitySystemRotor` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityTechnologies` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | `voiceOver` and `switchControl` |
+| `AccessibilityTextContentType` | 15 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityTraits` | 13 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) |  |
+| `AccessibilityZoomGestureAction` | 13 | ✅ | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | The guest builds one at `.center` and `.zero` |
 | `ActionSheet` | 13 | ⬜ |  | Deprecated |
 | `AdaptableTabBarPlacement` | 18 | ⬜ |  |  |
 | `Alert` | 13 | ⬜ |  | Deprecated |
 | `Alignment` | 13 | ✅ |  |  |
 | `AlignmentKey` | 13 | ⬜ |  |  |
-| `Anchor` | 13 | ⬜ |  |  |
+| `Anchor` | 13 | 🟠 | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Only `Anchor<CGRect>.Source` `.bounds` / `.rect(_:)`, for popover attachment |
 | `Angle` | 13 | ✅ | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) |  |
 | `AnimatablePair` | 13 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `AnimatableValues` | 26 | ⬜ |  |  |
@@ -34,7 +34,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `AnimationContext` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `AnimationState` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `AnimationTimelineSchedule` | 15 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `AnyGradient` | 16 | ⬜ |  |  |
+| `AnyGradient` | 16 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Gradient erasure and shape-style factories. Color.gradient is approximate. |
 | `AnyLayout` | 16 | ⬜ |  |  |
 | `AnyLocation` | 13 | ⬜ |  |  |
 | `AnyLocationBase` | 13 | ⬜ |  |  |
@@ -49,12 +49,12 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `AttributedTextSelection` | 26 | ⬜ |  |  |
 | `AutomaticHoverEffect` | 18 | ⬜ |  |  |
 | `AutomaticNavigationTransition` | 18 | ⬜ |  |  |
-| `AutomaticPresentationSizing` | 18 | ⬜ |  |  |
+| `AutomaticPresentationSizing` | 18 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | No effect in compact width |
 | `Axis` | 13 | ✅ |  |  |
 | `BackgroundProminence` | 17 | ⬜ |  |  |
 | `BackgroundTask` | 16 | ⬜ |  |  |
 | `BadgeProminence` | 17 | ⬜ |  |  |
-| `BlendMode` | 13 | ⬜ |  |  |
+| `BlendMode` | 13 | ✅ | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | View modes and the Porter-Duff modes exposed by GraphicsContext. |
 | `BlurReplaceTransition` | 17 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Animates opacity and scale; Gaussian blur effect is not rendered yet |
 | `ButtonRepeatBehavior` | 17 | ⬜ |  |  |
 | `ButtonRole` | 15 | ✅ |  |  |
@@ -62,13 +62,13 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ButtonStyleConfiguration` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | `isPressed` is always false |
 | `CameraCaptureAccessory` | 27.1 | ⬜ |  |  |
 | `ColorMatrix` | 15 | ⬜ |  |  |
-| `ColorRenderingMode` | 13 | ⬜ |  |  |
+| `ColorRenderingMode` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Cases are available. Canvas and drawingGroup use an 8-bit device-color backing. |
 | `ColorScheme` | 13 | ✅ |  |  |
 | `ColorSchemeContrast` | 13 | ⬜ |  |  |
-| `CommandGroup` | 14 | ⬜ |  |  |
-| `CommandGroupPlacement` | 14 | ⬜ |  |  |
-| `CommandMenu` | 14 | ⬜ |  |  |
-| `CommandsBuilder` | 14 | ⬜ |  |  |
+| `CommandGroup` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
+| `CommandGroupPlacement` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
+| `CommandMenu` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
+| `CommandsBuilder` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
 | `ContainerBackgroundPlacement` | 17 | ⬜ |  |  |
 | `ContainerValues` | 18 | ⬜ |  |  |
 | `ContentMarginGuide` | 13 | ⬜ |  |  |
@@ -78,27 +78,27 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ContentSizeCategory` | 13 | ⬜ |  | Deprecated |
 | `ContentToolbarPlacement` | 18.4 | ⬜ |  |  |
 | `ContentTransition` | 16 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | `identity`, `interpolate`, `opacity`, `numericText`, `symbolEffect`; no per-glyph morphing |
-| `ContextMenu` | 13 | ⬜ |  | Deprecated |
-| `ControlGroupStyleConfiguration` | 15 | ⬜ |  |  |
+| `ContextMenu` | 13 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Deprecated. `contextMenu(_:)` |
+| `ControlGroupStyleConfiguration` | 15 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `ControlSize` | 15 | ⬜ |  |  |
 | `ControlWidgetConfigurationBuilder` | 18 | ⬜ |  |  |
 | `ControlWidgetTemplateBuilder` | 18 | ⬜ |  |  |
 | `CoordinateSpace` | 13 | 🟠 | [#34](https://github.com/MitchellSPeterson/OneSim/issues/34) | `.named` is the screen (no `.coordinateSpace(name:)`) |
 | `CrossFadeNavigationTransition` | 27 | ⬜ |  |  |
 | `CubicKeyframe` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `DatePickerComponents` | 13 | ⬜ |  |  |
-| `DatePickerStyleConfiguration` | 16 | ⬜ |  |  |
+| `DatePickerComponents` | 13 | ✅ | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Date and hour/minute on iOS. |
+| `DatePickerStyleConfiguration` | 16 | ✅ | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Label, selection, bounds and components for custom styles. |
 | `DefaultFocusEvaluationPriority` | 16 | ⬜ |  |  |
 | `DefaultToolbarItem` | 26 | ⬜ |  |  |
 | `DeviceHinge` | 13 | ⬜ |  |  |
 | `DeviceHingeContext` | 13 | ⬜ |  |  |
 | `DialogSeverity` | 17 | ⬜ |  |  |
 | `DisabledTextSelectability` | 15 | ⬜ |  |  |
-| `DisclosureGroupStyleConfiguration` | 16 | ⬜ |  |  |
+| `DisclosureGroupStyleConfiguration` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `DisclosureTableRow` | 17 | ⬜ |  |  |
 | `DismissAction` | 15 | ✅ |  |  |
 | `DismissBehavior` | 17 | ⬜ |  |  |
-| `DismissSearchAction` | 15 | ⬜ |  |  |
+| `DismissSearchAction` | 15 | ✅ | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Clears the query and presentation state for descendants of the searchable view. |
 | `DismissWindowAction` | 17 | ⬜ |  |  |
 | `DocumentConfiguration` | 17 | ⬜ |  |  |
 | `DocumentCreationContext` | 27 | ⬜ |  |  |
@@ -117,16 +117,16 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Edge` | 13 | ✅ |  |  |
 | `EdgeInsets` | 13 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `EditActions` | 16 | ⬜ |  |  |
-| `EditMode` | 13 | ⬜ |  |  |
+| `EditMode` | 13 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `EmptyAnimatableData` | 13 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `EmptyCommands` | 14 | ⬜ |  |  |
+| `EmptyCommands` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
 | `EmptyControlWidgetConfiguration` | 18 | ⬜ |  |  |
 | `EmptyControlWidgetTemplate` | 18 | ⬜ |  |  |
 | `EmptyHoverEffect` | 18 | ⬜ |  |  |
 | `EmptyMatchedTransitionSourceConfiguration` | 18 | ⬜ |  |  |
 | `EmptyModifier` | 13 | ⬜ |  |  |
 | `EmptyTableRowContent` | 16 | ⬜ |  |  |
-| `EmptyVisualEffect` | 17 | ⬜ |  |  |
+| `EmptyVisualEffect` | 17 | ✅ | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Identity value for visualEffect closures. |
 | `EmptyWidgetConfiguration` | 14 | ⬜ |  |  |
 | `EnabledTextSelectability` | 15 | ⬜ |  |  |
 | `EnvironmentValues` | 13 | 🟠 | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) | `colorScheme`, `dismiss`, `dynamicTypeSize`, size classes, `isEnabled`, `openURL`, `scenePhase`, `EnvironmentKey` subscripts, `contentTransition`, `contentTransitionAddsDrawingGroup` |
@@ -143,15 +143,15 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `FileWrapperDocumentWriter` | 27 | ⬜ |  |  |
 | `FillShapeView` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `FindContext` | 26 | ⬜ |  |  |
-| `FittedPresentationSizing` | 18 | ⬜ |  |  |
+| `FittedPresentationSizing` | 18 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | No effect in compact width |
 | `FixedTextVariant` | 18 | ⬜ |  |  |
 | `FocusedValues` | 14 | ⬜ |  |  |
 | `FocusInteractions` | 17 | ⬜ |  |  |
 | `Font` | 13 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Text styles and `.system(size:weight:design:)`. `Font.Width` statics are -0.3, -0.2, 0, and 0.3 |
 | `ForEachSectionCollection` | 18 | ⬜ |  |  |
 | `ForEachSubviewCollection` | 18 | ⬜ |  |  |
-| `FormPresentationSizing` | 18 | ⬜ |  |  |
-| `FormStyleConfiguration` | 16 | ⬜ |  |  |
+| `FormPresentationSizing` | 18 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | No effect in compact width |
+| `FormStyleConfiguration` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `GaugeStyleConfiguration` | 16 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | No `markedValueLabels` |
 | `GeometryProxy` | 13 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | `size` and `safeAreaInsets` from the host frame. `frame(in: .local)` origin is zero; `.global` and a named space are the host screen frame |
 | `GestureInputKinds` | 13 | ⬜ |  |  |
@@ -159,17 +159,17 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Glass` | 26 | 🟠 |  | `interactive` has no visual effect |
 | `GlassEffectTransition` | 26 | ⬜ |  |  |
 | `GlobalCoordinateSpace` | 17 | ⬜ |  |  |
-| `Gradient` | 13 | ⬜ |  |  |
-| `GraphicsContext` | 15 | ⬜ |  |  |
+| `Gradient` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Mutable stops, hashing and device/perceptual color space. Interpolation color spaces are approximated. |
+| `GraphicsContext` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Draw commands, context copying, clip layers and common filters. Resolved metrics, CG contexts, tiled images, shader, shadow and matrix filters, linear filter options and blur dithering are gaps. |
 | `GridItem` | 14 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `GridLayout` | 16 | ⬜ |  |  |
-| `GroupBoxStyleConfiguration` | 14 | ⬜ |  |  |
+| `GroupBoxStyleConfiguration` | 14 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `HandGestureShortcut` | 18 | ⬜ |  |  |
-| `HierarchicalShapeStyleModifier` | 17 | ⬜ |  |  |
+| `HierarchicalShapeStyleModifier` | 17 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Solid foreground and fill hierarchy. Gradients and multi-style symbol levels are gaps. |
 | `HighlightHoverEffect` | 18 | ⬜ |  |  |
 | `HorizontalAlignment` | 13 | ✅ |  |  |
 | `HorizontalDirection` | 18 | ⬜ |  |  |
-| `HorizontalEdge` | 15 | ⬜ |  |  |
+| `HorizontalEdge` | 15 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `HoverEffect` | 13.4 | ⬜ |  |  |
 | `HoverPhase` | 16 | ⬜ |  |  |
 | `HStackLayout` | 16 | ⬜ |  |  |
@@ -177,7 +177,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ImagePaint` | 13 | ⬜ |  |  |
 | `ImageRenderer` | 16 | ⬜ |  |  |
 | `IndexedIdentifierCollection` | 16 | ⬜ |  |  |
-| `InspectorCommands` | 17 | ⬜ |  |  |
+| `InspectorCommands` | 17 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
 | `InterfaceOrientation` | 15 | ⬜ |  |  |
 | `ItemProviderTableRowModifier` | 16 | ⬜ |  |  |
 | `KeyboardShortcut` | 14 | ⬜ |  |  |
@@ -187,7 +187,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `KeyframeTrack` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `KeyframeTrackContentBuilder` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `KeyPress` | 17 | ⬜ |  |  |
-| `LabeledContentStyleConfiguration` | 16 | ⬜ |  |  |
+| `LabeledContentStyleConfiguration` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `LabelStyleConfiguration` | 14 | ⬜ |  |  |
 | `LayoutDirection` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `LayoutDirectionBehavior` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
@@ -202,7 +202,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ListItemTint` | 14 | ⬜ |  |  |
 | `ListSectionSpacing` | 17 | ⬜ |  |  |
 | `LocalCoordinateSpace` | 17 | ⬜ |  |  |
-| `LocalizedStringKey` | 13 | ⬜ |  |  |
+| `LocalizedStringKey` | 13 | 🟠 | [#48](https://github.com/MitchellSPeterson/OneSim/issues/48) | The key, including interpolations, is the value. No bundle lookup |
 | `MatchedGeometryProperties` | 14 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `Material` | 15 | ⬜ |  |  |
 | `MaterialActiveAppearance` | 18 | ⬜ |  |  |
@@ -214,15 +214,15 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `NamedCoordinateSpace` | 17 | ⬜ |  |  |
 | `NavigationBarItem` | 13 | ✅ |  |  |
 | `NavigationPath` | 16 | 🟠 |  | See value-navigation limits in [guest.md](guest.md) |
-| `NavigationSplitViewColumn` | 17 | ⬜ |  |  |
+| `NavigationSplitViewColumn` | 17 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Sidebar, content, and detail in the compact presentation. Selection-driven updates are pending. |
 | `NavigationSplitViewStyleConfiguration` | 16 | ⬜ |  |  |
-| `NavigationSplitViewVisibility` | 16 | ⬜ |  |  |
+| `NavigationSplitViewVisibility` | 16 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Accepted by the split-view initializers. Regular-width visibility and writeback are pending. |
 | `OffsetTransition` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `OnInsertTableRowModifier` | 16 | ⬜ |  |  |
 | `OpacityTransition` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `OpenURLAction` | 14 | 🟠 | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) | `handled`, `discarded`, `systemAction` (reported as an event); not on the web build |
 | `OpenWindowAction` | 16 | ⬜ |  |  |
-| `PagePresentationSizing` | 18 | ⬜ |  |  |
+| `PagePresentationSizing` | 18 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | No effect in compact width |
 | `PagingScrollTargetBehavior` | 17 | ✅ | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) |  |
 | `PaletteSelectionEffect` | 17 | ⬜ |  |  |
 | `PencilDoubleTapGestureValue` | 17.5 | ⬜ |  |  |
@@ -232,21 +232,21 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `PencilSqueezeGestureValue` | 17.5 | ⬜ |  |  |
 | `PeriodicTimelineSchedule` | 15 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `PinnedScrollableViews` | 14 | ✅ |  |  |
-| `PopoverAttachmentAnchor` | 13 | ⬜ |  |  |
+| `PopoverAttachmentAnchor` | 13 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) |  |
 | `PreferredColorSchemeKey` | 13 | ⬜ |  |  |
-| `PresentationAdaptation` | 16.4 | ⬜ |  |  |
-| `PresentationBackgroundInteraction` | 16.4 | ⬜ |  |  |
-| `PresentationContentInteraction` | 16.4 | ⬜ |  |  |
+| `PresentationAdaptation` | 16.4 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) |  |
+| `PresentationBackgroundInteraction` | 16.4 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) |  |
+| `PresentationContentInteraction` | 16.4 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) |  |
 | `PresentationDetent` | 16 | ✅ |  |  |
 | `PresentationMode` | 13 | ⬜ |  | Deprecated |
-| `PresentationPlacement` | 13 | ⬜ |  |  |
-| `PresentationSizingContext` | 18 | ⬜ |  |  |
-| `PresentationSizingRoot` | 18 | ⬜ |  |  |
+| `PresentationPlacement` | 13 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | No effect in compact width |
+| `PresentationSizingContext` | 18 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Never consulted in compact width, as on iPhone |
+| `PresentationSizingRoot` | 18 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Never consulted in compact width, as on iPhone |
 | `PreviewDevice` | 13 | ⬜ |  |  |
 | `PreviewPlatform` | 13 | ⬜ |  |  |
 | `PrimitiveButtonStyleConfiguration` | 13 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
 | `ProgressViewStyleConfiguration` | 14 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) |  |
-| `ProjectionTransform` | 13 | ⬜ |  |  |
+| `ProjectionTransform` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | 2D matrix, concatenation and inversion. CATransform3D initializer and platform perspective filtering are gaps. |
 | `Prominence` | 15 | ⬜ |  |  |
 | `ProposedViewSize` | 16 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `PushTransition` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
@@ -262,10 +262,10 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `RoundedRectangularShapeCorners` | 26 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `SafeAreaRegions` | 14 | ⬜ |  |  |
 | `ScaleTransition` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `SceneBuilder` | 14 | 🟠 |  | Single scene only |
+| `SceneBuilder` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Any number of scenes, `if #available` |
 | `ScenePadding` | 16 | ⬜ |  |  |
 | `ScenePhase` | 14 | ✅ | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) |  |
-| `SceneRestorationBehavior` | 18 | ⬜ |  |  |
+| `SceneRestorationBehavior` | 18 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) |  |
 | `ScrollAnchorRole` | 18 | ⬜ |  |  |
 | `ScrollBounceBehavior` | 16.4 | ⬜ |  |  |
 | `ScrollContentOffsetAdjustmentBehavior` | 18 | ⬜ |  |  |
@@ -284,7 +284,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ScrollTransitionConfiguration` | 17 | ⬜ |  |  |
 | `ScrollTransitionPhase` | 17 | ⬜ |  |  |
 | `ScrollViewProxy` | 14 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | `scrollTo` only. No animation |
-| `SearchFieldPlacement` | 15 | ⬜ |  |  |
+| `SearchFieldPlacement` | 15 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Accepts drawer, sidebar, and toolbar placements. The field uses a drawer in the compact navigation bar; native toolbar and sidebar behavior is pending. |
 | `SearchPresentationToolbarBehavior` | 17.1 | ⬜ |  |  |
 | `SearchScopeActivation` | 16.4 | ⬜ |  |  |
 | `SearchSuggestionsPlacement` | 16 | ⬜ |  |  |
@@ -298,8 +298,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ShaderFunction` | 17 | ⬜ |  |  |
 | `ShaderLibrary` | 17 | ⬜ |  |  |
 | `ShapeRole` | 15 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
-| `SharePreview` | 16 | ⬜ |  |  |
-| `SidebarCommands` | 14 | ⬜ |  |  |
+| `SharePreview` | 16 | ✅ | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Title in the share sheet header; a bitmap image or icon fills the header tile, a symbol image leaves it blank (as on device) |
+| `SidebarCommands` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
 | `SidebarRowSize` | 16 | ⬜ |  |  |
 | `SizeDependentTextVariant` | 18 | ⬜ |  |  |
 | `SliderTick` | 26 | ⬜ |  |  |
@@ -313,8 +313,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `SpringLoadingBehavior` | 17 | ⬜ |  |  |
 | `StrokeBorderShapeView` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
 | `StrokeShapeView` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) |  |
-| `SubmitLabel` | 15 | ⬜ |  |  |
-| `SubmitTriggers` | 15 | ⬜ |  |  |
+| `SubmitLabel` | 15 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) |  |
+| `SubmitTriggers` | 15 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) |  |
 | `SymbolColorRenderingMode` | 26 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Gradient is an AppKit bitmap. The Phosphor fallback stays a mask |
 | `SymbolEffectTransition` | 17 | ⬜ |  |  |
 | `SymbolRenderingMode` | 15 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | Palette is one foreground at full, 0.6, and 0.3 alpha. The fallback stays a mask |
@@ -325,9 +325,9 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `TabBarPlacement` | 18 | ⬜ |  |  |
 | `TabContentBuilder` | 18 | ⬜ |  |  |
 | `TabCustomizationBehavior` | 18 | ⬜ |  |  |
-| `TableColumn` | 16 | ⬜ |  |  |
+| `TableColumn` | 16 | 🟠 | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | `(_:value:)`, `(_:content:)` and `(_:value:comparator:)`; only the first column shows (compact width). |
 | `TableColumnAlignment` | 17 | ⬜ |  |  |
-| `TableColumnBuilder` | 16 | ⬜ |  |  |
+| `TableColumnBuilder` | 16 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) |  |
 | `TableColumnCustomization` | 17 | ⬜ |  |  |
 | `TableColumnCustomizationBehavior` | 17 | ⬜ |  |  |
 | `TableColumnForEach` | 17.4 | ⬜ |  |  |
@@ -345,10 +345,10 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `TabViewBottomAccessoryPlacement` | 26 | ⬜ |  |  |
 | `TabViewCustomization` | 18 | ⬜ |  |  |
 | `TextAlignment` | 13 | ✅ |  |  |
-| `TextEditingCommands` | 14 | ⬜ |  |  |
-| `TextEditorStyleConfiguration` | 17 | ⬜ |  |  |
-| `TextFormattingCommands` | 14 | ⬜ |  |  |
-| `TextInputAutocapitalization` | 15 | ⬜ |  |  |
+| `TextEditingCommands` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
+| `TextEditorStyleConfiguration` | 17 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) |  |
+| `TextFormattingCommands` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
+| `TextInputAutocapitalization` | 15 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) |  |
 | `TextInputDictationActivation` | 17 | ⬜ |  |  |
 | `TextInputDictationBehavior` | 17 | ⬜ |  |  |
 | `TextInputFormattingControlPlacement` | 26 | ⬜ |  |  |
@@ -358,25 +358,25 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `TimeDataSource` | 18 | ⬜ |  |  |
 | `TimelineScheduleMode` | 15 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `ToggleStyleConfiguration` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | `isMixed` is always false |
-| `ToolbarCommands` | 14 | ⬜ |  |  |
-| `ToolbarContentBuilder` | 14 | ⬜ |  |  |
+| `ToolbarCommands` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
+| `ToolbarContentBuilder` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Builds empty, conditional, loop, and multiple toolbar entries. Apple’s concrete builder result types differ. |
 | `ToolbarCustomizationBehavior` | 16 | ⬜ |  |  |
 | `ToolbarCustomizationOptions` | 16 | ⬜ |  |  |
 | `ToolbarDefaultItemKind` | 17 | ⬜ |  |  |
-| `ToolbarItem` | 14 | ⬜ |  |  |
+| `ToolbarItem` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Displays view content in supported regions. Explicit IDs and initial visibility are accepted. Dense toolbars compress items. Native overflow and user customization are pending. |
 | `ToolbarItemAxisBehavior` | 13 | ⬜ |  |  |
-| `ToolbarItemGroup` | 14 | ⬜ |  |  |
-| `ToolbarItemPlacement` | 14 | ⬜ |  |  |
+| `ToolbarItemGroup` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Renders individual views in a shared region. Group labels and overflow grouping are pending. |
+| `ToolbarItemPlacement` | 14 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Top leading, principal, trailing, bottom, and common semantic aliases. Pinned items follow ordinary trailing items during search. Keyboard, subtitle, ornament, and accessory placements are pending. |
 | `ToolbarItemVisibilityPriority` | 27 | ⬜ |  |  |
 | `ToolbarMinimizationBehavior` | 13 | ⬜ |  |  |
 | `ToolbarMinimizationRestoration` | 13 | ⬜ |  |  |
 | `ToolbarMinimizationSafeAreaAdjustment` | 13 | ⬜ |  |  |
 | `ToolbarOverflowMenu` | 27 | ⬜ |  |  |
-| `ToolbarPlacement` | 16 | ⬜ |  |  |
+| `ToolbarPlacement` | 16 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Navigation and bottom bars. Tab bar, window toolbar, and platform-specific bars are pending. |
 | `ToolbarRole` | 16 | ⬜ |  |  |
 | `ToolbarSpacer` | 26 | ⬜ |  |  |
 | `ToolbarTitleAlignment` | 13 | ⬜ |  |  |
-| `ToolbarTitleDisplayMode` | 17 | ⬜ |  |  |
+| `ToolbarTitleDisplayMode` | 17 | 🟠 | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Inline and large titles. Automatic inheritance and the distinct inline-large appearance are pending. |
 | `ToolbarTitleMenu` | 16 | ⬜ |  |  |
 | `ToolbarVerticalBehavior` | 13 | ⬜ |  |  |
 | `ToolbarVerticalCompressionBehavior` | 13 | ⬜ |  |  |
@@ -408,8 +408,8 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Visibility` | 15 | ✅ |  |  |
 | `VStackLayout` | 16 | ⬜ |  |  |
 | `WidgetBundleBuilder` | 14 | ⬜ |  |  |
-| `WindowManagerRole` | 18 | ⬜ |  |  |
-| `WindowResizability` | 17 | ⬜ |  |  |
+| `WindowManagerRole` | 18 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) |  |
+| `WindowResizability` | 17 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) |  |
 | `WindowToolbarFullScreenVisibility` | 18 | ⬜ |  |  |
 | `WritingToolsBehavior` | 18 | ⬜ |  |  |
 | `ZoomNavigationTransition` | 18 | ⬜ |  |  |

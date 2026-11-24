@@ -1,17 +1,17 @@
 //! One guest OS process and everything we know about it.
 
+use crate::events::EventLog;
+use crate::process::{build_app, is_prebuilt, onesim_home, signal, SIGCONT, SIGSTOP};
 use onesim_protocol::{
-    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, GeoBox, GuestMessage, HostMessage, IosVersion, SessionError, Viewport,
+    ApiError, Appearance, CreateSessionParams, DynamicTypeSize, ErrorCode, GeoBox, GuestMessage, HostMessage, IosVersion, ScenePhase, SessionError, Viewport,
     ViewNode,
 };
-pub use onesim_render::{device, Device, DEFAULT_DEVICE, DEVICES};
-use crate::events::EventLog;
-use serde_json::{json, Value};
 use onesim_render::rn_input::{focus_change, Out, RnInput, Wait};
-use onesim_render::{Animator, Effect, Interaction};
-use std::collections::{BTreeMap, VecDeque};
+pub use onesim_render::{device, Device, DEFAULT_DEVICE, DEVICES};
+use onesim_render::{Animator, Effect, Interaction, Live, Scene, SwiftUiLayoutCache};
+use serde_json::{json, Value};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -52,14 +52,16 @@ impl State {
 }
 
 /// State shared with the guest reader threads.
-#[derive(Default)]
 struct Inner {
-    tree: Option<(u64, ViewNode)>,
+    tree: Option<(u64, Arc<ViewNode>)>,
     /// Number of trees received; lets waiters detect "a new tree arrived".
     generation: u64,
     errors: Vec<SessionError>,
+    /// Deduplication set for `report_once` `(origin, message)` pairs.
+    reported: HashSet<(String, String)>,
     /// Last `MAX_LOG_LINES` guest stderr lines (reported by `get_errors` with source `stderr`).
     logs: VecDeque<SessionError>,
+    state: State,
     exited: bool,
     /// When the last tree or guest request arrived (settling).
     last_event: Option<Instant>,
@@ -80,6 +82,29 @@ struct Inner {
     schedule_gen: u64,
 }
 
+impl Default for Inner {
+    fn default() -> Self {
+        Self {
+            tree: None,
+            generation: 0,
+            errors: Vec::new(),
+            reported: HashSet::new(),
+            logs: VecDeque::new(),
+            state: State::Created,
+            exited: false,
+            last_event: None,
+            requests: Vec::new(),
+            restarted: false,
+            modules: None,
+            ready_pending: true,
+            stopping: false,
+            stopped_emitted: false,
+            schedule_update: None,
+            schedule_gen: 0,
+        }
+    }
+}
+
 struct Shared {
     inner: Mutex<Inner>,
     cv: Condvar,
@@ -92,7 +117,7 @@ impl Shared {
     }
 
     fn new(log: Arc<EventLog>) -> Self {
-        Self { inner: Mutex::new(Inner { ready_pending: true, ..Inner::default() }), cv: Condvar::new(), log }
+        Self { inner: Mutex::new(Inner::default()), cv: Condvar::new(), log }
     }
 
     /// Wait on the condvar for one wakeup or `timeout`.
@@ -124,9 +149,19 @@ impl Shared {
     fn stopped(&self, reason: &str) {
         let mut g = self.lock();
         if !std::mem::replace(&mut g.stopped_emitted, true) {
+            drop(g);
             self.log.emit("runtime.stopped", json!({"reason": reason}));
         }
     }
+}
+
+struct CachedScene {
+    generation: u64,
+    epoch: u64,
+    version: u64,
+    scene: Arc<Scene>,
+    /// React Native: the scene before the live pass, and the clock the live pass last ran at.
+    base: Option<(Arc<Scene>, f64)>,
 }
 
 pub struct Session {
@@ -137,6 +172,8 @@ pub struct Session {
     pub scale: f64,
     pub appearance: Appearance,
     pub dynamic_type: DynamicTypeSize,
+    /// SwiftUI scene phase (`Host::set_scene_phase`); `active` from launch.
+    pub scene_phase: ScenePhase,
     /// Simulated iOS release (look + reported OS version).
     pub ios: IosVersion,
     /// Scroll, focus, shift and press state (shared with the browser backend).
@@ -151,6 +188,10 @@ pub struct Session {
     pub guest_due_ms: Option<f64>,
     /// Tree generation last ingested by `anim.update`.
     pub last_anim_gen: u64,
+    /// React Native: spinners and animated images that run on the session clock.
+    pub live: Live,
+    /// Whether the last live pass left something moving (the session needs ticks).
+    pub live_moving: bool,
     /// React Native: touch in progress and frames the guest already has (shared with the browser backend).
     pub rn: RnInput,
     /// SwiftUI: last `scroll_position` target sent per scroll-node id.
@@ -162,11 +203,21 @@ pub struct Session {
     /// React Native: `false` (live viewers, set per call by the v2 API) skips every wait for the guest:
     /// inputs return once sent and snapshots take one layout pass; later trees come as `render.updated`.
     pub settle: bool,
+    /// Reusable SwiftUI layout cache across frames.
+    pub layout_cache: SwiftUiLayoutCache,
+    /// Tree generation currently bound to `layout_cache`.
+    pub layout_cache_gen: u64,
+    /// Cached laid-out scene for the current `(generation, layout_epoch)`.
+    cached_scene: Option<CachedScene>,
+    /// Bumped whenever interaction, animation, viewport, appearance, or device changes.
+    layout_epoch: u64,
     /// When the host last wrote to the guest: its reaction (new trees) is due within the quiet window.
     last_sent: Instant,
-    state: State,
     child: Option<Child>,
-    stdin: Option<Arc<Mutex<ChildStdin>>>,
+    /// Shared with the stdout reader, which answers the guest's `request`s.
+    stdin: Arc<Mutex<Option<ChildStdin>>>,
+    /// The host's fonts (answering `text.render`).
+    fonts: Arc<Mutex<Option<onesim_render::Fonts>>>,
     shared: Arc<Shared>,
 }
 
@@ -180,91 +231,19 @@ impl Drop for Session {
     }
 }
 
-#[cfg(unix)]
-const SIGSTOP: i32 = libc::SIGSTOP;
-#[cfg(unix)]
-const SIGCONT: i32 = libc::SIGCONT;
-#[cfg(not(unix))]
-const SIGSTOP: i32 = 0;
-#[cfg(not(unix))]
-const SIGCONT: i32 = 1;
-
-#[cfg(windows)]
-#[link(name = "ntdll")]
-extern "system" {
-    fn NtSuspendProcess(process: std::os::windows::io::RawHandle) -> i32;
-    fn NtResumeProcess(process: std::os::windows::io::RawHandle) -> i32;
-}
-
-/// Stop or continue the guest child: kill(2) on unix, NtSuspendProcess/NtResumeProcess on Windows.
-// ponytail: Windows suspends the direct child only; a Compose `.cmd` launcher's java keeps running.
-fn signal(c: &Child, sig: i32) -> bool {
-    #[cfg(unix)]
-    {
-        // SAFETY: plain kill(2) on a pid we spawned and still own (not yet waited).
-        unsafe { libc::kill(c.id() as i32, sig) == 0 }
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::io::AsRawHandle;
-        // SAFETY: the handle belongs to a child we spawned and still own (not yet waited).
-        unsafe { (if sig == SIGSTOP { NtSuspendProcess } else { NtResumeProcess })(c.as_raw_handle()) >= 0 }
-    }
-}
-
-pub fn onesim_home() -> PathBuf {
-    std::env::var_os("SIMCORE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../..")))
+/// One line to the guest's stdin (shared by the API thread and the stdout reader).
+fn write_line(stdin: &Mutex<Option<ChildStdin>>, line: &str) -> Result<(), ApiError> {
+    let mut g = stdin.lock().unwrap_or_else(|e| e.into_inner());
+    let w = g.as_mut().ok_or_else(|| err(ErrorCode::InvalidState, "guest not running"))?;
+    w.write_all(line.as_bytes()).and_then(|_| w.flush()).map_err(|e| err(ErrorCode::RuntimeError, format!("guest pipe closed: {e}")))
 }
 
 fn err(code: ErrorCode, msg: impl Into<String>) -> ApiError {
     ApiError::new(code, msg)
 }
 
-/// Test hook: a regular executable that is not a `.swift` file is spawned directly.
-fn send_to_guest(pipe: &Mutex<ChildStdin>, msg: &HostMessage) -> Result<(), ApiError> {
-    let mut line = serde_json::to_string(msg).expect("serialize");
-    line.push('\n');
-    let mut pipe = pipe.lock().unwrap_or_else(|e| e.into_inner());
-    pipe.write_all(line.as_bytes())
-        .and_then(|_| pipe.flush())
-        .map_err(|e| err(ErrorCode::RuntimeError, format!("guest pipe closed: {e}")))
-}
-
-fn is_prebuilt(p: &CreateSessionParams) -> bool {
-    let path = Path::new(&p.app_path);
-    #[cfg(unix)]
-    let exe = |m: &std::fs::Metadata| std::os::unix::fs::PermissionsExt::mode(&m.permissions()) & 0o111 != 0;
-    #[cfg(not(unix))]
-    let exe = |_: &std::fs::Metadata| path.extension().is_some_and(|e| e == "exe");
-    p.prebuilt
-        || (path.extension().is_none_or(|e| e != "swift" && e != "kt")
-            && path.metadata().is_ok_and(|m| m.is_file() && exe(&m)))
-}
-
-/// The build scripts are bash. On Windows that is Git Bash, never System32's WSL launcher (`SIMCORE_BASH` overrides).
-fn bash() -> Command {
-    if let Some(b) = std::env::var_os("SIMCORE_BASH") {
-        return Command::new(b);
-    }
-    #[cfg(windows)]
-    for dir in ["ProgramW6432", "ProgramFiles"].iter().filter_map(std::env::var_os) {
-        let git = PathBuf::from(dir).join("Git/bin/bash.exe");
-        if git.is_file() {
-            return Command::new(git);
-        }
-    }
-    Command::new("bash")
-}
-
-/// Path argument for a bash script: forward slashes, which Git Bash accepts and backslash-escaping cannot break.
-fn sh_path(p: &Path) -> String {
-    p.to_string_lossy().replace('\\', "/")
-}
-
 impl Session {
-    pub fn new(id: String, p: CreateSessionParams, log: Arc<EventLog>) -> Self {
+    pub fn new(id: String, p: CreateSessionParams, log: Arc<EventLog>, fonts: Arc<Mutex<Option<onesim_render::Fonts>>>) -> Self {
         let dev = *device(p.device.as_deref().unwrap_or(DEFAULT_DEVICE)).expect("device validated by create_session");
         Self {
             id,
@@ -273,6 +252,7 @@ impl Session {
             scale: p.scale.unwrap_or(dev.scale),
             appearance: p.appearance.unwrap_or(Appearance::Light),
             dynamic_type: p.dynamic_type_size.unwrap_or_default(),
+            scene_phase: ScenePhase::Active,
             ios: p.os_version.unwrap_or_default(),
             inter: Interaction::default(),
             anim: Animator::new(),
@@ -280,18 +260,55 @@ impl Session {
             guest_clock_ms: 0.0,
             guest_due_ms: None,
             last_anim_gen: 0,
+            live: Live::new(),
+            live_moving: false,
             rn: RnInput::default(),
             sent_positions: BTreeMap::new(),
             sent_geometry: BTreeMap::new(),
             sent_text_layouts: Vec::new(),
             settle: true,
+            layout_cache: SwiftUiLayoutCache::default(),
+            layout_cache_gen: 0,
+            cached_scene: None,
+            layout_epoch: 0,
             last_sent: Instant::now(),
             params: p,
-            state: State::Created,
             child: None,
-            stdin: None,
+            stdin: Arc::new(Mutex::new(None)),
+            fonts,
             shared: Arc::new(Shared::new(log)),
         }
+    }
+
+    pub fn cached_scene(&mut self, generation: u64) -> Option<(Arc<Scene>, u64)> {
+        let epoch = self.layout_epoch;
+        let c = self.cached_scene.as_mut().filter(|c| c.generation == generation && c.epoch == epoch)?;
+        // Spinners and animated images move on with the clock without a new layout.
+        if let Some((base, clock)) = c.base.as_mut().filter(|(_, at)| self.live_moving && *at != self.clock_ms) {
+            let mut scene = Scene::clone(base);
+            self.live_moving = self.live.apply(&mut scene, self.clock_ms);
+            *clock = self.clock_ms;
+            c.scene = Arc::new(scene);
+        }
+        Some((c.scene.clone(), c.version))
+    }
+
+    pub fn cache_scene(&mut self, generation: u64, version: u64, scene: Arc<Scene>) {
+        self.cached_scene = Some(CachedScene { generation, epoch: self.layout_epoch, version, scene, base: None });
+    }
+
+    /// React Native: cache `base` (the laid-out scene) and what the live pass makes of it at the session clock.
+    pub fn cache_live_scene(&mut self, generation: u64, version: u64, base: Scene) -> Arc<Scene> {
+        let mut scene = base.clone();
+        self.live_moving = self.live.apply(&mut scene, self.clock_ms);
+        let scene = Arc::new(scene);
+        self.cached_scene = Some(CachedScene { generation, epoch: self.layout_epoch, version, scene: scene.clone(), base: Some((Arc::new(base), self.clock_ms)) });
+        scene
+    }
+
+    pub fn invalidate_scene(&mut self) {
+        self.layout_epoch = self.layout_epoch.wrapping_add(1);
+        self.cached_scene = None;
     }
 
     pub fn is_rn(&self) -> bool {
@@ -311,13 +328,9 @@ impl Session {
         self.params.framework == "compose"
     }
 
-    /// Current state; a running session whose guest exited reads as crashed.
+    /// Current state (single source of truth in `Inner`).
     pub fn state(&self) -> State {
-        if self.state == State::Running && self.shared.lock().exited {
-            State::Crashed
-        } else {
-            self.state
-        }
+        self.shared.lock().state
     }
 
     pub fn log(&self) -> Arc<EventLog> {
@@ -332,16 +345,17 @@ impl Session {
         self.shared.lock().modules.clone()
     }
 
-    pub fn tree(&self) -> Option<(u64, ViewNode)> {
+    pub fn tree(&self) -> Option<(u64, Arc<ViewNode>)> {
         self.shared.lock().tree.clone()
     }
 
-    /// Record a host-side error once per distinct `(origin, message)`.
+    /// Record a host-side error once per distinct `(origin, message)` atomically.
     pub fn report_once(&self, origin: &str, message: String) {
-        let g = self.shared.lock();
-        if g.errors.len() < MAX_ERRORS && !g.errors.iter().any(|e| e.source == origin && e.message == message) {
+        let mut g = self.shared.lock();
+        if g.errors.len() < MAX_ERRORS && g.reported.insert((origin.to_string(), message.clone())) {
+            g.errors.push(SessionError { message: message.clone(), source: origin.into() });
             drop(g);
-            self.shared.push_error(origin, message);
+            self.shared.log.emit("runtime.error", json!({"message": message, "source": origin}));
         }
     }
 
@@ -357,9 +371,18 @@ impl Session {
         }
     }
 
+    /// Touches and keys reach only an app in front: running and, for SwiftUI, in the `active` scene phase.
+    pub fn require_input(&self) -> Result<(), ApiError> {
+        self.require_running()?;
+        if self.scene_phase != ScenePhase::Active {
+            return Err(err(ErrorCode::InvalidState, format!("the app is {} and gets no input; set the scene phase to active first", self.scene_phase.as_str())));
+        }
+        Ok(())
+    }
+
     fn fail(&mut self, e: ApiError) -> ApiError {
         self.shared.push_error("host", e.message.clone());
-        self.state = State::Failed;
+        self.shared.lock().state = State::Failed;
         self.kill();
         self.shared.stopped("failed");
         e
@@ -367,7 +390,7 @@ impl Session {
 
     fn kill(&mut self) {
         self.shared.lock().stopping = true;
-        self.stdin = None;
+        *self.stdin.lock().unwrap_or_else(|e| e.into_inner()) = None;
         if let Some(mut c) = self.child.take() {
             signal(&c, SIGCONT);
             let _ = c.kill();
@@ -377,20 +400,33 @@ impl Session {
 
     /// Build (unless prebuilt), spawn the guest and block until its first tree.
     pub fn start(&mut self) -> Result<(), ApiError> {
-        if self.state != State::Created {
-            return Err(err(ErrorCode::InvalidState, format!("session {} is {}", self.id, self.state.as_str())));
+        {
+            let mut g = self.shared.lock();
+            if g.state != State::Created {
+                return Err(err(ErrorCode::InvalidState, format!("session {} is {}", self.id, g.state.as_str())));
+            }
+            g.state = State::Starting;
         }
-        self.state = State::Starting;
+        self.scene_phase = ScenePhase::Active;
         let cmd = if self.is_rn() && !self.params.prebuilt {
             // No build step: node runs the Expo/Metro bundle (frameworks/react-native/guest/host.js).
             let mut c = Command::new("node");
             c.arg(onesim_home().join("frameworks/react-native/guest/host.js"))
                 .env("SIMCORE_METRO_URL", self.params.metro_url.as_deref().unwrap_or("http://localhost:8081"));
+            match &self.params.launch_url {
+                Some(u) => c.env("SIMCORE_LAUNCH_URL", u),
+                None => c.env_remove("SIMCORE_LAUNCH_URL"),
+            };
             c
         } else if is_prebuilt(&self.params) {
             Command::new(&self.params.app_path)
         } else {
-            Command::new(self.build().map_err(|e| self.fail(e))?)
+            let sh = self.shared.clone();
+            let bin = build_app(&self.id, &self.params, self.is_compose(), BUILD_TIMEOUT, |log| {
+                sh.push_error("build", log);
+            })
+            .map_err(|e| self.fail(e))?;
+            Command::new(bin)
         };
         self.spawn(cmd).map_err(|e| self.fail(e))?;
         let deadline = Instant::now() + LAUNCH_TIMEOUT;
@@ -408,60 +444,9 @@ impl Session {
             drop(g);
             return Err(self.fail(err(ErrorCode::RuntimeError, format!("guest exited before first tree\n{tail}"))));
         }
+        g.state = if g.exited { State::Crashed } else { State::Running };
         drop(g);
-        self.state = State::Running;
         Ok(())
-    }
-
-    fn build(&mut self) -> Result<PathBuf, ApiError> {
-        let home = onesim_home();
-        let script = home.join(if self.is_compose() { "frameworks/compose/scripts/build-app.sh" } else { "scripts/build-swift-app.sh" });
-        if !script.exists() {
-            return Err(err(ErrorCode::BuildFailed, format!("{} not found (set SIMCORE_HOME)", script.display())));
-        }
-        let dir = home.join("target/onesim-apps").join(format!("{}-{}", std::process::id(), self.id));
-        std::fs::create_dir_all(&dir).map_err(|e| err(ErrorCode::BuildFailed, e.to_string()))?;
-        // Windows runs the Compose guest through a batch launcher (build-app.sh writes one for a `.cmd` output).
-        let out = dir.join(if cfg!(windows) && self.is_compose() { "app.cmd".into() } else { format!("app{}", std::env::consts::EXE_SUFFIX) });
-        let mut cmd = bash();
-        cmd.arg(sh_path(&script)).arg(sh_path(Path::new(&self.params.app_path))).arg(sh_path(&out));
-        if let Some(r) = &self.params.root_view {
-            cmd.arg(r);
-        }
-        let mut child = cmd
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| err(ErrorCode::BuildFailed, format!("cannot run build script: {e}")))?;
-        let stderr = child.stderr.take().expect("piped");
-        let log = std::thread::spawn(move || {
-            let mut s = String::new();
-            let _ = std::io::Read::read_to_string(&mut BufReader::new(stderr), &mut s);
-            s
-        });
-        let deadline = Instant::now() + BUILD_TIMEOUT;
-        let status = loop {
-            match child.try_wait() {
-                Ok(Some(s)) => break Ok(s),
-                Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(50)),
-                Ok(None) => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    break Err(err(ErrorCode::Timeout, "build exceeded 300s"));
-                }
-                Err(e) => break Err(err(ErrorCode::BuildFailed, e.to_string())),
-            }
-        };
-        let log = log.join().unwrap_or_default();
-        if !log.is_empty() {
-            self.shared.push_error("build", log.clone());
-        }
-        let status = status?;
-        if !status.success() {
-            return Err(err(ErrorCode::BuildFailed, format!("build exited with {status}\n{log}")));
-        }
-        Ok(out)
     }
 
     fn spawn(&mut self, mut cmd: Command) -> Result<(), ApiError> {
@@ -471,6 +456,10 @@ impl Session {
         } else {
             cmd.env("SIMCORE_OS_BUILD", self.ios.build());
         }
+        match &self.params.pasteboard {
+            Some(pb) => cmd.env("SIMCORE_PASTEBOARD", pb),
+            None => cmd.env_remove("SIMCORE_PASTEBOARD"),
+        };
         let mut child = cmd
             .env("SIMCORE_SESSION_ID", &self.id)
             .env("SIMCORE_VIEWPORT", format!("{}x{}", self.viewport.width, self.viewport.height))
@@ -486,20 +475,19 @@ impl Session {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| err(ErrorCode::RuntimeError, format!("cannot launch {what}: {e}")))?;
-        self.stdin = child.stdin.take().map(|pipe| Arc::new(Mutex::new(pipe)));
+        *self.stdin.lock().unwrap_or_else(|e| e.into_inner()) = child.stdin.take();
         let (stdout, stderr) = (child.stdout.take().expect("piped"), child.stderr.take().expect("piped"));
         self.child = Some(child);
 
         let sh = self.shared.clone();
-        let stdin = self.stdin.as_ref().map(Arc::downgrade);
+        let (fonts, stdin) = (self.fonts.clone(), self.stdin.clone());
         let compose = self.is_compose();
         std::thread::spawn(move || {
-            let mut fonts = None;
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 match serde_json::from_str::<GuestMessage>(&line) {
                     Ok(GuestMessage::Tree { version, root }) => {
                         let mut g = sh.lock();
-                        g.tree = Some((version, root));
+                        g.tree = Some((version, Arc::new(*root)));
                         g.generation += 1;
                         g.last_event = Some(Instant::now());
                         let first = std::mem::replace(&mut g.ready_pending, false);
@@ -510,7 +498,7 @@ impl Session {
                         }
                         sh.log.render_updated(version);
                     }
-                    Ok(m @ (GuestMessage::FocusRequest { .. } | GuestMessage::ScrollTo { .. } | GuestMessage::ScrollToId { .. })) => {
+                    Ok(m @ (GuestMessage::FocusRequest { .. } | GuestMessage::ScrollTo { .. } | GuestMessage::ScrollToId { .. } | GuestMessage::JsResponder { .. } | GuestMessage::TouchAnswer { .. })) => {
                         let mut g = sh.lock();
                         g.requests.push(m);
                         g.last_event = Some(Instant::now());
@@ -529,13 +517,16 @@ impl Session {
                             sh.push_error("host", "measure_text requires a Compose guest".into());
                             continue;
                         }
-                        let result = onesim_render::layout::compose::measure_text(
-                            request, fonts.get_or_insert_with(onesim_render::Fonts::new),
-                        );
-                        if let Some(pipe) = stdin.as_ref().and_then(std::sync::Weak::upgrade) {
-                            if let Err(e) = send_to_guest(&pipe, &HostMessage::TextMeasurement { id, result }) {
-                                sh.push_error("host", e.message);
-                            }
+                        let result = {
+                            let mut fonts = fonts.lock().unwrap_or_else(|e| e.into_inner());
+                            onesim_render::layout::compose::measure_text(
+                                *request, fonts.get_or_insert_with(onesim_render::Fonts::new),
+                            )
+                        };
+                        let mut line = serde_json::to_string(&HostMessage::TextMeasurement { id, result }).expect("serialize");
+                        line.push('\n');
+                        if let Err(e) = write_line(&stdin, &line) {
+                            sh.push_error("host", e.message);
                         }
                     }
                     Ok(GuestMessage::Hello { protocol }) if protocol != onesim_protocol::PROTOCOL_VERSION => {
@@ -543,6 +534,20 @@ impl Session {
                     }
                     Ok(GuestMessage::Hello { .. }) => sh.lock().restarted = true,
                     Ok(GuestMessage::Modules { modules }) => sh.lock().modules = Some(modules),
+                    // Answered here, off the API thread: the guest awaits it while the host may be waiting for a tree.
+                    Ok(GuestMessage::Request { id, method, params }) => {
+                        let answer = {
+                            let mut g = fonts.lock().unwrap_or_else(|e| e.into_inner());
+                            onesim_render::guest_request::handle(g.get_or_insert_with(onesim_render::Fonts::new), &method, &params)
+                        };
+                        let (result, error) = match answer { Ok(v) => (Some(v), None), Err(e) => (None, Some(e)) };
+                        let mut line = serde_json::to_string(&HostMessage::Response { id, result, error }).expect("serialize");
+                        line.push('\n');
+                        if let Err(e) = write_line(&stdin, &line) {
+                            log::debug!("response {id}: {}", e.message);
+                        }
+                    }
+                    Ok(GuestMessage::Pasteboard { items }) => sh.log.emit("pasteboard.changed", json!({"items": items})),
                     Ok(GuestMessage::Event { name, detail }) => match name.as_str() {
                         "bundle.loaded" | "bundle.reloaded" | "bundle.error" | "refresh.applied" | "navigation.changed"
                         | "module.unsupported" | "module.called" => sh.log.emit(&name, detail),
@@ -554,6 +559,9 @@ impl Session {
             let mut g = sh.lock();
             g.exited = true;
             let crashed = !g.stopping && g.tree.is_some(); // no tree yet: `start` reports it as failed
+            if crashed && g.state == State::Running {
+                g.state = State::Crashed;
+            }
             sh.cv.notify_all();
             drop(g);
             if crashed {
@@ -573,13 +581,14 @@ impl Session {
 
     pub fn send(&mut self, msg: &HostMessage) -> Result<(), ApiError> {
         self.last_sent = Instant::now();
-        let pipe = self.stdin.as_ref().ok_or_else(|| err(ErrorCode::InvalidState, "guest not running"))?;
-        send_to_guest(pipe, msg)
+        let mut line = serde_json::to_string(msg).expect("serialize");
+        line.push('\n');
+        write_line(&self.stdin, &line)
     }
 
     /// React Native: send the frames that changed since the last `layout` message.
     /// Returns whether a `layout` message went out.
-    pub fn sync_layout(&mut self, scene: &onesim_render::Scene) -> bool {
+    pub fn sync_layout(&mut self, scene: &Scene) -> bool {
         if self.state() != State::Running {
             return false;
         }
@@ -758,34 +767,38 @@ impl Session {
         if !signal(c, SIGSTOP) {
             return Err(err(ErrorCode::RuntimeError, "cannot suspend the guest process"));
         }
-        self.state = State::Paused;
+        self.shared.lock().state = State::Paused;
         self.shared.log.emit("runtime.paused", json!({}));
         Ok(())
     }
 
     pub fn resume(&mut self) -> Result<(), ApiError> {
-        if self.state != State::Paused {
-            return Err(err(ErrorCode::InvalidState, format!("session {} is {}", self.id, self.state().as_str())));
+        let state = self.state();
+        if state != State::Paused {
+            return Err(err(ErrorCode::InvalidState, format!("session {} is {}", self.id, state.as_str())));
         }
         if let Some(c) = &self.child {
             signal(c, SIGCONT);
         }
-        self.state = State::Running;
+        self.shared.lock().state = State::Running;
         self.shared.log.emit("runtime.resumed", json!({}));
         Ok(())
     }
 
     pub fn stop(&mut self) {
-        if matches!(self.state, State::Stopped) {
-            return;
+        {
+            let mut g = self.shared.lock();
+            if g.state == State::Stopped {
+                return;
+            }
+            g.stopping = true;
+            g.state = State::Stopping;
         }
-        self.shared.lock().stopping = true;
         if let Some(c) = &self.child {
             signal(c, SIGCONT); // a suspended guest could not read the shutdown message
         }
-        self.state = State::Stopping;
         let _ = self.send(&HostMessage::Shutdown);
-        self.stdin = None; // EOF also makes the guest exit
+        *self.stdin.lock().unwrap_or_else(|e| e.into_inner()) = None; // EOF also makes the guest exit
         if let Some(mut c) = self.child.take() {
             let deadline = Instant::now() + Duration::from_secs(2);
             while matches!(c.try_wait(), Ok(None)) && Instant::now() < deadline {
@@ -796,7 +809,7 @@ impl Session {
             }
             let _ = c.wait();
         }
-        self.state = State::Stopped;
+        self.shared.lock().state = State::Stopped;
         self.shared.stopped("stopped");
     }
 }

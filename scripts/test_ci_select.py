@@ -16,14 +16,15 @@ import ci_select as cs  # noqa: E402
 # The workspace as of this test (kept in sync by test_graph_matches_cargo_metadata).
 GRAPH = {
     "onesim-protocol": {"dir": "crates/onesim-protocol", "deps": set()},
-    "onesim-render": {"dir": "crates/onesim-render", "deps": {"onesim-protocol"}},
-    "onesim-render-gpu": {"dir": "crates/onesim-render-gpu", "deps": {"onesim-render", "onesim-protocol"}},
+    "onesim-display": {"dir": "crates/onesim-display", "deps": {"onesim-protocol"}},
+    "onesim-render": {"dir": "crates/onesim-render", "deps": {"onesim-display", "onesim-protocol"}},
+    "onesim-render-gpu": {"dir": "crates/onesim-render-gpu", "deps": {"onesim-display", "onesim-render", "onesim-protocol"}},
     "onesim-host": {"dir": "crates/onesim-host", "deps": {"onesim-protocol", "onesim-render", "onesim-render-gpu"}},
     "onesim-cli": {"dir": "crates/onesim-cli",
                    "deps": {"onesim-host", "onesim-protocol", "onesim-render", "onesim-render-gpu"}},
     "onesim-runtime": {"dir": "crates/onesim-runtime", "deps": set()},
     "onesim-web": {"dir": "crates/onesim-web", "deps": {"onesim-protocol", "onesim-render"}},
-    "onesim-web-gpu": {"dir": "crates/onesim-web-gpu", "deps": {"onesim-render", "onesim-render-gpu"}},
+    "onesim-web-gpu": {"dir": "crates/onesim-web-gpu", "deps": {"onesim-display", "onesim-render-gpu"}},
 }
 ALL = set(cs.SELECTABLE)
 WEB = set(cs.WEB)
@@ -66,6 +67,8 @@ MATRIX = [
      set(), set()),
     ("Android reference", ["tests/fixtures/compose-android/home.png"], set(), {"compose"}),
     ("pixel-diff tool", ["scripts/compare_ios.py"], NATIVE, NATIVE | WEB),
+    ("animation diff tool", ["scripts/compare_animation.py", "scripts/test_compare_animation.py"], {"swiftui"}, {"swiftui"}),
+    ("animation behavior harness", ["scripts/test-animation-behavior.py"], {"swiftui"}, {"swiftui"}),
     ("fonts", ["assets/fonts/Inter.ttf"], {"rust"} | NATIVE, ALL),
     ("pinned versions", ["docs/compatibility/versions.json"], set(), ALL),
 ]

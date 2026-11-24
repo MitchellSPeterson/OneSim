@@ -24,7 +24,10 @@ extension ShapeStyle where Self == ForegroundStyle {
 
 public struct HierarchicalShapeStyle: ShapeStyle {
     let name: String
-    public var _json: [String: Any] { ["semantic": name] }
+    public var _json: [String: Any] {
+        if name == "quaternary" || name == "quinary" { return ["style": name] }
+        return ["semantic": name, "hierarchical": true]
+    }
 }
 extension ShapeStyle where Self == HierarchicalShapeStyle {
     public static var primary: HierarchicalShapeStyle { .init(name: "primary") }
@@ -1335,8 +1338,10 @@ struct _CtxView<Content: View>: View, _Flattenable {
     let apply: (_Runtime) -> Void
     func _children(_ path: String) -> [Node] {
         let rt = _Runtime.shared
-        let saved = (rt.disabled, rt.buttonStyle, rt.pickerStyle, rt.styles, rt.pageTabStyle, rt.pageIndexStyle, rt.envObjects, rt.envLocal)
-        defer { (rt.disabled, rt.buttonStyle, rt.pickerStyle, rt.styles, rt.pageTabStyle, rt.pageIndexStyle, rt.envObjects, rt.envLocal) = saved }
+        let saved = (rt.disabled, rt.buttonStyle, rt.pickerStyle, rt.styles, rt.pageTabStyle, rt.pageIndexStyle, rt.envObjects, rt.envLocal, rt.textInput)
+        defer { (rt.disabled, rt.buttonStyle, rt.pickerStyle, rt.styles, rt.pageTabStyle, rt.pageIndexStyle, rt.envObjects, rt.envLocal, rt.textInput) = saved }
+        let store = rt.appStorage
+        defer { rt.appStorage = store }
         #if !os(WASI)
         let imageSession = rt.imageSession
         defer { rt.imageSession = imageSession }

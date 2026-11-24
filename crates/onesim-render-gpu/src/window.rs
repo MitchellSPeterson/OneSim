@@ -180,13 +180,19 @@ impl WindowRenderer {
 
     fn blit(&self, enc: &mut wgpu::CommandEncoder, view: &wgpu::TextureView, (w, h): (u32, u32)) {
         let Some(off) = self.target.as_ref() else { return };
+        let load = if off.w >= w && off.h >= h {
+            // SAFETY: the fullscreen triangle writes every pixel in the viewport, which covers the entire target.
+            unsafe { wgpu::LoadOp::DontCare(wgpu::LoadOpDontCare::enabled()) }
+        } else {
+            wgpu::LoadOp::Clear(wgpu::Color::BLACK)
+        };
         let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("onesim-window-blit"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view,
                 depth_slice: None,
                 resolve_target: None,
-                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::BLACK), store: wgpu::StoreOp::Store },
+                ops: wgpu::Operations { load, store: wgpu::StoreOp::Store },
             })],
             depth_stencil_attachment: None,
             timestamp_writes: None,
@@ -207,7 +213,7 @@ impl WindowRenderer {
         let t = Instant::now();
         self.ensure_target(dl.width, dl.height);
         let Some(off) = self.target.as_ref() else { return Err(RenderError::Other("no target".into())) };
-        if let Err(e) = self.exec.execute(&dl, &off.tex) {
+        if let Err(e) = self.exec.execute_owned(dl, &off.tex) {
             self.builder.reset();
             self.exec.clear_resources();
             return Err(e);

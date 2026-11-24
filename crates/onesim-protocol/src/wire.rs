@@ -9,17 +9,27 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum GuestMessage {
     Hello { protocol: u32 },
-    Tree { version: u64, root: ViewNode },
+    Tree { version: u64, root: Box<ViewNode> },
     Error { message: String },
     /// Compose synchronous offscreen text measurement, including during the initial composition.
     #[serde(rename = "measure_text")]
-    MeasureText { id: u64, request: ComposeMeasureText },
+    MeasureText { id: u64, request: Box<ComposeMeasureText> },
     /// React Native `focus`/`blur` commands: focus the field with this tag (`null` = blur).
     #[serde(rename = "focus_request")]
     FocusRequest { tag: Option<u64> },
+    /// React Native's responder system: the view `tag` became the JS responder and blocks native ones (a
+    /// PanResponder's grant), or `null` when no such responder remains. Scroll views inside it stop scrolling.
+    #[serde(rename = "js_responder")]
+    JsResponder { tag: Option<u64> },
+    /// Answer to the host's `touch_ask`, sent after the touch messages before it were dispatched: whether a gesture
+    /// recognizer (react-native-gesture-handler) captured the touch.
+    #[serde(rename = "touch_answer")]
+    TouchAnswer { ask: u64, captured: bool },
     /// React Native `scrollTo` / `scrollToEnd` commands.
     #[serde(rename = "scroll_to")]
     ScrollTo { tag: u64, x: ScrollTarget, y: ScrollTarget },
+    /// The app replaced the session pasteboard (section W: the share sheet's Copy).
+    Pasteboard { items: Vec<String> },
     /// SwiftUI `ScrollViewProxy.scrollTo` (section M). `anchor` is a unit point; absent means top-leading.
     #[serde(rename = "scroll_to_id")]
     ScrollToId {
@@ -38,6 +48,9 @@ pub enum GuestMessage {
     Event { name: String, #[serde(default)] detail: serde_json::Value },
     /// React Native native-module inventory, once after boot (same shape as the API's `modules.list`).
     Modules { modules: serde_json::Value },
+    /// Work for the host (React Native, section H): `method` `image.blurhash` / `image.thumbhash` / `text.render`.
+    /// The host answers with `HostMessage::Response` carrying the same `id`.
+    Request { id: u64, method: String, #[serde(default)] params: serde_json::Value },
 }
 
 /// A `scroll_to` coordinate: an offset in points or the string `"end"` (max offset).
@@ -65,6 +78,10 @@ pub enum ScrollPhase {
     Begin,
     Scroll,
     End,
+    /// The finger lifted and the content carries on (a fling or a bounce); `momentum_end` follows when it stops.
+    Release,
+    #[serde(rename = "momentum_end")]
+    MomentumEnd,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -410,8 +427,14 @@ pub enum HostMessage {
         #[serde(default, rename = "dynamicTypeSize", skip_serializing_if = "Option::is_none")]
         dynamic_type_size: Option<DynamicTypeSize>,
     },
+    /// SwiftUI: replace the app's pasteboard (section W).
+    Pasteboard { items: Vec<String> },
     /// React Native touch: `x`/`y` page points, `lx`/`ly` relative to the target node (`tag`).
     Touch { phase: TouchPhase, tag: u64, x: f64, y: f64, lx: f64, ly: f64, timestamp: f64 },
+    /// React Native: a finger on a scroll view passed the pan slop; the guest answers `touch_answer` with this `ask`
+    /// once it has dispatched the touches so far (a responder grant or gesture activation may claim the touch).
+    #[serde(rename = "touch_ask")]
+    TouchAsk { ask: u64 },
     /// SwiftUI touch on views with gestures (section L). Not version-gated: gesture keys are structural paths.
     Gesture(GestureTouch),
     /// React Native layout frames `tag -> [x, y, w, h]` in page points.
@@ -452,8 +475,64 @@ pub enum HostMessage {
     /// React Native: native header back button tapped (`RNSScreenStack` tag).
     #[serde(rename = "native_back")]
     NativeBack { tag: u64 },
+    /// SwiftUI scene phase (`ScenePhase`): the app moved to this phase. The host steps through `inactive` between
+    /// `active` and `background`, one message per step, as iOS does; the guest answers each with a tree.
+    #[serde(rename = "scene_phase")]
+    ScenePhase { phase: ScenePhase },
+    /// SwiftUI: the system opened this URL in the app (`onOpenURL`). The guest answers with a tree.
+    /// React Native (iOS): Linking's `url` event.
+    #[serde(rename = "open_url")]
+    OpenUrl { url: String },
+    /// The host's answer to `GuestMessage::Request` `id`: `result`, or `error` (the message the guest rejects with).
+    Response {
+        id: u64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        result: Option<serde_json::Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
     Reload,
     Shutdown,
+}
+
+/// An app's scene phase (SwiftUI `ScenePhase`, UIKit `UIApplication.State`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ScenePhase {
+    #[default]
+    Active,
+    Inactive,
+    Background,
+}
+
+impl ScenePhase {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ScenePhase::Active => "active",
+            ScenePhase::Inactive => "inactive",
+            ScenePhase::Background => "background",
+        }
+    }
+
+    pub const ALL: [ScenePhase; 3] = [ScenePhase::Active, ScenePhase::Inactive, ScenePhase::Background];
+
+    /// The phases an app passes through from `self` to `to`, ending at `to` (empty when equal): iOS always goes
+    /// through `inactive` between `active` and `background`.
+    pub fn steps_to(self, to: ScenePhase) -> Vec<ScenePhase> {
+        use ScenePhase::*;
+        match (self, to) {
+            (a, b) if a == b => vec![],
+            (Active, Background) | (Background, Active) => vec![Inactive, to],
+            _ => vec![to],
+        }
+    }
+}
+
+impl std::str::FromStr for ScenePhase {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String> {
+        ScenePhase::ALL.into_iter().find(|p| p.as_str() == s).ok_or_else(|| format!("unknown scene phase {s:?} (active, inactive, background)"))
+    }
 }
 
 #[cfg(test)]
@@ -516,7 +595,7 @@ mod tests {
         let GuestMessage::Tree { root, .. } = rn else { panic!() };
         let ViewKind::Rn { component, props, children } = &root.kind else { panic!() };
         assert_eq!((component.as_str(), props["flex"].as_i64(), children.len()), ("RootView", Some(1), 1));
-        assert_eq!(serde_json::from_str::<ViewNode>(&serde_json::to_string(&root).unwrap()).unwrap(), root);
+        assert_eq!(serde_json::from_str::<ViewNode>(&serde_json::to_string(&root).unwrap()).unwrap(), *root);
         assert_eq!(serde_json::to_string(&HostMessage::Shutdown).unwrap(), r#"{"type":"shutdown"}"#);
         for (m, j) in [
             (
@@ -545,9 +624,21 @@ mod tests {
         let g: GuestMessage = serde_json::from_str(r#"{"type":"focus_request","tag":null}"#).unwrap();
         assert_eq!(g, GuestMessage::FocusRequest { tag: None });
         assert_eq!(serde_json::from_str::<GuestMessage>(r#"{"type":"focus_request","tag":4}"#).unwrap(), GuestMessage::FocusRequest { tag: Some(4) });
+        // Scroll-view touch arbitration (React Native).
+        let g = |j: &str| serde_json::from_str::<GuestMessage>(j).unwrap();
+        assert_eq!(g(r#"{"type":"js_responder","tag":9}"#), GuestMessage::JsResponder { tag: Some(9) });
+        assert_eq!(g(r#"{"type":"js_responder","tag":null}"#), GuestMessage::JsResponder { tag: None });
+        assert_eq!(g(r#"{"type":"touch_answer","ask":3,"captured":true}"#), GuestMessage::TouchAnswer { ask: 3, captured: true });
+        assert_eq!(serde_json::to_string(&HostMessage::TouchAsk { ask: 3 }).unwrap(), r#"{"type":"touch_ask","ask":3}"#);
+        for (phase, name) in [(ScrollPhase::Release, "release"), (ScrollPhase::MomentumEnd, "momentum_end")] {
+            assert_eq!(serde_json::to_value(phase).unwrap(), name);
+        }
         let g: GuestMessage = serde_json::from_str(r#"{"type":"scroll_to","tag":3,"x":0,"y":"end"}"#).unwrap();
         let GuestMessage::ScrollTo { tag: 3, x, y } = g else { panic!() };
         assert_eq!((x.resolve(10.0), y.resolve(10.0)), (0.0, 10.0));
+        let pb: GuestMessage = serde_json::from_str(r#"{"type":"pasteboard","items":["a"]}"#).unwrap();
+        assert_eq!(pb, GuestMessage::Pasteboard { items: vec!["a".into()] });
+        assert_eq!(serde_json::to_string(&HostMessage::Pasteboard { items: vec!["a".into()] }).unwrap(), r#"{"type":"pasteboard","items":["a"]}"#);
         let sid = GuestMessage::ScrollToId { scroll: "0".into(), target: "row".into(), anchor: Some([0.5, 0.0]) };
         let sj = serde_json::to_string(&sid).unwrap();
         assert_eq!(sj, r#"{"type":"scroll_to_id","scroll":"0","target":"row","anchor":[0.5,0.0]}"#);
@@ -584,4 +675,49 @@ mod tests {
         assert_eq!(tkj, r#"{"type":"tick","time":250.5}"#);
         assert_eq!(serde_json::from_str::<HostMessage>(&tkj).unwrap(), tk);
     }
+
+    #[test]
+    fn scene_phase_and_open_url_messages() {
+        let m = HostMessage::ScenePhase { phase: ScenePhase::Background };
+        let j = serde_json::to_string(&m).unwrap();
+        assert_eq!(j, r#"{"type":"scene_phase","phase":"background"}"#);
+        assert_eq!(serde_json::from_str::<HostMessage>(&j).unwrap(), m);
+        let u = HostMessage::OpenUrl { url: "app://item/7?q=ü".into() };
+        let uj = serde_json::to_string(&u).unwrap();
+        assert_eq!(uj, r#"{"type":"open_url","url":"app://item/7?q=ü"}"#);
+        assert_eq!(serde_json::from_str::<HostMessage>(&uj).unwrap(), u);
+        assert!(serde_json::from_str::<HostMessage>(r#"{"type":"scene_phase","phase":"asleep"}"#).is_err());
+    }
+
+    #[test]
+    fn scene_phase_steps_pass_through_inactive() {
+        use ScenePhase::*;
+        assert_eq!(Active.steps_to(Background), vec![Inactive, Background]);
+        assert_eq!(Background.steps_to(Active), vec![Inactive, Active]);
+        assert_eq!(Active.steps_to(Inactive), vec![Inactive]);
+        assert_eq!(Inactive.steps_to(Background), vec![Background]);
+        assert_eq!(Inactive.steps_to(Active), vec![Active]);
+        assert_eq!(Background.steps_to(Inactive), vec![Inactive]);
+        for p in [Active, Inactive, Background] {
+            assert!(p.steps_to(p).is_empty());
+        }
+        assert_eq!(ScenePhase::default(), Active);
+        assert_eq!(Background.as_str(), "background");
+        for p in ScenePhase::ALL {
+            assert_eq!(p.as_str().parse::<ScenePhase>(), Ok(p));
+            assert_eq!(serde_json::to_string(&p).unwrap(), format!("\"{}\"", p.as_str()));
+        }
+        assert!("Active".parse::<ScenePhase>().is_err() && "".parse::<ScenePhase>().is_err());
+    }
+
+    #[test]
+    fn request_and_response_messages() {
+        let r: GuestMessage = serde_json::from_str(r#"{"type":"request","id":7,"method":"image.blurhash","params":{"path":"/x.png","x":4,"y":3}}"#).unwrap();
+        assert!(matches!(&r, GuestMessage::Request { id: 7, method, params } if method == "image.blurhash" && params["x"] == 4));
+        let ok = serde_json::to_value(HostMessage::Response { id: 7, result: Some(serde_json::json!("LEHV6n")), error: None }).unwrap();
+        assert_eq!(ok, serde_json::json!({"type": "response", "id": 7, "result": "LEHV6n"}));
+        let bad = serde_json::to_value(HostMessage::Response { id: 8, result: None, error: Some("no".into()) }).unwrap();
+        assert_eq!(bad, serde_json::json!({"type": "response", "id": 8, "error": "no"}));
+    }
+
 }

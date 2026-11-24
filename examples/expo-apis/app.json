@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "expo-apis",
+    "slug": "expo-apis",
+    "scheme": "expoapis",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": { "supportsTablet": false }
+  }
+}

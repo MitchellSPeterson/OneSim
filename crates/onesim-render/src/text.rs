@@ -30,9 +30,11 @@ fn shape_limit(width: Option<f32>, width_code: i8) -> Option<f32> {
     width.map(|w| if (k - 1.0).abs() >= 0.001 && k > 0.0 { w / k } else { w })
 }
 /// Open-licensed fallback (Inter, SIL OFL 1.1; variable `wght` axis), embedded for determinism.
+#[cfg(feature = "font-inter")]
 const INTER: &[u8] = include_bytes!("../../../assets/fonts/InterVariable.ttf");
 const INTER_FAMILY: &str = "Inter Variable";
 /// Android's default sans-serif (Roboto, SIL OFL 1.1; variable `wdth`/`wght`), embedded: used for `FontSpec::android` text.
+#[cfg(feature = "font-roboto")]
 const ROBOTO: &[u8] = include_bytes!("../../../assets/fonts/RobotoVariable.ttf");
 const ROBOTO_FAMILY: &str = "Roboto";
 
@@ -69,6 +71,8 @@ pub struct Span {
     pub strike: bool,
     /// System monospaced face.
     pub mono: bool,
+    /// A font the app loaded (expo-font): its family name as registered ([`Fonts::custom_faces`]).
+    pub family: Option<&'static str>,
     /// Extra letter-spacing in points (kerning + tracking), added to the optical fit.
     pub extra: f32,
     /// 0 default, 1 serif, 2 rounded, 3 monospaced.
@@ -104,6 +108,7 @@ impl Span {
             underline: false,
             strike: false,
             mono: false,
+            family: None,
             extra: 0.0,
             design: 0,
             width: 0,
@@ -150,7 +155,7 @@ pub struct TextBullet {
     pub wire: onesim_protocol::ComposeBullet,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ComposeOverflow {
     Clip,
     Ellipsis,
@@ -175,6 +180,8 @@ pub struct FontSpec {
     pub tracking: f32,
     /// System monospaced face (`ui-monospace`).
     pub mono: bool,
+    /// A font the app loaded (expo-font): its family name as registered ([`Fonts::custom_faces`]).
+    pub family: Option<&'static str>,
     /// Line cap: the last allowed line is cut to whole glyphs followed by `…` (React Native `numberOfLines`).
     pub lines: Option<usize>,
     /// Explicit paragraph line height (RN `lineHeight`): every run uses `pitch`; otherwise a run's pitch scales with its size.
@@ -234,6 +241,7 @@ impl FontSpec {
             align,
             tracking: tracking_em(size, weight),
             mono: false,
+            family: None,
             lines: None,
             fixed_pitch: false,
             inter_point_tracking: false,
@@ -357,8 +365,74 @@ pub fn fonts_capability() -> &'static str {
     }
 }
 
-/// Text, size bits, weight, wrap width bits, Android tracking bits.
-type MeasureKey = (String, u32, u16, u32, u32, [u32; 2]);
+use std::borrow::Borrow;
+use std::hash::{Hash, Hasher};
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct MeasureMeta {
+    size: u32,
+    pt: u32,
+    line_height: u32,
+    pitch: u32,
+    weight: u16,
+    width: u32,
+    tracking: u32,
+    extra: u32,
+    lines: usize,
+    design: u8,
+    family: Option<&'static str>,
+    width_code: i8,
+    trunc: u8,
+    case_fold: u8,
+    flags: u8,
+    compose_overflow: Option<ComposeOverflow>,
+    compose_direction: u8,
+}
+
+#[derive(PartialEq, Eq, Hash)]
+struct MeasureKey {
+    text: String,
+    meta: MeasureMeta,
+}
+
+trait MeasureLookup {
+    fn key(&self) -> (&str, MeasureMeta);
+}
+
+impl MeasureLookup for MeasureKey {
+    fn key(&self) -> (&str, MeasureMeta) {
+        (&self.text, self.meta)
+    }
+}
+
+impl MeasureLookup for (&str, MeasureMeta) {
+    fn key(&self) -> (&str, MeasureMeta) {
+        *self
+    }
+}
+
+impl<'a> Borrow<dyn MeasureLookup + 'a> for MeasureKey {
+    fn borrow(&self) -> &(dyn MeasureLookup + 'a) {
+        self
+    }
+}
+
+impl PartialEq for dyn MeasureLookup + '_ {
+    fn eq(&self, other: &Self) -> bool {
+        self.key() == other.key()
+    }
+}
+
+impl Eq for dyn MeasureLookup + '_ {}
+
+impl Hash for dyn MeasureLookup + '_ {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        let (text, meta) = self.key();
+        text.hash(state);
+        meta.hash(state);
+    }
+}
+
 const MEASURE_MAX_ENTRIES: usize = 4096;
 const MEASURE_MAX_TEXT_BYTES: usize = 1024 * 1024;
 
@@ -369,11 +443,55 @@ pub struct Fonts {
     cache: SwashCache,
     sf: bool,
     inter: bool,
+    #[cfg(feature = "font-roboto")]
+    roboto_loaded: bool,
     has_mono: bool,
     rounded: Option<&'static str>,
     serif: Option<&'static str>,
-    measured: HashMap<MeasureKey, (f64, f64)>,
+    measured: HashMap<MeasureKey, (u64, (f64, f64))>,
+    measured_tick: u64,
     measured_text_bytes: usize,
+    /// Font files loaded by apps (expo-font), by path: their faces once in the font database.
+    custom: HashMap<String, Vec<CustomFace>>,
+}
+
+/// One face of a font file an app loaded ([`Fonts::custom_faces`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CustomFace {
+    /// Family name in the font database (what [`FontSpec::family`] / [`Span::family`] take).
+    pub family: &'static str,
+    pub postscript: String,
+    pub weight: u16,
+    pub italic: bool,
+}
+
+/// Font files provided from memory (the browser has no files: docs/web.md), by path.
+fn font_files() -> std::sync::MutexGuard<'static, HashMap<String, std::sync::Arc<Vec<u8>>>> {
+    static FILES: std::sync::OnceLock<std::sync::Mutex<HashMap<String, std::sync::Arc<Vec<u8>>>>> = std::sync::OnceLock::new();
+    FILES.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Provide the font file at `path` from memory. False if it holds no font face.
+pub fn put_font(path: &str, bytes: &[u8]) -> bool {
+    let mut db = fontdb::Database::new();
+    db.load_font_data(bytes.to_vec());
+    if db.faces().next().is_none() {
+        return false;
+    }
+    font_files().insert(path.to_string(), std::sync::Arc::new(bytes.to_vec()));
+    true
+}
+
+/// Family names live as long as the font database (fonts are never unloaded from it).
+fn intern(name: &str) -> &'static str {
+    static NAMES: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<&'static str>>> = std::sync::OnceLock::new();
+    let mut names = NAMES.get_or_init(Default::default).lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(n) = names.get(name) {
+        return n;
+    }
+    let n: &'static str = Box::leak(name.to_string().into_boxed_str());
+    names.insert(n);
+    n
 }
 
 /// One drawn text line: x range and baseline, relative to the text origin (device px).
@@ -432,6 +550,7 @@ impl Fonts {
 
     pub fn with_fallback(force_inter: bool) -> Self {
         let mut db = fontdb::Database::new();
+        #[cfg(not(target_arch = "wasm32"))]
         db.load_system_fonts();
         let has = |db: &fontdb::Database| db.faces().any(|f| f.families.iter().any(|(n, _)| n == SF_FAMILY));
         if !force_inter && !has(&db) {
@@ -439,10 +558,10 @@ impl Fonts {
         }
         let sf = !force_inter && has(&db);
         let inter = !sf;
+        #[cfg(feature = "font-inter")]
         if inter {
-            db.load_font_data(INTER.to_vec());
+            db.load_font_source(fontdb::Source::Binary(std::sync::Arc::new(INTER)));
         }
-        db.load_font_data(ROBOTO.to_vec());
         let sys = FontSystem::new_with_locale_and_db("en-US".into(), db);
         let has_mono = sys.db().faces().any(|f| f.families.iter().any(|(n, _)| n == MONO_FAMILY));
         let named = |names: &'static [&'static str]| {
@@ -450,18 +569,71 @@ impl Fonts {
         };
         let rounded = named(ROUNDED_NAMES);
         let serif = named(SERIF_NAMES);
-        Self { sys, compose_fonts: HashSet::new(), cache: SwashCache::new(), sf, inter, has_mono, rounded, serif, measured: HashMap::new(), measured_text_bytes: 0 }
+        Self {
+            sys,
+            compose_fonts: HashSet::new(),
+            cache: SwashCache::new(),
+            sf,
+            inter,
+            #[cfg(feature = "font-roboto")]
+            roboto_loaded: false,
+            has_mono,
+            rounded,
+            serif,
+            measured: HashMap::new(),
+            measured_tick: 0,
+            measured_text_bytes: 0,
+            custom: HashMap::new(),
+        }
     }
 
-    /// True when Apple's SF Pro is in use.
+    /// The faces of the font file at `path` (registered with [`put_font`] or on disk), loaded into the font database
+    /// on first use. Empty when it is not a font.
+    pub fn custom_faces(&mut self, path: &str) -> &[CustomFace] {
+        if !self.custom.contains_key(path) {
+            let bytes = font_files().get(path).map(|b| b.as_ref().clone()).or_else(|| std::fs::read(path).ok());
+            let ids = bytes.map(|b| self.sys.db_mut().load_font_source(fontdb::Source::Binary(std::sync::Arc::new(b)))).unwrap_or_default();
+            let faces: Vec<CustomFace> = ids
+                .iter()
+                .filter_map(|id| self.sys.db().face(*id))
+                .filter_map(|f| {
+                    Some(CustomFace {
+                        family: intern(&f.families.first()?.0),
+                        postscript: f.post_script_name.clone(),
+                        weight: f.weight.0,
+                        italic: f.style != fontdb::Style::Normal,
+                    })
+                })
+                .collect();
+            if faces.is_empty() {
+                // Not (yet) there: the browser registers the file when the guest writes it; ask again next time.
+                return &[];
+            }
+            // Measurements made before the face existed fell back to another font.
+            self.measured.clear();
+            self.measured_text_bytes = 0;
+            self.custom.insert(path.to_string(), faces);
+        }
+        &self.custom[path]
+    }
+
+    fn ensure_roboto(&mut self) {
+        #[cfg(feature = "font-roboto")]
+        if !self.roboto_loaded {
+            self.sys.db_mut().load_font_source(fontdb::Source::Binary(std::sync::Arc::new(ROBOTO)));
+            self.roboto_loaded = true;
+        }
+    }
+
+    /// True when Apple's SF Pro is in use (false: the bundled Inter fallback).
     pub fn has_sf(&self) -> bool {
         self.sf
     }
 
-    /// True when the bundled Inter fallback is in use.
-    /// True when drawing with Apple's SF Pro (false: the bundled Inter fallback).
+    /// Alias for [`Self::has_sf`].
+    #[inline]
     pub fn is_sf(&self) -> bool {
-        self.sf
+        self.has_sf()
     }
 
     pub fn has_inter(&self) -> bool {
@@ -504,9 +676,12 @@ impl Fonts {
 
     /// Family, tracking (em), weight and stretch. `sf_tracking` is SF's tracking for the default face.
     /// A design that switches family drops that optical fit (it was measured for SF Pro).
-    /// `width` is a horizontal scale in measure and draw, not a face: cosmic-text never sets `wdth`.
     #[allow(clippy::too_many_arguments)]
-    fn face(&self, mono: bool, android: bool, pt: f32, inter_size: f32, weight: u16, sf_tracking: f32, big: bool, design: u8, _width: i8) -> (Family<'static>, f32, u16, Stretch) {
+    fn face(&self, family: Option<&'static str>, mono: bool, android: bool, pt: f32, inter_size: f32, weight: u16, sf_tracking: f32, big: bool, design: u8) -> (Family<'static>, f32, u16, Stretch) {
+        // An app's own font: as designed (no system optical fit), at the asked weight (variable fonts follow it).
+        if let Some(name) = family {
+            return (Family::Name(name), 0.0, weight, Stretch::Normal);
+        }
         let wght = if big { (weight as i32 + INTER_BIG_WEIGHT).clamp(100, 900) as u16 } else { weight };
         if mono || design == 3 {
             return (self.mono_family(), 0.0, wght, Stretch::Normal);
@@ -577,9 +752,13 @@ impl Fonts {
     /// Shaped text. A line cap cuts the last allowed line with `…`: tail (the default), head, or middle.
     fn buffer_platform(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span]) -> Buffer {
         let folded = fold_case(text, f.case_fold);
-        let folded_spans: Vec<Span> = spans.iter().map(|s| Span { text: fold_case(&s.text, f.case_fold).into_owned(), ..s.clone() }).collect();
+        let folded_spans: Vec<Span> = if f.case_fold == 0 || spans.is_empty() {
+            Vec::new()
+        } else {
+            spans.iter().map(|s| Span { text: fold_case(&s.text, f.case_fold).into_owned(), ..s.clone() }).collect()
+        };
         let text = folded.as_ref();
-        let spans = if spans.is_empty() { spans } else { folded_spans.as_slice() };
+        let spans = if folded_spans.is_empty() { spans } else { folded_spans.as_slice() };
         let b = self.build(text, f, width, spans);
         let (Some(n), Some(limit)) = (f.lines, width) else { return b };
         if b.layout_runs().count() <= n {
@@ -592,7 +771,7 @@ impl Fonts {
 
     fn clip_text(&mut self, text: &str, f: &FontSpec, b: &Buffer, limit: f32, n: usize) -> String {
         match f.trunc {
-            1 => self.trunc_end(text, f, limit, n, true),
+            1 => self.trunc_head(text, f, limit, n),
             2 => self.trunc_middle(text, f, limit, n),
             _ => self.trunc_tail(text, f, b, limit, n),
         }
@@ -639,8 +818,8 @@ impl Fonts {
         format!("{head}\u{2026}")
     }
 
-    /// Head (`leading` ellipsis) or the shared suffix search. `head` true keeps the end of `text`.
-    fn trunc_end(&mut self, text: &str, f: &FontSpec, limit: f32, n: usize, _head: bool) -> String {
+    /// Head (`leading` ellipsis) truncation: keeps the end of `text`.
+    fn trunc_head(&mut self, text: &str, f: &FontSpec, limit: f32, n: usize) -> String {
         let one = FontSpec { align: TextAlign::Leading, lines: None, trunc: 0, ..*f };
         let bounds: Vec<usize> = text.char_indices().map(|(i, _)| i).chain([text.len()]).collect();
         let (mut lo, mut hi) = (0, bounds.len() - 1);
@@ -669,41 +848,91 @@ impl Fonts {
         if nchars == 0 {
             return format!("{text}\u{2026}");
         }
-        let mut cands: Vec<(f64, f64, usize, String)> = Vec::new();
-        for head in 0..=nchars {
-            let pre_end = idx[head];
-            let mut lo = 0;
-            let mut hi = nchars - head;
-            while lo < hi {
-                let mid = (lo + hi).div_ceil(2);
-                let suf_at = idx[nchars - mid];
+        // Bound the longest fitting prefix in O(log N) so multiline/explicit-newline text stays in range.
+        let (mut p_lo, mut p_hi) = (0, nchars);
+        while p_lo < p_hi {
+            let mid = (p_lo + p_hi).div_ceil(2);
+            let probe = format!("{}\u{2026}", text[..idx[mid]].trim_end());
+            if self.fits(&probe, &one, limit, n) {
+                p_lo = mid;
+            } else {
+                p_hi = mid - 1;
+            }
+        }
+        let head_max = p_lo;
+
+        // Single-shape estimate of cumulative width at each character boundary.
+        let head_est = if text.contains('\n') {
+            head_max / 2
+        } else {
+            let scale = f64::from(width_scale(one.width));
+            let shaped = self.build(text, &one, None, &[]);
+            let mut char_end_x = vec![0.0_f64; nchars + 1];
+            for run in shaped.layout_runs() {
+                for g in run.glyphs {
+                    let end_x = f64::from(g.x + g.w) * scale;
+                    if let Ok(ci) = idx.binary_search(&g.end) {
+                        char_end_x[ci] = char_end_x[ci].max(end_x);
+                    }
+                }
+            }
+            let mut running = 0.0_f64;
+            for x in &mut char_end_x {
+                if *x < running {
+                    *x = running;
+                } else {
+                    running = *x;
+                }
+            }
+            let ell_w = self.measure("\u{2026}", &one, None, &[]).0;
+            let budget = (f64::from(limit) * n as f64 - ell_w).max(0.0);
+            let half = budget * 0.5;
+            char_end_x.partition_point(|&x| x <= half).min(head_max)
+        };
+        let h_lo = head_est.saturating_sub(6);
+        let h_hi = (head_est + 6).min(head_max);
+
+        let mut cands: Vec<(f64, f64, usize, String)> = Vec::with_capacity(h_hi - h_lo + 1);
+        let mut collect = |range: std::ops::RangeInclusive<usize>, cands: &mut Vec<(f64, f64, usize, String)>| {
+            for head in range {
+                let pre_end = idx[head];
+                let mut lo = 0;
+                let mut hi = nchars - head;
+                while lo < hi {
+                    let mid = (lo + hi).div_ceil(2);
+                    let suf_at = idx[nchars - mid];
+                    if pre_end > suf_at {
+                        hi = mid - 1;
+                        continue;
+                    }
+                    let pre = text[..pre_end].trim_end();
+                    let suf = text[suf_at..].trim_start();
+                    if self.fits(&format!("{pre}\u{2026}{suf}"), &one, limit, n) {
+                        lo = mid;
+                    } else {
+                        hi = mid - 1;
+                    }
+                }
+                let suf_at = idx[nchars - lo];
                 if pre_end > suf_at {
-                    hi = mid - 1;
                     continue;
                 }
                 let pre = text[..pre_end].trim_end();
                 let suf = text[suf_at..].trim_start();
-                if self.fits(&format!("{pre}\u{2026}{suf}"), &one, limit, n) {
-                    lo = mid;
-                } else {
-                    hi = mid - 1;
+                let shown = format!("{pre}\u{2026}{suf}");
+                if !self.fits(&shown, &one, limit, n) {
+                    continue;
                 }
+                let kept = pre.chars().count() + suf.chars().count();
+                let hw = self.measure(pre, &one, None, &[]).0;
+                let tw = self.measure(suf, &one, None, &[]).0;
+                let width = self.measure(&shown, &one, None, &[]).0;
+                cands.push((width, (hw - tw).abs(), kept, shown));
             }
-            let suf_at = idx[nchars - lo];
-            if pre_end > suf_at {
-                continue;
-            }
-            let pre = text[..pre_end].trim_end();
-            let suf = text[suf_at..].trim_start();
-            let shown = format!("{pre}\u{2026}{suf}");
-            if !self.fits(&shown, &one, limit, n) {
-                continue;
-            }
-            let kept = pre.chars().count() + suf.chars().count();
-            let hw = self.measure(pre, &one, None, &[]).0;
-            let tw = self.measure(suf, &one, None, &[]).0;
-            let width = self.measure(&shown, &one, None, &[]).0;
-            cands.push((width, (hw - tw).abs(), kept, shown));
+        };
+        collect(h_lo..=h_hi, &mut cands);
+        if cands.is_empty() && (h_lo > 0 || h_hi < head_max) {
+            collect(0..=head_max, &mut cands);
         }
         // Among cuts that fill the line, put the ellipsis at the center.
         let max_w = cands.iter().map(|c| c.0).fold(0.0, f64::max);
@@ -745,9 +974,12 @@ impl Fonts {
     }
 
     fn build(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span]) -> Buffer {
+        if f.android {
+            self.ensure_roboto();
+        }
         // Inter's glyphs are ~8% larger than SF's at the same size; at accessibility sizes that is a lot
         // of ink, so the fallback draws them slightly smaller (tracking is fitted for it).
-        let big = !self.sf && !f.android && f.pt > 40.0;
+        let big = !self.sf && !f.android && f.pt > 40.0 && f.family.is_none();
         let size = if big { f.size * INTER_BIG_SCALE } else { f.size };
         let mut b = Buffer::new(&mut self.sys, Metrics::new(size, f.pitch));
         b.set_size(shape_limit(width, f.width), None);
@@ -765,7 +997,7 @@ impl Fonts {
             b.set_ellipsize(ellipsize);
         }
         let inter_size = if f.inter_point_tracking { f.pt } else { f.size };
-        let (family, tracking, wght, stretch) = self.face(f.mono || f.design == 3, f.android, f.pt, inter_size, f.weight, f.tracking, big, f.design, f.width);
+        let (family, tracking, wght, stretch) = self.face(f.family, f.mono || f.design == 3, f.android, f.pt, inter_size, f.weight, f.tracking, big, f.design);
         let tracking = tracking + extra_em(f.extra, f.pt);
         let mut attrs = Attrs::new().family(family).weight(Weight(wght)).stretch(stretch).letter_spacing(tracking);
         if f.italic {
@@ -779,9 +1011,10 @@ impl Fonts {
             let runs = spans.iter().enumerate().map(|(i, s)| {
                 let k = s.pt / f.pt.max(0.01);
                 let size_px = f.size * k;
-                let big = !sf && !f.android && s.pt > 40.0;
+                let family = s.family.or(f.family);
+                let big = !sf && !f.android && s.pt > 40.0 && family.is_none();
                 let sf_tracking = if f.android { f.tracking } else { tracking_em(s.pt, s.weight) };
-                let (mut fam, tracking, wght, stretch) = self.face(f.mono || s.mono || s.design == 3, f.android, s.pt, inter_size * k, s.weight, sf_tracking, big, s.design, s.width);
+                let (mut fam, tracking, wght, stretch) = self.face(family, f.mono || s.mono || s.design == 3, f.android, s.pt, inter_size * k, s.weight, sf_tracking, big, s.design);
                 let mut tracking = tracking + extra_em(s.extra, s.pt);
                 let mut pitch = if f.fixed_pitch { f.pitch } else { f.pitch * k };
                 if let Some(extra) = &s.compose {
@@ -949,19 +1182,51 @@ impl Fonts {
             .max(1)
     }
 
+    /// The caret after the last grapheme, relative to the first line's origin.
+    pub(crate) fn text_end(&mut self, text: &str, f: &FontSpec, width: Option<f32>) -> (f64, f64) {
+        let b = self.buffer(text, f, width, &[]);
+        let Some(run) = b.layout_runs().last() else { return (0.0, 0.0) };
+        let x = run.glyphs.iter().max_by_key(|g| g.end).map_or(0.0, |g| {
+            if g.level.is_rtl() { g.x } else { g.x + g.w }
+        });
+        (f64::from(x * width_scale(f.width)), f64::from(run.line_top))
+    }
+
     /// Size of `text`, wrapping at `width` when given.
     pub fn measure(&mut self, text: &str, f: &FontSpec, width: Option<f32>, spans: &[Span]) -> (f64, f64) {
-        // Styled advances vary independently of the default cache key.
-        let styled = f.extra != 0.0 || f.design != 0 || f.width != 0 || f.digits || f.trunc != 0 || f.case_fold != 0 || f.italic || f.mono
-            || f.compose_direction != 0;
-        let key = (spans.is_empty() && f.lines.is_none() && !f.no_wrap && !styled && text.len() <= MEASURE_MAX_TEXT_BYTES).then(|| {
-            // Android text carries its own tracking (Compose letterSpacing) and face; iOS tracking follows size and weight.
-            let tracking = if f.android { f.tracking.to_bits() ^ 0x8000_0000 } else { 0 };
-            (text.to_string(), f.size.to_bits(), f.weight, width.map_or(u32::MAX, f32::to_bits), tracking, f.compose_overflow.map_or([0; 2], |_| [f.line_height.to_bits(), f.pitch.to_bits()]))
+        let meta = (spans.is_empty() && text.len() <= MEASURE_MAX_TEXT_BYTES).then(|| {
+            let flags = (u8::from(f.android))
+                | (u8::from(f.mono) << 1)
+                | (u8::from(f.digits) << 2)
+                | (u8::from(f.italic) << 3)
+                | (u8::from(f.inter_point_tracking) << 4)
+                | (u8::from(f.no_wrap) << 5);
+            MeasureMeta {
+                size: f.size.to_bits(),
+                pt: f.pt.to_bits(),
+                line_height: f.line_height.to_bits(),
+                pitch: f.pitch.to_bits(),
+                weight: f.weight,
+                width: width.map_or(u32::MAX, f32::to_bits),
+                tracking: f.tracking.to_bits(),
+                extra: f.extra.to_bits(),
+                lines: f.lines.unwrap_or(usize::MAX),
+                design: f.design,
+                family: f.family,
+                width_code: f.width,
+                trunc: f.trunc,
+                case_fold: f.case_fold,
+                flags,
+                compose_overflow: f.compose_overflow,
+                compose_direction: f.compose_direction,
+            }
         });
-        if let Some(key) = &key {
-            if let Some(r) = self.measured.get(key) {
-                return *r;
+        if let Some(meta) = meta {
+            let lookup: (&str, MeasureMeta) = (text, meta);
+            if let Some(entry) = self.measured.get_mut(&lookup as &dyn MeasureLookup) {
+                self.measured_tick += 1;
+                entry.0 = self.measured_tick;
+                return entry.1;
             }
         }
         let b = self.buffer(text, &FontSpec { align: TextAlign::Leading, ..*f }, width, spans);
@@ -975,13 +1240,25 @@ impl Fonts {
             f.line_height + (lines.max(1) - 1) as f32 * f.pitch
         };
         let r = (w as f64 * f64::from(width_scale(f.width)), f64::from(height));
-        if let Some(key) = key {
+        if let Some(meta) = meta {
             if self.measured.len() >= MEASURE_MAX_ENTRIES || self.measured_text_bytes + text.len() > MEASURE_MAX_TEXT_BYTES {
-                self.measured.clear();
-                self.measured_text_bytes = 0;
+                let mut ticks: Vec<u64> = self.measured.values().map(|(t, _)| *t).collect();
+                if !ticks.is_empty() {
+                    let mid = ticks.len() / 2;
+                    let (_, &mut cutoff, _) = ticks.select_nth_unstable(mid);
+                    let bytes = &mut self.measured_text_bytes;
+                    self.measured.retain(|k, (t, _)| {
+                        let keep = *t > cutoff;
+                        if !keep {
+                            *bytes = bytes.saturating_sub(k.text.len());
+                        }
+                        keep
+                    });
+                }
             }
+            self.measured_tick += 1;
             self.measured_text_bytes += text.len();
-            self.measured.insert(key, r);
+            self.measured.insert(MeasureKey { text: text.to_string(), meta }, (self.measured_tick, r));
         }
         r
     }
@@ -1696,4 +1973,40 @@ mod span_tests {
         let compressed = fonts.measure("Condensed", &FontSpec { width: -2, ..spec }, None, &[]).0;
         assert!((compressed / plain - 0.70).abs() < 0.02, "compressed ratio {}", compressed / plain);
     }
+
+    #[test]
+    fn middle_truncation_preserves_multiline_explicit_newlines() {
+        let mut fonts = Fonts::new();
+        let text = std::iter::repeat_n("hello", 10).collect::<Vec<_>>().join("\n");
+        let mid = FontSpec { lines: Some(2), trunc: 2, ..FontSpec::new(17.0, 22.0, 400, TextAlign::Leading) };
+        let shown = fonts.truncated_string(&text, &mid, 200.0);
+        assert!(shown.contains('\u{2026}'), "expected ellipsis in {shown:?}");
+        assert!(shown.starts_with("hello"), "expected head preserved in {shown:?}");
+        assert!(shown.ends_with("hello"), "expected tail preserved in {shown:?}");
+        assert!(shown.contains('\n'), "expected two-line result in {shown:?}");
+    }
+
+    #[test]
+    fn custom_font_faces_load_once_and_shape_with_their_family() {
+        let mut f = Fonts::with_fallback(true);
+        assert!(f.custom_faces("/no/such/font.ttf").is_empty());
+        assert!(!put_font("not-a-font.ttf", b"nope"));
+        assert!(put_font("app/Roboto.ttf", include_bytes!("../../../assets/fonts/RobotoVariable.ttf")));
+        let faces = f.custom_faces("app/Roboto.ttf").to_vec();
+        assert!(!faces.is_empty());
+        assert_eq!(faces[0].family, "Roboto");
+        assert!(faces[0].postscript.starts_with("Roboto"), "{faces:?}");
+        assert!(std::ptr::eq(f.custom_faces("app/Roboto.ttf")[0].family, faces[0].family), "loaded once, interned");
+        // The same text is narrower in Roboto than in the fallback Inter.
+        let plain = FontSpec::new(17.0, 22.0, 400, TextAlign::Leading);
+        let roboto = FontSpec { family: Some(faces[0].family), ..plain };
+        let (wi, _) = f.measure("The quick brown fox", &plain, None, &[]);
+        let (wr, _) = f.measure("The quick brown fox", &roboto, None, &[]);
+        assert!((wi - wr).abs() > 1.5, "inter {wi} vs roboto {wr}");
+        // A span may switch to it on its own.
+        let span = Span { family: Some(faces[0].family), ..Span::basic("The quick brown fox", 17.0, 400, crate::scene::Color::rgba(0.0, 0.0, 0.0, 1.0)) };
+        let (ws, _) = f.measure("The quick brown fox", &plain, None, &[span]);
+        assert!((ws - wr).abs() < 0.5, "span {ws} vs roboto {wr}");
+    }
+
 }

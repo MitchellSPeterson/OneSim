@@ -3,6 +3,7 @@
 // ---------- types ----------
 export type Framework = "expo" | "react-native" | "swiftui";
 export type Appearance = "light" | "dark";
+export type ScenePhase = "active" | "inactive" | "background";
 export type Status = "created" | "starting" | "running" | "paused" | "stopping" | "stopped" | "failed" | "crashed";
 export type Point = { x: number; y: number };
 export type Rect = { x: number; y: number; width: number; height: number };
@@ -18,6 +19,8 @@ export interface CreateSessionOptions {
   /** Simulated iOS release: "27.2" (default) or "26.5". */
   osVersion?: string;
   metroUrl?: string;
+  /** SwiftUI: launch the app to open this URL (`onOpenURL` gets it after the first frame). */
+  launchURL?: string;
   appPath?: string;
   rootView?: string;
   viewport?: { width: number; height: number };
@@ -38,6 +41,52 @@ export interface SessionInfo {
   treeVersion: number;
   metroUrl?: string;
   appPath?: string;
+  /** SwiftUI sessions. */
+  scenePhase?: ScenePhase;
+}
+
+export interface A11yPoint {
+  x: number;
+  y: number;
+  unit?: boolean;
+  description?: string;
+}
+
+export interface UiAccessibility {
+  hint?: string;
+  identifier?: string;
+  hidden?: boolean;
+  suppressed?: boolean;
+  traits?: string[];
+  sortPriority?: number;
+  heading?: number;
+  inputLabels?: string[];
+  children?: string;
+  actions?: { name: string; action: number; category?: string }[];
+  custom?: { key: string; id?: string; value?: string; importance?: string }[];
+  elements?: string[];
+  focused?: boolean;
+  textContentType?: string;
+  scrollStatus?: string;
+  rotors?: { name: string; entries?: { label: string; id?: string }[] }[];
+  chart?: boolean;
+  ignoresInvertColors?: boolean;
+  responds?: boolean;
+  directTouch?: boolean;
+  directTouchOptions?: string[];
+  linked?: string;
+  pair?: { role: string; id: string };
+  largeContent?: boolean;
+  largeLabel?: string;
+  activation?: A11yPoint;
+  adjustable?: { increment: number; decrement: number };
+  scroll?: { top?: number; bottom?: number; leading?: number; trailing?: number };
+  zoom?: { in?: number; out?: number };
+  rotorEntry?: string;
+  technologies?: string[];
+  drag?: A11yPoint;
+  drop?: A11yPoint;
+  defaultFocus?: boolean;
 }
 
 export interface UiNode {
@@ -51,6 +100,7 @@ export interface UiNode {
   action?: string;
   focused?: boolean;
   disabled?: boolean;
+  accessibility?: UiAccessibility;
   children: UiNode[];
 }
 
@@ -391,6 +441,10 @@ export class Session {
   setDevice(device: string): Promise<SessionInfo> { return this.call("device.set", { device }); }
   async setAppearance(mode: Appearance): Promise<void> { await this.call("device.appearance", { mode }); }
   async hideKeyboard(): Promise<void> { await this.call("device.keyboard", { visible: false }); }
+  /** SwiftUI: move the app to a scene phase (through `inactive`, as on iOS). */
+  async setScenePhase(phase: ScenePhase): Promise<ScenePhase> { return (await this.call("app.setScenePhase", { phase })).phase; }
+  /** SwiftUI: open a URL in the app; a backgrounded app comes to the front first. */
+  async openURL(url: string): Promise<ScenePhase> { return (await this.call("app.openURL", { url })).phase; }
   async modules(): Promise<ModuleInfo[]> { return (await this.call("modules.list")).modules; }
   async simulate(module: string, state: Record<string, unknown>): Promise<void> { await this.call("modules.simulate", { module, state }); }
 

@@ -23,14 +23,14 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.allowedDynamicRange` | 17 | ⬜ |  |  |
 | `\.allowsTightening` | 13 | ⬜ |  |  |
 | `\.appearsActive` | 18 | ⬜ |  |  |
-| `\.autocorrectionDisabled` | 13 | ⬜ |  |  |
+| `\.autocorrectionDisabled` | 13 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) |  |
 | `\.backgroundMaterial` | 15 | ⬜ |  |  |
 | `\.backgroundProminence` | 17 | ⬜ |  |  |
 | `\.backgroundStyle` | 16 | ⬜ |  |  |
 | `\.badgeProminence` | 17 | ⬜ |  |  |
 | `\.buttonRepeatBehavior` | 17 | ⬜ |  |  |
 | `\.buttonSizing` | 26 | ⬜ |  |  |
-| `\.calendar` | 13 | ⬜ |  |  |
+| `\.calendar` | 13 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Picker grids use Gregorian dates and honor the first weekday. |
 | `\.colorScheme` | 13 | ✅ |  |  |
 | `\.colorSchemeContrast` | 13 | ⬜ |  |  |
 | `\.contentTransition` | 16 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Read reflects `.contentTransition(_:)`; `.environment(\.contentTransition, _)` is ignored |
@@ -39,14 +39,14 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.defaultMinListHeaderHeight` | 13 | ⬜ |  |  |
 | `\.defaultMinListRowHeight` | 13 | ⬜ |  |  |
 | `\.description` | 13 | ⬜ |  |  |
-| `\.disableAutocorrection` | 13 | ⬜ |  | Deprecated |
+| `\.disableAutocorrection` | 13 | ✅ | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | Deprecated |
 | `\.dismiss` | 15 | ✅ |  |  |
-| `\.dismissSearch` | 15 | ⬜ |  |  |
+| `\.dismissSearch` | 15 | ✅ | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Clears and dismisses text search within the searchable view. |
 | `\.dismissWindow` | 17 | ⬜ |  |  |
 | `\.displayScale` | 13 | ⬜ |  |  |
 | `\.documentConfiguration` | 17 | ⬜ |  |  |
 | `\.dynamicTypeSize` | 15 | 🟠 |  | Read once at launch |
-| `\.editMode` | 13 | ⬜ |  |  |
+| `\.editMode` | 13 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | Per NavigationStack screen (and root) unless set with `.environment`. |
 | `\.findContext` | 26 | ⬜ |  |  |
 | `\.font` | 13 | ⬜ |  |  |
 | `\.fontResolutionContext` | 15 | ⬜ |  |  |
@@ -63,7 +63,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.isPresented` | 15 | ⬜ |  |  |
 | `\.isSceneCaptured` | 17 | ⬜ |  |  |
 | `\.isScrollEnabled` | 16 | ⬜ |  |  |
-| `\.isSearching` | 15 | ⬜ |  |  |
+| `\.isSearching` | 15 | ✅ | [#43](https://github.com/MitchellSPeterson/OneSim/issues/43) | Reports the active presentation binding to descendants of the searchable view. |
 | `\.isTabBarShowingSections` | 18 | ⬜ |  |  |
 | `\.isTabViewSidebarAvailable` | 27 | 🟠 | [#44](https://github.com/MitchellSPeterson/OneSim/issues/44) | Always `false` on the supported compact iPhone layouts. |
 | `\.isUserAuthenticationEnabled` | 18 | ⬜ |  |  |
@@ -76,7 +76,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.lineHeight` | 26 | ⬜ |  |  |
 | `\.lineLimit` | 13 | ⬜ |  |  |
 | `\.lineSpacing` | 13 | ⬜ |  |  |
-| `\.locale` | 13 | ⬜ |  |  |
+| `\.locale` | 13 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Native picker labels use Foundation formatting. WASI uses US English. |
 | `\.managedObjectContext` | 13 | ⬜ |  |  |
 | `\.materialActiveAppearance` | 18 | ⬜ |  |  |
 | `\.menuIndicatorVisibility` | 15 | ⬜ |  |  |
@@ -94,7 +94,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.redactionReasons` | 14 | ⬜ |  |  |
 | `\.refresh` | 15 | ⬜ |  |  |
 | `\.rename` | 16 | ⬜ |  |  |
-| `\.scenePhase` | 14 | 🟠 | [#47](https://github.com/MitchellSPeterson/OneSim/issues/47) | Always `.active` |
+| `\.scenePhase` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Follows the host scene phase (`app.setScenePhase`, `open_url`, a hidden web page) |
 | `\.scrollDismissesKeyboardMode` | 16 | ⬜ |  |  |
 | `\.searchSuggestionsPlacement` | 16 | ⬜ |  |  |
 | `\.sidebarRowSize` | 16 | ⬜ |  |  |
@@ -112,7 +112,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `\.tabViewBottomAccessoryPlacement` | 26 | ⬜ |  |  |
 | `\.textCase` | 14 | ⬜ |  |  |
 | `\.textSelectionAffinity` | 18 | ⬜ |  |  |
-| `\.timeZone` | 13 | ⬜ |  |  |
+| `\.timeZone` | 13 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Native uses Foundation time zones. WASI supports fixed offsets. |
 | `\.toolbarLabelStyle` | 18 | ⬜ |  |  |
 | `\.toolbarTitleAlignment` | 13 | ⬜ |  |  |
 | `\.toolbarVerticalEdge` | 13 | ⬜ |  |  |
