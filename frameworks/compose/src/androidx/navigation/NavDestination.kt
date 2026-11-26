@@ -52,6 +52,12 @@ open class NavDestination(val navigatorName: String) {
         return out
     }
 
+    /** How well [route] (which matches) fits: exact routes first, then the number of arguments it gives. */
+    internal fun routeRank(route: String): Int {
+        val pattern = routePattern ?: return 0
+        return (if (pattern.exact) 1 shl 16 else 0) + (pattern.match(route)?.count { it.value != null } ?: 0)
+    }
+
     /** The arguments [route] gives this destination, or null if it does not match the route pattern. */
     internal fun matchRoute(route: String): Bundle? {
         val pattern = routePattern ?: return null
@@ -133,6 +139,9 @@ internal class RoutePattern(pattern: String) {
         }
         pathArgs = path.mapNotNull { argName(it) }.toSet()
     }
+
+    /** No arguments in the pattern (AndroidX's exact deep link). */
+    val exact: Boolean get() = pathArgs.isEmpty() && query.none { it.second != null }
 
     private fun argName(s: String): String? = if (s.length > 2 && s.startsWith("{") && s.endsWith("}")) s.substring(1, s.length - 1) else null
 
@@ -235,13 +244,27 @@ open class NavGraph(navGraphNavigator: Navigator<out NavGraph>) : NavDestination
         return nodes[createRoute(route).hashCode()] ?: nodes.values.firstOrNull { it.matchRoute(route) != null } ?: parent?.findNode(route)
     }
 
-    /** Depth-first search of this graph and its subgraphs for a destination matching [route]. */
+    /**
+     * The destination in this graph or its subgraphs that best matches [route], as AndroidX's
+     * `matchRouteComprehensive`: a route without arguments beats a pattern, then more arguments taken from [route]
+     * win; on a tie the first found (this graph's destinations, then its subgraphs, depth first).
+     */
     internal fun findDeep(route: String): Pair<NavDestination, Bundle>? {
-        for (n in nodes.values) {
-            n.matchRoute(route)?.let { return n to it }
+        var best: Pair<NavDestination, Bundle>? = null
+        var bestRank = -1
+        fun visit(g: NavGraph) {
+            for (n in g.nodes.values) {
+                val args = n.matchRoute(route) ?: continue
+                val rank = n.routeRank(route)
+                if (rank > bestRank) {
+                    best = n to args
+                    bestRank = rank
+                }
+            }
+            for (n in g.nodes.values) if (n is NavGraph) visit(n)
         }
-        for (n in nodes.values) if (n is NavGraph) n.findDeep(route)?.let { return it }
-        return null
+        visit(this)
+        return best
     }
 
     internal fun findDeep(id: Int): NavDestination? {

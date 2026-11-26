@@ -73,6 +73,8 @@ struct BackSwipe {
     start: f64,
     width: f64,
     last: (f64, f64, f64),
+    /// Whether the guest got the `start` event. A swipe taken over from an app touch sends it with the first move.
+    started: bool,
 }
 
 impl BackSwipe {
@@ -955,41 +957,70 @@ impl Interaction {
         } else {
             return None;
         };
-        Some(BackSwipe { edge, start: x, width: w, last: (x, 0.0, 0.0) })
+        Some(BackSwipe { edge, start: x, width: w, last: (x, 0.0, 0.0), started: true })
     }
 
     /// Live drags: a finger going down in an edge strip of an Android app swipes back instead of touching the app.
     fn back_drag(&mut self, scene: &Scene, phase: DragPhase, x: f64, y: f64, t: f64) -> Option<Effect> {
         match phase {
             DragPhase::Begin => {
-                // A touch already owned by the app keeps it.
-                if self.touch.is_some() || self.drag.is_some() {
+                if self.drag.is_some() {
+                    return None;
+                }
+                // Another finger the app already owns keeps it.
+                if self.touch.as_ref().is_some_and(|tc| tc.start != (x, y)) {
                     return None;
                 }
                 let mut swipe = Self::back_swipe_at(scene, x)?;
                 let time = t.max(self.clock);
                 swipe.last = (x, y, time);
+                if let Some(mut touch) = self.touch.take() {
+                    // This finger went down here as an app touch (the browser sends `pointer down`, then `drag begin`
+                    // once it moves): the system takes the edge swipe from the app, which sees a cancel (Android's
+                    // edge back handler pilfers the pointers). The back `start` goes with the next move.
+                    self.armed = None;
+                    touch.at(t);
+                    swipe.started = false;
+                    self.back = Some(swipe);
+                    return Some(Effect::Gesture(vec![Self::touch_event(&touch, TouchPhase::Cancel)]));
+                }
                 self.back = Some(swipe);
                 Some(Effect::Back(vec![swipe.event(BackPhase::Start, x, y, time)]))
             }
             DragPhase::Move => {
                 let swipe = self.back.as_mut()?;
+                let mut out = Self::back_start(swipe);
                 let time = t.max(swipe.last.2);
                 swipe.last = (x, y, time);
-                Some(Effect::Back(vec![swipe.event(BackPhase::Progress, x, y, time)]))
+                out.push(swipe.event(BackPhase::Progress, x, y, time));
+                Some(Effect::Back(out))
             }
             DragPhase::End => {
-                let swipe = self.back.take()?;
+                let mut swipe = self.back.take()?;
+                let mut out = Self::back_start(&mut swipe);
                 let time = t.max(swipe.last.2);
                 self.clock = self.clock.max(time);
-                Some(Effect::Back(vec![swipe.release(x, y, time)]))
+                out.push(swipe.release(x, y, time));
+                Some(Effect::Back(out))
             }
         }
+    }
+
+    /// The `start` event of a swipe taken over from an app touch, the first time it is needed.
+    fn back_start(swipe: &mut BackSwipe) -> Vec<BackEvent> {
+        if swipe.started {
+            return vec![];
+        }
+        swipe.started = true;
+        let (x, y, time) = swipe.last;
+        vec![swipe.event(BackPhase::Start, x, y, time)]
     }
 
     /// Cancel a back swipe in progress (the app left the foreground or the touch was taken away).
     pub fn cancel_back(&mut self) -> Effect {
         match self.back.take() {
+            // The guest never saw it start: nothing to cancel.
+            Some(s) if !s.started => Effect::None,
             Some(s) => Effect::Back(vec![s.event(BackPhase::Cancel, s.last.0, s.last.1, s.last.2)]),
             None => Effect::None,
         }
@@ -1494,6 +1525,47 @@ mod tests {
         let mut edge = PointerEvent::new(PointerKind::Drag, 5.0, 300.0);
         edge.dx = 200.0;
         assert!(!matches!(it.pointer(&android_scene(false), edge), Effect::Back(_)), "iOS and Expo scenes have no system back");
+    }
+
+    #[test]
+    fn browser_edge_swipe_over_an_app_touch_becomes_back() {
+        use crate::scene::{Node, Rect};
+        let mut scene = android_scene(true);
+        let mut tap = Node::new("tap", "clickable");
+        tap.parent = Some(0);
+        tap.action = Some(1);
+        tap.bounds = Rect { x: 0.0, y: 200.0, w: 400.0, h: 200.0 };
+        tap.gesture = Some(Box::new(onesim_protocol::GestureMod { key: "tap#m0".into(), pans: false, axis: None }));
+        scene.nodes.push(tap);
+        let mut it = Interaction::default();
+        // The browser: pointer down (an app touch), then drag begin at the same point once the finger moves.
+        let Effect::Gesture(g) = it.pointer(&scene, PointerEvent::new(PointerKind::Down, 4.0, 300.0)) else { panic!("app touch") };
+        assert_eq!(g[0].phase, TouchPhase::Start);
+        let Effect::Gesture(g) = it.drag(&scene, DragPhase::Begin, 4.0, 300.0, 1000.0) else { panic!("cancel") };
+        assert_eq!(g.iter().map(|e| e.phase).collect::<Vec<_>>(), [TouchPhase::Cancel], "the system takes the touch");
+        assert!(!it.holding());
+        let b = back_events(it.drag(&scene, DragPhase::Move, 104.0, 300.0, 1016.0));
+        assert_eq!(b.iter().map(|e| e.phase).collect::<Vec<_>>(), [BackPhase::Start, BackPhase::Progress]);
+        assert_eq!((b[0].x, b[0].edge), (4.0, SwipeEdge::Left));
+        assert!((b[1].progress - 0.25).abs() < 1e-9 && b[1].time > b[0].time);
+        let b = back_events(it.drag(&scene, DragPhase::End, 204.0, 300.0, 1032.0));
+        assert_eq!(b.iter().map(|e| e.phase).collect::<Vec<_>>(), [BackPhase::Commit]);
+        // Taken over and released without moving: start and release together.
+        it.pointer(&scene, PointerEvent::new(PointerKind::Down, 396.0, 300.0));
+        assert!(matches!(it.drag(&scene, DragPhase::Begin, 396.0, 300.0, 2000.0), Effect::Gesture(_)));
+        let b = back_events(it.drag(&scene, DragPhase::End, 396.0, 300.0, 2016.0));
+        assert_eq!(b.iter().map(|e| e.phase).collect::<Vec<_>>(), [BackPhase::Start, BackPhase::Cancel]);
+        // Taken over, then the app goes to the background before any move: the guest saw no start, so no cancel.
+        it.pointer(&scene, PointerEvent::new(PointerKind::Down, 4.0, 300.0));
+        it.drag(&scene, DragPhase::Begin, 4.0, 300.0, 3000.0);
+        assert_eq!(it.cancel_touches(&scene), Effect::None);
+        // An ordinary tap at the edge stays the app's.
+        it.pointer(&scene, PointerEvent::new(PointerKind::Down, 4.0, 300.0));
+        let Effect::Gesture(g) = it.pointer(&scene, PointerEvent::new(PointerKind::Up, 4.0, 300.0)) else { panic!("tap") };
+        assert_eq!(g[0].phase, TouchPhase::End);
+        // A drag that began away from the edge is not taken (the app's finger, a different start).
+        it.pointer(&scene, PointerEvent::new(PointerKind::Down, 200.0, 300.0));
+        assert!(!matches!(it.drag(&scene, DragPhase::Begin, 4.0, 300.0, 4000.0), Effect::Back(_)));
     }
 
     #[test]

@@ -145,6 +145,29 @@ check(text("stack=") == "stack=home" and text("home n=") == "home n=2 result=nul
 tap("act:tabB")
 check(text("b n=") == "b n=1", "tab b state restored")
 tap("act:tabA")
+# Leaving home's tab from a screen above home saves that screen for home: coming back restores it (AndroidX maps the
+# saved stack to the popUpTo destination too).
+tap("act:detail")
+tap("act:tabB")
+check(text("stack=") == "stack=home,b" and text("b n=") == "b n=1", "tab b from a detail screen")
+tap("act:tabA")
+check(text("stack=") == "stack=home,detail/{id}?tab={tab}" and text("detail") == "detail id=7 tab=main", "home's tab restored with its detail")
+back()
+check(text("stack=") == "stack=home", "detail popped")
+
+# The most specific route wins over declaration order; a pattern still takes other values.
+tap("act:profileSettings")
+check(text("profile") == "profile settings", "literal route beats an earlier pattern")
+back()
+tap("act:profile5")
+check(text("profile") == "profile id=5", "pattern route")
+back()
+
+# Navigating to a graph gives its start destination that destination's argument defaults.
+tap("act:g2")
+check(text("g2 mode=") == "g2 mode=main" and text("stack=") == "stack=home,g2,g2start?mode={mode}", "graph start defaults")
+back()
+check(text("stack=") == "stack=home", "graph popped with its start destination")
 
 # popBackStack(route) and its result; a missing route returns false.
 tap("act:detail"); tap("act:detailq")

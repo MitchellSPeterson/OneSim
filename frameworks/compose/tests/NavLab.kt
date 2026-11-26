@@ -75,6 +75,9 @@ fun NavLab() {
         Act("act:result") { nav.previousBackStackEntry?.savedStateHandle?.set("result", "done"); nav.popBackStack() }
         Act("act:flowTwo") { nav.navigate("flow/two") }
         Act("act:popAll") { log = "pop=" + nav.popBackStack("home", inclusive = true) + " current=" + nav.currentDestination?.route }
+        Act("act:profileSettings") { nav.navigate("profile/settings") }
+        Act("act:profile5") { nav.navigate("profile/5") }
+        Act("act:g2") { nav.navigate("g2") }
         Act("act:handler") { handler = !handler }
         Act("act:predictive") { predictive = !predictive }
         if (handler) BackHandler { log = "handler" }
@@ -114,6 +117,14 @@ fun NavLab() {
             navigation(startDestination = "flow/one", route = "flow") {
                 composable("flow/one") { Act("flow one") { nav.navigate("flow/two") } }
                 composable("flow/two") { Act("flow two") { nav.popBackStack("flow", inclusive = true) } }
+            }
+            // Declared before the literal route: navigate("profile/settings") must still pick the literal one.
+            composable("profile/{id}") { Text("profile id=${it.arguments?.getString("id")}") }
+            composable("profile/settings") { Text("profile settings") }
+            navigation(startDestination = "g2start?mode={mode}", route = "g2") {
+                composable("g2start?mode={mode}", arguments = listOf(navArgument("mode") { defaultValue = "main" })) {
+                    Text("g2 mode=${it.arguments?.getString("mode")}")
+                }
             }
             dialog("about") { Text("about dialog") }
         }

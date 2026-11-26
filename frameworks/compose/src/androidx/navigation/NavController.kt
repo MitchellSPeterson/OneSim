@@ -32,7 +32,8 @@ open class NavController {
 
     /** Saved back stacks (`popUpTo(saveState = true)`): stack id -> entries, and destination id -> stack id. */
     private val savedStacks = LinkedHashMap<String, List<NavBackStackEntry>>()
-    private val backStackMap = LinkedHashMap<Int, String>()
+    /** Destination id -> saved back stack to restore for it (null: navigate there normally), as in AndroidX. */
+    private val backStackMap = LinkedHashMap<Int, String?>()
 
     /** Whether the latest back stack change was a pop (NavHost picks pop transitions). */
     internal val isPop = mutableStateOf(false)
@@ -135,17 +136,16 @@ open class NavController {
             dispatch()
             return
         }
-        // Graphs go to their start destination.
-        val graphs = ArrayList<NavGraph>()
+        // Graphs go to their start destination, which gets its own argument defaults (NavGraphNavigator).
         var target = node
         while (target is NavGraph) {
-            graphs.add(target)
             target = target.findNode(target.startDestinationId, false)
                 ?: throw IllegalArgumentException("navigation destination ${target.startDestinationRoute} is not a direct child of this NavGraph")
         }
+        val targetArgs = if (target === node) args else target.addInDefaultArgs(args)
         val top = backQueue.lastOrNull()
         if (options?.shouldLaunchSingleTop() == true && top != null && top.destination.id == target.id && top.destination !is NavGraph) {
-            top.replaceArguments(args)
+            top.replaceArguments(targetArgs)
             isPop.value = false
             dispatch()
             return
@@ -153,7 +153,7 @@ open class NavController {
         // Parent graphs not already enclosing the top of the back stack, outermost first.
         val parents = target.hierarchy.drop(1).filterIsInstance<NavGraph>().toList().asReversed()
         for (p in parents) if (!encloses(p)) backQueue.add(newEntry(p, args))
-        backQueue.add(newEntry(target, args))
+        backQueue.add(newEntry(target, targetArgs))
         isPop.value = false
         dispatch()
     }
@@ -197,7 +197,7 @@ open class NavController {
             Guest.log("NavController: ignoring popBackStack to route $route as it was not found on the current back stack")
             return false
         }
-        return popFrom(if (inclusive) i else i + 1, saveState)
+        return popFrom(if (inclusive) i else i + 1, saveState, if (inclusive) null else backQueue[i].destination)
     }
 
     private fun popTo(id: Int, inclusive: Boolean, saveState: Boolean): Boolean {
@@ -206,12 +206,19 @@ open class NavController {
             Guest.log("NavController: ignoring popBackStack to destination $id as it was not found on the current back stack")
             return false
         }
-        return popFrom(if (inclusive) i else i + 1, saveState)
+        return popFrom(if (inclusive) i else i + 1, saveState, if (inclusive) null else backQueue[i].destination)
     }
 
-    /** Pops every entry from index [from] up; with [saveState] they are kept to restore later. */
-    private fun popFrom(from: Int, saveState: Boolean): Boolean {
-        if (from >= backQueue.size) return false
+    /**
+     * Pops every entry from index [from] up; with [saveState] they are kept to restore later, for the first popped
+     * destination and for [kept] (a non-inclusive popUpTo destination, left on the stack), each with the parent graphs
+     * it starts (as AndroidX's popBackStackInternal). [kept] is mapped even when nothing is popped: to no saved stack.
+     */
+    private fun popFrom(from: Int, saveState: Boolean, kept: NavDestination? = null): Boolean {
+        if (from >= backQueue.size) {
+            if (saveState && kept != null) mapSaved(kept, null)
+            return false
+        }
         var start = from
         // Graphs left without destinations above them go too; with no destination left, the whole back stack goes
         // (as in AndroidX: the NavHost shows nothing).
@@ -219,23 +226,35 @@ open class NavController {
         if (start > 0 && backQueue.subList(0, start).all { it.destination is NavGraph }) start = 0
         val popped = backQueue.subList(start, backQueue.size).toList()
         repeat(popped.size) { backQueue.removeAt(backQueue.size - 1) }
-        if (saveState) {
-            val stackId = "stack-${nextId++}"
+        val stackId = if (saveState) "stack-${nextId++}" else null
+        if (stackId != null) {
+            kept?.let { mapSaved(it, stackId) }
+            mapSaved(popped.first().destination, stackId)
+        }
+        if (stackId != null && stackId in backStackMap.values) {
             savedStacks[stackId] = popped
-            for (e in popped) {
-                backStackMap[e.destination.id] = stackId
-                e.maxLifecycle = Lifecycle.State.CREATED
-            }
+            for (e in popped) e.maxLifecycle = Lifecycle.State.CREATED
         } else {
             popped.forEach(::discard)
         }
         return true
     }
 
+    /** Maps [d], and each parent graph whose start destination it is, to [stackId], stopping at one already mapped. */
+    private fun mapSaved(d: NavDestination, stackId: String?) {
+        var cur: NavDestination? = d
+        while (cur != null && !backStackMap.containsKey(cur.id)) {
+            backStackMap[cur.id] = stackId
+            val parent = cur.parent
+            cur = if (parent != null && parent.startDestinationId == cur.id) parent else null
+        }
+    }
+
     private fun restore(destinationId: Int): Boolean {
-        val stackId = backStackMap[destinationId] ?: return false
-        val entries = savedStacks.remove(stackId) ?: return false
+        if (!backStackMap.containsKey(destinationId)) return false
+        val stackId = backStackMap[destinationId]
         backStackMap.entries.removeAll { it.value == stackId }
+        val entries = savedStacks.remove(stackId ?: return false) ?: return false
         for (e in entries) {
             if (e.destination is NavGraph && backQueue.any { it.destination.id == e.destination.id }) continue
             backQueue.add(e)
@@ -250,9 +269,11 @@ open class NavController {
     }
 
     open fun clearBackStack(destinationId: Int): Boolean {
-        val stackId = backStackMap[destinationId] ?: return false
-        savedStacks.remove(stackId)?.forEach(::discard)
+        if (!backStackMap.containsKey(destinationId)) return false
+        val stackId = backStackMap[destinationId]
         backStackMap.entries.removeAll { it.value == stackId }
+        val entries = savedStacks.remove(stackId ?: return false) ?: return false
+        entries.forEach(::discard)
         return true
     }
 
