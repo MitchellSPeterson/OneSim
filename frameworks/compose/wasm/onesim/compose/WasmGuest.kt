@@ -28,6 +28,8 @@ object WasmGuest {
         val rec = recomposer ?: return
         var frames = 0
         while (frames < 120) {
+            // Queued work may write state: apply those writes before asking the Recomposer.
+            loop.drain()
             Snapshot.sendApplyNotifications()
             loop.drain()
             if (clock.hasAwaiters) {

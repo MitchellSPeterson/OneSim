@@ -77,6 +77,10 @@ object JvmGuest {
 
         send("""{"type":"hello","protocol":1}""")
         val loop = GuestLoop()
+        val loopThread = Thread.currentThread()
+        loop.onLoopThread = { Thread.currentThread() === loopThread }
+        // Work resumed on another thread (e.g. after `withContext(Dispatchers.IO)`) wakes the loop like a host message.
+        loop.offThread = { messages.put(it) }
         val clock = BroadcastFrameClock()
         val handler = CoroutineExceptionHandler { _, t -> error("Input callback threw: ${t.stackTraceToString()}") }
         val scope = CoroutineScope(loop + clock + SupervisorJob() + handler)
@@ -89,6 +93,8 @@ object JvmGuest {
         fun pump() {
             var frames = 0
             while (true) {
+                // Queued work may write state: apply those writes before asking the Recomposer.
+                loop.drain()
                 Snapshot.sendApplyNotifications()
                 loop.drain()
                 if (!recomposer.hasPendingWork || frames >= 120) break
@@ -129,8 +135,8 @@ object JvmGuest {
                 ran = true
             }
             if (ran || dirty || loop.hasQueued) {
-                pump()
                 dirty = false
+                pump()
                 emit(force = false)
             }
             var waitMs = loop.nextDueIn() ?: Double.MAX_VALUE
@@ -138,6 +144,10 @@ object JvmGuest {
             if (dirty || loop.hasQueued) waitMs = 0.0
             val next = if (waitMs >= Double.MAX_VALUE / 2) messages.take() else messages.poll((waitMs * 1000).toLong(), TimeUnit.MICROSECONDS)
             if (next === EOF) break
+            if (next is Runnable) {
+                loop.dispatch(kotlin.coroutines.EmptyCoroutineContext, next)
+                continue
+            }
             val line = next as? String ?: continue
             val type = TYPE_RE.find(line)?.groupValues?.get(1)
             when (type) {

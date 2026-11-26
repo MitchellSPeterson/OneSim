@@ -283,6 +283,31 @@ touch(p, k, "end", 18100, (50, 10))
 t = settle(p, 0.1)
 assert text(t, "Prog") == "Prog interrupted", text(t, "Prog")
 
+# --- a continuation resumed on another thread (Dispatchers.IO) wakes the idle guest and sends a tree
+k = target(t, "Background")
+touch(p, k, "start", 19000, (10, 10)); touch(p, k, "end", 19048, (10, 10))
+deadline = time.time() + 3
+while True:
+    m = p.q.get(timeout=max(0.1, deadline - time.time()))
+    assert m is not None, "guest exited"
+    if m["type"] == "tree" and "Background done" in texts(m["root"]):
+        break
+    assert time.time() < deadline, "no tree after the background work finished"
+
+# --- disabling a scrollable mid-drag cancels the drag: the state is no longer scrolling
+t = settle(p, 0.1)
+k = target(t, "Toggled")
+touch(p, k, "start", 20000, (10, 10))
+for i in range(1, 4):
+    touch(p, k, "move", 20000 + 16 * i, (10 + 15 * i, 10))
+t = settle(p, 0.1)
+assert text(t, "Toggled") == "Toggled true", text(t, "Toggled")
+kk = target(t, "Switch scroll")
+touch(p, kk, "start", 20100, (10, 10)); touch(p, kk, "end", 20148, (10, 10))
+t = settle(p, 0.2)
+assert text(t, "Switch scroll") == "Switch scroll false"
+assert text(t, "Toggled") == "Toggled false", ("drag mutation ended on reset", text(t, "Toggled"))
+
 send(p, type="shutdown")
 assert p.wait(timeout=10) == 0
 print("compose gestures: ok")

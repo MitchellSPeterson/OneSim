@@ -32,8 +32,16 @@ class GuestLoop : CoroutineDispatcher(), Delay {
     /** Milliseconds since the loop started. */
     fun nowMs(): Double = start.elapsedNow().inWholeNanoseconds / 1_000_000.0
 
+    /**
+     * Whether the caller runs on the loop's thread. The JVM guest also resumes coroutines from other threads (an app's
+     * `withContext(Dispatchers.IO)` finishing); those go to [offThread], which must hand them to the loop thread and
+     * wake it. Kotlin/Wasm has a single thread.
+     */
+    var onLoopThread: () -> Boolean = { true }
+    var offThread: (Runnable) -> Unit = { error("dispatch from another thread") }
+
     override fun dispatch(context: CoroutineContext, block: Runnable) {
-        queue.addLast(block)
+        if (onLoopThread()) queue.addLast(block) else offThread(block)
     }
 
     override fun scheduleResumeAfterDelay(timeMillis: Long, continuation: CancellableContinuation<Unit>) {
