@@ -147,5 +147,21 @@ fun GestureLab() {
             }
         }
         Box(Modifier.size(200.dp, 40.dp).draggable(progState, Orientation.Horizontal)) { Text("Prog $prog") }
+        // Work finishing on another thread updates the UI without further input.
+        var background by remember { mutableStateOf("waiting") }
+        var startBackground by remember { mutableStateOf(false) }
+        Box(Modifier.size(200.dp, 40.dp).clickable { startBackground = true }) { Text("Background $background") }
+        if (startBackground) {
+            LaunchedEffect(Unit) {
+                background = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Thread.sleep(300); "done" }
+            }
+        }
+        // Disabling a scrollable mid-drag ends the drag's mutation.
+        var scrollOn by remember { mutableStateOf(true) }
+        val toggled = rememberScrollableState { it }
+        Box(Modifier.size(200.dp, 40.dp).scrollable(toggled, Orientation.Horizontal, enabled = scrollOn)) {
+            Text("Toggled ${toggled.isScrollInProgress}")
+        }
+        Box(Modifier.size(200.dp, 40.dp).clickable { scrollOn = !scrollOn }) { Text("Switch scroll $scrollOn") }
     }
 }

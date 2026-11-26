@@ -152,10 +152,17 @@ internal abstract class DragGestureState : NodeState() {
                     ch.trySend(DragEvent.DragDelta(delta))
                     Unit
                 }
-                val ok = when (orientationLock) {
-                    Orientation.Horizontal -> horizontalDrag(drag.id, onMove)
-                    Orientation.Vertical -> verticalDrag(drag.id, onMove)
-                    null -> drag(drag.id, onMove)
+                // A reset of this handler (disabled, new orientation, node removed) mid-drag must still end the
+                // state's mutation, or a scrollable would stay in progress and block lower-priority scrolls.
+                var ended = false
+                val ok = try {
+                    when (orientationLock) {
+                        Orientation.Horizontal -> horizontalDrag(drag.id, onMove)
+                        Orientation.Vertical -> verticalDrag(drag.id, onMove)
+                        null -> drag(drag.id, onMove)
+                    }.also { ended = true }
+                } finally {
+                    if (!ended) ch.trySend(DragEvent.DragCancelled)
                 }
                 if (ok) {
                     currentEvent.changes.forEach { if (it.changedToUpIgnoreConsumed()) velocityTracker.addPointerInputChange(it) }
