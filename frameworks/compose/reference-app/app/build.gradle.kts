@@ -16,6 +16,7 @@ android {
         "../../../../examples/compose-counter",
         "../../../../examples/compose-showcase",
         "../../../../examples/compose-input",
+        "../../../../examples/compose-interaction",
     )
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }

@@ -30,11 +30,11 @@ the ones that matter most. Notes mark APIs that are `Deprecated` or `Experimenta
 | Area | Android |
 |---|---|
 | [Composables](composables.md) | 8% (17/213) |
-| [Modifiers](modifiers.md) | 18% (30/163) |
+| [Modifiers](modifiers.md) | 21% (35/163) |
 | [Runtime (state, effects, composition)](runtime.md) | 100% (151/151) |
-| [Other functions and properties](functions.md) | 1% (5/671) |
-| [Types](types.md) | 2% (15/983) |
-| **Total** | **10% (218/2181)** |
+| [Other functions and properties](functions.md) | 9% (63/671) |
+| [Types](types.md) | 6% (57/983) |
+| **Total** | **15% (323/2181)** |
 <!-- coverage:end -->
 
 Refresh with `node scripts/api-coverage.mjs`; CI runs it with `--check`.

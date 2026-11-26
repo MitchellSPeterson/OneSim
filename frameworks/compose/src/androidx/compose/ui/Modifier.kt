@@ -42,9 +42,6 @@ class CombinedModifier(internal val outer: Modifier, internal val inner: Modifie
 /** A wire entry (JSON object text). */
 data class WireModifier(val json: String) : Modifier.Element
 
-/** A tap target; `onClick` becomes an action id when the tree is sent. */
-class ClickModifier(val enabled: Boolean, val role: String?, val label: String?, val onClick: () -> Unit) : Modifier.Element
-
 fun Modifier.wire(json: String): Modifier = this then WireModifier(json)
 
 /** Escape-and-quote a string for JSON. */

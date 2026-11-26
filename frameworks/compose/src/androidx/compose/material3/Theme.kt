@@ -153,6 +153,7 @@ fun MaterialTheme(
         LocalColorScheme provides colorScheme,
         LocalShapes provides shapes,
         LocalTypography provides typography,
+        androidx.compose.foundation.LocalIndication provides ripple(),
     ) {
         ProvideTextStyle(typography.bodyLarge, content)
     }

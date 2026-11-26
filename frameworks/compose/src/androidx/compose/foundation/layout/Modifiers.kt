@@ -72,6 +72,20 @@ class PaddingValues(private val start: Dp = 0.dp, private val top: Dp = 0.dp, pr
     wire("""{"wrapContent":[null,${jsonNum(align.bias)}]}""")
 @Stable fun Modifier.offset(x: Dp = 0.dp, y: Dp = 0.dp): Modifier = wire("""{"offset":[${n(x)},${n(y)}]}""")
 
+/** `offset { IntOffset(...) }` in pixels, read when the tree is sent (state changes move it without recomposing). */
+fun Modifier.offset(offset: androidx.compose.ui.unit.Density.() -> androidx.compose.ui.unit.IntOffset): Modifier =
+    this then OffsetPxElement(offset)
+
+
+private class OffsetPxElement(val offset: androidx.compose.ui.unit.Density.() -> androidx.compose.ui.unit.IntOffset) : onesim.compose.NodeElement {
+    override fun create(): onesim.compose.NodeState = object : onesim.compose.NodeState() {}
+
+    override fun wire(state: onesim.compose.NodeState, cx: onesim.compose.WireCx) {
+        val o = Guest.densityObject.offset()
+        cx.add("""{"offset":[${jsonNum(o.x / Guest.density)},${jsonNum(o.y / Guest.density)}]}""")
+    }
+}
+
 /** System bar insets of the simulated device (dp), from `SIMCORE_INSETS`. */
 @Immutable
 class WindowInsets internal constructor(internal val top: Dp, internal val bottom: Dp) {

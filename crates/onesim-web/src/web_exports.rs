@@ -177,6 +177,8 @@ pub extern "C" fn simcore_web_pointer(kind: i32, x: f64, y: f64) -> i32 {
     let kind = match kind {
         0 => PointerKind::Down,
         1 => PointerKind::Up,
+        3 => PointerKind::DoubleClick,
+        4 => PointerKind::LongPress,
         _ => PointerKind::Click,
     };
     rn_pointer(PointerEvent::new(kind, x, y)).unwrap_or_else(|| {

@@ -31,4 +31,12 @@ scripts/build-web.sh examples/compose-input
 shot compose-input    input
 shot compose-input    input-changed    --click Name --type Hello --key enter --drag 86,313,117,0
 
+scripts/build-web.sh examples/compose-interaction
+shot compose-interaction interaction
+shot compose-interaction interaction-changed --click 137.9048,165.7143 --click 137.9048,165.7143 \
+  --long-press 137.9048,252.9524 --double-click 137.9048,252.9524 --click 137.9048,252.9524 --wait 400 \
+  --drag 43.8095,314.6667,114.2857,0 --drag 43.8095,364.5714,114.2857,38.0952 --click 137.9048,508.5714 \
+  --drag 137.9048,566.0952,114.2857,0 --click 139.8095,619.4286 --click 114.2857,664.7619
+shot compose-interaction interaction-pressed --down 137.9048,165.7143 --wait 400
+
 SIMCORE_MAX_DIFF=2.0 python3 scripts/compare_ios.py "$out/native" "$out/web" "$out"

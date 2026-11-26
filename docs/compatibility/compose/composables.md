@@ -28,10 +28,10 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `BottomSheetScaffold` | material3 | ⬜ |  | Experimental |
 | `Box` | foundation-layout | ✅ | |  |
 | `BoxWithConstraints` | foundation-layout | ⬜ |  |  |
-| `Button` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state |
+| `Button` | material3 | 🟠 | | Pixel-checked on Android 17; ripple drawn as a plain circle (no Android 12+ sparkle shader) |
 | `ButtonGroup` | material3 | ⬜ |  |  |
 | `CapturedAnimatedVisibility` | animation | ⬜ |  |  |
-| `Card` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state |
+| `Card` | material3 | 🟠 | | Pixel-checked on Android 17; ripple drawn as a plain circle (no Android 12+ sparkle shader) |
 | `CenterAlignedTopAppBar` | material3 | 🟠 | | No scroll behavior; navigation icon slot has no Icon support yet |
 | `CheckableDropdownMenuItem` | material3 | ⬜ |  |  |
 | `Checkbox` | material3 | ⬜ |  |  |
@@ -61,8 +61,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `DropdownMenuItem` | material3 | ⬜ |  |  |
 | `DropdownMenuPopup` | material3 | ⬜ |  |  |
 | `ElevatedAssistChip` | material3 | ⬜ |  |  |
-| `ElevatedButton` | material3 | 🟠 | | No Android reference screenshot yet; no ripple or press state |
-| `ElevatedCard` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state |
+| `ElevatedButton` | material3 | 🟠 | | No Android reference screenshot yet; ripple drawn as a plain circle (no Android 12+ sparkle shader) |
+| `ElevatedCard` | material3 | 🟠 | | Pixel-checked on Android 17; ripple drawn as a plain circle (no Android 12+ sparkle shader) |
 | `ElevatedFilterChip` | material3 | ⬜ |  |  |
 | `ElevatedSuggestionChip` | material3 | ⬜ |  |  |
 | `ElevatedToggleButton` | material3 | ⬜ |  |  |
@@ -72,17 +72,17 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `ExpandedFullScreenSearchBar` | material3 | ⬜ |  |  |
 | `ExposedDropdownMenu` | material3 | ⬜ |  |  |
 | `ExposedDropdownMenuBox` | material3 | ⬜ |  |  |
-| `ExtendedFloatingActionButton` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state; icon/text/expanded overload missing |
+| `ExtendedFloatingActionButton` | material3 | 🟠 | | Pixel-checked on Android 17; ripple drawn as a plain circle (no Android 12+ sparkle shader); icon/text/expanded overload missing |
 | `FilledIconButton` | material3 | ⬜ |  |  |
 | `FilledIconToggleButton` | material3 | ⬜ |  |  |
-| `FilledTonalButton` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state |
+| `FilledTonalButton` | material3 | 🟠 | | Pixel-checked on Android 17; ripple drawn as a plain circle (no Android 12+ sparkle shader) |
 | `FilledTonalIconButton` | material3 | ⬜ |  |  |
 | `FilledTonalIconToggleButton` | material3 | ⬜ |  |  |
 | `FilledTonalToggleButton` | material3 | ⬜ |  |  |
 | `FilterChip` | material3 | ⬜ |  |  |
 | `FlexBox` | foundation-layout | ⬜ |  |  |
 | `FlexibleBottomAppBar` | material3 | ⬜ |  |  |
-| `FloatingActionButton` | material3 | 🟠 | | No Android reference screenshot yet; no ripple or press state |
+| `FloatingActionButton` | material3 | 🟠 | | No Android reference screenshot yet; ripple drawn as a plain circle (no Android 12+ sparkle shader) |
 | `FloatingActionButtonMenu` | material3 | ⬜ |  |  |
 | `FloatingActionButtonMenuItem` | material3 | ⬜ |  |  |
 | `FlowColumn` | foundation-layout | ⬜ |  |  |
@@ -139,8 +139,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `NavigationDrawerItem` | material3 | ⬜ |  |  |
 | `NavigationRail` | material3 | ⬜ |  |  |
 | `NavigationRailItem` | material3 | ⬜ |  |  |
-| `OutlinedButton` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state |
-| `OutlinedCard` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state |
+| `OutlinedButton` | material3 | 🟠 | | Pixel-checked on Android 17; ripple drawn as a plain circle (no Android 12+ sparkle shader) |
+| `OutlinedCard` | material3 | 🟠 | | Pixel-checked on Android 17; ripple drawn as a plain circle (no Android 12+ sparkle shader) |
 | `OutlinedIconButton` | material3 | ⬜ |  |  |
 | `OutlinedIconToggleButton` | material3 | ⬜ |  |  |
 | `OutlinedSecureTextField` | material3 | ⬜ |  |  |
@@ -190,13 +190,13 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `SplitButtonLayout` | material3 | ⬜ |  |  |
 | `SubcomposeLayout` | ui | ⬜ |  |  |
 | `SuggestionChip` | material3 | ⬜ |  |  |
-| `Surface` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state; tonalElevation does not tint |
+| `Surface` | material3 | 🟠 | | Pixel-checked on Android 17; ripple drawn as a plain circle (no Android 12+ sparkle shader); tonalElevation does not tint |
 | `SwipeToDismissBox` | material3 | ⬜ |  |  |
-| `Switch` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state; thumbContent not drawn |
+| `Switch` | material3 | 🟠 | | Pixel-checked on Android 17; 28 dp thumb and unbounded ripple while pressed; thumbContent not drawn |
 | `Tab` | material3 | ⬜ |  |  |
 | `TabRow` | material3 | ⬜ |  | Deprecated |
 | `Text` | material3 | 🟠 | | String only (no AnnotatedString); overflow always clips; custom fonts render as Roboto |
-| `TextButton` | material3 | 🟠 | | Pixel-checked on Android 17; no ripple or press state |
+| `TextButton` | material3 | 🟠 | | Pixel-checked on Android 17; ripple drawn as a plain circle (no Android 12+ sparkle shader) |
 | `TextField` | material3 | 🟠 |  | Filled string field, enabled and read-only state, host keyboard input. |
 | `TimeInput` | material3 | ⬜ |  |  |
 | `TimePicker` | material3 | ⬜ |  |  |

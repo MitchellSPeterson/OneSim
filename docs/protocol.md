@@ -772,10 +772,25 @@ Arrangement: `{"type":"start"|"end"|"center"|"spaceBetween"|"spaceAround"|"space
 | `{"clip":shape}` | `clip` |
 | `{"shadow":{"elevation","shape"?}}` | `shadow` (Material tonal shadow, drawn as a soft drop shadow) |
 | `{"alpha":f}` | `alpha` |
-| `{"clickable":{"action":u64,"enabled":bool,"role"?:"button"\|"switch"\|"checkbox"\|"radio"\|"tab","label"?}}` | `clickable` / `toggleable` / `selectable` |
+| `{"clickable":{"action":u64,"enabled":bool,"role"?:"button"\|"switch"\|"checkbox"\|"radio"\|"tab","label"?,"key"?:String}}` | `clickable` / `combinedClickable` / `toggleable` / `selectable`; `key` (enabled only) makes the layer a section L gesture view |
+| `{"gesture":{"key":String,"pans":true,"axis"?:"horizontal"\|"vertical"}}` | `pointerInput`, `draggable`, `draggable2D`, `scrollable`: a section L gesture view the size of the wrapped content (`axis` for one-axis drags) |
+| `{"ripple":{"color":[r,g,b,a],"bounded":bool,"radius"?:dp,"layer":f,"ripples":[{"origin":[x,y]\|null,"radius":f,"center":f,"alpha":f}]}}` | an indication drawn over the wrapped content (below) |
 
-Host → guest: the section B `action` (tap on a `clickable`), `environment` (appearance → `isSystemInDarkTheme()`),
-`shutdown`. The guest re-composes and sends a new `tree` after each, once the Recomposer is idle.
+Host → guest: the section B `action`, section L `gesture` touches (keys `<node id>#m<modifier index>`), `environment`
+(appearance → `isSystemInDarkTheme()`), `shutdown`. The guest re-composes and sends a new `tree` after each, once the
+Recomposer is idle; it answers every `gesture` message with a tree.
+
+Pointer input (guest): touches become `PointerEvent`s in pixels (`SIMCORE_SCALE`), local to each target's `frame`,
+dispatched to the targets in AndroidX's three passes (Initial outer → inner, Main inner → outer, Final outer → inner)
+with consumption shared along the path; a `cancel` reaches handlers as lifted, consumed pointers. `withTimeout` in an
+`AwaitPointerEventScope` expires by event `time` (a later event) or by the wall clock, so a held finger long-presses
+without further events. Material's clickables draw `ripple()`: the guest sends each ripple's progress and the host
+derives the geometry from the layer's bounds (Material `RippleAnimation`): radius from 30% of the larger side to
+`radius` (or half the diagonal, + 10 dp when bounded), centre from `origin` (the press point; `null` = middle) to the
+middle, opacity `alpha`; `layer` is the state layer (drag, focus, hover) over the whole layer (bounded) or a `radius`
+circle. Bounded ripples are clipped to the layer. Frame-driven animations (ripples, flings) run on the guest's wall
+clock at 60 frames per second and send a tree per frame; `--wait MS` lets that much real time pass for Compose
+sessions.
 
 ### Android chrome (host)
 
@@ -791,7 +806,7 @@ shadow pair (the spot shadow shifts down with distance from the top of the scree
 - Modifier `{"offset": {"x", "y"}}` (`.offset`): the view is drawn and hit-tested moved by (x, y) points; layout keeps its original place.
 - Host → guest `{"type":"gesture","phase":"start"|"move"|"end"|"cancel","time": ms,"points":[[x,y],...],"targets":[{"key","frame":[x,y,w,h]}]}`: one touch event on gesture views, in screen points. `targets` are the gesture views under the finger where the touch began, innermost first (the topmost one with gestures, then its ancestors with gestures), fixed for the whole sequence. Not version-gated: keys are structural paths. The guest answers every `gesture` message with a tree. C ABI: `simcore_runtime_set_gesture_callback` (header `simcore_runtime.h`); the web build calls the same callback.
 - Who gets a touch: a control (button, toggle, field, slider, key) above the innermost gesture view takes it, as a `Button` inside a view with gestures does; otherwise the gesture views do, and the touch never scrolls, swipes a sheet or presses a control. When no target `pans` and the touch began in a scroller, moving it more than 10 pt hands it to the scroller: the gesture views get `cancel`.
-- Input: `click` = `start` + `end` (48 ms apart), `down`/`up` = `start`/`end`, `drag` = `start`, 8 `move`s 16 ms apart, `end`. New pointer kinds `{"kind":"long_press","x","y","duration"?: s}` (default 1 s; the resting finger is reported every 100 ms), `{"kind":"pinch","x","y","scale"}` and `{"kind":"rotate","x","y","degrees"}` (two fingers centred on (x, y), 100 pt apart side by side, spread to `scale` times that or turned clockwise, in 8 steps). Live transports (native window, web) send `start`/`move`/`end` as the finger moves, and report a resting finger every 50 ms (`Interaction::hold`) so a long press fires while held. Synthesized gestures never overlap in time. CLI: `--drag LABEL,DX,DY`, `--long-press LABEL_OR_X,Y`, `--pinch LABEL_OR_X,Y,SCALE`, `--rotate LABEL_OR_X,Y,DEGREES`; a label may also name any text (views with gestures have no control role).
+- Input: `click` = `start` + `end` (48 ms apart), `double_click` = two clicks, the second 100 ms after the first lifts (off gesture views: two clicks), `down`/`up` = `start`/`end`, `drag` = `start`, 8 `move`s 16 ms apart, `end`. New pointer kinds `{"kind":"long_press","x","y","duration"?: s}` (default 1 s; the resting finger is reported every 100 ms), `{"kind":"pinch","x","y","scale"}` and `{"kind":"rotate","x","y","degrees"}` (two fingers centred on (x, y), 100 pt apart side by side, spread to `scale` times that or turned clockwise, in 8 steps). Live transports (native window, web) send `start`/`move`/`end` as the finger moves, and report a resting finger every 50 ms (`Interaction::hold`) so a long press fires while held. Synthesized gestures never overlap in time. CLI: `--drag LABEL,DX,DY`, `--long-press LABEL_OR_X,Y`, `--double-click LABEL_OR_X,Y`, `--down LABEL_OR_X,Y` / `--up LABEL_OR_X,Y` (a finger held down in between), `--pinch LABEL_OR_X,Y,SCALE`, `--rotate LABEL_OR_X,Y,DEGREES`; a label may also name any text (views with gestures have no control role).
 - Guest semantics (`frameworks/swiftui/Sources/SwiftUI/Gestures.swift`): each sequence builds recognizers from the gestures registered by the latest evaluation. `TapGesture`/`SpatialTapGesture` fail past 10 pt of movement, count taps within 350 ms and 45 pt; `LongPressGesture` reports `true` at touch down and succeeds after `minimumDuration` within `maximumDistance`; `DragGesture` activates at `minimumDistance` (translation from the touch-down point, velocity over the last 100 ms, predicted end 0.25 s of it ahead); `MagnifyGesture`/`RotateGesture` need two fingers and activate past their minimum delta. Exclusive candidates (normal and high-priority gestures) are ranked high-priority ones outermost first, then the rest innermost first: the first to commit (active or ended) wins, the higher-ranked one when several commit on the same event, and the others are cancelled; until then every undecided one shows its progress (a long press's pressing state). Nothing waits for a higher-ranked gesture to fail. Simultaneous gestures always run. Losers and failures reset their `@GestureState`.
 
 ## M. v1 additions: SwiftUI grids, lazy stacks, geometry (additive, protocol version stays 1)

@@ -58,7 +58,15 @@ export async function load(source, { log = (level, t) => console[level](t), gues
         : new URL("./guest/guest.mjs", import.meta.url).href);
       guest = await import(url);
     }
+    // Guest timers (a pending double tap, a delayed press): run them when due and submit what they change.
+    let timer = null;
+    const schedule = () => {
+      const due = guest.onesimNextTimer?.() ?? -1;
+      if (timer !== null) clearTimeout(timer);
+      timer = due >= 0 ? setTimeout(() => { timer = null; submitTree(guest.onesimTimers()); }, due) : null;
+    };
     const submitTree = (tree) => {
+      queueMicrotask(schedule);
       if (!tree) return 0;
       const b = enc.encode(tree);
       const ptr = exports.simcore_web_buf(b.length);
@@ -80,6 +88,10 @@ export async function load(source, { log = (level, t) => console[level](t), gues
       on_text(field, ptr, len) {
         const text = dec.decode(new Uint8Array(exports.memory.buffer, ptr, len));
         submitTree(guest.onesimTextInput(field, text));
+      },
+      on_gesture(ptr, len) {
+        const json = dec.decode(new Uint8Array(exports.memory.buffer, ptr, len));
+        submitTree(guest.onesimGesture(json));
       },
     };
   }
@@ -190,8 +202,8 @@ export class OneSim {
     return new Uint8Array(this.mem, ptr, len);
   }
 
-  /** Pointer event in points: kind "down" | "up" | "click". Returns whether anything changed. */
-  pointer(kind, x, y) { return this.wasm.simcore_web_pointer({ down: 0, up: 1, click: 2 }[kind], x, y) === 1; }
+  /** Pointer event in points: kind "down" | "up" | "click" | "double_click" | "long_press" (1 s). Returns whether anything changed. */
+  pointer(kind, x, y) { return this.wasm.simcore_web_pointer({ down: 0, up: 1, click: 2, double_click: 3, long_press: 4 }[kind], x, y) === 1; }
   click(x, y) { return this.pointer("click", x, y); }
   /** Scroll the scroller under (x, y) by (dx, dy) points; positive dy reveals later content. */
   scroll(x, y, dx, dy) { return this.wasm.simcore_web_scroll(x, y, dx, dy) === 1; }

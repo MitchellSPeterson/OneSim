@@ -392,6 +392,13 @@ impl Host {
         self.get(id)?.require_input()?;
         self.sync_guest_clock(id)?;
         let (scene, version, _) = self.scene(id)?;
+        // A double tap off gesture views is two clicks.
+        if ev.kind == PointerKind::DoubleClick && (self.get(id)?.is_rn() || !scene.gesture_touch_at(ev.x, ev.y)) {
+            let click = PointerEvent { kind: PointerKind::Click, ..ev };
+            let first = self.pointer(id, click)?;
+            let second = self.pointer(id, click)?;
+            return Ok((second.0.or(first.0), first.1 || second.1));
+        }
         if self.get(id)?.is_rn() {
             if ev.kind == PointerKind::Drag && scene.scroll_target(ev.x, ev.y).is_some_and(|i| scene.nodes[i].tag.is_some()) {
                 return self.rn_whole_drag(id, &scene, ev);
@@ -509,6 +516,15 @@ impl Host {
     /// (headless CLI `--wait`). Ensures any preceding tree is ingested before stepping.
     pub fn wait(&mut self, id: &str, ms: f64) -> Result<(), ApiError> {
         let _ = self.scene(id)?;
+        // Compose runs its own frame clock in real time (ripples, flings, timeouts): let that much time pass.
+        if self.get(id)?.is_compose() {
+            let s = self.get(id)?;
+            std::thread::sleep(std::time::Duration::from_secs_f64(ms.max(0.0) / 1000.0));
+            s.clock_ms += ms.max(0.0);
+            s.wait_quiet(std::time::Duration::from_millis(50), std::time::Duration::from_millis(500));
+            let _ = self.scene(id)?;
+            return Ok(());
+        }
         let mut left = ms.max(0.0);
         const STEP_MS: f64 = 16.0;
         while left > 1e-6 {

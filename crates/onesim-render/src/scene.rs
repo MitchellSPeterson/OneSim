@@ -674,6 +674,11 @@ impl Scene {
         out
     }
 
+    /// Whether a finger landing at (x, y) goes to gesture views (no control above the innermost one takes it).
+    pub fn gesture_touch_at(&self, x: f64, y: f64) -> bool {
+        self.gesture_targets(x, y).first().is_some_and(|&inner| !self.hit_test(x, y).is_some_and(|c| c > inner))
+    }
+
     /// Custom SwiftUI shape nodes whose laid-out size differs from the size the guest last evaluated `path(in:)` for.
     pub fn pending_shape_frames(&self) -> std::collections::BTreeMap<String, [f64; 4]> {
         let mut out = std::collections::BTreeMap::new();

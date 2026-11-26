@@ -233,6 +233,18 @@ fun onesimTextInput(field: Double, text: String): String = WasmGuest.onTextInput
 
 @OptIn(ExperimentalJsExport::class)
 @JsExport
+fun onesimGesture(json: String): String = WasmGuest.onGesture(json)
+
+@OptIn(ExperimentalJsExport::class)
+@JsExport
+fun onesimNextTimer(): Double = WasmGuest.nextTimer()
+
+@OptIn(ExperimentalJsExport::class)
+@JsExport
+fun onesimTimers(): String = WasmGuest.onTimers()
+
+@OptIn(ExperimentalJsExport::class)
+@JsExport
 fun onesimEnvironment(dark: Boolean, insetTop: Float, insetBottom: Float): String =
     WasmGuest.onEnvironment(dark, insetTop, insetBottom)
 

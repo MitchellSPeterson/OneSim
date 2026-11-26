@@ -1,6 +1,7 @@
 package androidx.compose.material3
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -135,7 +136,7 @@ fun Button(
     elevation: ButtonElevation? = ButtonDefaults.buttonElevation(),
     border: BorderStroke? = null,
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
-    interactionSource: Any? = null,
+    interactionSource: MutableInteractionSource? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
     val contentColor = colors.contentColor(enabled)
@@ -148,6 +149,7 @@ fun Button(
         contentColor = contentColor,
         shadowElevation = if (enabled) elevation?.elevation ?: 0.dp else 0.dp,
         border = border,
+        interactionSource = interactionSource,
     ) {
         CompositionLocalProvider(LocalContentColor provides contentColor) {
             ProvideTextStyle(MaterialTheme.typography.labelLarge) {
@@ -172,7 +174,7 @@ fun ElevatedButton(
     elevation: ButtonElevation? = ButtonDefaults.elevatedButtonElevation(),
     border: BorderStroke? = null,
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
-    interactionSource: Any? = null,
+    interactionSource: MutableInteractionSource? = null,
     content: @Composable RowScope.() -> Unit,
 ) = Button(onClick, modifier, enabled, shape, colors, elevation, border, contentPadding, interactionSource, content)
 
@@ -186,7 +188,7 @@ fun FilledTonalButton(
     elevation: ButtonElevation? = ButtonDefaults.buttonElevation(),
     border: BorderStroke? = null,
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
-    interactionSource: Any? = null,
+    interactionSource: MutableInteractionSource? = null,
     content: @Composable RowScope.() -> Unit,
 ) = Button(onClick, modifier, enabled, shape, colors, elevation, border, contentPadding, interactionSource, content)
 
@@ -200,7 +202,7 @@ fun OutlinedButton(
     elevation: ButtonElevation? = null,
     border: BorderStroke? = ButtonDefaults.outlinedButtonBorder(enabled),
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
-    interactionSource: Any? = null,
+    interactionSource: MutableInteractionSource? = null,
     content: @Composable RowScope.() -> Unit,
 ) = Button(onClick, modifier, enabled, shape, colors, elevation, border, contentPadding, interactionSource, content)
 
@@ -214,6 +216,6 @@ fun TextButton(
     elevation: ButtonElevation? = null,
     border: BorderStroke? = null,
     contentPadding: PaddingValues = ButtonDefaults.TextButtonContentPadding,
-    interactionSource: Any? = null,
+    interactionSource: MutableInteractionSource? = null,
     content: @Composable RowScope.() -> Unit,
 ) = Button(onClick, modifier, enabled, shape, colors, elevation, border, contentPadding, interactionSource, content)

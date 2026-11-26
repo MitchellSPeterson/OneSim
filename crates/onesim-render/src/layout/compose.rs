@@ -10,7 +10,7 @@ use crate::chrome::{android_nav_handle, android_status_bar};
 use crate::scene::{Color, Node, Rect, Role, Scene, ScrollInfo, Shadow, TextRun};
 use crate::text::{android_glyph_size, FontSpec, Fonts, TextAlign};
 use serde_json::Value;
-use onesim_protocol::{Appearance, ViewKind, ViewNode};
+use onesim_protocol::{Appearance, GestureMod, ViewKind, ViewNode};
 use std::collections::BTreeSet;
 
 const INF: f64 = f64::INFINITY;
@@ -86,12 +86,70 @@ enum Deco {
     Clip(Shape),
     Shadow(f64, Shape),
     Alpha(f32),
-    Click { action: Option<u64>, role: Role, label: Option<String> },
+    Click { action: Option<u64>, role: Role, label: Option<String>, gesture: Option<GestureMod> },
+    /// Pointer input the guest handles (`pointerInput`, `draggable`, `scrollable`, ...): touches go to it by key.
+    Gesture(GestureMod),
+    /// An indication (ripple) drawn over the content.
+    Ripple(Ripple),
     Text(TextRun),
     Control(Box<Node>),
     Embedded(Embedded),
     /// The component's own node (`Box`, `Column`, `Row`).
     Core(&'static str),
+}
+
+/// Ripple and state layer of an indication, drawn after the content it wraps (protocol section K). The guest sends
+/// animation progress; the geometry follows the layer's bounds, as Material's `RippleAnimation` does.
+#[derive(Debug, Clone, PartialEq)]
+struct Ripple {
+    color: Color,
+    /// Clipped to the layer's bounds (bounded ripple) or not.
+    bounded: bool,
+    /// State layer opacity (hover, focus, drag), over the whole layer (bounded) or a `radius` circle (unbounded).
+    layer: f32,
+    /// Explicit radius (dp).
+    radius: Option<f64>,
+    ripples: Vec<RippleCircle>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct RippleCircle {
+    /// Press point (dp, relative to the layer); `None` = the centre.
+    origin: Option<(f64, f64)>,
+    /// Progress 0...1 of the radius (eased) and of the centre's move from the press point to the middle.
+    radius: f64,
+    center: f64,
+    alpha: f32,
+}
+
+impl Ripple {
+    fn parse(v: &Value) -> Ripple {
+        let circles = v.get("ripples").and_then(Value::as_array).map(|a| {
+            a.iter().map(|c| RippleCircle {
+                origin: c.get("origin").and_then(Value::as_array).and_then(|o| Some((o.first()?.as_f64()?, o.get(1)?.as_f64()?))),
+                radius: f(c, "radius").unwrap_or(0.0).clamp(0.0, 1.0),
+                center: f(c, "center").unwrap_or(0.0).clamp(0.0, 1.0),
+                alpha: f(c, "alpha").unwrap_or(0.0).clamp(0.0, 1.0) as f32,
+            }).collect()
+        });
+        Ripple {
+            color: color(v.get("color")).unwrap_or(Color::rgba(0.0, 0.0, 0.0, 1.0)),
+            bounded: v.get("bounded").and_then(Value::as_bool).unwrap_or(true),
+            layer: f(v, "layer").unwrap_or(0.0).clamp(0.0, 1.0) as f32,
+            radius: f(v, "radius").filter(|r| r.is_finite() && *r >= 0.0),
+            ripples: circles.unwrap_or_default(),
+        }
+    }
+
+    /// Final radius in a `w` x `h` layer: explicit, or covering it (bounded: 10 dp past the corners).
+    fn target_radius(&self, w: f64, h: f64) -> f64 {
+        let covering = w.hypot(h) / 2.0;
+        self.radius.unwrap_or(if self.bounded { covering + 10.0 } else { covering })
+    }
+}
+
+fn gesture_mod(v: &Value) -> Option<GestureMod> {
+    serde_json::from_value::<GestureMod>(v.clone()).ok().filter(|g| !g.key.is_empty())
 }
 
 /// A measured and placed layer: one modifier or the component itself; children are relative to it.
@@ -325,7 +383,16 @@ impl Cx<'_> {
                 _ => Role::Button,
             };
             let action = k.get("action").and_then(Value::as_u64).filter(|_| enabled);
-            Deco::Click { action, role, label: k.get("label").and_then(Value::as_str).map(str::to_owned) }
+            let gesture = k.get("key").and_then(Value::as_str).filter(|_| enabled)
+                .map(|key| GestureMod { key: key.to_owned(), pans: false, axis: None });
+            Deco::Click { action, role, label: k.get("label").and_then(Value::as_str).map(str::to_owned), gesture }
+        } else if let Some(g) = m.get("gesture") {
+            match gesture_mod(g) {
+                Some(g) => Deco::Gesture(g),
+                None => Deco::None,
+            }
+        } else if let Some(r) = m.get("ripple") {
+            Deco::Ripple(Ripple::parse(r))
         } else {
             let key = m.as_object().and_then(|o| o.keys().next().cloned()).unwrap_or_default();
             self.notes.insert(format!("unsupported_modifier: {key}"));
@@ -623,10 +690,11 @@ fn flatten(l: Laid, x: f64, y: f64, parent: usize, opacity: f32, out: &mut Vec<N
         }
         Deco::Shadow(..) => {}
         Deco::Alpha(a) => op *= a,
-        Deco::Click { action, role, label } => {
+        Deco::Click { action, role, label, gesture } => {
             n.kind = "clickable";
             n.inspect = true;
             n.action = action;
+            n.gesture = gesture.map(Box::new);
             n.disabled = action.is_none();
             n.role = role;
             n.label = label.or_else(|| {
@@ -636,6 +704,17 @@ fn flatten(l: Laid, x: f64, y: f64, parent: usize, opacity: f32, out: &mut Vec<N
                 }
                 (!parts.is_empty()).then(|| parts.join(" "))
             });
+        }
+        Deco::Gesture(g) => n.gesture = Some(Box::new(g)),
+        Deco::Ripple(r) => {
+            n.opacity = op;
+            let idx = out.len();
+            out.push(n);
+            for (dx, dy, k) in kids {
+                flatten(k, x + dx, y + dy, idx, op, out, modals);
+            }
+            ripple(&r, idx, op, out);
+            return;
         }
         Deco::Text(t) => {
             n.kind = "text";
@@ -664,6 +743,56 @@ fn flatten(l: Laid, x: f64, y: f64, parent: usize, opacity: f32, out: &mut Vec<N
     out.push(n);
     for (dx, dy, k) in kids {
         flatten(k, x + dx, y + dy, idx, op, out, modals);
+    }
+}
+
+/// The ripple of layer `idx`, painted after its content: an overlay clipped to the layer (bounded) holding the state
+/// layer and one circle per ripple.
+fn ripple(r: &Ripple, idx: usize, opacity: f32, out: &mut Vec<Node>) {
+    if r.layer <= 0.0 && r.ripples.iter().all(|c| c.alpha <= 0.0) {
+        return;
+    }
+    let (b, base) = (out[idx].bounds, out[idx].id.clone());
+    let mut overlay = Node::new(format!("{base}#ripple"), "ripple");
+    overlay.bounds = b;
+    overlay.parent = Some(idx);
+    overlay.inspect = false;
+    overlay.opacity = opacity;
+    if r.bounded {
+        overlay.clip_radius = Some(0.0);
+    }
+    let parent = out.len();
+    out.push(overlay);
+    let tint = |alpha: f32| Color::rgba(r.color.r, r.color.g, r.color.b, r.color.a * alpha);
+    let mut paint = |id: String, bounds: Rect, radius: f64, alpha: f32| {
+        let mut c = Node::new(id, "ripple_circle");
+        c.bounds = bounds;
+        c.radius = radius;
+        c.parent = Some(parent);
+        c.inspect = false;
+        c.opacity = opacity;
+        c.fill = Some(tint(alpha));
+        out.push(c);
+    };
+    let circle = |cx: f64, cy: f64, radius: f64| Rect { x: b.x + cx - radius, y: b.y + cy - radius, w: 2.0 * radius, h: 2.0 * radius };
+    let target = r.target_radius(b.w, b.h);
+    if r.layer > 0.0 {
+        if r.bounded {
+            paint(format!("{base}#ripple-layer"), b, 0.0, r.layer);
+        } else {
+            paint(format!("{base}#ripple-layer"), circle(b.w / 2.0, b.h / 2.0, target), target, r.layer);
+        }
+    }
+    // Material's RippleAnimation: from 30% of the larger side at the press point to `target` at the centre.
+    let start = b.w.max(b.h) * 0.3;
+    let (mx, my) = (b.w / 2.0, b.h / 2.0);
+    for (i, c) in r.ripples.iter().enumerate() {
+        let radius = start + (target - start) * c.radius;
+        let (ox, oy) = c.origin.filter(|_| r.bounded).unwrap_or((mx, my));
+        let (cx, cy) = (ox + (mx - ox) * c.center, oy + (my - oy) * c.center);
+        if radius > 0.0 && c.alpha > 0.0 {
+            paint(format!("{base}#ripple{i}"), circle(cx, cy, radius), radius, c.alpha);
+        }
     }
 }
 
@@ -851,5 +980,98 @@ mod tests {
         let t = scene.nodes.iter().find(|n| n.id == "t").unwrap();
         // A 20 sp line is 52.5 px, rounded up to 53 px like Compose's text layout.
         assert_eq!((t.bounds.x, t.bounds.y, t.bounds.h), (24.0, 8.0, 53.0 / 2.625));
+    }
+
+    fn scene_of(root: Value) -> Scene {
+        let mut fonts = Fonts::with_fallback(true);
+        let dev = crate::device(crate::DEFAULT_ANDROID_DEVICE).unwrap();
+        let scroll = Default::default();
+        let sheets = Default::default();
+        let params = SceneParams {
+            viewport: (dev.viewport.width, dev.viewport.height),
+            device: dev,
+            scale: dev.scale,
+            appearance: Appearance::Light,
+            dynamic_type: Default::default(),
+            ios: Default::default(),
+            scroll: &scroll,
+            sheets: &sheets,
+            focus: None,
+            overscroll: false,
+            status_bar: true,
+            chrome: Default::default(),
+        };
+        layout(&node(root), &params, &mut fonts)
+    }
+
+    #[test]
+    fn keyed_clickable_and_pointer_input_are_gesture_targets() {
+        let root = json!({"kind":"compose","id":"root","component":"Box","props":{"modifier":[
+            {"gesture":{"key":"root#m0","pans":true,"axis":"horizontal"}},{"width":200},{"height":100}]},"children":[
+            {"kind":"compose","id":"b","component":"Box","props":{"modifier":[{"width":80},{"height":40},
+                {"clickable":{"action":3,"enabled":true,"role":"button","key":"b#m2"}}]}},
+            {"kind":"compose","id":"off","component":"Box","props":{"modifier":[{"offset":[100,50]},{"width":40},{"height":40},
+                {"clickable":{"action":4,"enabled":false,"key":"off#m3"}}]}}
+        ]});
+        let scene = scene_of(root);
+        // The clickable is the innermost target, its pointer-input parent follows; the control does not block it.
+        let keys = |x, y| scene.gesture_targets(x, y).iter().map(|&i| scene.nodes[i].gesture.as_ref().unwrap().key.clone()).collect::<Vec<_>>();
+        assert_eq!(keys(10.0, 10.0), ["b#m2", "root#m0"]);
+        assert!(scene.gesture_touch_at(10.0, 10.0));
+        let outer = scene.nodes.iter().find(|n| n.gesture.as_ref().is_some_and(|g| g.key == "root#m0")).unwrap();
+        // Sizes snap to whole device pixels (2.625 px per dp).
+        assert_eq!((outer.bounds.w, outer.bounds.h), (200.0, 263.0 / 2.625));
+        assert_eq!(outer.gesture.as_ref().unwrap().axis, Some(onesim_protocol::Axis::Horizontal));
+        assert!(outer.gesture.as_ref().unwrap().pans);
+        // A disabled clickable has no key and no action: touches reach the parent's pointer input.
+        assert_eq!(keys(110.0, 60.0), ["root#m0"]);
+        assert!(scene.gesture_touch_at(110.0, 60.0));
+        // A malformed gesture entry (no key) is ignored.
+        let bad = scene_of(json!({"kind":"compose","id":"root","component":"Box","props":{"modifier":[{"gesture":{"pans":true}},{"width":10},{"height":10}]}}));
+        assert!(bad.nodes.iter().all(|n| n.gesture.is_none()));
+        assert!(bad.notes.is_empty(), "gesture is a known modifier: {:?}", bad.notes);
+    }
+
+    #[test]
+    fn ripple_is_painted_over_the_content_and_grows_to_cover_bounded_layers() {
+        let ripple = |r: Value| json!({"kind":"compose","id":"root","component":"Box","props":{"modifier":[
+            {"width":100},{"height":40},{"ripple":r},{"background":{"color":[0,0,1,1]}}]}});
+        let scene = scene_of(ripple(json!({"color":[1,1,1,1],"bounded":true,"layer":0,
+            "ripples":[{"origin":[10,10],"radius":0,"center":0,"alpha":0.1},{"origin":[10,10],"radius":1,"center":1,"alpha":0.05}]})));
+        let bg = scene.nodes.iter().position(|n| n.kind == "background").unwrap();
+        let overlay = scene.nodes.iter().position(|n| n.kind == "ripple").unwrap();
+        assert!(overlay > bg, "drawn after the content it wraps");
+        assert_eq!(scene.nodes[overlay].clip_radius, Some(0.0), "bounded ripples are clipped");
+        let circles: Vec<_> = scene.nodes.iter().filter(|n| n.kind == "ripple_circle").collect();
+        assert_eq!(circles.len(), 2);
+        let b = scene.nodes[overlay].bounds;
+        let near = |a: f64, b: f64| (a - b).abs() < 1e-9;
+        // Start: 30% of the larger side around the press point.
+        let start = &circles[0];
+        assert!(near(start.radius, b.w.max(b.h) * 0.3) && near(start.bounds.x + start.radius, 10.0) && near(start.bounds.y + start.radius, 10.0));
+        assert_eq!(start.fill.unwrap().a, 0.1);
+        // End: half the diagonal + 10 dp, centred.
+        let end = &circles[1];
+        assert!(near(end.radius, b.w.hypot(b.h) / 2.0 + 10.0));
+        assert!(near(end.bounds.x + end.radius, b.w / 2.0) && near(end.bounds.y + end.radius, b.h / 2.0));
+        // Unbounded with an explicit radius: centred, not clipped; a state layer is a circle of that radius.
+        let scene = scene_of(ripple(json!({"color":[1,0,0,1],"bounded":false,"radius":20,"layer":0.16,
+            "ripples":[{"origin":null,"radius":1,"center":0,"alpha":0.1}]})));
+        let overlay = scene.nodes.iter().find(|n| n.kind == "ripple").unwrap();
+        assert_eq!(overlay.clip_radius, None);
+        let circles: Vec<_> = scene.nodes.iter().filter(|n| n.kind == "ripple_circle").collect();
+        assert_eq!(circles.len(), 2);
+        let b = overlay.bounds;
+        assert!(circles.iter().all(|c| c.radius == 20.0 && (c.bounds.x + 20.0 - b.w / 2.0).abs() < 1e-9 && (c.bounds.y + 20.0 - b.h / 2.0).abs() < 1e-9));
+        assert_eq!(circles[0].fill.unwrap().a, 0.16);
+        // Nothing to draw: no overlay at all.
+        let scene = scene_of(ripple(json!({"color":[1,1,1,1],"bounded":true,"layer":0,"ripples":[]})));
+        assert!(scene.nodes.iter().all(|n| n.kind != "ripple"));
+        // A bounded state layer fills the layer.
+        let scene = scene_of(ripple(json!({"color":[0,0,0,1],"bounded":true,"layer":0.3})));
+        let layer = scene.nodes.iter().find(|n| n.kind == "ripple_circle").unwrap();
+        let overlay = scene.nodes.iter().find(|n| n.kind == "ripple").unwrap();
+        assert_eq!((layer.bounds, layer.radius), (overlay.bounds, 0.0));
+        assert!((layer.fill.unwrap().a - 0.3).abs() < 1e-6);
     }
 }

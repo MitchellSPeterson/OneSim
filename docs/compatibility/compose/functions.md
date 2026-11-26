@@ -8,7 +8,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `add` | foundation-layout | ⬜ |  |  |
 | `addOutline` | ui-graphics | ⬜ |  |  |
 | `addPathNodes` | ui | ⬜ |  |  |
-| `addPointerInputChange` | ui | ⬜ |  |  |
+| `addPointerInputChange` | ui | ✅ |  |  |
 | `addSvg` | ui-graphics | ⬜ |  |  |
 | `allCaps` | foundation | ⬜ |  |  |
 | `AnchoredDraggableState` | foundation | ⬜ |  |  |
@@ -41,7 +41,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `animateValue` | animation-core | ⬜ |  |  |
 | `animateValueAsState` | animation-core | ⬜ |  |  |
 | `animateZoomBy` | foundation | ⬜ |  |  |
-| `anyChangeConsumed` | ui | ⬜ |  | Deprecated |
+| `anyChangeConsumed` | ui | ✅ |  | Deprecated |
 | `appendInlineContent` | foundation | ⬜ |  |  |
 | `apply` | foundation | ⬜ |  | Experimental |
 | `asAndroidBitmap` | ui-graphics | ⬜ |  |  |
@@ -54,17 +54,17 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `asComposeRenderEffect` | ui-graphics | ⬜ |  |  |
 | `asImageBitmap` | ui-graphics | ⬜ |  |  |
 | `asPaddingValues` | foundation-layout | ⬜ |  |  |
-| `awaitDragOrCancellation` | foundation | ⬜ |  |  |
-| `awaitEachGesture` | foundation | ⬜ |  |  |
-| `awaitFirstDown` | foundation | ⬜ |  |  |
-| `awaitHorizontalDragOrCancellation` | foundation | ⬜ |  |  |
+| `awaitDragOrCancellation` | foundation | ✅ |  |  |
+| `awaitEachGesture` | foundation | ✅ |  |  |
+| `awaitFirstDown` | foundation | ✅ |  |  |
+| `awaitHorizontalDragOrCancellation` | foundation | ✅ |  |  |
 | `awaitHorizontalPointerSlopOrCancellation` | foundation | ⬜ |  |  |
-| `awaitHorizontalTouchSlopOrCancellation` | foundation | ⬜ |  |  |
-| `awaitLongPressOrCancellation` | foundation | ⬜ |  |  |
-| `awaitTouchSlopOrCancellation` | foundation | ⬜ |  |  |
-| `awaitVerticalDragOrCancellation` | foundation | ⬜ |  |  |
+| `awaitHorizontalTouchSlopOrCancellation` | foundation | ✅ |  |  |
+| `awaitLongPressOrCancellation` | foundation | ✅ |  |  |
+| `awaitTouchSlopOrCancellation` | foundation | ✅ |  |  |
+| `awaitVerticalDragOrCancellation` | foundation | ✅ |  |  |
 | `awaitVerticalPointerSlopOrCancellation` | foundation | ⬜ |  |  |
-| `awaitVerticalTouchSlopOrCancellation` | foundation | ⬜ |  |  |
+| `awaitVerticalTouchSlopOrCancellation` | foundation | ✅ |  |  |
 | `BasicTooltipState` | foundation | ⬜ |  | Experimental |
 | `booleanResource` | ui | ⬜ |  |  |
 | `border` | foundation | ⬜ |  | Experimental |
@@ -75,22 +75,22 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `bringIntoView` | ui | ⬜ |  |  |
 | `buildAnnotatedString` | ui-text | ⬜ |  |  |
 | `byValue` | foundation | ⬜ |  |  |
-| `calculateCentroid` | foundation | ⬜ |  |  |
-| `calculateCentroidSize` | foundation | ⬜ |  |  |
+| `calculateCentroid` | foundation | ✅ |  |  |
+| `calculateCentroidSize` | foundation | ✅ |  |  |
 | `calculateEndPadding` | foundation-layout | ⬜ |  |  |
-| `calculatePan` | foundation | ⬜ |  |  |
-| `calculateRotation` | foundation | ⬜ |  |  |
+| `calculatePan` | foundation | ✅ |  |  |
+| `calculateRotation` | foundation | ✅ |  |  |
 | `calculateStartPadding` | foundation-layout | ⬜ |  |  |
 | `calculateTargetValue` | animation-core | ⬜ |  |  |
-| `calculateZoom` | foundation | ⬜ |  |  |
+| `calculateZoom` | foundation | ✅ |  |  |
 | `Canvas` | ui-graphics, foundation | ⬜ |  |  |
 | `capitalize` | ui-text | ⬜ |  |  |
 | `captureFocus` | ui | ⬜ |  |  |
 | `CarouselParallaxScrollEffectState` | material3 | ⬜ |  | Experimental |
-| `changedToDown` | ui | ⬜ |  |  |
-| `changedToDownIgnoreConsumed` | ui | ⬜ |  |  |
-| `changedToUp` | ui | ⬜ |  |  |
-| `changedToUpIgnoreConsumed` | ui | ⬜ |  |  |
+| `changedToDown` | ui | ✅ |  |  |
+| `changedToDownIgnoreConsumed` | ui | ✅ |  |  |
+| `changedToUp` | ui | ✅ |  |  |
+| `changedToUpIgnoreConsumed` | ui | ✅ |  |  |
 | `checked` | foundation | ⬜ |  | Experimental |
 | `checkScrollableContainerConstraints` | foundation | ⬜ |  |  |
 | `CircleShape` | foundation | ✅ | |  |
@@ -103,10 +103,10 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `coerceAtMost` | ui-unit | ⬜ |  |  |
 | `coerceIn` | ui-text, ui-unit | ⬜ |  |  |
 | `collapse` | ui | ⬜ |  |  |
-| `collectIsDraggedAsState` | foundation | ⬜ |  |  |
-| `collectIsFocusedAsState` | foundation | ⬜ |  |  |
-| `collectIsHoveredAsState` | foundation | ⬜ |  |  |
-| `collectIsPressedAsState` | foundation | ⬜ |  |  |
+| `collectIsDraggedAsState` | foundation | ✅ |  |  |
+| `collectIsFocusedAsState` | foundation | 🟠 |  | Never true: nothing emits focus interactions yet (no focus system) |
+| `collectIsHoveredAsState` | foundation | ✅ |  | Never true on the touch screen |
+| `collectIsPressedAsState` | foundation | ✅ |  |  |
 | `colorResource` | ui | ⬜ |  |  |
 | `columns` | foundation-layout | ⬜ |  |  |
 | `composable` | navigation-compose | ⬜ |  |  |
@@ -118,9 +118,9 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `constrainHeight` | ui-unit | ⬜ |  |  |
 | `constrainWidth` | ui-unit | ⬜ |  |  |
 | `consume` | foundation | ⬜ |  | Experimental |
-| `consumeAllChanges` | ui | ⬜ |  | Deprecated |
-| `consumeDownChange` | ui | ⬜ |  | Deprecated |
-| `consumePositionChange` | ui | ⬜ |  | Deprecated |
+| `consumeAllChanges` | ui | ✅ |  | Deprecated |
+| `consumeDownChange` | ui | ✅ |  | Deprecated |
+| `consumePositionChange` | ui | ✅ |  | Deprecated |
 | `contentColorFor` | material3 | ⬜ |  |  |
 | `contentPadding` | foundation | ⬜ |  | Experimental |
 | `contentPaddingHorizontal` | foundation | ⬜ |  | Experimental |
@@ -170,14 +170,14 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `DefaultTrimPathOffset` | ui | ⬜ |  |  |
 | `DefaultTrimPathStart` | ui | ⬜ |  |  |
 | `delete` | foundation | ⬜ |  |  |
-| `Density` | ui-unit | ⬜ |  |  |
+| `Density` | ui-unit | ✅ |  | Font scale 1 |
 | `derivedMediaQuery` | ui | ⬜ |  | Experimental |
-| `detectDragGestures` | foundation | ⬜ |  |  |
-| `detectDragGesturesAfterLongPress` | foundation | ⬜ |  |  |
-| `detectHorizontalDragGestures` | foundation | ⬜ |  |  |
-| `detectTapGestures` | foundation | ⬜ |  |  |
-| `detectTransformGestures` | foundation | ⬜ |  |  |
-| `detectVerticalDragGestures` | foundation | ⬜ |  |  |
+| `detectDragGestures` | foundation | ✅ |  |  |
+| `detectDragGesturesAfterLongPress` | foundation | ✅ |  |  |
+| `detectHorizontalDragGestures` | foundation | ✅ |  |  |
+| `detectTapGestures` | foundation | ✅ |  |  |
+| `detectTransformGestures` | foundation | ✅ |  |  |
+| `detectVerticalDragGestures` | foundation | ✅ |  |  |
 | `dialog` | ui, navigation-compose | ⬜ |  |  |
 | `dimensionResource` | ui | ⬜ |  |  |
 | `disable` | ui | ⬜ |  |  |
@@ -192,12 +192,12 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `DoneSegment` | ui-graphics | ⬜ |  |  |
 | `DpOffset` | ui-unit | ⬜ |  |  |
 | `DpSize` | ui-unit | ⬜ |  |  |
-| `drag` | foundation | ⬜ |  |  |
+| `drag` | foundation | ✅ |  |  |
 | `DragAndDropSourceModifierNode` | ui | ⬜ |  |  |
 | `DragAndDropTargetModifierNode` | ui | ⬜ |  |  |
-| `Draggable2DState` | foundation | ⬜ |  |  |
+| `Draggable2DState` | foundation | ✅ |  |  |
 | `DraggableAnchors` | foundation | ⬜ |  |  |
-| `DraggableState` | foundation | ⬜ |  |  |
+| `DraggableState` | foundation | ✅ |  |  |
 | `draw` | ui-graphics | ⬜ |  |  |
 | `drawIntoCanvas` | ui-graphics | ⬜ |  |  |
 | `drawLayer` | ui-graphics | ⬜ |  |  |
@@ -275,7 +275,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `forEach` | foundation | ⬜ |  |  |
 | `forEachChange` | foundation | ⬜ |  |  |
 | `forEachChangeReversed` | foundation | ⬜ |  |  |
-| `forEachGesture` | foundation | ⬜ |  | Deprecated |
+| `forEachGesture` | foundation | ✅ |  | Deprecated |
 | `freeFocus` | ui | ⬜ |  |  |
 | `fromColorLong` | ui-graphics | ⬜ |  |  |
 | `fromHtml` | ui-text | ⬜ |  |  |
@@ -301,7 +301,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `hasMediaType` | foundation | ⬜ |  | Experimental |
 | `heading` | ui | ⬜ |  |  |
 | `hideFromAccessibility` | ui | ⬜ |  |  |
-| `horizontalDrag` | foundation | ⬜ |  |  |
+| `horizontalDrag` | foundation | ✅ |  |  |
 | `hovered` | foundation | ⬜ |  | Experimental |
 | `ifSet` | foundation | ⬜ |  | Experimental |
 | `ifSetAs` | foundation | ⬜ |  | Experimental |
@@ -331,7 +331,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `invisibleToUser` | ui | ⬜ |  | Deprecated |
 | `isDebugInspectorInfoEnabled` | ui | ⬜ |  |  |
 | `isIdentity` | ui-graphics | ⬜ |  |  |
-| `isOutOfBounds` | ui | ⬜ |  |  |
+| `isOutOfBounds` | ui | ✅ |  |  |
 | `isPopupLayout` | ui | ⬜ |  |  |
 | `isPressed` | ui | ⬜ |  |  |
 | `isSatisfiedBy` | ui-unit | ⬜ |  |  |
@@ -344,7 +344,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `keyframesWithSpline` | animation-core | ⬜ |  |  |
 | `LastBaseline` | ui | ⬜ |  |  |
 | `LazyLayoutScrollScope` | foundation | ⬜ |  |  |
-| `lerp` | ui, ui-graphics, ui-text, ui-unit, ui-geometry, foundation | ⬜ |  |  |
+| `lerp` | ui, ui-graphics, ui-text, ui-unit, ui-geometry, foundation | 🟠 |  | `Offset` only |
 | `lightColorScheme` | material3 | ✅ | |  |
 | `LinearEasing` | animation-core | ⬜ |  |  |
 | `LinearGradientShader` | ui-graphics | ⬜ |  |  |
@@ -365,12 +365,12 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `LocalContentColor` | material3 | ⬜ |  |  |
 | `LocalContext` | ui | ⬜ |  |  |
 | `LocalCursorBlinkEnabled` | ui | ⬜ |  |  |
-| `LocalDensity` | ui | ⬜ |  |  |
+| `LocalDensity` | ui | ✅ |  |  |
 | `LocalFocusManager` | ui | ⬜ |  |  |
 | `LocalFontFamilyResolver` | ui | ⬜ |  |  |
 | `LocalGraphicsContext` | ui | ⬜ |  |  |
 | `LocalHapticFeedback` | ui | ⬜ |  |  |
-| `LocalIndication` | foundation | ⬜ |  |  |
+| `LocalIndication` | foundation | 🟠 |  | Read by `clickable` and friends; custom indications draw nothing (see `Modifier.indication`) |
 | `LocalInputModeManager` | ui | ⬜ |  |  |
 | `LocalInspectionMode` | ui | ⬜ |  |  |
 | `LocalLayoutDirection` | ui | ⬜ |  |  |
@@ -383,7 +383,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `LocalOverscrollFactory` | foundation | ⬜ |  |  |
 | `LocalPinnableContainer` | ui | ⬜ |  |  |
 | `LocalResources` | ui | ⬜ |  |  |
-| `LocalRippleConfiguration` | material3 | ⬜ |  |  |
+| `LocalRippleConfiguration` | material3 | ✅ |  |  |
 | `LocalRippleThemeConfiguration` | material3 | ⬜ |  |  |
 | `LocalSavedStateRegistryOwner` | ui | ⬜ |  | Deprecated |
 | `LocalScrollCaptureInProgress` | ui | ⬜ |  |  |
@@ -402,7 +402,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `LocalUiMediaScope` | ui | ⬜ |  | Experimental |
 | `LocalUriHandler` | ui | ⬜ |  |  |
 | `LocalView` | ui | ⬜ |  |  |
-| `LocalViewConfiguration` | ui | ⬜ |  |  |
+| `LocalViewConfiguration` | ui | ✅ |  | Android defaults: 8 dp touch slop, 400 ms long press, 300 ms double tap |
 | `LocalWindow` | ui | ⬜ |  |  |
 | `LocalWindowInfo` | ui | ⬜ |  |  |
 | `lookaheadScopeCoordinates` | ui | ⬜ |  |  |
@@ -426,7 +426,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `modifierLocalOf` | ui | ⬜ |  |  |
 | `MorphPolygonShape` | foundation | ⬜ |  |  |
 | `MutableContentTransform` | animation | ⬜ |  |  |
-| `MutableInteractionSource` | foundation | ⬜ |  |  |
+| `MutableInteractionSource` | foundation | ✅ |  |  |
 | `navigation` | navigation-compose | ⬜ |  |  |
 | `nestedScrollModifierNode` | ui | ⬜ |  |  |
 | `NoInspectorInfo` | ui | ⬜ |  |  |
@@ -460,11 +460,11 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `pluralStringResource` | ui | ⬜ |  |  |
 | `plus` | ui-unit, foundation-layout | ⬜ |  |  |
 | `popup` | ui | ⬜ |  |  |
-| `positionChange` | ui | ⬜ |  |  |
+| `positionChange` | ui | ✅ |  |  |
 | `positionChangeConsumed` | ui | ⬜ |  | Deprecated |
-| `positionChanged` | ui | ⬜ |  |  |
-| `positionChangedIgnoreConsumed` | ui | ⬜ |  |  |
-| `positionChangeIgnoreConsumed` | ui | ⬜ |  |  |
+| `positionChanged` | ui | ✅ |  |  |
+| `positionChangedIgnoreConsumed` | ui | ✅ |  |  |
+| `positionChangeIgnoreConsumed` | ui | ✅ |  |  |
 | `positionInParent` | ui | ⬜ |  |  |
 | `positionInRoot` | ui | ⬜ |  |  |
 | `positionInWindow` | ui | ⬜ |  |  |
@@ -485,8 +485,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `rememberDatePickerState` | material3 | ⬜ |  |  |
 | `rememberDateRangePickerState` | material3 | ⬜ |  |  |
 | `rememberDeferredTransition` | animation-core | ⬜ |  |  |
-| `rememberDraggable2DState` | foundation | ⬜ |  |  |
-| `rememberDraggableState` | foundation | ⬜ |  |  |
+| `rememberDraggable2DState` | foundation | ✅ |  |  |
+| `rememberDraggableState` | foundation | ✅ |  |  |
 | `rememberDrawerState` | material3 | ⬜ |  |  |
 | `rememberFloatingToolbarState` | material3 | ⬜ |  |  |
 | `rememberGraphicsLayer` | ui | ⬜ |  |  |
@@ -504,7 +504,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `rememberPullToRefreshState` | material3 | ⬜ |  |  |
 | `rememberRangeSliderState` | material3 | ⬜ |  |  |
 | `rememberScrollable2DState` | foundation | ⬜ |  |  |
-| `rememberScrollableState` | foundation | ⬜ |  |  |
+| `rememberScrollableState` | foundation | ✅ |  |  |
 | `rememberScrollFieldState` | material3 | ⬜ |  |  |
 | `rememberScrollState` | foundation | ⬜ |  |  |
 | `rememberSearchBarScrollState` | material3 | ⬜ |  |  |
@@ -540,13 +540,13 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `resolveDefaults` | ui-text | ⬜ |  |  |
 | `restoreFocusedChild` | ui | ⬜ |  |  |
 | `reverse` | ui-graphics | ⬜ |  |  |
-| `ripple` | material3 | ⬜ |  |  |
+| `ripple` | material3 | 🟠 |  | Pixel-checked on Android 17 (`compose-interaction`): Material's ripple (grow from the press point, fade out after 225 ms) and state layers; Android 12+'s platform ripple shader (sparkles) is drawn as a plain circle |
 | `RootGroupName` | ui | ⬜ |  |  |
 | `rotate` | ui-graphics | ⬜ |  |  |
 | `rotateBy` | foundation | ⬜ |  |  |
 | `rotateRad` | ui-graphics | ⬜ |  |  |
 | `rotation` | foundation | ⬜ |  | Experimental |
-| `round` | ui-unit | ⬜ |  |  |
+| `round` | ui-unit | ✅ |  |  |
 | `roundToIntRect` | ui-unit | ⬜ |  |  |
 | `roundToIntSize` | ui-unit | ⬜ |  |  |
 | `rows` | foundation-layout | ⬜ |  |  |
@@ -554,7 +554,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `scale` | ui-graphics, foundation | ⬜ |  |  |
 | `scaleIn` | animation | ⬜ |  |  |
 | `scaleOut` | animation | ⬜ |  |  |
-| `scrollBy` | ui, foundation | ⬜ |  |  |
+| `scrollBy` | ui, foundation | ✅ |  |  |
 | `scrollByOffset` | ui | ⬜ |  |  |
 | `scrollToIndex` | ui | ⬜ |  |  |
 | `selectableGroup` | ui | ⬜ |  |  |
@@ -593,7 +593,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `splineBasedDecay` | animation | ⬜ |  |  |
 | `spring` | animation-core | ⬜ |  |  |
 | `state` | foundation | ⬜ |  | Experimental |
-| `stopScroll` | foundation | ⬜ |  |  |
+| `stopScroll` | foundation | ✅ |  |  |
 | `stopTransformation` | foundation | ⬜ |  |  |
 | `stringArrayResource` | ui | ⬜ |  |  |
 | `stringResource` | ui | ⬜ |  |  |
@@ -632,7 +632,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `toIntRect` | ui-unit | ⬜ |  |  |
 | `toIntSize` | ui-unit | ⬜ |  |  |
 | `toLowerCase` | ui-text | ⬜ |  |  |
-| `toOffset` | ui-unit | ⬜ |  |  |
+| `toOffset` | ui-unit | ✅ |  |  |
 | `TooltipState` | material3 | ⬜ |  | Experimental |
 | `toPath` | ui-graphics, material3 | ⬜ |  |  |
 | `toPixelMap` | ui-graphics | ⬜ |  |  |
@@ -661,8 +661,8 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `updateTransition` | animation-core | ⬜ |  |  |
 | `vectorResource` | ui | ⬜ |  |  |
 | `veilOut` | animation | ⬜ |  |  |
-| `verticalDrag` | foundation | ⬜ |  |  |
-| `waitForUpOrCancellation` | foundation | ⬜ |  |  |
+| `verticalDrag` | foundation | ✅ |  |  |
+| `waitForUpOrCancellation` | foundation | ✅ |  |  |
 | `withAnnotation` | ui-text | ⬜ |  |  |
 | `withInfiniteAnimationFrameMillis` | animation-core | ⬜ |  |  |
 | `withInfiniteAnimationFrameNanos` | animation-core | ⬜ |  |  |

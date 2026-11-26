@@ -2,6 +2,7 @@ package androidx.compose.material3
 
 import kotlin.jvm.JvmInline
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -23,6 +24,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -99,10 +104,10 @@ fun Card(
     colors: CardColors = CardDefaults.cardColors(),
     elevation: CardElevation = CardDefaults.cardElevation(),
     border: BorderStroke? = null,
-    interactionSource: Any? = null,
+    interactionSource: MutableInteractionSource? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Surface(onClick, modifier, enabled, shape, colors.containerColor, colors.contentColor, shadowElevation = elevation.elevation, border = border) {
+    Surface(onClick, modifier, enabled, shape, colors.containerColor, colors.contentColor, shadowElevation = elevation.elevation, border = border, interactionSource = interactionSource) {
         Column(content = content)
     }
 }
@@ -163,7 +168,10 @@ object SwitchDefaults {
     ) = SwitchColors(checkedThumbColor, checkedTrackColor, checkedBorderColor, uncheckedThumbColor, uncheckedTrackColor, uncheckedBorderColor)
 }
 
-/** Material 3 switch: 52 x 32 dp track, 16 dp thumb off / 24 dp on (no thumb icon or press state). */
+/**
+ * Material 3 switch: 52 x 32 dp track, 16 dp thumb off / 24 dp on, 28 dp while pressed (no thumb icon), with an
+ * unbounded 20 dp ripple on the thumb.
+ */
 @Composable
 fun Switch(
     checked: Boolean,
@@ -172,26 +180,31 @@ fun Switch(
     thumbContent: (@Composable () -> Unit)? = null,
     enabled: Boolean = true,
     colors: SwitchColors = SwitchDefaults.colors(),
-    interactionSource: Any? = null,
+    interactionSource: MutableInteractionSource? = null,
 ) {
+    val source = interactionSource ?: remember { MutableInteractionSource() }
     val toggle = if (onCheckedChange != null) {
-        Modifier.minimumInteractiveComponentSize().toggleable(checked, enabled, Role.Switch, onCheckedChange)
+        Modifier.minimumInteractiveComponentSize().toggleable(checked, source, null, enabled, Role.Switch, onCheckedChange)
     } else {
         Modifier
     }
+    val pressed by source.collectIsPressedAsState()
     val track = if (checked) colors.checkedTrackColor else colors.uncheckedTrackColor
     val border = if (checked) colors.checkedBorderColor else colors.uncheckedBorderColor
     val thumb = if (checked) colors.checkedThumbColor else colors.uncheckedThumbColor
     val alpha = if (enabled) 1f else 0.38f
-    val d = if (checked) 24.dp else 16.dp
-    // Thumb centre: 16 dp from the start (off) or the end (on) of the 52 dp track.
+    val d = if (pressed) 28.dp else if (checked) 24.dp else 16.dp
+    // Thumb centre: 16 dp from the start (off) or the end (on) of the 52 dp track, whatever its size.
     val x = if (checked) 52.dp - 16.dp - d / 2 else 16.dp - d / 2
     Box(
         modifier.then(toggle).size(52.dp, 32.dp).background(track.copy(alpha = track.alpha * alpha), CircleShape)
             .then(if (border.alpha > 0f) Modifier.border(2.dp, border.copy(alpha = border.alpha * alpha), CircleShape) else Modifier),
         contentAlignment = Alignment.CenterStart,
     ) {
-        Box(Modifier.offset(x = x).size(d).background(thumb.copy(alpha = thumb.alpha * alpha), CircleShape))
+        Box(
+            Modifier.offset(x = x).size(d).indication(source, ripple(bounded = false, radius = 20.dp))
+                .background(thumb.copy(alpha = thumb.alpha * alpha), CircleShape),
+        )
     }
 }
 
@@ -217,10 +230,10 @@ fun FloatingActionButton(
     containerColor: Color = FloatingActionButtonDefaults.containerColor,
     contentColor: Color = contentColorFor(containerColor),
     elevation: FloatingActionButtonElevation = FloatingActionButtonDefaults.elevation(),
-    interactionSource: Any? = null,
+    interactionSource: MutableInteractionSource? = null,
     content: @Composable () -> Unit,
 ) {
-    Surface(onClick, modifier, true, shape, containerColor, contentColor, shadowElevation = elevation.elevation) {
+    Surface(onClick, modifier, true, shape, containerColor, contentColor, shadowElevation = elevation.elevation, interactionSource = interactionSource) {
         ProvideTextStyle(MaterialTheme.typography.labelLarge) {
             Box(Modifier.defaultMinSize(56.dp, 56.dp), contentAlignment = Alignment.Center) { content() }
         }
@@ -235,10 +248,10 @@ fun ExtendedFloatingActionButton(
     containerColor: Color = FloatingActionButtonDefaults.containerColor,
     contentColor: Color = contentColorFor(containerColor),
     elevation: FloatingActionButtonElevation = FloatingActionButtonDefaults.elevation(),
-    interactionSource: Any? = null,
+    interactionSource: MutableInteractionSource? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
-    Surface(onClick, modifier, true, shape, containerColor, contentColor, shadowElevation = elevation.elevation) {
+    Surface(onClick, modifier, true, shape, containerColor, contentColor, shadowElevation = elevation.elevation, interactionSource = interactionSource) {
         ProvideTextStyle(MaterialTheme.typography.labelLarge) {
             Row(
                 Modifier.defaultMinSize(80.dp, 56.dp).padding(horizontal = 20.dp), // text-only extended FAB (material3 1.4.0)

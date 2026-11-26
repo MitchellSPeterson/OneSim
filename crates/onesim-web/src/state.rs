@@ -126,6 +126,8 @@ extern "C" {
     pub(crate) fn on_env(dark: i32, width: f64, height: f64, safe_top: f64, safe_bottom: f64) -> i32;
     pub(crate) fn on_action(id: f64);
     pub(crate) fn on_text(field: f64, ptr: *const u8, len: usize);
+    /// One `gesture` message (protocol section L) as JSON.
+    pub(crate) fn on_gesture(ptr: *const u8, len: usize);
 }
 
 pub(crate) fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
@@ -410,7 +412,11 @@ pub(crate) fn dispatch(e: Effect) -> i32 {
                 }
             }
             #[cfg(all(target_family = "wasm", feature = "js-guest"))]
-            let _ = touches;
+            for t in touches {
+                if let Ok(json) = serde_json::to_string(&HostMessage::Gesture(t)) {
+                    unsafe { on_gesture(json.as_ptr(), json.len()) };
+                }
+            }
         }
     }
     // The callback re-submits only if the guest state changed; focus/shift may have.
