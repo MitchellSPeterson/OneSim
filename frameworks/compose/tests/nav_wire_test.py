@@ -19,11 +19,17 @@ def send(**m):
 
 
 def settle(wait=0.9):
-    """Let `wait` s pass (the 700 ms NavHost fades), then return the newest tree."""
+    """Let `wait` s pass (the 700 ms NavHost fades), then return the newest tree.
+
+    Past the deadline it only takes what has already arrived (a running animation sends a tree every frame, so waiting
+    for quiet would return its end state), unless no tree came yet: then it waits up to 0.25 s for the guest's reply.
+    """
     end = time.time() + wait
+    got = False
     while True:
+        now = time.time()
         try:
-            m = q.get(timeout=max(0.01, end - time.time()) if time.time() < end else 0.25)
+            m = q.get(timeout=end - now) if now < end else (q.get_nowait() if got else q.get(timeout=0.25))
         except queue.Empty:
             if time.time() >= end:
                 return last[0]
@@ -31,6 +37,7 @@ def settle(wait=0.9):
         assert m is not None, "guest exited"
         if m["type"] == "tree":
             last[0] = m
+            got = True
         elif m["type"] == "error":
             errors.append(m["message"])
         elif m["type"] == "event":
