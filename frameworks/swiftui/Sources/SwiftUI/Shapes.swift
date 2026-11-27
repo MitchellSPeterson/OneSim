@@ -49,10 +49,11 @@ extension ShapeStyle where Self == Color {
 }
 
 extension Color {
-    /// Scales alpha of RGBA colors. ponytail: semantic colors ignore opacity (no wire field for it).
+    /// Multiplies the opacity, including for colors resolved by the renderer.
     public func opacity(_ opacity: Double) -> Color {
         var j = json
-        if let a = j["a"] as? Double { j["a"] = a * opacity }
+        let alpha = (j["a"] as? Double ?? 1) * opacity
+        j["a"] = alpha.isFinite ? alpha : alpha == .infinity ? Double.greatestFiniteMagnitude : 0
         return Color(json: j)
     }
 }

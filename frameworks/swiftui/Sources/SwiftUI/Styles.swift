@@ -411,7 +411,7 @@ public struct Menu<Label: View, Content: View>: View, _Primitive {
     public init(@ViewBuilder content: () -> Content, @ViewBuilder label: () -> Label) {
         self.content = content(); self.label = label(); primaryAction = nil; configuration = nil
     }
-    /// A tap runs `primaryAction`; the menu itself opens on a long press on iOS, which OneSim does not offer.
+    /// A tap runs `primaryAction`; a long press opens the menu.
     public init(@ViewBuilder content: () -> Content, @ViewBuilder label: () -> Label, primaryAction: @escaping () -> Void) {
         self.content = content(); self.label = label(); self.primaryAction = primaryAction; configuration = nil
     }
@@ -440,7 +440,7 @@ public struct Menu<Label: View, Content: View>: View, _Primitive {
             let inner = rt.actions[(items[i]["action"] as? UInt64) ?? 0]
             items[i]["action"] = rt.registerAction { st.open = false; rt.dirty = true; inner?() }
         }
-        let toggle = { st.open.toggle(); rt.dirty = true }
+        let toggle = { st.open = !items.isEmpty && !st.open; rt.dirty = true }
         var n: Node = ["kind": "button", "id": path, "style": rt.buttonStyle, "disabled": rt.disabled,
                        "action": rt.disabled ? 0 : rt.registerAction(primaryAction ?? toggle),
                        "label": label.map { _eval($0, path + "/0") } ?? ["kind": "empty", "id": path + "/0"]]
@@ -450,16 +450,40 @@ public struct Menu<Label: View, Content: View>: View, _Primitive {
                               "dismiss": rt.registerAction { st.open = false; rt.dirty = true }])
             n["value"] = "open"
         }
+        if let primaryAction, !items.isEmpty, !rt.disabled, !rt.gesturesOff {
+            let press = LongPressGesture().onEnded { _ in st.open = true; rt.dirty = true }
+            let touch = press.exclusively(before: TapGesture().onEnded { primaryAction() })
+            return _attachGesture([n], path, .normal) { touch._recognizer($0) }[0]
+        }
         return n
     }
 }
 extension Menu where Label == Text {
     public init(_ title: String, @ViewBuilder content: () -> Content) { self.init(content: content) { Text(title) } }
+    public init(_ title: LocalizedStringKey, @ViewBuilder content: () -> Content, primaryAction: @escaping () -> Void) {
+        self.init(content: content, label: { Text(title.key) }, primaryAction: primaryAction)
+    }
+    @_disfavoredOverload public init<S: StringProtocol>(_ title: S, @ViewBuilder content: () -> Content, primaryAction: @escaping () -> Void) {
+        self.init(content: content, label: { Text(String(title)) }, primaryAction: primaryAction)
+    }
+    #if !os(WASI)
+    @_disfavoredOverload public init(_ title: LocalizedStringResource, @ViewBuilder content: () -> Content, primaryAction: @escaping () -> Void) {
+        self.init(content: content, label: { Text(_res(title)) }, primaryAction: primaryAction)
+    }
+    #endif
 }
 extension Menu where Label == SwiftUI.Label<Text, Image> {
     public init(_ title: String, systemImage: String, @ViewBuilder content: () -> Content) {
         self.init(content: content) { SwiftUI.Label(title, systemImage: systemImage) }
     }
+    public init(_ title: LocalizedStringKey, systemImage: String, @ViewBuilder content: () -> Content, primaryAction: @escaping () -> Void) {
+        self.init(content: content, label: { SwiftUI.Label(title.key, systemImage: systemImage) }, primaryAction: primaryAction)
+    }
+    #if !os(WASI)
+    @_disfavoredOverload public init(_ title: LocalizedStringResource, systemImage: String, @ViewBuilder content: () -> Content, primaryAction: @escaping () -> Void) {
+        self.init(content: content, label: { SwiftUI.Label(_res(title), systemImage: systemImage) }, primaryAction: primaryAction)
+    }
+    #endif
 }
 extension Menu where Label == MenuStyleConfiguration.Label, Content == MenuStyleConfiguration.Content {
     /// The menu a custom `MenuStyle` wraps.

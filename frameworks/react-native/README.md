@@ -72,12 +72,12 @@ Per-API status (iOS and Android) and coverage %: `docs/compatibility/expo/`; `no
 
 Real behavior: `RN$Bridgeless`, `RN$registerCallableModule`, Fabric UIManager core, timers /
 rAF / microtasks, PlatformConstants (iOS 26.5), DeviceInfo/Dimensions (from the session
-viewport), Appearance, SourceCode, I18nManager, AppState, SettingsManager, ExceptionsManager
+viewport), Appearance, StatusBarManager, SourceCode, I18nManager, AppState, SettingsManager, ExceptionsManager
 (→ `error`), AccessibilityInfo (all off), NativeDOMCxx (from host frames), WebSocketModule,
 `expo` JSI classes (EventEmitter, SharedObject, SharedRef, NativeModule), ExponentConstants
 (the Metro manifest).
 
-Stubs: StatusBarManager, KeyboardObserver, DevSettings, DevMenu, LogBox, RedBox, Timing,
+Stubs: KeyboardObserver, DevSettings, DevMenu, LogBox, RedBox, Timing,
 RNCSafeAreaContext (iPhone 17 Pro insets 62/34), ExpoKeepAwake.
 
 Also real (Milestone 1): Networking (`fetch`, XMLHttpRequest, `expo/fetch`; HTTP runs on the

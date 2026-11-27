@@ -4,7 +4,7 @@
 //! hit test returns the deepest tag under a point (`action` stays for real native actions: nav back, tabs). Content starts at y=0 (RN handles safe areas).
 
 use crate::layout::common::{switch_style, tinted, Embedded, ModalLayers, NavBack, Placement, SceneParams, TabBar, TabBarItem, KNOB, SWITCH, TAB_BAR_INSET};
-use crate::layout::swiftui::{add_chrome, rn_nav_bar, rn_nav_height, rn_tab_bar};
+use crate::layout::swiftui::{rn_nav_bar, rn_nav_height, rn_tab_bar};
 use crate::scene::{Color, Glyph, ImageRun, Node, Rect, Role, Scene, ScrollInfo, TextRun};
 use crate::text::{FontSpec, Fonts, Span, TextAlign};
 use serde_json::Value;
@@ -160,6 +160,7 @@ fn viewport_insets(params: &SceneParams) -> (f64, f64) {
 /// CSS color strings (`#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `rgba()`, a few names).
 mod controls;
 mod layout_animation;
+mod status_bar;
 mod style;
 
 use controls::{android_blur_tint, android_switch, blur_spec, image_dest, text_field, ANDROID_ACCENT, REFRESH_H, REFRESH_SPINNER, REFRESH_TINT};
@@ -664,10 +665,9 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     let (w, h) = params.viewport;
     let dark = params.appearance == Appearance::Dark;
     let android = params.device.android;
+    let root_props = match &root.kind { ViewKind::Rn { props, .. } => props, _ => &Value::Null };
     let mut cx = Cx::new(params, fonts, viewport_insets(params));
-    if let ViewKind::Rn { props, .. } = &root.kind {
-        cx.loaded_fonts = loaded_fonts(props);
-    }
+    cx.loaded_fonts = loaded_fonts(root_props);
     let bg = if dark { 0.0 } else { 1.0 };
     let mut screen = Node::new("root", "screen");
     screen.bounds = Rect { x: 0.0, y: 0.0, w, h };
@@ -680,7 +680,7 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
     }
     cx.paint_modals(params, &mut nodes);
     // LayoutAnimation configured for this commit: every view of the app animates with it (not alerts or chrome).
-    if let Some(a) = match &root.kind { ViewKind::Rn { props, .. } => layout_animation::node_anim(props), _ => None } {
+    if let Some(a) = layout_animation::node_anim(root_props) {
         let a = Box::new(a);
         for n in nodes.iter_mut().skip(1).filter(|n| n.anim.is_none()) {
             n.anim = Some(a.clone());
@@ -718,7 +718,10 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         nodes.push(bar);
     }
     if !android {
-        add_chrome(&mut nodes, params, cx.fonts);
+        status_bar::draw(&mut nodes, params, cx.fonts, root_props);
+        if let Some(island) = params.device.island {
+            crate::chrome::island(&mut nodes, island);
+        }
     }
     Scene {
         size: params.viewport,

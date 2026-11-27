@@ -39,7 +39,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `AnyLocation` | 13 | ⬜ |  |  |
 | `AnyLocationBase` | 13 | ⬜ |  |  |
 | `AnyNavigationTransition` | 27 | ⬜ |  |  |
-| `AnyScrollTargetBehavior` | 18 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Wrapper only. Does not emit `.paging` or `.viewAligned` |
+| `AnyScrollTargetBehavior` | 18 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | Mutable base and nested wrappers preserve built-in paging and view alignment. Custom targeting needs host callbacks. |
 | `AnyTabContent` | 18 | ⬜ |  |  |
 | `AnyTransition` | 13 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | No `.modifier(active:identity:)` |
 | `ArrangementViewStyleConfiguration` | 13 | ⬜ |  |  |
@@ -55,7 +55,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `BackgroundTask` | 16 | ⬜ |  |  |
 | `BadgeProminence` | 17 | ⬜ |  |  |
 | `BlendMode` | 13 | ✅ | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | View modes and the Porter-Duff modes exposed by GraphicsContext. |
-| `BlurReplaceTransition` | 17 | 🟠 | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Animates opacity and scale; Gaussian blur effect is not rendered yet |
+| `BlurReplaceTransition` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) | Gaussian blur, opacity, and distinct removal scaling for `.downUp` and `.upUp`. |
 | `ButtonRepeatBehavior` | 17 | ⬜ |  |  |
 | `ButtonRole` | 15 | ✅ |  |  |
 | `ButtonSizing` | 26 | ⬜ |  |  |
@@ -289,7 +289,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `SearchScopeActivation` | 16.4 | ⬜ |  |  |
 | `SearchSuggestionsPlacement` | 16 | ⬜ |  |  |
 | `SearchToolbarBehavior` | 26 | ⬜ |  |  |
-| `SearchUnavailableContent` | 17 | ⬜ |  |  |
+| `SearchUnavailableContent` | 17 | ✅ | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | Label, description, and actions returned by both built-in search empty states. |
 | `SectionCollection` | 18 | ⬜ |  |  |
 | `SectionConfiguration` | 18 | ⬜ |  |  |
 | `SectionedFetchResults` | 15 | ⬜ |  |  |
@@ -302,9 +302,9 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `SidebarCommands` | 14 | ✅ | [#49](https://github.com/MitchellSPeterson/OneSim/issues/49) | Builds; iPhones show no menus |
 | `SidebarRowSize` | 16 | ⬜ |  |  |
 | `SizeDependentTextVariant` | 18 | ⬜ |  |  |
-| `SliderTick` | 26 | ⬜ |  |  |
-| `SliderTickBuilder` | 26 | ⬜ |  |  |
-| `SliderTickContentForEach` | 26 | ⬜ |  |  |
+| `SliderTick` | 26 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Identifiable, comparable, optionally labelled marks. Tick feedback is pending. |
+| `SliderTickBuilder` | 26 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Supports optional, conditional, and repeated tick content. The SDK's direct multi-argument `buildBlock` overloads are pending. |
+| `SliderTickContentForEach` | 26 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Iterates random-access data or an integer range. |
 | `SlideTransition` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `SpacerSizing` | 26 | ⬜ |  |  |
 | `SpatialEventCollection` | 13 | ⬜ |  |  |
@@ -383,7 +383,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Transaction` | 13 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `TransitionPhase` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
 | `TransitionProperties` | 17 | ✅ | [#46](https://github.com/MitchellSPeterson/OneSim/issues/46) |  |
-| `TupleSliderTickContent` | 26 | ⬜ |  |  |
+| `TupleSliderTickContent` | 26 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Combines marks declared in a tick builder. The explicit tuple initializer is pending. |
 | `TupleTableColumnContent` | 16 | ⬜ |  |  |
 | `TupleTableRowContent` | 16 | ⬜ |  |  |
 | `TypesettingLanguage` | 17 | ⬜ |  |  |

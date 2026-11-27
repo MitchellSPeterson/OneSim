@@ -543,9 +543,9 @@ impl Ctx<'_> {
         Lay::new(Size { w, h }, Some(index), kids)
     }
 
-    pub(super) fn status_bar(&mut self, w: f64, dev: &Device, ios: IosVersion) -> Lay {
+    pub(super) fn status_bar(&mut self, w: f64, dev: &Device, ios: IosVersion, colors: Option<(Color, Color)>) -> Lay {
         let sb = dev.status_bar_for(ios);
-        let primary = self.semantic(Semantic::Primary);
+        let (primary, signal) = colors.unwrap_or_else(|| (self.semantic(Semantic::Primary), self.semantic(Semantic::Tertiary)));
         let k = sb.icon_scale;
         let text = |cx: &mut Self, id: &str, s: &str, weight: u16, align: TextAlign| {
             let fs = sb.font as f32;
@@ -587,7 +587,7 @@ impl Ctx<'_> {
             let dots = glyph(
                 "statusbar#signal",
                 Glyph::DotsArc,
-                self.semantic(Semantic::Tertiary),
+                signal,
                 Size { w: 24.0, h: 7.0 },
             );
             vec![
@@ -611,7 +611,7 @@ impl Ctx<'_> {
                 if ios27 {
                     Glyph::SignalDots27
                 } else { Glyph::SignalDots
-                }, self.semantic(Semantic::Tertiary), Size { w: 20.0 * k, h: 4.0 * k });
+                }, signal, Size { w: 20.0 * k, h: 4.0 * k });
             let (wx, wy) = (right - 24.7 * k, 26.2 + dy);
             vec![
                 (sb.time.0 - t.size.w / 2.0, sb.time.1 - t.size.h / 2.0, t),

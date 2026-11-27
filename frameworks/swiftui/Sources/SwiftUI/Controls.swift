@@ -82,73 +82,6 @@ extension Group: View, _Flattenable, _ModifierTransparent where Content: View {
 
 // MARK: - Controls
 
-/// `Slider`: the host sets the value through the `field` id (a `text_input` carrying the number). Value labels
-/// sit beside it in an `hstack`; `onEditingChanged` brackets each change (true, set, false).
-public struct Slider<Label: View, ValueLabel: View>: View, _Primitive {
-    public typealias Body = Never
-    public var body: Never { fatalError() }
-    let get: () -> Double, set: (Double) -> Void, lo: Double, hi: Double, step: Double?
-    var minLabel: ValueLabel?, maxLabel: ValueLabel?, editing: (Bool) -> Void = { _ in }
-    init<V: BinaryFloatingPoint>(_ value: Binding<V>, _ bounds: ClosedRange<V>, _ step: Double?, _ editing: @escaping (Bool) -> Void) {
-        get = { Double(value.wrappedValue) }; set = { value.wrappedValue = V($0) }
-        lo = Double(bounds.lowerBound); hi = Double(bounds.upperBound); self.step = step; self.editing = editing
-    }
-    func _emit(_ path: String) -> Node {
-        let rt = _Runtime.shared, (set, lo, hi, step, editing) = (set, lo, hi, step, editing)
-        var n: Node = ["kind": "slider", "id": path, "value": get(), "min": lo, "max": hi, "disabled": rt.disabled]
-        if let step { n["step"] = step }
-        if !rt.disabled {
-            n["field"] = rt.registerField { s in
-                guard var v = Double(s) else { return }
-                if let step, step > 0 { v = lo + ((v - lo) / step).rounded() * step }
-                editing(true)
-                set(min(hi, max(lo, v)))
-                editing(false)
-            }
-        }
-        let minNode = _optionalNode(minLabel, path + "/min"), maxNode = _optionalNode(maxLabel, path + "/max")
-        if minNode == nil && maxNode == nil { return n }
-        n["id"] = path + "/s"
-        return ["kind": "hstack", "id": path, "spacing": _sliderLabelGap, "alignment": "center", "children": [minNode, n, maxNode].compactMap { $0 }]
-    }
-}
-/// Gap between a slider and its value labels (iOS 27.2, swiftui-controls indicators).
-let _sliderLabelGap = 11.0
-extension Slider where ValueLabel == EmptyView {
-    public init<V: BinaryFloatingPoint>(value: Binding<V>, in bounds: ClosedRange<V> = 0...1, @ViewBuilder label: () -> Label,
-                                        onEditingChanged: @escaping (Bool) -> Void = { _ in }) where V.Stride: BinaryFloatingPoint {
-        self.init(value, bounds, nil, onEditingChanged)
-    }
-    public init<V: BinaryFloatingPoint>(value: Binding<V>, in bounds: ClosedRange<V>, step: V.Stride, @ViewBuilder label: () -> Label,
-                                        onEditingChanged: @escaping (Bool) -> Void = { _ in }) where V.Stride: BinaryFloatingPoint {
-        self.init(value, bounds, Double(step), onEditingChanged)
-    }
-}
-extension Slider {
-    public init<V: BinaryFloatingPoint>(value: Binding<V>, in bounds: ClosedRange<V> = 0...1, @ViewBuilder label: () -> Label,
-                                        @ViewBuilder minimumValueLabel: () -> ValueLabel, @ViewBuilder maximumValueLabel: () -> ValueLabel,
-                                        onEditingChanged: @escaping (Bool) -> Void = { _ in }) where V.Stride: BinaryFloatingPoint {
-        self.init(value, bounds, nil, onEditingChanged)
-        minLabel = minimumValueLabel(); maxLabel = maximumValueLabel()
-    }
-    public init<V: BinaryFloatingPoint>(value: Binding<V>, in bounds: ClosedRange<V>, step: V.Stride, @ViewBuilder label: () -> Label,
-                                        @ViewBuilder minimumValueLabel: () -> ValueLabel, @ViewBuilder maximumValueLabel: () -> ValueLabel,
-                                        onEditingChanged: @escaping (Bool) -> Void = { _ in }) where V.Stride: BinaryFloatingPoint {
-        self.init(value, bounds, Double(step), onEditingChanged)
-        minLabel = minimumValueLabel(); maxLabel = maximumValueLabel()
-    }
-}
-extension Slider where Label == EmptyView, ValueLabel == EmptyView {
-    public init<V: BinaryFloatingPoint>(value: Binding<V>, in bounds: ClosedRange<V> = 0...1,
-                                        onEditingChanged: @escaping (Bool) -> Void = { _ in }) where V.Stride: BinaryFloatingPoint {
-        self.init(value, bounds, nil, onEditingChanged)
-    }
-    public init<V: BinaryFloatingPoint>(value: Binding<V>, in bounds: ClosedRange<V>, step: V.Stride,
-                                        onEditingChanged: @escaping (Bool) -> Void = { _ in }) where V.Stride: BinaryFloatingPoint {
-        self.init(value, bounds, Double(step), onEditingChanged)
-    }
-}
-
 /// `ProgressView`: a linear bar when it has a value, else the (static) spinner. `.circular` is always the spinner
 /// on iOS; a custom `ProgressViewStyle` replaces the view.
 public struct ProgressView<Label: View, CurrentValueLabel: View>: View, _Primitive {
@@ -391,23 +324,57 @@ extension Stepper where Label == Text {
 
 // MARK: - Navigation
 
-final class _NavScreen {
+struct _NavPresentation {
+    let id: String
+    let value: () -> AnyHashable?
     let build: (String) -> Node
-    init(_ b: @escaping (String) -> Node) { build = b }
+    let dismiss: () -> Void
+}
+
+struct _NavScreen {
+    let build: (String) -> Node
+    let presentation: _NavPresentation?
+    let value: AnyHashable?
+    init(_ build: @escaping (String) -> Node, presentation: _NavPresentation? = nil, value: AnyHashable? = nil) {
+        self.build = build
+        self.presentation = presentation
+        self.value = value
+    }
+}
+
+struct _NavValue: Equatable {
+    let raw: Any
+    let hashable: AnyHashable
+    let type: ObjectIdentifier
+
+    init<T: Hashable>(_ value: T) {
+        raw = value
+        hashable = AnyHashable(value)
+        type = ObjectIdentifier(Swift.type(of: value))
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.type == rhs.type && lhs.hashable == rhs.hashable
+    }
 }
 
 /// Type-erased `Binding<[T]>` / `Binding<NavigationPath>` that owns the stack's path.
 struct _NavPath {
-    let count: () -> Int, element: (Int) -> Any, append: (Any) -> Void, removeLast: () -> Void
+    let values: () -> [_NavValue], append: (Any) -> Void, removeLast: () -> Void
 }
 
 public struct NavigationPath {
-    var items: [Any] = []
+    var items: [_NavValue] = []
     public init() {}
     public var count: Int { items.count }
     public var isEmpty: Bool { items.isEmpty }
-    public mutating func append<V: Hashable>(_ value: V) { items.append(value) }
+    public mutating func append<V: Hashable>(_ value: V) { items.append(_NavValue(value)) }
     public mutating func removeLast(_ k: Int = 1) { items.removeLast(k) }
+}
+
+struct _NavRegistrations {
+    var destinations: [ObjectIdentifier: (Any, String) -> Node] = [:]
+    var presentations: [_NavPresentation] = []
 }
 
 /// Guest-owned path stack, persisted in the state registry. Root is depth 0; pushed screens have ids `<stack>/s<depth>`.
@@ -417,32 +384,125 @@ final class _NavState {
     /// Destination-style screens. With a bound path they sit on top of the path-driven screens (back pops them first).
     var stack: [_NavScreen] = []
     var titles: [Int: String] = [:]   // last evaluated title per depth, for the back label
-    var destinations: [ObjectIdentifier: (Any, String) -> Node] = [:]   // kept across evaluations: hidden screens register nothing
+    var registrations: [Int: _NavRegistrations] = [:]
+    var collectingDepth = 0
+    var screenRevision: [Int: Int] = [:]
+    var nextRevision = 0
     var ext: _NavPath?
+    var externalValues: [_NavValue] = []
     var rootBack: (() -> Void)?
-    var depth: Int { (ext?.count() ?? 0) + stack.count }
+    var depth: Int { externalValues.count + stack.count }
+
     func push(_ s: _NavScreen) { stack.append(s); _Runtime.shared.dirty = true }
+
     func pushValue(_ v: Any) {
-        // Like SwiftUI: a value nobody handles pushes nothing.
-        guard destinations[ObjectIdentifier(type(of: v))] != nil else {
+        guard let destination = destination(for: ObjectIdentifier(type(of: v)), from: depth) else {
             #if !os(WASI)
             fputs("A NavigationLink is presenting a value of type \(type(of: v)) but there is no matching navigationDestination declaration visible from the location of the link.\n", stderr)
             #endif
             return
         }
-        // ponytail: a value pushed from a destination screen goes on the screen stack, not into the bound path.
-        if let ext, stack.isEmpty { ext.append(v) } else { stack.append(_NavScreen { [self] in build(v, $0) }) }
+        if let ext, stack.isEmpty { ext.append(v) } else { stack.append(_NavScreen { destination(v, $0) }) }
         _Runtime.shared.dirty = true
     }
-    func screen(_ i: Int, _ path: String) -> Node {
-        let n = ext?.count() ?? 0
-        return i < n ? build(ext!.element(i), path) : stack[i - n].build(path)
+
+    private func destination(for type: ObjectIdentifier, from depth: Int) -> ((Any, String) -> Node)? {
+        for d in stride(from: depth, through: 0, by: -1) {
+            if let destination = registrations[d]?.destinations[type] { return destination }
+        }
+        return nil
     }
-    func build(_ v: Any, _ path: String) -> Node {
-        destinations[ObjectIdentifier(type(of: v))]?(v, path) ?? ["kind": "empty", "id": path]
+
+    func screen(_ depth: Int, _ path: String) -> Node {
+        let index = depth - 1
+        if index >= externalValues.count { return stack[index - externalValues.count].build(path) }
+        let value = externalValues[index]
+        return destination(for: value.type, from: index)?(value.raw, path) ?? ["kind": "empty", "id": path]
     }
+
+    /// The common prefix keeps its state. Binding changes drop old screens and their registrations.
+    func updatePath(_ externalPath: _NavPath?, at path: String) {
+        ext = externalPath
+        let values = externalPath?.values() ?? []
+        let common = zip(values, externalValues).prefix { $0 == $1 }.count
+        if common < values.count || common < externalValues.count {
+            let replaced = common < min(values.count, externalValues.count)
+            discardScreens(from: common + 1, at: path)
+            if replaced {
+                nextRevision += 1
+                for depth in (common + 1)...values.count { screenRevision[depth] = nextRevision }
+            }
+        }
+        externalValues = values
+    }
+
+    func updatePresentations(at path: String) {
+        guard !stack.isEmpty else { return }
+        let current = registrations.values.flatMap(\.presentations).reduce(into: [String: _NavPresentation]()) {
+            $0[$1.id] = $1
+        }
+        for (index, screen) in stack.enumerated() {
+            guard let previous = screen.presentation else { continue }
+            let depth = externalValues.count + index + 1
+            guard let presentation = current[previous.id], let value = presentation.value() else {
+                discardScreens(from: depth, at: path)
+                break
+            }
+            stack[index] = _NavScreen(presentation.build, presentation: presentation, value: value)
+            if value != screen.value {
+                discardScreens(from: depth + 1, at: path)
+                resetScreenState(from: depth, at: path)
+                nextRevision += 1
+                screenRevision[depth] = nextRevision
+                break
+            }
+        }
+    }
+
+    func appendPresentation() -> Bool {
+        let shown = Set(stack.compactMap { $0.presentation?.id })
+        for level in stride(from: depth, through: 0, by: -1) {
+            for presentation in registrations[level]?.presentations ?? [] where !shown.contains(presentation.id) {
+                if let value = presentation.value() {
+                    stack.append(_NavScreen(presentation.build, presentation: presentation, value: value))
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    private func discardScreens(from depth: Int, at path: String) {
+        let start = max(0, depth - 1 - externalValues.count)
+        for screen in stack[start...].reversed() {
+            if let presentation = screen.presentation, presentation.value() != nil { presentation.dismiss() }
+        }
+        stack.removeSubrange(start...)
+        resetScreenState(from: depth, at: path)
+    }
+
+    func resetScreenState(from depth: Int, at path: String) {
+        titles = titles.filter { $0.key < depth }
+        registrations = registrations.filter { $0.key < depth }
+        screenRevision = screenRevision.filter { $0.key < depth }
+        let rt = _Runtime.shared
+        let prefix = path + "/s"
+        for key in rt.slots.keys where key.hasPrefix(prefix) {
+            let suffix = key.dropFirst(prefix.count)
+            guard let level = Int(suffix.prefix(while: \.isNumber)), level >= depth else { continue }
+            rt.slots.removeValue(forKey: key)
+            rt.touched.remove(key)
+        }
+    }
+
     func pop() {
-        if !stack.isEmpty { stack.removeLast() } else if let ext, ext.count() > 0 { ext.removeLast() } else { rootBack?() }
+        if let screen = stack.popLast() {
+            screen.presentation?.dismiss()
+        } else if let ext, !externalValues.isEmpty {
+            ext.removeLast()
+        } else {
+            rootBack?()
+        }
         _Runtime.shared.dirty = true
     }
 }
@@ -455,19 +515,64 @@ public struct NavigationStack<Root: View>: View, _Primitive {
     public init(@ViewBuilder root: () -> Root) { self.root = root(); path = nil }
     public init(path: Binding<NavigationPath>, @ViewBuilder root: () -> Root) {
         self.root = root()
-        self.path = _NavPath(count: { path.wrappedValue.count }, element: { path.wrappedValue.items[$0] },
-                             append: { path.wrappedValue.items.append($0) }, removeLast: { path.wrappedValue.removeLast() })
+        self.path = _NavPath(values: { path.wrappedValue.items },
+                             append: { if let value = $0 as? any Hashable { path.wrappedValue.append(value) } },
+                             removeLast: { path.wrappedValue.removeLast() })
     }
     public init<D: RandomAccessCollection & RangeReplaceableCollection>(path: Binding<D>, @ViewBuilder root: () -> Root) where D.Element: Hashable {
         self.root = root()
-        self.path = _NavPath(count: { path.wrappedValue.count },
-                             element: { let a = path.wrappedValue; return a[a.index(a.startIndex, offsetBy: $0)] },
+        self.path = _NavPath(values: { path.wrappedValue.map(_NavValue.init) },
                              append: { if let e = $0 as? D.Element { path.wrappedValue.append(e) } },
                              removeLast: { path.wrappedValue.removeLast() })
     }
 
     func _emit(_ path: String) -> Node {
         _navigation(path, externalPath: self.path) { _eval(root, $0) }
+    }
+}
+
+/// Hidden prefixes are evaluated to find destinations and back labels. Only the final screen
+/// contributes lifecycle callbacks, presentations, actions, focus and schedules.
+private struct _NavScreenEffects {
+    let action: UInt64
+    let layers, lifecycle, changes, ticks: Int
+    let changeValues: [String: Any]
+    let focus: [String: [_TextFocus]]
+    let schedule: Double?
+    #if !os(WASI)
+    let urlHandlers: Int
+    #endif
+
+    init(_ rt: _Runtime) {
+        action = rt.nextAction
+        layers = rt.layers.count
+        lifecycle = rt.lifecycleOrder.count
+        changes = rt.changePending.count
+        ticks = rt.tickHandlers.count
+        changeValues = rt.changeNow
+        focus = rt.textFocus
+        schedule = rt.nextScheduleMs
+        #if !os(WASI)
+        urlHandlers = rt.urlHandlers.count
+        #endif
+    }
+
+    func discard(_ rt: _Runtime) {
+        for id in action..<rt.nextAction {
+            rt.actions.removeValue(forKey: id)
+            rt.fields.removeValue(forKey: id)
+        }
+        rt.layers.removeSubrange(layers...)
+        for key in rt.lifecycleOrder[lifecycle...] { rt.lifecycleNow.removeValue(forKey: key) }
+        rt.lifecycleOrder.removeSubrange(lifecycle...)
+        rt.changePending.removeSubrange(changes...)
+        rt.tickHandlers.removeSubrange(ticks...)
+        rt.changeNow = changeValues
+        rt.textFocus = focus
+        rt.nextScheduleMs = schedule
+        #if !os(WASI)
+        rt.urlHandlers.removeSubrange(urlHandlers...)
+        #endif
     }
 }
 
@@ -479,38 +584,69 @@ func _navigation(_ path: String, columnPath: String? = nil, externalPath: _NavPa
     rt.touched.insert(key)
     let st = (rt.slots[key] as? _NavState) ?? _NavState()
     rt.slots[key] = st
-    st.ext = externalPath
+    st.updatePath(externalPath, at: screenPath)
+    if st.registrations[st.depth + 1] != nil { st.resetScreenState(from: st.depth + 1, at: screenPath) }
     st.rootBack = rootBack
-    let depth = st.depth
-    // Screens below the top are not evaluated; keep their @State alive.
-    for d in 0..<depth {
-        let prefix = d == 0 ? "\(screenPath)/0" : "\(screenPath)/s\(d)"
-        for k in rt.slots.keys where k.hasPrefix(prefix + "/") || k.hasPrefix(prefix + "#") { rt.touched.insert(k) }
-    }
     let saved = (rt.nav, rt.disabled, rt.buttonStyle, rt.envLocal, rt.styles.inList)
     rt.nav = st; rt.disabled = false; rt.buttonStyle = "automatic"; rt.envLocal = []; rt.styles.inList = false
     defer { (rt.nav, rt.disabled, rt.buttonStyle, rt.envLocal, rt.styles.inList) = saved }
     let preferences = rt.navigationPreferences
     rt.navigationPreferences = [:]
     defer { rt.navigationPreferences = preferences }
-    // Each screen has its own edit mode (EditButton, List editing), unless `\.editMode` is set with `.environment`
-    // around the stack, which reaches every screen.
-    let screen = depth == 0 ? "\(screenPath)/0" : "\(screenPath)/s\(depth)"
     let k = ObjectIdentifier(_EditModeKey.self), outer = rt.envObjects[k]
     if !saved.3.contains(k) { rt.envObjects[k] = nil }
-    var content = _withEditMode(screen) { depth == 0 ? root(screen) : st.screen(depth - 1, screen) }
-    rt.envObjects[k] = outer
+    defer { rt.envObjects[k] = outer }
 
-    var title: String?, mode = "large"
-    let mods = (content["modifiers"] as? [Node]) ?? []
-    for m in mods {
-        if let t = m["navigationTitle"] as? String { title = t }
-        if let d = m["navigationBarTitleDisplayMode"] as? String { mode = d }
+    func render(_ depth: Int) -> (Node, String) {
+        var screen = depth == 0 ? "\(screenPath)/0" : "\(screenPath)/s\(depth)"
+        if let revision = st.screenRevision[depth] { screen += "/r\(revision)" }
+        st.collectingDepth = depth
+        st.registrations[depth] = _NavRegistrations()
+        rt.navigationPreferences = [:]
+        // A stack-level editMode environment reaches each screen. Otherwise each screen owns its edit mode.
+        var content = _withEditMode(screen) { depth == 0 ? root(screen) : st.screen(depth, screen) }
+        var title: String?, mode = "large"
+        let mods = (content["modifiers"] as? [Node]) ?? []
+        for modifier in mods {
+            if let value = modifier["navigationTitle"] as? String { title = value }
+            if let value = modifier["navigationBarTitleDisplayMode"] as? String { mode = value }
+        }
+        content["modifiers"] = mods.filter { $0["navigationBarTitleDisplayMode"] == nil }
+        st.titles[depth] = title
+        return (content, mode)
     }
-    content["modifiers"] = mods.filter { $0["navigationBarTitleDisplayMode"] == nil }
-    st.titles[depth] = title
+
+    let pageIsActive = rt.pageIsActive
+    rt.pageIsActive = false
+    for depth in 0..<st.depth where st.registrations[depth]?.presentations.isEmpty != true {
+        let effects = _NavScreenEffects(rt)
+        _ = render(depth)
+        effects.discard(rt)
+    }
+    rt.pageIsActive = pageIsActive
+    st.updatePresentations(at: screenPath)
+
+    var content: Node, mode: String
+    while true {
+        let effects = _NavScreenEffects(rt)
+        (content, mode) = render(st.depth)
+        guard st.appendPresentation() else { break }
+        effects.discard(rt)
+    }
+
+    let depth = st.depth
+    // Keep state for hidden screens, including nested stacks.
+    let prefix = screenPath + "/"
+    for key in rt.slots.keys where key.hasPrefix(prefix) {
+        let suffix = key.dropFirst(prefix.count)
+        let component = suffix.prefix { $0 != "/" && $0 != "#" }
+        if component == "0" && depth > 0 { rt.touched.insert(key) }
+        if component.first == "s", let level = Int(component.dropFirst()), (1..<depth).contains(level) {
+            rt.touched.insert(key)
+        }
+    }
     var nav: Node = ["kind": "navigation", "id": path, "displayMode": mode, "content": content]
-    if let title { nav["title"] = title }
+    if let title = st.titles[depth] { nav["title"] = title }
     if depth > 0 {
         nav["back"] = ["action": rt.registerAction { st.pop() }, "label": st.titles[depth - 1] ?? "Back"] as Node
     }
@@ -527,13 +663,54 @@ struct _DestinationView<Content: View, T: Hashable, D: View>: View, _Flattenable
     let content: Content, destination: (T) -> D
     func _children(_ path: String) -> [Node] {
         let rt = _Runtime.shared, env = _localEnv(), dest = destination
-        rt.nav?.destinations[ObjectIdentifier(T.self)] = { v, p in _withEnv(env) { _eval(dest(v as! T), p) } }
+        if let nav = rt.nav {
+            nav.registrations[nav.collectingDepth, default: _NavRegistrations()].destinations[ObjectIdentifier(T.self)] = {
+                v, p in _withEnv(env) { _eval(dest(v as! T), p) }
+            }
+        }
         return SwiftUI._children(content, path)
     }
 }
+
+struct _PresentedDestinationView<Content: View, Item: Hashable, Destination: View>: View, _Flattenable {
+    typealias Body = Never
+    var body: Never { fatalError() }
+    let content: Content
+    let item: Binding<Item?>
+    let destination: (Item) -> Destination
+
+    func _children(_ path: String) -> [Node] {
+        if let nav = _Runtime.shared.nav {
+            let env = _localEnv(), item = item, destination = destination
+            let presentation = _NavPresentation(
+                id: path,
+                value: { item.wrappedValue.map(AnyHashable.init) },
+                build: { path in
+                    guard let value = item.wrappedValue else { return ["kind": "empty", "id": path] }
+                    return _withEnv(env) { _eval(destination(value), path) }
+                },
+                dismiss: { item.wrappedValue = nil }
+            )
+            nav.registrations[nav.collectingDepth, default: _NavRegistrations()].presentations.append(presentation)
+        }
+        return SwiftUI._children(content, path + "/navigationDestination")
+    }
+}
+
 extension View {
     public func navigationDestination<T: Hashable, D: View>(for data: T.Type, @ViewBuilder destination: @escaping (T) -> D) -> some View {
         _DestinationView(content: self, destination: destination)
+    }
+    public func navigationDestination<D: View>(isPresented: Binding<Bool>, @ViewBuilder destination: () -> D) -> some View {
+        let view = destination()
+        let item = Binding<Bool?>(
+            get: { isPresented.wrappedValue ? true : nil },
+            set: { isPresented.wrappedValue = $0 != nil }
+        )
+        return _PresentedDestinationView(content: self, item: item) { _ in view }
+    }
+    public func navigationDestination<T: Hashable, D: View>(item: Binding<T?>, @ViewBuilder destination: @escaping (T) -> D) -> some View {
+        _PresentedDestinationView(content: self, item: item, destination: destination)
     }
 }
 
@@ -599,7 +776,7 @@ extension Optional: _TabSource where Wrapped: View {
     func _tabs(_ path: String) -> [_TabEntry] { map { _tabEntries($0, path) } ?? [] }
 }
 
-extension _ConditionalContent: _TabSource {
+extension _ConditionalContent: _TabSource where T: View, F: View {
     func _tabs(_ path: String) -> [_TabEntry] {
         switch storage {
         case .first(let v): return _tabEntries(v, path + "/true")

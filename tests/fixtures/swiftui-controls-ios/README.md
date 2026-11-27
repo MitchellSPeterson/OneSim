@@ -19,7 +19,7 @@ PNGs 1206 x 2622), captured 2026-11-20. Compared by `scripts/compare-ios.sh` (Sw
 |---|---|---|
 | controls | launch | (none) |
 | controls-dark | dark, launch | `--dark` |
-| controls-menu | press 201,304 (Actions) | `--click Actions` |
+| controls-menu | hold 201,304 (Actions) | `--long-press Actions` |
 | controls-changed | press "Bold", 201,620 (I agree), 201,519 (Pill 0) | `--click Bold --click "I agree" --click "Pill 0"` |
 | pickers | press "Pickers" | `--click Pickers` |
 | pickers-dark | dark, press "Pickers" | `--dark --click Pickers` |

@@ -200,12 +200,13 @@ pub extern "C" fn simcore_web_scroll(x: f64, y: f64, dx: f64, dy: f64) -> i32 {
 }
 
 /// Touch drag (finger scrolling). phase: 0 begin (at the touch-down point), 1 move, 2 end (lift),
-/// 3 coalesced move (updates drag state without rebuilding the scene unless a non-Redraw effect fires).
+/// 3 coalesced move (defers scene rebuild), 4 cancel (lost pointer capture).
 /// x, y in points; `t` is the event time in ms. Returns 1 if the frame changed. After an end,
 /// call `simcore_web_tick` every frame while it returns 1 (momentum, bounce).
 #[no_mangle]
 pub extern "C" fn simcore_web_drag(phase: i32, x: f64, y: f64, t: f64) -> i32 {
     let coalesced = phase == 3;
+    let cancelled = phase == 4;
     let phase = match phase {
         0 => DragPhase::Begin,
         1 | 3 => DragPhase::Move,
@@ -215,7 +216,9 @@ pub extern "C" fn simcore_web_drag(phase: i32, x: f64, y: f64, t: f64) -> i32 {
         return if coalesced { deliver_coalesced(out) } else { deliver(out) };
     }
     sync_guest_clock();
-    let e = with(|s| s.scene.as_ref().map(|sc| s.inter.drag(sc, phase, x, y, t)));
+    let e = with(|s| s.scene.as_ref().map(|sc| {
+        if cancelled { s.inter.cancel_touches(sc) } else { s.inter.drag(sc, phase, x, y, t) }
+    }));
     if coalesced {
         return match e {
             Some(Effect::None) | None => 0,

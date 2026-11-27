@@ -36,6 +36,10 @@ module.exports = function createRegistry(rt, h) {
   const noop = () => {};
   let alertSeq = 0;
   const listener = { addListener: noop, removeListeners: noop };
+  const statusBarHeight = () => android ? cfg.androidInsets.top : cfg.iosStatusBarHeight ?? insetsFor(rt.window.height).top;
+  const verticalEdge = DEVICE === 'iphone-duo' && OS_VERSION === '27.2' ? 'trailing' : null;
+  const statusBar = android ? null : require('./status-bar.js')(rt, node, statusBarHeight, verticalEdge,
+    (event) => emitOn('ExpoStatusBar', 'onVerticalBarEdgeChange', event));
   const reportException = (d) => sendError(`${d.message}\n${(d.stack || []).map((f) => `  at ${f.methodName || '?'} (${f.file}:${f.lineNumber}:${f.column})`).join('\n')}`);
   const all = (names, v = UNSUP) => Object.fromEntries(names.map((n) => [n, v]));
   const coded = (code, message) => Object.assign(new Error(message), { code }); // an expo CodedError / RN rejection
@@ -245,18 +249,33 @@ module.exports = function createRegistry(rt, h) {
     { name: 'Appearance', status: 'simulated', methods: { getColorScheme: () => rt.appearance, ...listener }, events: ['appearanceChanged'] },
     { name: 'SourceCode', status: 'implemented', constants: () => ({ scriptURL: rt.scriptURL }) },
     { name: 'I18nManager', status: 'implemented', constants: { isRTL: false, doLeftAndRightSwapInRTL: true, localeIdentifier: 'en_US' }, methods: { allowRTL: noop, forceRTL: noop, swapLeftAndRightInRTL: noop } },
-    { name: 'StatusBarManager', status: 'implemented', constants: () => ({ HEIGHT: android ? cfg.androidInsets.top : 54, DEFAULT_BACKGROUND_COLOR: 0, STYLE: 'default' }),
-      methods: { ...listener, getHeight: (cb) => cb({ height: 54 }),
+    { name: 'StatusBarManager', status: 'implemented',
+      constants: android ? () => ({ HEIGHT: statusBarHeight(), DEFAULT_BACKGROUND_COLOR: 0, STYLE: 'default' }) : statusBar.constants,
+      events: android ? [] : ['statusBarFrameWillChange', 'statusBarFrameDidChange'],
+      methods: android ? { ...listener, getHeight: (cb) => cb({ height: 54 }),
         setStyle: (s) => {
-          if (!android) return log('OneSim: StatusBar.setStyle', s);
           rt.rootProps.__simcoreStatusBarStyle = s;
           rt.scheduleEmit();
         },
         setHidden: (hidden) => {
-          if (!android) return;
           rt.rootProps.__simcoreStatusBarHidden = hidden;
           rt.scheduleEmit();
-        }, setNetworkActivityIndicatorVisible: noop } },
+        }, setNetworkActivityIndicatorVisible: noop } : { ...listener, getHeight: statusBar.getHeight,
+          setStyle: statusBar.setStyle, setHidden: statusBar.setHidden, setNetworkActivityIndicatorVisible: noop } },
+    ...(!android ? [{ name: 'ExpoStatusBar', package: 'expo-status-bar', kind: 'expo', status: 'implemented',
+      events: ['onVerticalBarEdgeChange'], methods: {
+        getVerticalBarEdge: statusBar.getVerticalBarEdge, setVerticalBarBehavior: statusBar.setVerticalBarBehavior,
+      }, make: () => {
+        const module = new NativeModule();
+        const addListener = module.addListener.bind(module);
+        return Object.assign(module, { addListener(event, fn) {
+          const start = event === 'onVerticalBarEdgeChange' && OS_VERSION === '27.2' && module.listenerCount(event) === 0;
+          const subscription = addListener(event, fn);
+          if (start) statusBar.startObservingVerticalEdge();
+          return subscription;
+        }, getVerticalBarEdge: statusBar.getVerticalBarEdge, setVerticalBarBehavior: statusBar.setVerticalBarBehavior,
+        __expo_module_name__: 'ExpoStatusBar' });
+      } }] : []),
     { name: 'ExceptionsManager', status: 'implemented', methods: { reportException, reportFatalException: (m, s) => reportException({ message: m, stack: s }), reportSoftException: (m) => log('OneSim soft exception:', m), updateExceptionMessage: noop, dismissRedbox: noop } },
     // Host `scene_phase` moves it (`Runtime.setAppState`); events `appStateDidChange`.
     { name: 'AppState', status: 'implemented', constants: () => ({ initialAppState: rt.appState }), events: ['appStateDidChange', 'memoryWarning'],
@@ -395,7 +414,7 @@ module.exports = function createRegistry(rt, h) {
     { name: 'ExponentConstants', package: 'expo-constants', kind: 'expo', status: 'implemented',
       constants: () => ({ manifest: rt.manifest, experienceUrl: rt.manifest ? `exp://${new URL(rt.scriptURL).host}` : null,
         appOwnership: null, executionEnvironment: 'bare', sessionId: cfg.session || 'onesim', installationId: 'simcore',
-        statusBarHeight: android ? cfg.androidInsets.top : 54, systemFonts: [], isDevice: false, deviceName: android ? androidModel : 'iPhone',
+        statusBarHeight: android ? cfg.androidInsets.top : statusBar.constants().HEIGHT, systemFonts: [], isDevice: false, deviceName: android ? androidModel : 'iPhone',
         expoVersion: null, platform: android ? { android: { versionCode: null } } : { ios: { model: 'iPhone', systemVersion: OS_VERSION } } }),
       methods: { getWebViewUserAgentAsync: async () => android
         ? `Mozilla/5.0 (Linux; Android ${androidVersion}; ${androidModel}) OneSim`

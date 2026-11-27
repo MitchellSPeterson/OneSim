@@ -87,6 +87,8 @@ pub struct TransitionEffect {
     pub opacity: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scale: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blur: Option<f64>,
     /// Horizontal / vertical scale alone (React Native LayoutAnimation `scaleX` / `scaleY`), about `anchor`.
     #[serde(default, rename = "scaleX", skip_serializing_if = "Option::is_none")]
     pub scale_x: Option<f64>,

@@ -1173,17 +1173,39 @@ extension ContentUnavailableView where Label == SwiftUI.Label<Text, Image>, Desc
         self.init(label: { SwiftUI.Label(title, systemImage: name) }, description: { description })
     }
 }
-extension ContentUnavailableView where Label == SwiftUI.Label<Text, Image>, Description == Text, Actions == EmptyView {
-    /// "No Results" for a search.
-    public static var search: ContentUnavailableView<SwiftUI.Label<Text, Image>, Text, EmptyView> {
-        ContentUnavailableView(label: { SwiftUI.Label("No Results", systemImage: "magnifyingglass") },
-                               description: { Text("Check the spelling or try a new search.") })
+public struct SearchUnavailableContent {
+    public struct Label: View {
+        let query: String?
+        @Environment(\.searchQuery) private var inheritedQuery
+
+        init(query: String?) { self.query = query }
+
+        public var body: some View {
+            let whitespace: (Character) -> Bool = { $0.isWhitespace }
+            let search = query ?? inheritedQuery
+            let trimmed = String(search.drop(while: whitespace).reversed().drop(while: whitespace).reversed())
+            let title = trimmed.isEmpty ? "No Results" : "No Results for \u{201C}\(trimmed)\u{201D}"
+            return SwiftUI.Label(title, systemImage: "magnifyingglass")
+        }
     }
-    /// "No Results for “text”" (just "No Results" when `text` is empty).
-    public static func search(text: String) -> ContentUnavailableView<SwiftUI.Label<Text, Image>, Text, EmptyView> {
-        let t = String(text.drop { $0 == " " || $0 == "\t" }.reversed().drop { $0 == " " || $0 == "\t" }.reversed())
-        return ContentUnavailableView(label: { SwiftUI.Label(t.isEmpty ? "No Results" : "No Results for \u{201C}\(t)\u{201D}", systemImage: "magnifyingglass") },
-                                      description: { Text("Check the spelling or try a new search.") })
+
+    public struct Description: View {
+        public var body: some View { Text("Check the spelling or try a new search.") }
+    }
+
+    public struct Actions: View {
+        public var body: some View { EmptyView() }
+    }
+}
+
+extension ContentUnavailableView where Label == SearchUnavailableContent.Label,
+                                       Description == SearchUnavailableContent.Description,
+                                       Actions == SearchUnavailableContent.Actions {
+    public static var search: Self { search(query: nil) }
+    public static func search(text: String) -> Self { search(query: text) }
+
+    private static func search(query: String?) -> Self {
+        Self(label: { Label(query: query) }, description: { Description() }, actions: { Actions() })
     }
 }
 

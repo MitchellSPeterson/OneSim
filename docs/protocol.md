@@ -103,7 +103,8 @@ Every node: `{"kind": "...", "id": "<stable structural path>", "modifiers": [Mod
 | `rectangle` | – (greedy, filled with current foreground color, default primary) |
 | `empty` | – (EmptyView, zero size) |
 
-Color: `{"r":0..1,"g":0..1,"b":0..1,"a":0..1}` or `{"semantic":"primary"|"secondary"|"accent"|"background"}` (host resolves per appearance).
+Color: `{"r":0..1,"g":0..1,"b":0..1,"a":0..1}` or `{"semantic":"primary"|"secondary"|"accent"|"background","a"?:number}`.
+For a semantic color, the host resolves the color for the current appearance and multiplies its alpha by `a` (default 1).
 
 Modifiers are applied in array order, innermost first (same as Swift source order):
 
@@ -385,7 +386,7 @@ It loads the app bundle from Metro and runs React Native's own Fabric renderer; 
 ### Guest launch env
 
 `SIMCORE_METRO_URL`, `SIMCORE_PLATFORM` (`ios` or `android`), `SIMCORE_VIEWPORT`, `SIMCORE_APPEARANCE`,
-`SIMCORE_SESSION_ID`, `SIMCORE_SCALE`, and `SIMCORE_INSETS=top,bottom` (profile insets used on Android).
+`SIMCORE_SESSION_ID`, `SIMCORE_SCALE`, and `SIMCORE_INSETS=top,bottom` (Android system bars and iOS status bar height).
 `SIMCORE_LAUNCH_URL`: the URL the app was launched to open (`create_session` `launch_url`, iOS only; see Linking).
 Optional: `SIMCORE_HMR=1` (connect Metro `/hot`), `SIMCORE_DEBUG=1`.
 `SIMCORE_BUNDLE_URL` loads that prebuilt bundle instead (`npx expo export --platform <p> --no-bytecode`, minified or
@@ -398,6 +399,10 @@ to the session platform. Plain Metro uses `/index.bundle?platform=<platform>&dev
 `{"kind":"rn","id":"<reactTag>","component":"<Fabric viewName>","props":{...},"children":[...]}`
 
 - The root is synthetic: `component: "RootView"`, `id: "1"` (surface rootTag 1), fills the viewport.
+- Status bar root props: `__simcoreStatusBarStyle` is `"default"`, `"light-content"` or `"dark-content"`.
+  `__simcoreStatusBarHidden` is a boolean. iOS can send `__simcoreStatusBarFrame` during a transition,
+  with `opacity` (0–1), `slide` (0 to -1 bar heights), and `light` and `automatic` (tint weights, 0–1).
+  iOS 27.2 on iPhone Duo draws the vertical bar until `__simcoreStatusBarVerticalDisabled` is true.
 - `props` is Fabric's flat attribute payload merged across clones: style keys are top level,
   colors are `processColor` numbers (`0xAARRGGBB`), functions are dropped, event handlers
   appear as `true` flags (`onClick`, `onStartShouldSetResponder`, ...).
@@ -695,7 +700,7 @@ one request from stdin (guest tests without a host).
 - `text_field` gains `"secure"?: bool` (`SecureField`): the host draws one bullet per character; `text` is still the real value.
 - New kind `picker`: `{"kind":"picker","id","label": ViewNode,"style":"menu"|"segmented","options":[{"text","action"}],"selected": index|null,"open"?: u64,"disabled"}`. `options` come from the content children carrying `.tag(_:)` (their first text); `selected` indexes the option whose tag equals the selection (null when none does). Running an option's `action` selects it. Menu style (also `.automatic`) is a row: label leading, selected text and `chevron.up.chevron.down` trailing, accent tinted; `open` toggles the menu. Segmented style is a capsule segmented control spanning the proposed width.
 - New layer `menu` (in `presentation.layers`, section G): `{"kind":"menu","anchor": picker id,"items":[{"text","action","checked"?: bool}],"dismiss": u64}`, present while a menu picker is open. The host draws a glass card at the anchor; an item's action selects and closes, `dismiss` (tap outside) only closes.
-- New kind `slider`: `{"kind":"slider","id","value","min","max","step"?,"field"?: u64,"disabled"}`. The host sets the value by sending `text_input` (section B) to `field` with the number as decimal text; the guest clamps it to `min...max` and snaps it to `step`. A tap on the slider or a `drag` pointer gesture that starts on it sends the value under the point where the finger ends (thumb centre travels between half a thumb width from each end). Disabled sliders have no `field`.
+- New kind `slider`: `{"kind":"slider","id","value","min","max","step"?,"field"?:u64,"disabled"}`. The host sends `text_input` (section B) to `field` with a decimal value. The guest clamps and snaps it. The thumb centre travels between half a thumb width from each end. Disabled sliders omit `field`. See section Q for phased editing and tick metadata.
 - New kind `progress`: `{"kind":"progress","id","value": fraction 0...1 | null,"label"?: ViewNode}` (`ProgressView`). With a value: a linear capsule bar (label above it). Null: the activity indicator, drawn as a static frame (label below it).
 - `LabeledContent` and `Form` add no wire kinds: they are an `hstack` (label, spacer, content with `foregroundColor` secondary) and an inset-grouped `list` (a columns form: section T).
 - Inspection: the picker row is a `button` labelled with the picker label (its `value` is the selected text), segments and menu items are `button`s labelled with their text, a slider has role `slider` and its value as `value`.
@@ -940,7 +945,7 @@ Existing view trees parse unchanged. New modifiers are omitted when absent.
 | JSON | SwiftUI |
 |---|---|
 | `{"animation": AnimationSpec \| null}` | `withAnimation` (on root), `.animation(_:value:)`, `.animation(_:)`, `.transaction`. `null` disables animation for the subtree. `AnimationSpec` is `{"curve", "duration", "delay", "speed", "repeat"?: u32 \| "forever", "autoreverses", "token"}`. `curve` is `"linear"`, `"easeIn"`, `"easeOut"`, `"easeInOut"`, `{"bezier": [x1, y1, x2, y2]}`, `{"spring": {"mass", "stiffness", "damping", "initialVelocity", "settling"}}`, or `{"samples": [f64...]}` (for `CustomAnimation`). `token > 0` fires once when bumped; `token == 0` animates any property change. |
-| `{"transition": {"insertion": Effect, "removal": Effect, "animation"?: AnimationSpec}}` | `.transition(_:)`. `Effect` holds optional `opacity`, `scale`, `scaleX` / `scaleY` (one axis; React Native LayoutAnimation), `anchor`, `offset` (`[x, y]`), and `edge` (`"top"\|"bottom"\|"leading"\|"trailing"`). |
+| `{"transition": {"insertion": Effect, "removal": Effect, "animation"?: AnimationSpec}}` | `.transition(_:)`. `Effect` holds optional `opacity`, `scale`, `blur` (Gaussian radius in points), `scaleX` / `scaleY` (one axis; React Native LayoutAnimation), `anchor`, `offset` (`[x, y]`), and `edge` (`"top"\|"bottom"\|"leading"\|"trailing"`). |
 | `{"matchedGeometry": {"id", "namespace", "properties": "frame"\|"position"\|"size", "anchor": [x, y], "isSource": bool}}` | `.matchedGeometryEffect(id:in:properties:anchor:isSource:)` with `@Namespace`. |
 | `{"contentTransition": "identity"\|"interpolate"\|"opacity"\|"numericTextUp"\|"numericTextDown"\|"symbolEffect"}` | `.contentTransition(_:)`. Inherited by `text` and `image` descendants. |
 
@@ -980,7 +985,8 @@ Menu, Link, control styles and Gauge (`frameworks/swiftui/Sources/SwiftUI/Styles
 - Layer `menu` (section I) gains `"centered"?: bool` and item fields `"systemImage"?: string`, `"destructive"?: bool`, `"divider"?: bool`, `"disabled"?: bool` (dimmed, no action). A `Menu` sends a `button` (its label, the enclosing button style) whose action toggles the layer, and while open a layer `{"kind":"menu","anchor": menu id,"centered": true,"items": [...],"dismiss"}`. A centred card is centred on the anchor, its top 10.5 pt above the anchor's centre; items with icons draw the symbol in a leading column; destructive items are red; a `divider` item has a 21 pt gap with a separator above it. Running an item's action runs the button's action and closes the menu. Toggles in a menu are checked items; a picker's options are inline checked items between separators.
 - `progress` gains `"currentValueLabel"?: ViewNode`, drawn under a linear bar (caption, secondary). `.circular` is sent with `value: null` (the spinner).
 - New kind `gauge`: `{"kind":"gauge","id","style": "automatic"|"linearCapacity"|"accessoryLinear"|"accessoryLinearCapacity"|"accessoryCircular"|"accessoryCircularCapacity","value": fraction 0...1,"label"?,"currentValueLabel"?,"minimumValueLabel"?,"maximumValueLabel"?}` (labels are ViewNodes; `EmptyView` ones are omitted). `automatic` and `linearCapacity`: label centred above a 16 pt accent capacity bar, min/max labels beside it, the current value centred below. `accessoryLinearCapacity`: label leading above a 4 pt bar. `accessoryLinear`: an 8 pt primary bar with a dot at the value, no label. `accessoryCircularCapacity`: a 58 pt ring filled clockwise from the top, the current value inside. `accessoryCircular`: a 58 pt arc open at the bottom with a dot at the value, the current value inside and the label in the opening. Inspection value: the fraction.
-- Slider value labels add no kind: the guest sends an `hstack` of the minimum label, the `slider` (id `<id>/s`) and the maximum label. `onEditingChanged` runs `true` then `false` around each `text_input`.
+- Slider endpoints use an `hstack` with the minimum label, the `slider` (id `<id>/s`) and the maximum label. Optional slider fields are `modern`, `rtl`, `label`, `currentValueLabel` (a view), `neutralValue`, `enabledBounds` (`[lower, upper]`), and `ticks` (objects with `value` and optional `label`). A stepped modern slider derives its marks from the range and step.
+- A slider advertising `editing: true` accepts `start:<value>`, `move:<value>`, `end:<value>`, or `cancel` over `text_input`. It calls `onEditingChanged` once at the first movement and once when editing ends. A plain decimal is an atomic value change and brackets the change with both callbacks.
 
 ## R. v1 additions: SwiftUI gradients, Canvas and effects
 

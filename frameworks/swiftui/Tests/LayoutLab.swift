@@ -34,7 +34,26 @@ struct LayoutLab: View {
                     }
                 }
                 .frame(height: 80)
+                ScrollTargetProbe()
+                HStack {
+                    Color.primary.opacity(0.5).opacity(0.5)
+                    Color.secondary.opacity(2)
+                    Color.accentColor.opacity(0)
+                    Color.primary.opacity(-0.5)
+                    Color.primary.opacity(.nan)
+                }
             }
         }
+    }
+}
+
+private struct ScrollTargetProbe: View {
+    @State private var behavior = AnyScrollTargetBehavior(.paging)
+
+    var body: some View {
+        ScrollView { Text("Direct paging") }.scrollTargetBehavior(.paging)
+        ScrollView { Text("Erased paging") }.scrollTargetBehavior(AnyScrollTargetBehavior(.paging))
+        ScrollView { Text("Mutable behavior") }.scrollTargetBehavior(AnyScrollTargetBehavior(behavior))
+        Button("Change behavior") { behavior.base = ViewAlignedScrollTargetBehavior() }
     }
 }

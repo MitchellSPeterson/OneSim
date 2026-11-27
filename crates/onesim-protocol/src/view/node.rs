@@ -15,6 +15,18 @@ use super::shape::{ShapeExtra, ShapeKind};
 use super::text::{Run, TextInputBorderShape, TextInputOptions, TextInputStyle};
 use super::{inf, is_false, is_zero, one};
 
+/// iOS React Native status bar presentation values during a native transition.
+/// Sent as `__simcoreStatusBarFrame` on the Fabric root (section H).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct RnStatusBarFrame {
+    pub opacity: f32,
+    /// Upward displacement in status bar heights (0 = shown, -1 = offscreen).
+    pub slide: f64,
+    /// The remaining tint weight belongs to dark-content.
+    pub light: f32,
+    pub automatic: f32,
+}
+
 /// A bitmap `Image` (AsyncImage success, or a file the guest already loaded).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Bitmap {
@@ -258,6 +270,26 @@ pub struct PickerOption {
     /// Menu layers and wheel columns: drawn dimmed and not tappable (a disabled button, a date out of range).
     #[serde(default, skip_serializing_if = "is_false")]
     pub disabled: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SliderTick {
+    pub value: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<Box<ViewNode>>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct SliderOptions {
+    pub editing: bool,
+    pub modern: bool,
+    pub rtl: bool,
+    pub label: Option<String>,
+    pub current_value_label: Option<Box<ViewNode>>,
+    pub neutral_value: Option<f64>,
+    pub enabled_bounds: Option<[f64; 2]>,
+    pub ticks: Vec<SliderTick>,
 }
 
 /// One drum of a `wheel` (section S). `options` are the visible rows, `selected` the one in the band; an option
@@ -764,6 +796,8 @@ pub enum ViewKind {
         field: Option<u64>,
         #[serde(default)]
         disabled: bool,
+        #[serde(flatten)]
+        options: Box<SliderOptions>,
     },
     /// `ProgressView`: `value` is the fraction done (0...1); `None` = indeterminate spinner.
     Progress {
@@ -1147,7 +1181,7 @@ fn serialize_view_kind<M: SerializeMap>(kind: &ViewKind, map: &mut M) -> Result<
             map.serialize_entry("open", open)?;
             map.serialize_entry("disabled", disabled)?;
         }
-        ViewKind::Slider { value, min, max, step, field, disabled } => {
+        ViewKind::Slider { value, min, max, step, field, disabled, options } => {
             map.serialize_entry("kind", "slider")?;
             map.serialize_entry("value", value)?;
             map.serialize_entry("min", min)?;
@@ -1155,6 +1189,14 @@ fn serialize_view_kind<M: SerializeMap>(kind: &ViewKind, map: &mut M) -> Result<
             map.serialize_entry("step", step)?;
             map.serialize_entry("field", field)?;
             map.serialize_entry("disabled", disabled)?;
+            if options.editing { map.serialize_entry("editing", &true)?; }
+            if options.modern { map.serialize_entry("modern", &true)?; }
+            if options.rtl { map.serialize_entry("rtl", &true)?; }
+            if let Some(label) = &options.label { map.serialize_entry("label", label)?; }
+            if let Some(label) = &options.current_value_label { map.serialize_entry("currentValueLabel", label)?; }
+            if let Some(neutral) = options.neutral_value { map.serialize_entry("neutralValue", &neutral)?; }
+            if let Some(bounds) = options.enabled_bounds { map.serialize_entry("enabledBounds", &bounds)?; }
+            if !options.ticks.is_empty() { map.serialize_entry("ticks", &options.ticks)?; }
         }
         ViewKind::Progress { value, label, current_value_label } => {
             map.serialize_entry("kind", "progress")?;
@@ -1845,6 +1887,7 @@ fn deserialize_view_kind<'de, A: MapAccess<'de>>(
             let mut step: Option<f64> = None;
             let mut field: Option<u64> = None;
             let mut disabled: bool = false;
+            let mut options = Box::<SliderOptions>::default();
             while let Some(k) = stream.next_key()? {
                 common_key!(k.as_ref());
                 match k.as_ref() {
@@ -1854,6 +1897,14 @@ fn deserialize_view_kind<'de, A: MapAccess<'de>>(
                     "step" => step = stream.next_value()?,
                     "field" => field = stream.next_value()?,
                     "disabled" => disabled = stream.next_value()?,
+                    "editing" => options.editing = stream.next_value()?,
+                    "modern" => options.modern = stream.next_value()?,
+                    "rtl" => options.rtl = stream.next_value()?,
+                    "label" => options.label = stream.next_value()?,
+                    "currentValueLabel" => options.current_value_label = stream.next_value()?,
+                    "neutralValue" => options.neutral_value = stream.next_value()?,
+                    "enabledBounds" => options.enabled_bounds = stream.next_value()?,
+                    "ticks" => options.ticks = stream.next_value()?,
                     _ => stream.skip_value()?,
                 }
             }
@@ -1864,6 +1915,7 @@ fn deserialize_view_kind<'de, A: MapAccess<'de>>(
                 step,
                 field,
                 disabled,
+                options,
             })
         }
         "progress" => {
@@ -2167,7 +2219,10 @@ mod tests {
     #[test]
     fn semantic_color() {
         let c: Color = serde_json::from_str(r#"{"semantic":"accent"}"#).unwrap();
-        assert_eq!(c, Color::Semantic { semantic: Semantic::Accent });
+        assert_eq!(c, Color::Semantic { semantic: Semantic::Accent, a: None });
+        let color: Color = serde_json::from_str(r#"{"semantic":"secondary","a":0.25}"#).unwrap();
+        assert_eq!(color, Color::Semantic { semantic: Semantic::Secondary, a: Some(0.25) });
+        assert_eq!(serde_json::to_value(color).unwrap(), json!({"semantic":"secondary","a":0.25}));
     }
 
     #[test]
@@ -2202,7 +2257,7 @@ mod tests {
     #[test]
     fn new_semantics_and_button_defaults() {
         let c: Color = serde_json::from_str(r#"{"semantic":"secondaryGroupedBackground"}"#).unwrap();
-        assert_eq!(c, Color::Semantic { semantic: Semantic::SecondaryGroupedBackground });
+        assert_eq!(c, Color::Semantic { semantic: Semantic::SecondaryGroupedBackground, a: None });
         let b: ViewNode = serde_json::from_str(r#"{"kind":"button","id":"b","action":1,"label":{"kind":"empty","id":"e"}}"#).unwrap();
         assert!(matches!(b.kind, ViewKind::Button { style: ButtonStyle::Automatic, disabled: false, .. }));
     }

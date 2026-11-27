@@ -86,6 +86,10 @@ struct AnimationLab: View {
                     .transition(.asymmetric(insertion: .move(edge: .leading).combined(with: .opacity), removal: .scale(scale: 0.5)))
                 Text("CustomTr")
                     .transition(SlideFadeTransition())
+                Text("Blur down")
+                    .transition(BlurReplaceTransition())
+                Text("Blur up")
+                    .transition(BlurReplaceTransition(configuration: .upUp))
             }
 
             Text("Count:\(count)")

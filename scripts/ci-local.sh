@@ -110,7 +110,7 @@ check_compose() {
 
 check_expo() {
   need_pillow
-  step node --test frameworks/react-native/guest/bundle-patches.test.mjs # no deps: bundle source patches
+  step node --test frameworks/react-native/guest/*.test.mjs
   if fast; then
     need_npm expo-showcase
     SIMCORE_ONLY=expo SIMCORE_SMOKE=1 step scripts/compare-ios.sh

@@ -908,12 +908,13 @@ func _rgba(_ c: Color) -> (r: Double, g: Double, b: Double, a: Double) {
     if let r = j["r"] as? Double, let g = j["g"] as? Double, let b = j["b"] as? Double {
         return (r, g, b, j["a"] as? Double ?? 1)
     }
+    let alpha = j["a"] as? Double ?? 1
     switch j["semantic"] as? String {
-    case "accent": return (0, 136.0 / 255, 1, 1)
-    case "secondary": return (60.0 / 255, 60.0 / 255, 67.0 / 255, 0.6)
-    case "tertiary": return (60.0 / 255, 60.0 / 255, 67.0 / 255, 0.3)
-    case "background": return (1, 1, 1, 1)
-    default: return (0, 0, 0, 1)
+    case "accent": return (0, 136.0 / 255, 1, alpha)
+    case "secondary": return (60.0 / 255, 60.0 / 255, 67.0 / 255, 0.6 * alpha)
+    case "tertiary": return (60.0 / 255, 60.0 / 255, 67.0 / 255, 0.3 * alpha)
+    case "background": return (1, 1, 1, alpha)
+    default: return (0, 0, 0, alpha)
     }
 }
 

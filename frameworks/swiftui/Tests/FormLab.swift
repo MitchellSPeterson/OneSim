@@ -192,9 +192,32 @@ struct MiscLab: View {
                 TableColumn("Name", value: \.name)
                 TableColumn("Note") { Text($0.note) }
             }
-            ContentUnavailableView.search(text: "  ")
+            SearchEmptyProbe()
             ContentUnavailableView("Gone", systemImage: "xmark", description: Text("Nothing here"))
             GroupBox { GroupBox("Inner") { Text("nested") } }
+        }
+    }
+}
+
+private struct SearchEmptyProbe: View {
+    @State private var query = "  東京 🗺️  "
+
+    private var empty: ContentUnavailableView<SearchUnavailableContent.Label,
+                                              SearchUnavailableContent.Description,
+                                              SearchUnavailableContent.Actions> { .search }
+
+    var body: some View {
+        VStack {
+            Group {
+                empty
+                ContentUnavailableView.search(text: "  ")
+                ContentUnavailableView.search(text: "Explicit")
+                VStack { empty }
+                    .searchable(text: .constant("Inner"))
+                Button("Clear query") { query = "" }
+            }
+            .searchable(text: $query)
+            empty
         }
     }
 }

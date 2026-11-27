@@ -23,8 +23,8 @@ def texts(n):
 
 def kids(n):
     out = list(n.get("children", [])) + [page["content"] for page in n.get("pages", [])]
-    for k in ("label", "child", "content"):
-        if k in n: out.append(n[k])
+    for k in ("label", "child", "content", "title"):
+        if isinstance(n.get(k), dict): out.append(n[k])
     for sec in n.get("sections", []): out += sec["rows"]
     for row in n.get("rows", []) or []:
         if isinstance(row, dict):
@@ -519,6 +519,19 @@ assert {"grid", "lazyGrid", "geometry", "viewThatFits"} <= kinds, kinds
 geo = next(m for m in walk(t["root"]) if m.get("kind") == "geometry")
 prop = geo.get("proposal")
 assert isinstance(prop, list) and len(prop) == 2 and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in prop), geo
+assert [n["color"] for n in walk(t["root"]) if n.get("kind") == "color"] == [
+    {"semantic": "primary", "a": 0.25}, {"semantic": "secondary", "a": 2},
+    {"semantic": "accent", "a": 0}, {"semantic": "primary", "a": -0.5},
+    {"semantic": "primary", "a": 0},
+]
+def scrolling_behavior(t, label):
+    scroll = next(n for n in walk(t["root"]) if n["kind"] == "scroll" and label in alltexts(n))
+    return next(m["scrollTargetBehavior"] for m in scroll["modifiers"] if "scrollTargetBehavior" in m)
+
+for label in ("Direct paging", "Erased paging", "Mutable behavior"):
+    assert scrolling_behavior(t, label) == "paging"
+t = act(p, t, button(t, "Change behavior")["action"])
+assert scrolling_behavior(t, "Mutable behavior") == "viewAligned"
 send(p, type="action", id=button(t, "Jump")["action"], version=t["version"])
 line = recv(p)
 assert line["type"] == "scroll_to_id" and isinstance(line.get("scroll"), str) and line["scroll"] and line["target"] == "there", line
@@ -557,9 +570,12 @@ assert scheds and scheds[-1] <= 205.0, scheds
 root_anims = [m["animation"] for m in t["root"].get("modifiers", []) if "animation" in m]
 assert len(root_anims) == 1 and root_anims[0]["curve"] == "linear" and root_anims[0]["duration"] == 0.2 and root_anims[0]["token"] >= 1, root_anims
 trs = [m["transition"] for n in walk(t["root"]) for m in n.get("modifiers", []) if "transition" in m]
-assert len(trs) == 2, trs
+assert len(trs) == 4, trs
 assert trs[0]["insertion"]["edge"] == "leading" and trs[0]["insertion"]["opacity"] == 0 and trs[0]["removal"]["scale"] == 0.5, trs[0]
 assert trs[1]["insertion"]["opacity"] == 0 and trs[1]["insertion"]["offset"] == [-20, 0] and trs[1]["removal"]["offset"] == [20, 0], trs[1]
+assert trs[2]["insertion"] == trs[3]["insertion"] and trs[2]["insertion"]["blur"] > 0
+assert trs[2]["removal"]["scale"] < 1 < trs[3]["removal"]["scale"]
+assert trs[2]["removal"]["blur"] == trs[3]["removal"]["blur"] == trs[2]["insertion"]["blur"]
 
 # Advance clock to 200 ms -> completion fires ONCE even though two @State props mutated (done:1, multi:1), and one-shot keyframeAnimator finishes at offset.x == 40.
 send(p, type="tick", time=200.0)
@@ -767,7 +783,35 @@ t = act(p, t, menu["items"][0]["action"])
 assert has(t, "last Alpha") and not layers(t), "an item runs its action and closes the menu"
 t = act(p, t, btn(t, "Menu")["action"]); t = act(p, t, next(l for l in layers(t) if l["kind"] == "menu")["dismiss"])
 assert not layers(t) and has(t, "last Alpha"), "tap outside only closes"
-t = act(p, t, btn(t, "Primary")["action"]); assert has(t, "last Primary") and not layers(t), "primaryAction runs instead of opening"
+def menu_touch(t, label, at, steps):
+    key = next(m["gesture"]["key"] for m in btn(t, label)["modifiers"] if "gesture" in m)
+    for elapsed, phase, x in steps:
+        send(p, type="gesture", phase=phase, time=at + elapsed, points=[[x, 10]],
+             targets=[{"key": key, "frame": [0, 0, 100, 40]}])
+        t = recv(p)
+    return t
+
+tap = [(0, "start", 10), (80, "end", 10)]
+hold_menu = [(0, "start", 10), (600, "move", 10), (650, "end", 10)]
+t = menu_touch(t, "Primary", 0, tap)
+assert has(t, "last Primary") and not layers(t), "primaryAction runs on a tap"
+t = act(p, t, btn(t, "Empty primary")["action"])
+assert has(t, "last Empty") and not layers(t)
+assert not any("gesture" in m for m in btn(t, "Empty primary").get("modifiers", []))
+disabled = btn(t, "Disabled primary")
+assert disabled["action"] == 0 and not any("gesture" in m for m in disabled.get("modifiers", []))
+t = menu_touch(t, "Primary", 1000, [(0, "start", 10), (100, "move", 24), (650, "end", 10)])
+assert has(t, "last Empty") and not layers(t), "leaving the press tolerance cancels both actions"
+t = menu_touch(t, "Primary", 2000, hold_menu)
+menu = next(l for l in layers(t) if l["kind"] == "menu")
+assert [i["text"] for i in menu["items"]] == ["Secondary"] and has(t, "last Empty"), "a hold suppresses the primary tap"
+t = act(p, t, menu["items"][0]["action"])
+assert has(t, "last Secondary") and not layers(t)
+t = menu_touch(t, "Styled primary", 3000, hold_menu)
+menu = next(l for l in layers(t) if l["kind"] == "menu")
+assert menu["items"][0]["text"] == "Styled child"
+t = act(p, t, menu["dismiss"])
+assert has(t, "last Secondary") and not layers(t)
 faded = btn(t, "Faded")
 assert {"opacity": 0.5} in faded.get("modifiers", []), "a custom MenuStyle wraps the menu"
 t = act(p, t, faded["action"]); t = act(p, t, next(l for l in layers(t) if l["kind"] == "menu")["items"][0]["action"])
@@ -795,6 +839,24 @@ assert [alltexts(c) for c in row["children"] if c.get("kind") == "text"] == [["L
 sl = next(c for c in row["children"] if c.get("kind") == "slider")
 send(p, type="text_input", field=sl["field"], version=t["version"], text="0.5"); t = recv(p)
 assert has(t, "edits tf 0.5"), alltexts(tree(t))
+for value, expected in (("start:0.75", "edits tft 0.75"),
+                        ("move:1", "edits tft 1.0"),
+                        ("end:0", "edits tftf 0.0"),
+                        ("start:0", "edits tftft 0.0"),
+                        ("cancel", "edits tftftf 0.0")):
+    field = next(n["field"] for n in walk(tree(t)) if n.get("kind") == "slider" and n["id"] == sl["id"])
+    send(p, type="text_input", field=field, version=t["version"], text=value); t = recv(p)
+    assert has(t, expected), alltexts(tree(t))
+modern = next(n for n in node(t, "slider") if n.get("label") == "Modern")
+assert modern["modern"] and modern["neutralValue"] == 0 and modern["enabledBounds"] == [-1, 1]
+assert [tick["value"] for tick in modern["ticks"]] == [0, 1, -1]
+send(p, type="text_input", field=modern["field"], version=t["version"], text="start:-2"); t = recv(p)
+modern = next(n for n in node(t, "slider") if n.get("label") == "Modern")
+assert modern["value"] == -1 and alltexts(modern["currentValueLabel"]) == ["Low"] and has(t, "modern edits t")
+t = act(p, t, btn(t, "Disable modern")["action"])
+modern = next(n for n in node(t, "slider") if n.get("label") == "Modern")
+assert "field" not in modern and has(t, "modern edits tf")
+assert [tick["value"] for tick in modern["ticks"]] == [0, 1, 2]
 # Progress and gauge styles.
 assert has(t, "pct 50"), "custom ProgressViewStyle"
 assert any(m.get("value") is None for m in node(t, "progress")), ".circular is the spinner"
@@ -1207,6 +1269,77 @@ t = act(p, t, tree(t)["back"]["action"])
 assert title(t) == "Outer" and toolbar_action(tree(t), "Toolbar count: 2")
 finish(p)
 print("navigation lab: inactive dismissal, search submission, and three compact columns ok")
+
+p = spawn(sys.argv[21])
+assert recv(p)["type"] == "hello"
+t = recv(p)
+t = act(p, t, tree(t)["back"]["action"])
+t = act(p, t, button(t, "Test destinations")["action"])
+assert title(t) == "Integer 9223372036854775807"
+assert tree(t)["back"]["label"] == "Integer -9223372036854775808"
+assert "Path count: 2, root appeared: 0" in alltexts(tree(t))
+t = act(p, t, button(t, "Show Boolean above path")["action"])
+assert title(t) == "Boolean destination"
+t = act(p, t, button(t, "Dismiss destination")["action"])
+assert title(t) == "Integer 9223372036854775807" and "Path count: 2, root appeared: 0" in alltexts(tree(t))
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Integer -9223372036854775808"
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Destination root" and "Root appeared: 1" in alltexts(tree(t))
+assert "Presented: false" in alltexts(tree(t)) and "Item: nil" in alltexts(tree(t))
+t = act(p, t, button(t, "Show Boolean")["action"])
+t = act(p, t, button(t, "Rename Boolean")["action"])
+assert title(t) == "Renamed Boolean"
+t = act(p, t, tree(t)["back"]["action"])
+assert "Presented: false" in alltexts(tree(t))
+t = act(p, t, button(t, "Show Boolean")["action"])
+t = act(p, t, button(t, "Clear Boolean")["action"])
+assert title(t) == "Destination root"
+t = act(p, t, button(t, "Show Boolean")["action"])
+t = act(p, t, button(t, "Push plain child")["action"])
+assert title(t) == "Plain child"
+t = act(p, t, button(t, "Clear Boolean from child")["action"])
+assert title(t) == "Destination root"
+t = act(p, t, button(t, "Show item")["action"])
+assert title(t) == "Item destination" and "Item value: [書📚 مرحبا]" in alltexts(tree(t))
+t = act(p, t, button(t, "Replace item")["action"])
+assert "Item value: []" in alltexts(tree(t)) and "Item appeared: true" in alltexts(tree(t))
+t = act(p, t, button(t, "Clear item")["action"])
+t = act(p, t, button(t, "Show item")["action"])
+t = act(p, t, button(t, "Count: 0")["action"])
+assert "Count: 1" in alltexts(tree(t))
+t = act(p, t, button(t, "Show nested Boolean")["action"])
+assert title(t) == "Nested destination"
+t = act(p, t, button(t, "Dismiss destination")["action"])
+assert title(t) == "Item destination" and "Count: 1" in alltexts(tree(t))
+t = act(p, t, button(t, "Show nested Boolean")["action"])
+t = act(p, t, button(t, "Replace parent item")["action"])
+assert title(t) == "Item destination" and "Item value: []" in alltexts(tree(t))
+assert "Count: 0" in alltexts(tree(t))
+t = act(p, t, button(t, "Show nested Boolean")["action"])
+t = act(p, t, button(t, "Clear parent item")["action"])
+assert title(t) == "Destination root" and "Item: nil" in alltexts(tree(t))
+t = act(p, t, button(t, "Show item")["action"])
+t = act(p, t, tree(t)["back"]["action"])
+assert "Item: nil" in alltexts(tree(t))
+t = act(p, t, button(t, "Show item")["action"])
+t = act(p, t, button(t, "Dismiss destination")["action"])
+assert "Item: nil" in alltexts(tree(t))
+t = act(p, t, button(t, "Restore path")["action"])
+assert title(t) == "Integer -1" and tree(t)["back"]["label"] == "Integer 0"
+t = act(p, t, tree(t)["back"]["action"])
+t = act(p, t, tree(t)["back"]["action"])
+t = act(p, t, button(t, "Test mixed path")["action"])
+assert title(t) == "Initial Boolean" and tree(t)["back"]["label"] == "Restored string"
+t = act(p, t, tree(t)["back"]["action"])
+assert title(t) == "Restored string" and tree(t)["back"]["label"] == "Integer 17"
+t = act(p, t, tree(t)["back"]["action"])
+t = act(p, t, button(t, "Push another string")["action"])
+assert title(t) == "Another string" and tree(t)["back"]["label"] == "Integer 17"
+t = act(p, t, button(t, "Clear path")["action"])
+assert title(t) == "Mixed root" and "Mixed count: 0" in alltexts(tree(t))
+finish(p)
+print("navigation lab: restored paths, Boolean and item destinations, and nested binding writeback ok")
 # --- forms and containers (section T)
 p = spawn(sys.argv[22])
 assert recv(p)["type"] == "hello"
@@ -1392,6 +1525,11 @@ table = next(l for l in lists(t) if l["style"] == "plain")
 assert [ftexts(r) for r in table["sections"][0]["rows"]] == [["Ann"], ["Bo"]], "compact tables show the first column"
 x = ftexts(tree(t))
 assert "No Results" in x and "Gone" in x and "Nothing here" in x
+assert 'No Results for “東京 🗺️”' in x and 'No Results for “Inner”' in x and 'No Results for “Explicit”' in x, x
+assert x.count("No Results") == 2, x
+t = act(p, t, fbtn(tree(t), "Clear query")["action"])
+x = ftexts(tree(t))
+assert x.count("No Results") == 3 and 'No Results for “Inner”' in x and 'No Results for “Explicit”' in x, x
 boxes = [m for m in fwalk(tree(t)) if m.get("kind") == "vstack" and any("cornerRadius" in q for q in m.get("modifiers", []))]
 fills = [next(q["background"]["color"]["r"] for q in b["modifiers"] if "background" in q) for b in boxes]
 assert len(fills) == 2 and fills[0] != fills[1], "nested group boxes alternate backgrounds"

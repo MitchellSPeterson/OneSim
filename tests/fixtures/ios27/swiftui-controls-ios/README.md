@@ -10,7 +10,8 @@ the same taps, and `screenshot --pixel-density 3 --normalize-status-bar` until t
 (it shows in only ~5% of iOS 27 screenshots) and no status-bar back-link is shown.
 
 ## States
-The 10 states of the 26.5 set, with the same taps and OneSim flags.
+The 10 states of the 26.5 set. Hold Actions for the menu. Tap Actions for the
+`controls-menu-primary` state, which changes the last-action label to Primary.
 
 ## Facts OneSim must match
 The frames listed in the 26.5 README were measured on this release.

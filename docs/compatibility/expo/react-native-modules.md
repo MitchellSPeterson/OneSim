@@ -8,7 +8,7 @@ Part of [Expo / React Native API coverage](README.md): status legend, summary an
 | Dimensions / PixelRatio | react-native | `DeviceInfo` | 🟡 | 🟡 | | From the session viewport |
 | Appearance / useColorScheme | react-native | `Appearance` | 🟡 | 🟡 | | From the session's dark flag |
 | I18nManager | react-native | `I18nManager` | ✅ | ⬜ | | LTR, `en_US` |
-| StatusBar | react-native | `StatusBarManager` | 🟠 | 🟠 | | Calls accepted and logged; the host draws its own status bar. Android applies icon style and visibility. |
+| StatusBar | react-native | `StatusBarManager` | 🟠 | 🟠 | | iOS applies style and visibility, animated style changes, fade and slide, and device height. Automatic contrast samples view fills under the clock. Android applies icon style and visibility. |
 | AppState | react-native | `AppState` | ✅ | ⬜ | [#50](https://github.com/MitchellSPeterson/OneSim/issues/50) | `active` from launch; the host's scene phase (`set_scene_phase`, CLI `--scene-phase`, v2 `app.setScenePhase`) moves it through `inactive` as iOS does (`change` events); opening another app's URL is a round trip (inactive, background, inactive, active); touches are cancelled as the app resigns active |
 | Settings | react-native | `SettingsManager` | ✅ | — | | iOS only |
 | AccessibilityInfo | react-native | `AccessibilityInfo` | ✅ | ⬜ | | All settings off |

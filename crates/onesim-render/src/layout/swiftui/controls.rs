@@ -93,7 +93,7 @@ impl Ctx<'_> {
                 let inner_p = Prop { w: p.w.map(|w| (w - 2.0 * hp).max(0.0)), h: None };
                 let l = self.view(label, inner_p, Env { fg: Some(fg), tint: None, ..child_env });
                 let size = Size { w: l.size.w + 2.0 * hp, h: l.size.h + 2.0 * vp };
-                n.glass = Some(self.glass_spec(GlassVariant::Regular, prominent.then_some(onesim_protocol::Color::Semantic { semantic: Semantic::Accent }).as_ref(), true));
+                n.glass = Some(self.glass_spec(GlassVariant::Regular, prominent.then_some(onesim_protocol::Color::Semantic { semantic: Semantic::Accent, a: None }).as_ref(), true));
                 n.radius = PILL;
                 Lay::new(size, Some(n), vec![(hp, vp, l)])
             }
@@ -383,48 +383,81 @@ impl Ctx<'_> {
         Lay::new(Size { w, h }, Some(root), kids)
     }
 
-    /// `Slider`: capsule track, accent fill up to the value, a white capsule thumb. Tapping or
-    /// dragging sets the value (see `Interaction`), through `field`.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn slider(&mut self, v: &ViewNode, value: f64, range: (f64, f64), field: Option<u64>, disabled: bool, p: Prop, env: Env) -> Lay {
-        let w = p.w.filter(|w| w.is_finite()).unwrap_or(200.0);
+    pub(super) fn slider(&mut self, v: &ViewNode, p: Prop, env: Env) -> Lay {
+        let ViewKind::Slider { value, min, max, step, field, disabled, options } = &v.kind else { unreachable!() };
+        let (lo, hi, value) = (*min, *max, *value);
+        let w = p.w.filter(|w| w.is_finite()).unwrap_or(200.0).max(0.0);
         let h = SLIDER_H;
-        let span = range.1 - range.0;
-        let frac = if span > 0.0 { ((value - range.0) / span).clamp(0.0, 1.0) } else { 0.0 };
-        let (tw, th) = SLIDER_THUMB;
-        let tx = frac * (w - tw);
+        let span = hi - lo;
+        let tw = SLIDER_THUMB.0.min(w);
+        let th = SLIDER_THUMB.1;
+        let at = |value: f64| {
+            let f = if hi <= lo { 0.0 }
+                else if span.is_finite() { ((value - lo) / span).clamp(0.0, 1.0) }
+                else { ((value * 0.5 - lo * 0.5) / (hi * 0.5 - lo * 0.5)).clamp(0.0, 1.0) };
+            let f = if options.rtl { 1.0 - f } else { f };
+            tw / 2.0 + f * (w - tw)
+        };
+        let x = at(value);
         let mut n = Node::new(&v.id, "slider");
         n.role = Role::Slider;
         n.field = field.filter(|_| !disabled);
-        n.range = Some((range.0, range.1, tw));
-        n.value = Some(format!("{value}"));
-        n.disabled = disabled;
+        n.range = Some((lo, hi, tw));
+        n.slider_editing = options.editing;
+        n.slider_drag_only = options.modern;
+        n.slider_rtl = options.rtl;
+        n.label = options.label.clone();
+        n.value = Some(options.current_value_label.as_deref().and_then(first_text).unwrap_or_else(|| value.to_string()));
+        n.disabled = *disabled;
         let ty = (h - SLIDER_TRACK) / 2.0;
+        let accent = self.tint_color(env).unwrap_or_else(|| self.semantic(Semantic::Accent));
         let mut track = Node::new(format!("{}#track", v.id), "slider-track");
-        track.fill = Some(self.pick(SLIDER_TRACK_FILL));
+        track.fill = Some(self.pick(if options.modern && self.ios >= IosVersion::Ios27 {
+            ((226, 226, 226), (28, 28, 30))
+        } else {
+            SLIDER_TRACK_FILL
+        }));
         track.radius = PILL;
         track.inspect = false;
-        let mut fill = Node::new(format!("{}#fill", v.id), "slider-fill");
-        fill.fill = Some(self.tint_color(env).unwrap_or_else(|| self.semantic(Semantic::Accent)));
-        fill.radius = PILL;
-        fill.inspect = false;
+        let mut kids = vec![(0.0, ty, Lay::new(Size { w, h: SLIDER_TRACK }, Some(track), vec![]))];
+        let start = options.neutral_value.map_or(if options.rtl { w } else { 0.0 }, at);
+        if start != x {
+            let mut fill = Node::new(format!("{}#fill", v.id), "slider-fill");
+            fill.fill = Some(accent);
+            fill.radius = PILL;
+            fill.inspect = false;
+            kids.push((start.min(x), ty, Lay::new(Size { w: (x - start).abs(), h: SLIDER_TRACK }, Some(fill), vec![])));
+        }
+        let mut add_tick = |point: f64, i: usize| {
+            let x = at(point);
+            let mut tick = Node::new(format!("{}#tick-{i}", v.id), "slider-tick");
+            tick.fill = Some(self.semantic(Semantic::Secondary));
+            tick.radius = PILL;
+            tick.inspect = false;
+            let d = 3.0;
+            kids.push((x - d / 2.0, (h - d) / 2.0 + 8.5, Lay::new(Size { w: d, h: d }, Some(tick), vec![])));
+        };
+        if let Some(step) = step.filter(|step| options.modern && step.is_finite() && *step > 0.0) {
+            let count = (span / step).floor();
+            // Suppress automatic marks if adjacent dots would overlap in the proposed width.
+            if count.is_finite() && count <= (w - tw) / 3.0 {
+                for i in 0..=count as usize {
+                    add_tick(lo + (i as f64) * step, i);
+                }
+            }
+        } else {
+            for (i, tick) in options.ticks.iter().enumerate().filter(|(_, tick)| (lo..=hi).contains(&tick.value)) {
+                add_tick(tick.value, i);
+            }
+        }
         let mut thumb = Node::new(format!("{}#thumb", v.id), "slider-thumb");
         thumb.fill = Some(rgba(255, 255, 255, 1.0));
         thumb.radius = PILL;
         thumb.shadow = Some(Shadow { color: Color::rgba(0.0, 0.0, 0.0, SLIDER_SHADOW.0), radius: SLIDER_SHADOW.1, dx: 0.0, dy: SLIDER_SHADOW.2 });
         thumb.inspect = false;
-        let kids = vec![
-            (0.0, ty, Lay::new(Size { w, h: SLIDER_TRACK }, Some(track), vec![])),
-            (0.0, ty, Lay::new(Size { w: tx + tw / 2.0, h: SLIDER_TRACK }, Some(fill), vec![])),
-            (tx, (h - th) / 2.0, Lay::new(Size { w: tw, h: th }, Some(thumb), vec![])),
-        ];
-        let mut l = Lay::new(Size { w, h }, Some(n), kids);
-        if disabled {
-            if let Some(n) = l.node.as_mut() {
-                n.opacity = 0.5;
-            }
-        }
-        l
+        kids.push((x - tw / 2.0, (h - th) / 2.0, Lay::new(Size { w: tw, h: th }, Some(thumb), vec![])));
+        if *disabled { n.opacity = 0.5; }
+        Lay::new(Size { w, h }, Some(n), kids)
     }
 
     /// `ProgressView`: a linear capsule bar with a value, else the spinner; a label sits above the

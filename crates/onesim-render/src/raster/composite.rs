@@ -603,9 +603,10 @@ fn hash_proto_color<H: Hasher>(c: &onesim_protocol::Color, h: &mut H) {
             std::mem::discriminant(semantic).hash(h);
             hierarchical.hash(h);
         }
-        onesim_protocol::Color::Semantic { semantic } => {
+        onesim_protocol::Color::Semantic { semantic, a } => {
             1u8.hash(h);
             std::mem::discriminant(semantic).hash(h);
+            a.map(f64::to_bits).hash(h);
         }
         onesim_protocol::Color::Rgba { r, g, b, a, dark } => {
             2u8.hash(h);

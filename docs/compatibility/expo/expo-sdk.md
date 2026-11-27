@@ -12,7 +12,7 @@ Part of [Expo / React Native API coverage](README.md): status legend, summary an
 | Keep awake | expo-keep-awake | `ExpoKeepAwake` | ✅ | ⬜ | | No-op |
 | Splash screen | expo-splash-screen | `ExpoSplashScreen` | ✅ | ⬜ | | |
 | System UI | expo-system-ui | `ExpoSystemUI` | ✅ | ⬜ | | Root background color |
-| Status bar | expo-status-bar | | 🟠 | 🟠 | | Over RN `StatusBar` (above) |
+| Status bar | expo-status-bar | `ExpoStatusBar` | 🟠 | 🟠 | | Runs over RN `StatusBar`. Expo queries the vertical edge and can switch between vertical and horizontal presentation on iPhone Duo. Duo's horizontal placement is estimated. |
 | Device | expo-device | `ExpoDevice` | 🟡 | 🟡 | | Model and OS of the session's device profile and iOS release. Android simulates the Pixel 10a. |
 | Constants | expo-constants | `ExponentConstants` | ✅ | ✅ | | |
 | Linking | expo-linking | `ExpoLinking` | 🟡 | ⬜ | [#50](https://github.com/MitchellSPeterson/OneSim/issues/50) | `getLinkingURL` is the launch URL, then the last URL opened (`onURLReceived` / `useLinkingURL`, host `open_url`); `clearInitialURL`. Expo Router starts at the launch URL's route |

@@ -29,10 +29,12 @@ public struct DismissSearchAction {
 
 private struct _IsSearchingKey: EnvironmentKey { static let defaultValue = false }
 private struct _DismissSearchKey: EnvironmentKey { static var defaultValue: DismissSearchAction { .init() } }
+struct _SearchQueryKey: EnvironmentKey { static let defaultValue = "" }
 
 extension EnvironmentValues {
     public var isSearching: Bool { self[_IsSearchingKey.self] }
     public var dismissSearch: DismissSearchAction { self[_DismissSearchKey.self] }
+    var searchQuery: String { self[_SearchQueryKey.self] }
 }
 
 private struct _Searchable<Content: View>: View, _Flattenable {
@@ -65,6 +67,7 @@ private struct _Searchable<Content: View>: View, _Flattenable {
         var environment = _localEnv()
         environment[ObjectIdentifier(_IsSearchingKey.self)] = presentation.wrappedValue
         environment[ObjectIdentifier(_DismissSearchKey.self)] = dismiss
+        environment[ObjectIdentifier(_SearchQueryKey.self)] = text.wrappedValue
         let children = _withEnv(environment) { SwiftUI._children(content, path) }
         guard rt.navigationPreferences != nil || children.first?["kind"] as? String == "navigation" else { return children }
 

@@ -43,7 +43,7 @@ pub struct Interaction {
     /// Whether the last `pointer` was an action (control fired or keyboard key tapped).
     pub acted: bool,
     pressed: Option<String>,
-    slider_drag: Option<String>,
+    slider_drag: Option<(String, bool)>,
     /// Finger currently scrolling (or holding) a scroller.
     drag: Option<Drag>,
     /// Finger down inside a sheet, before it is clear whether it drags the sheet or scrolls its content.
@@ -507,16 +507,21 @@ impl Interaction {
             return None;
         }
         let n = scene.hit_test(ev.x, ev.y).map(|i| &scene.nodes[i]).filter(|n| n.role == Role::Slider)?;
-        self.slide_to(n, if ev.kind == PointerKind::Drag { ev.x + ev.dx } else { ev.x })
+        if ev.kind == PointerKind::Click && n.slider_drag_only {
+            return None;
+        }
+        self.slide_to(n, if ev.kind == PointerKind::Drag { ev.x + ev.dx } else { ev.x }, "")
     }
 
-    fn slide_to(&mut self, n: &crate::Node, x: f64) -> Option<Effect> {
+    fn slide_to(&mut self, n: &crate::Node, x: f64, phase: &str) -> Option<Effect> {
         let ((lo, hi, thumb), field) = (n.range?, n.field?);
         let frac = ((x - n.bounds.x - thumb / 2.0) / (n.bounds.w - thumb).max(1.0)).clamp(0.0, 1.0);
+        let frac = if n.slider_rtl { 1.0 - frac } else { frac };
+        let value = if n.slider_editing { lo * (1.0 - frac) + hi * frac } else { lo + frac * (hi - lo) };
         self.pressed = None;
         self.hit = Some(n.id.clone());
         self.acted = true;
-        Some(Effect::TextInput { field, version: self.version, text: format!("{}", lo + frac * (hi - lo)) })
+        Some(Effect::TextInput { field, version: self.version, text: format!("{phase}{value}") })
     }
 
     /// Drop scroll state of scrollers that left the screen. Node ids are positional, so the next
@@ -568,19 +573,31 @@ impl Interaction {
                 .hit_test(x, y)
                 .map(|i| &scene.nodes[i])
                 .filter(|n| n.role == Role::Slider && n.range.is_some() && n.field.is_some())
-                .map(|n| n.id.clone());
+                .map(|n| (n.id.clone(), false));
             if self.slider_drag.is_some() {
                 self.drag = None;
                 self.pending = None;
                 self.sheet_drag = None;
                 return Effect::None;
             }
-        } else if let Some(id) = &self.slider_drag {
-            let target = scene.nodes.iter().find(|n| n.id == *id && n.role == Role::Slider);
-            if phase == DragPhase::End {
-                self.slider_drag = None;
+        } else if let Some((id, moved)) = self.slider_drag.take() {
+            let target = scene.nodes.iter().find(|n| n.id == id && n.role == Role::Slider && n.field.is_some());
+            if let Some(n) = target {
+                if n.slider_drag_only && !moved && phase == DragPhase::End {
+                    return Effect::None;
+                }
+                let prefix = match (n.slider_editing, phase, moved) {
+                    (true, DragPhase::Move, false) => "start:",
+                    (true, DragPhase::Move, true) => "move:",
+                    (true, DragPhase::End, true) => "end:",
+                    _ => "",
+                };
+                if phase == DragPhase::Move {
+                    self.slider_drag = Some((id, true));
+                }
+                return self.slide_to(n, x, prefix).unwrap_or(Effect::None);
             }
-            return target.and_then(|n| self.slide_to(n, x)).unwrap_or(Effect::None);
+            return Effect::None;
         }
         if let Some(e) = self.sheet_gesture(scene, phase, x, y, t) {
             return e;
@@ -822,18 +839,23 @@ impl Interaction {
         Effect::Gesture(vec![Self::touch_event(touch, TouchPhase::Move)])
     }
 
-    /// The app left the foreground (iOS cancels its touches): a gesture touch ends in `cancel`, a press, slider drag or
-    /// armed pan is dropped, and a scroll or sheet drag settles as if the finger lifted at rest.
+    /// The app left the foreground or lost pointer capture. A gesture touch or active SwiftUI slider
+    /// receives a cancellation, and a scroll or sheet drag settles as if the finger lifted at rest.
     pub fn cancel_touches(&mut self, scene: &Scene) -> Effect {
         self.armed = None;
         self.pressed = None;
-        self.slider_drag = None;
+        let slider = self.slider_drag.take();
         self.pending = None;
         if self.back.is_some() {
             return self.cancel_back();
         }
         if let Some(touch) = self.touch.take() {
             return Effect::Gesture(vec![Self::touch_event(&touch, TouchPhase::Cancel)]);
+        }
+        if let Some((id, true)) = slider {
+            if let Some(field) = scene.nodes.iter().find(|n| n.id == id && n.slider_editing).and_then(|n| n.field) {
+                return Effect::TextInput { field, version: self.version, text: "cancel".into() };
+            }
         }
         // Past the velocity window of the last sample, so the release carries no speed.
         let last = |s: &[(f64, f64)]| s.last().map_or(0.0, |p| p.0);

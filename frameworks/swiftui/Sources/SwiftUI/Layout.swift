@@ -123,16 +123,22 @@ extension ScrollTargetBehavior where Self == ViewAlignedScrollTargetBehavior {
 }
 
 public struct AnyScrollTargetBehavior: ScrollTargetBehavior {
-    let update: (inout ScrollTarget, ScrollTargetBehaviorContext) -> Void
-    public init<B: ScrollTargetBehavior>(_ behavior: B) {
-        update = { target, context in behavior.updateTarget(&target, context: context) }
+    public var base: any ScrollTargetBehavior
+
+    public init(_ behavior: some ScrollTargetBehavior) {
+        base = behavior
     }
-    public func updateTarget(_ target: inout ScrollTarget, context: ScrollTargetBehaviorContext) { update(&target, context) }
+
+    public func updateTarget(_ target: inout ScrollTarget, context: ScrollTargetBehaviorContext) {
+        base.updateTarget(&target, context: context)
+    }
 }
 
-func _snapName<B: ScrollTargetBehavior>(_ behavior: B) -> String? {
-    if behavior is PagingScrollTargetBehavior { return "paging" }
-    if behavior is ViewAlignedScrollTargetBehavior { return "viewAligned" }
+func _snapName(_ behavior: any ScrollTargetBehavior) -> String? {
+    var base = behavior
+    while let erased = base as? AnyScrollTargetBehavior { base = erased.base }
+    if base is PagingScrollTargetBehavior { return "paging" }
+    if base is ViewAlignedScrollTargetBehavior { return "viewAligned" }
     return nil
 }
 
