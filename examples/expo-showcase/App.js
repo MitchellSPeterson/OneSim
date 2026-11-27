@@ -15,13 +15,14 @@ const SCREENS = ['Layout', 'Text', 'Controls', 'Scroll', 'Image', 'Visuals', 'Re
 const STRIPES = ['#FF3B30', '#FFCC00', '#34C759', '#007AFF', '#AF52DE', '#FF9500', '#5AC8FA', '#FF2D55',
   '#FF3B30', '#FFCC00', '#34C759', '#007AFF', '#AF52DE', '#FF9500', '#5AC8FA'];
 
-function Header({ title, onBack, children }) {
+function Header({ title, onBack, onTitlePress, children }) {
+  const label = <Text style={styles.headerTitle}>{title}</Text>;
   return (
     <View style={styles.header}>
       <Pressable accessibilityLabel="Back" onPress={onBack} style={styles.back}>
         <Text style={styles.link}>Back</Text>
       </Pressable>
-      <Text style={styles.headerTitle}>{title}</Text>
+      {onTitlePress ? <Pressable accessibilityLabel="Status Bar" onPress={onTitlePress}>{label}</Pressable> : label}
       {children}
     </View>
   );
@@ -174,10 +175,10 @@ function ImageScreen() {
 }
 
 // Root has no paddingTop here: the core SafeAreaView pads by the device insets (62 top, 34 bottom).
-function Visuals({ onBack, fg }) {
+function Visuals({ onBack, onStatusBar, fg }) {
   return (
     <SafeAreaView style={{ flex: 1 }}>
-      <Header title="Visuals" onBack={onBack} />
+      <Header title="Visuals" onBack={onBack} onTitlePress={onStatusBar} />
       <View style={styles.body}>
         <View style={styles.spinRow}>
           <ActivityIndicator />
@@ -201,6 +202,24 @@ function Visuals({ onBack, fg }) {
         <Text style={[styles.label, { color: fg, marginTop: 12 }]}>Blur: default, light, dark, material</Text>
       </View>
     </SafeAreaView>
+  );
+}
+
+function StatusBarScreen({ onBack }) {
+  const [mode, setMode] = useState('Dark Content');
+  const light = mode === 'Dark Content';
+  return (
+    <View style={{ flex: 1, paddingTop: 62, backgroundColor: light ? '#e5e5ea' : '#242426' }}>
+      <StatusBar style={light ? 'dark' : 'light'} hidden={mode === 'Hidden'} />
+      <Header title="Status Bar" onBack={onBack} />
+      <View style={styles.body}>
+        {['Dark Content', 'Light Content', 'Hidden'].map((choice) => (
+          <Pressable key={choice} accessibilityLabel={choice} onPress={() => setMode(choice)} style={styles.listRow}>
+            <Text style={[styles.label, { color: light ? '#000' : '#fff', fontWeight: mode === choice ? '600' : '400' }]}>{choice}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -230,7 +249,7 @@ export default function App() {
   const back = () => setScreen(null);
   const Body = { Layout, Text: TextScreen, Controls, Image: ImageScreen, Form }[screen];
   return (
-    <View style={[styles.root, { backgroundColor: bg }, screen === 'Visuals' && { paddingTop: 0 }]}>
+    <View style={[styles.root, { backgroundColor: bg }, (screen === 'Visuals' || screen === 'Status Bar') && { paddingTop: 0 }]}>
       <StatusBar style={dark ? 'light' : 'dark'} />
       {screen === null && (
         <View style={{ flex: 1 }}>
@@ -245,7 +264,8 @@ export default function App() {
         </View>
       )}
       {screen === 'Scroll' && <Scroll onBack={back} />}
-      {screen === 'Visuals' && <Visuals onBack={back} fg={fg} />}
+      {screen === 'Visuals' && <Visuals onBack={back} onStatusBar={() => setScreen('Status Bar')} fg={fg} />}
+      {screen === 'Status Bar' && <StatusBarScreen onBack={back} />}
       {screen === 'Refresh' && <Refresh onBack={back} fg={fg} dark={dark} />}
       {Body && (
         <View style={{ flex: 1 }}>

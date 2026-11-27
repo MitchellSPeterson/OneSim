@@ -63,6 +63,9 @@ struct ControlLab: View {
     @State private var hour = 1
     @State private var flavor = "a"
     @State private var mpick = 1
+    @State private var modernLevel = 0.0
+    @State private var modernEnabled = true
+    @State private var modernEdits = ""
 
     var body: some View {
         NavigationStack {
@@ -80,12 +83,29 @@ struct ControlLab: View {
                             Text("P2").tag(2)
                         }
                     }
-                    Menu {
-                        Button("Never") { last = "Never" }
-                    } label: {
-                        Text("Primary")
+                    Menu("Primary") {
+                        Button("Secondary") { last = "Secondary" }
                     } primaryAction: {
                         last = "Primary"
+                    }
+                    Group {
+                        Menu("Empty primary", systemImage: "star") {
+                            EmptyView()
+                        } primaryAction: {
+                            last = "Empty"
+                        }
+                        Menu("Disabled primary") {
+                            Button("Disabled child") { last = "Disabled child" }
+                        } primaryAction: {
+                            last = "Disabled"
+                        }
+                        .disabled(true)
+                        Menu("Styled primary") {
+                            Button("Styled child") { last = "Styled child" }
+                        } primaryAction: {
+                            last = "Styled primary"
+                        }
+                        .menuStyle(Faded())
                     }
                     Menu("Faded") { Button("Beta") { last = "Beta" } }
                         .menuStyle(Faded())
@@ -126,6 +146,25 @@ struct ControlLab: View {
                     ProgressView(value: 0.5).progressViewStyle(.circular)
                     Gauge(value: 25, in: 0...100) { Text("Fuel") }
                     Gauge(value: 0.25) { Text("Custom") }.gaugeStyle(GaugeText())
+                }
+                Section {
+                    Slider(value: $modernLevel, in: -2...2, neutralValue: 0, enabledBounds: -1...1) {
+                        Text("Modern")
+                    } currentValueLabel: {
+                        Text("Value \(modernLevel)")
+                    } ticks: {
+                        SliderTickContentForEach([0.0, 1.0], id: \.self) { SliderTick($0) }
+                        if modernEnabled {
+                            SliderTick("Low", -1.0)
+                        } else {
+                            SliderTick("Higher", 2.0)
+                        }
+                    } onEditingChanged: {
+                        modernEdits += $0 ? "t" : "f"
+                    }
+                    .disabled(!modernEnabled)
+                    Button("Disable modern") { modernEnabled = false }
+                    Text("modern edits \(modernEdits)")
                 }
                 Section {
                     Picker("Inline", selection: $pick) {

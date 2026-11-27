@@ -339,11 +339,13 @@ async function main() {
     else pendingDragMoves = [];
     drag = null;
     const [x, y] = toPoints(e);
-    if (wasScroll) act(() => sim.drag("end", x, y, e.timeStamp));
+    if (e.type !== "pointerup" && !rn) act(() => sim.drag("cancel", x, y, e.timeStamp));
+    else if (wasScroll) act(() => sim.drag("end", x, y, e.timeStamp));
     else if (e.type === "pointerup") act(() => sim.pointer("up", x, y)); // a cancelled touch is no tap
   };
   stage.addEventListener("pointerup", lift);
   stage.addEventListener("pointercancel", lift);
+  stage.addEventListener("lostpointercapture", lift);
 
   // Wheel: CSS pixels -> points; positive deltaY reveals later content, like native.
   stage.addEventListener("wheel", (e) => {

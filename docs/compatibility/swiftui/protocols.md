@@ -58,7 +58,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `ScrollTargetBehavior` | 17 | 🟠 | [#35](https://github.com/MitchellSPeterson/OneSim/issues/35) | `updateTarget` is not called. `.paging` and `.viewAligned` are recognized by type |
 | `Shape` | 13 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) | Custom `path(in:)` evaluated for laid-out bounds (protocol section N) |
 | `ShapeView` | 17 | ✅ | [#36](https://github.com/MitchellSPeterson/OneSim/issues/36) | Supports chained `.fill` / `.stroke` / `.strokeBorder` |
-| `SliderTickContent` | 26 | ⬜ |  |  |
+| `SliderTickContent` | 26 | ✅ | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Custom tick content supplies a random-access collection of marks. |
 | `TabContent` | 18 | ⬜ |  |  |
 | `TableColumnContent` | 16 | 🟠 | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | Conformed by `TableColumn`; no custom conformances. |
 | `TableRowContent` | 16 | ⬜ |  |  |

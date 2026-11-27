@@ -178,15 +178,13 @@ fn ctx<'a>(params: &'a SceneParams, fonts: &'a mut Fonts) -> Ctx<'a> {
     }
 }
 
-/// Status bar and Dynamic Island on top of `nodes`, for layouts that draw their own content (React Native).
-pub(crate) fn add_chrome(nodes: &mut Vec<Node>, params: &SceneParams, fonts: &mut Fonts) {
-    if params.status_bar {
-        let lay = ctx(params, fonts).status_bar(params.viewport.0, params.device, params.ios);
-        flatten(lay, 0.0, 0.0, Some(0), 1.0, nodes);
-    }
-    if let Some(isl) = params.device.island {
-        crate::chrome::island(nodes, isl);
-    }
+/// Draw the iOS status bar over content from the React Native layout.
+pub(crate) fn rn_status_bar(nodes: &mut Vec<Node>, params: &SceneParams, fonts: &mut Fonts, device: &Device, opacity: f32, y: f64, light: f32) {
+    let primary = Color::rgba(light, light, light, 1.0);
+    let mix = |dark: f32, white: f32| (dark + (white - dark) * light) / 255.0;
+    let signal = Color::rgba(mix(60.0, 235.0), mix(60.0, 235.0), mix(67.0, 245.0), 0.3);
+    let lay = ctx(params, fonts).status_bar(params.viewport.0, device, params.ios, Some((primary, signal)));
+    flatten(lay, 0.0, y, Some(0), opacity, nodes);
 }
 
 /// Height of the navigation bar below the status bar for a React Native stack header.
@@ -419,7 +417,7 @@ fn layout_inner<'a>(root: &ViewNode, params: &'a SceneParams<'a>, fonts: &'a mut
         resolve_container_shapes(&mut nodes);
     }
     if params.status_bar {
-        let lay = cx.status_bar(w, params.device, params.ios);
+        let lay = cx.status_bar(w, params.device, params.ios, None);
         flatten(lay, 0.0, 0.0, Some(0), 1.0, &mut nodes);
     }
     let dark = params.appearance == Appearance::Dark;
@@ -2159,6 +2157,24 @@ mod tests {
         format!(
             r#"{{"kind":"color","id":"{id}","color":{{"r":1,"g":0,"b":0,"a":1}},"modifiers":[{frame}{extra}]}}"#
         )
+    }
+
+    #[test]
+    fn semantic_opacity_multiplies_the_resolved_color_in_both_appearances() {
+        let root = r#"{"kind":"hstack","id":"root","children":[
+          {"kind":"color","id":"primary","color":{"semantic":"primary","a":0.25}},
+          {"kind":"color","id":"secondary","color":{"semantic":"secondary","a":0.5}},
+          {"kind":"color","id":"clear","color":{"semantic":"accent","a":-1}},
+          {"kind":"color","id":"opaque","color":{"semantic":"secondary","a":5}}
+        ]}"#;
+        for dark in [false, true] {
+            let scene = scene_with(root, (120.0, 40.0), dark, (0.0, 0.0), &HashMap::new(), None);
+            let color = |id| scene.nodes.iter().find(|n| n.id == id).unwrap().fill.unwrap();
+            assert_eq!(color("primary"), if dark { Color::rgba(1.0, 1.0, 1.0, 0.25) } else { Color::rgba(0.0, 0.0, 0.0, 0.25) });
+            assert_eq!(color("secondary").a, 0.3);
+            assert_eq!(color("clear").a, 0.0);
+            assert_eq!(color("opaque").a, 1.0);
+        }
     }
 
     #[test]

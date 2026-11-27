@@ -17,7 +17,11 @@ pub enum Semantic {
 #[serde(untagged)]
 pub enum Color {
     Hierarchical { semantic: Semantic, hierarchical: bool },
-    Semantic { semantic: Semantic },
+    Semantic {
+        semantic: Semantic,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        a: Option<f64>,
+    },
     /// `dark`: optional rgb used instead of `r,g,b` in dark appearance (adaptive system colors).
     Rgba {
         r: f64,

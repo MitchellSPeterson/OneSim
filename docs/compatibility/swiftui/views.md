@@ -10,9 +10,9 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `AsyncImage` | 15 | 🟠 | [#38](https://github.com/MitchellSPeterson/OneSim/issues/38) | A file URL loads on the first evaluation. HTTP arrives on a later frame. `nil` is empty. The transaction is ignored, and the iOS 27 `URLRequest` initializers are omitted |
 | `Button` | 13 | ✅ |  |  |
 | `Canvas` | 15 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Paths, strokes, text, images, tagged symbols, layers and clips. Color mode, asynchronous delivery, tiled images, shaders and Core Graphics access are gaps. |
-| `Color` | 13 | 🟠 |  | `opacity` ignored on semantic colors |
+| `Color` | 13 | 🟠 |  | RGB and semantic colors support chained opacity and resolve in light and dark appearance. Asset colors and HDR are pending. |
 | `ColorPicker` | 14 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Grid, spectrum, RGB sliders, and opacity selection. Localized titles, eyedropper, persistent favorites and native tab appearance are incomplete. CGColor bindings require CoreGraphics. |
-| `ContentUnavailableView` | 17 | 🟠 | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | No asset-image `init(_:image:description:)` (asset images are unsupported, see `Image`); `.search` returns a `Label`/`Text` view type, not `SearchUnavailableContent`. |
+| `ContentUnavailableView` | 17 | 🟠 | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | `.search` reads the nearest searchable query. Both search factories return the SDK's `SearchUnavailableContent` types. The asset-image initializer needs asset image support. |
 | `ControlGroup` | 15 | 🟠 | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | A row of equal-width buttons, or a menu (`.menu`, `.compactMenu`). Inside a `Menu` its buttons become ordinary items (no compact row); toolbar placement waits on `.toolbar` (#43); no asset-image `init(_:image:content:)`. |
 | `DatePicker` | 13 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Compact, graphical and wheel styles. Gregorian dates and tap or drag selection. Localized title-key and title-resource overloads, narrow parent layouts and wheel momentum are incomplete. |
 | `DebugReplaceableView` | 26 | ⬜ |  |  |
@@ -55,7 +55,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `LinearGradient` | 13 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Colors, stops and gradient initializers. Degenerate endpoints and interpolation color spaces are approximated. |
 | `Link` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | No browser: `\.openURL` handlers run and the system action is reported as a `module.called` event; does nothing on the web build |
 | `List` | 13 | 🟠 | [#42](https://github.com/MitchellSPeterson/OneSim/issues/42) | Styles, sections, edit mode and swipe actions. No `List(selection:)`; a reorder drag lands on whole rows without shuffling the others live. |
-| `Menu` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | A tap opens it; with `primaryAction` a tap runs that and the menu needs a long press, which OneSim does not offer. A nested `Menu` opens its own card. No section headers, `menuOrder` or `menuIndicator` |
+| `Menu` | 14 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | A tap opens it. With `primaryAction`, a tap runs the action and a hold opens the menu. A nested menu opens its own card. Asset titles, section headers, menu order, and the menu indicator are pending. |
 | `MeshGradient` | 18 | 🟠 | [#37](https://github.com/MitchellSPeterson/OneSim/issues/37) | Point and Bézier grids, both color forms, optional smoothing and background. Folded patches and Apple's interpolation are approximated. |
 | `ModifiedContent` | 13 | ⬜ |  |  |
 | `MultiDatePicker` | 16 | 🟠 | [#40](https://github.com/MitchellSPeterson/OneSim/issues/40) | Gregorian day selection and range navigation. Localized title-key and title-resource overloads, narrow parent layouts and non-Gregorian dates are incomplete. |
@@ -80,7 +80,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `Section` | 13 | ✅ |  |  |
 | `SecureField` | 13 | 🟠 | [#41](https://github.com/MitchellSPeterson/OneSim/issues/41) | String binding, masked text, prompts and submit callbacks. Localization and some custom labels are gaps. The caret stays at the end. |
 | `ShareLink` | 16 | 🟠 | [#45](https://github.com/MitchellSPeterson/OneSim/issues/45) | Every initializer. The share sheet matches the Simulator's for text and links (per release); Copy fills the pasteboard, the other activities report a `module.called` event (handed to the system) and close it. Image and file items share their text form only (no Save Image or file activities) |
-| `Slider` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Moves on tap or whole drag, not live; no tint or ticks |
+| `Slider` | 13 | 🟠 | [#39](https://github.com/MitchellSPeterson/OneSim/issues/39) | Live dragging, tint, one editing callback pair per drag, neutral value, enabled bounds, and custom and stepped ticks. Tick feedback and native active-thumb appearance are pending. |
 | `Spacer` | 13 | ✅ |  |  |
 | `Stepper` | 13 | ✅ |  |  |
 | `SubscriptionView` | 13 | ⬜ |  |  |

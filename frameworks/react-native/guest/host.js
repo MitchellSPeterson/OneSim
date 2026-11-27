@@ -121,6 +121,7 @@ const cfg = {
   [cfg.width, cfg.height] = m ? m.slice(1).map(Number) : fallback;
   const [top, bottom] = env.SIMCORE_INSETS ? env.SIMCORE_INSETS.split(',').map(Number) : [142 / 2.625, 24];
   cfg.androidInsets = { top, bottom, left: 0, right: 0 };
+  if (!android && env.SIMCORE_INSETS && Number.isFinite(top)) cfg.iosStatusBarHeight = top;
   if (android && !env.SIMCORE_SCALE) cfg.scale = 2.625;
 }
 

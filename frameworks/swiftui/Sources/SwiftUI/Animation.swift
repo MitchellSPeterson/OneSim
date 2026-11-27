@@ -730,6 +730,7 @@ public struct TransitionProperties: Sendable {
 struct _TransitionEffect {
     var opacity: Double? = nil
     var scale: Double? = nil
+    var blur: Double? = nil
     var anchor: UnitPoint? = nil
     var offsetX: Double? = nil
     var offsetY: Double? = nil
@@ -739,6 +740,7 @@ struct _TransitionEffect {
         _TransitionEffect(
             opacity: other.opacity ?? opacity,
             scale: other.scale ?? scale,
+            blur: other.blur ?? blur,
             anchor: other.anchor ?? anchor,
             offsetX: (offsetX ?? 0) + (other.offsetX ?? 0) == 0 && offsetX == nil && other.offsetX == nil ? nil : (offsetX ?? 0) + (other.offsetX ?? 0),
             offsetY: (offsetY ?? 0) + (other.offsetY ?? 0) == 0 && offsetY == nil && other.offsetY == nil ? nil : (offsetY ?? 0) + (other.offsetY ?? 0),
@@ -750,6 +752,7 @@ struct _TransitionEffect {
         var j: Node = [:]
         if let opacity { j["opacity"] = opacity }
         if let scale { j["scale"] = scale }
+        if let blur { j["blur"] = blur }
         if let anchor { j["anchor"] = [Double(anchor.x), Double(anchor.y)] }
         if offsetX != nil || offsetY != nil { j["offset"] = [offsetX ?? 0, offsetY ?? 0] }
         if let edge { j["edge"] = _edgeName(edge) }
@@ -915,17 +918,26 @@ public struct AsymmetricTransition<Insertion: Transition, Removal: Transition>: 
 
 public struct BlurReplaceTransition: Transition, _BuiltinTransition, Sendable {
     public struct Configuration: Equatable, Hashable, Sendable {
-        public static let downUp = Configuration()
-        public static let upUp = Configuration()
+        fileprivate let removalScale: CGFloat
+        public static let downUp = Configuration(removalScale: 0.9)
+        public static let upUp = Configuration(removalScale: 1.1)
     }
+    private static let insertionScale: CGFloat = 0.9
+    private static let blurRadius = 10.0
     public var configuration: Configuration
     public init(configuration: Configuration = .downUp) { self.configuration = configuration }
     public func body(content: Content, phase: TransitionPhase) -> some View {
-        content.opacity(phase.isIdentity ? 1 : 0)
+        let scale = phase == .didDisappear ? configuration.removalScale : Self.insertionScale
+        return content
+            .scaleEffect(phase.isIdentity ? 1 : scale)
+            .blur(radius: phase.isIdentity ? 0 : CGFloat(Self.blurRadius))
+            .opacity(phase.isIdentity ? 1 : 0)
     }
     func _transitionSpec() -> _TransitionSpec {
-        let e = _TransitionEffect(opacity: 0, scale: 0.92, anchor: .center)
-        return _TransitionSpec(insertion: e, removal: e)
+        _TransitionSpec(
+            insertion: _TransitionEffect(opacity: 0, scale: Double(Self.insertionScale), blur: Self.blurRadius),
+            removal: _TransitionEffect(opacity: 0, scale: Double(configuration.removalScale), blur: Self.blurRadius)
+        )
     }
 }
 

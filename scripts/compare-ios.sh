@@ -38,7 +38,9 @@ shp="$guests/shapes"
 layout="$guests/layout"
 typeapp="$guests/type"
 anim="$guests/animation"
+blurreplace="$guests/blur-replace"
 controls="$guests/controls"
+slider="$guests/slider"
 effects="$guests/effects"
 textinput="$guests/text-input"
 keypads="$guests/keypads"
@@ -57,7 +59,9 @@ if want swiftui && [ -z "$smoke" ]; then
   scripts/build-swift-app.sh examples/swiftui-layout "$layout"
   scripts/build-swift-app.sh examples/swiftui-type "$typeapp"
   scripts/build-swift-app.sh examples/swiftui-animation "$anim"
+  scripts/build-swift-app.sh examples/swiftui-blur-replace "$blurreplace"
   scripts/build-swift-app.sh examples/swiftui-controls "$controls"
+  scripts/build-swift-app.sh examples/swiftui-slider "$slider"
   scripts/build-swift-app.sh examples/swiftui-effects "$effects"
   scripts/build-swift-app.sh examples/swiftui-text-input "$textinput"
   scripts/build-swift-app.sh examples/swiftui-keypads "$keypads"
@@ -188,12 +192,28 @@ for ios in ${SIMCORE_IOS:-27.2}; do
     ashot animation-active --click Beta --click "Toggle Card" --click Increment --wait 600
     echo "== SwiftUI animation (swiftui-animation, iOS $ios)"
     python3 scripts/compare_ios.py $fx/swiftui-animation-ios "$aout/onesim" "$aout" || rc=1
+    if [[ $ios == 27.2 ]]; then
+      bout=$out/swiftui-blur-replace; mkdir -p "$bout/onesim"
+      bshot() { local name=$1; shift; ./target/debug/onesim run "$blurreplace" "${base[@]}" "$@" --screenshot "$bout/onesim/$name.png" >/dev/null; }
+      bshot blur-replace --dark --click "Replace cards" --wait 4600
+      echo "== SwiftUI blur replacement (iOS $ios)"
+      python3 scripts/compare_ios.py "$fx/swiftui-blur-replace-ios" "$bout/onesim" "$bout" || rc=1
+      sout=$out/swiftui-slider; mkdir -p "$sout/onesim"
+      slshot() { local name=$1; shift; ./target/debug/onesim run "$slider" "${base[@]}" "$@" --screenshot "$sout/onesim/$name.png" >/dev/null; }
+      slshot slider
+      slshot slider-dark --dark
+      echo "== SwiftUI slider (iOS $ios)"
+      python3 scripts/compare_ios.py "$fx/swiftui-slider-ios" "$sout/onesim" "$sout" || rc=1
+    fi
     # SwiftUI controls: tests/fixtures/swiftui-controls-ios (see its README). Targets by label, picker rows by point.
     cout=$out/swiftui-controls; mkdir -p "$cout/onesim"
     cshot() { local name=$1; shift; ./target/debug/onesim run "$controls" "${base[@]}" "$@" --screenshot "$cout/onesim/$name.png" >/dev/null; }
     cshot controls
     cshot controls-dark     --dark
-    cshot controls-menu     --click Actions
+    cshot controls-menu     --long-press Actions
+    if [[ $ios == 27.2 ]]; then
+      cshot controls-menu-primary --click Actions
+    fi
     cshot controls-changed  --click Bold --click "I agree" --click "Pill 0"
     cshot pickers           --click Pickers
     cshot pickers-dark      --dark --click Pickers
@@ -367,6 +387,11 @@ for ios in ${SIMCORE_IOS:-27.2}; do
       rnshot keyboard-avoiding-dark --dark --click Showcase --click Message --type Hello
       rnshot visuals             --click Visuals
       rnshot visuals-dark        --dark --click Visuals
+      if [[ $ios == 27.2 ]]; then
+        rnshot status-bar-dark-content  --click Visuals --click "Status Bar"
+        rnshot status-bar-light-content --click Visuals --click "Status Bar" --click "Light Content"
+        rnshot status-bar-hidden        --click Visuals --click "Status Bar" --click Hidden
+      fi
       rnshot refresh-pulled      --click Refresh --scroll 200,300,0,-150
       rnshot refresh-pulled-dark --dark --click Refresh --scroll 200,300,0,-150
       echo "== React Native (expo-showcase, iOS $ios)"

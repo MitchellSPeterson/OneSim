@@ -138,7 +138,7 @@ impl Ctx<'_> {
                 }
                 let mut env = Env { fg: Some(self.color(c)), foreground_paint: None, secondary_paint: None, tertiary_paint: None, ..env };
                 // Inside a tinted control the hierarchical styles stay accent-coloured, dimmed.
-                if let (Some(t), onesim_protocol::Color::Semantic { semantic }) = (env.tint, c) {
+                if let (Some(t), onesim_protocol::Color::Semantic { semantic, a }) = (env.tint, c) {
                     let k = match semantic {
                         Semantic::Primary => Some(1.0),
                         Semantic::Secondary => Some(0.5),
@@ -146,7 +146,7 @@ impl Ctx<'_> {
                         _ => None,
                     };
                     if let Some(k) = k {
-                        env.fg = Some(Color { a: t.a * k, ..t });
+                        env.fg = Some(Color { a: (f64::from(t.a * k) * a.unwrap_or(1.0)).clamp(0.0, 1.0) as f32, ..t });
                     }
                 }
                 self.mods(v, rest, p, env)
@@ -569,7 +569,7 @@ impl Ctx<'_> {
                 }
             }
             ViewKind::Wheel { columns, width, height, disabled, popover } => self.multi_wheel(v, columns, (*width, *height), *disabled, *popover, p),
-            ViewKind::Slider { value, min, max, field, disabled, .. } => self.slider(v, *value, (*min, *max), *field, *disabled, p, env),
+            ViewKind::Slider { .. } => self.slider(v, p, env),
             ViewKind::Progress { value, label, current_value_label } => {
                 self.progress(v, *value, label.as_deref(), current_value_label.as_deref(), p, child_env)
             }

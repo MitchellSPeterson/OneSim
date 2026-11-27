@@ -242,7 +242,7 @@ Part of [SwiftUI API coverage](README.md): status legend, summary and how to add
 | `.navigationBarItems` | 13 | ⬜ |  | Deprecated |
 | `.navigationBarTitle` | 13 | ⬜ |  | Deprecated |
 | `.navigationBarTitleDisplayMode` | 14 | ✅ |  |  |
-| `.navigationDestination` | 16 | 🟠 |  | `for:destination:` only; see value-navigation limits in [guest.md](guest.md) |
+| `.navigationDestination` | 16 | ✅ |  | `for:destination:`, `isPresented:destination:`, and `item:destination:` (iOS 17). |
 | `.navigationDocument` | 16 | ⬜ |  |  |
 | `.navigationLinkIndicatorVisibility` | 17 | ⬜ |  |  |
 | `.navigationSplitViewColumnWidth` | 16 | ⬜ |  |  |

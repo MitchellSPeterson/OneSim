@@ -84,10 +84,14 @@ impl Ctx<'_> {
 
     pub(super) fn color(&self, c: &onesim_protocol::Color) -> Color {
         match c {
-            onesim_protocol::Color::Semantic { semantic } | onesim_protocol::Color::Hierarchical { semantic, .. } => self.semantic(*semantic),
+            onesim_protocol::Color::Semantic { semantic, a } => {
+                let color = self.semantic(*semantic);
+                Color { a: (f64::from(color.a) * a.unwrap_or(1.0)).clamp(0.0, 1.0) as f32, ..color }
+            }
+            onesim_protocol::Color::Hierarchical { semantic, .. } => self.semantic(*semantic),
             onesim_protocol::Color::Rgba { r, g, b, a, dark } => {
                 let [r, g, b] = if self.dark { dark.as_deref().copied().unwrap_or([*r, *g, *b]) } else { [*r, *g, *b] };
-                Color::rgba(r as f32, g as f32, b as f32, *a as f32)
+                Color::rgba(r as f32, g as f32, b as f32, a.clamp(0.0, 1.0) as f32)
             }
         }
     }

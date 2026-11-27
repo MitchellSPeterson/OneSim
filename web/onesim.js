@@ -209,10 +209,10 @@ export class OneSim {
   click(x, y) { return this.pointer("click", x, y); }
   /** Scroll the scroller under (x, y) by (dx, dy) points; positive dy reveals later content. */
   scroll(x, y, dx, dy) { return this.wasm.simcore_web_scroll(x, y, dx, dy) === 1; }
-  /** Finger drag: phase "begin" (touch-down point) | "move" | "end"; points, `t` event time in ms. */
+  /** Finger drag: phase "begin" (touch-down point) | "move" | "end" | "cancel"; points, `t` event time in ms. */
   drag(phase, x, y, t) {
-    const p = { begin: 0, move: 1, end: 2 }[phase];
-    if (p === undefined) throw new Error(`drag phase must be begin/move/end, got ${phase}`);
+    const p = { begin: 0, move: 1, end: 2, cancel: 4 }[phase];
+    if (p === undefined) throw new Error(`drag phase must be begin/move/end/cancel, got ${phase}`);
     return this.wasm.simcore_web_drag(p, x, y, t) === 1;
   }
   /** Coalesced finger-drag sample: updates drag state without rebuilding the scene. */

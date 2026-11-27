@@ -59,6 +59,8 @@ struct ControlsView: View {
                     Button("Rename", systemImage: "pencil") { last = "Rename" }
                     Divider()
                     Button("Delete", systemImage: "trash", role: .destructive) { last = "Delete" }
+                } primaryAction: {
+                    last = "Primary"
                 }
                 Text("Last action: \(last)")
                 Menu {

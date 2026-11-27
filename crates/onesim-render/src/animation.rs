@@ -14,7 +14,7 @@ use onesim_protocol::{
     TransitionEffect, TransitionSpec, VisualOp,
 };
 use std::borrow::{Borrow, Cow};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
@@ -565,7 +565,17 @@ fn apply_transition_effect(nodes: &mut [Node], indices: &[usize], root_bounds: R
     if k.abs() < 1e-4 {
         return;
     }
-    if let Some(op) = effect.opacity {
+    if let Some(radius) = effect.blur.filter(|r| *r > 0.0) {
+        // The SwiftUI transition node wraps the content. Descendants already carry inherited opacity.
+        let root = &mut nodes[indices[0]];
+        let (from_radius, from_opacity) = match root.composite.as_deref() {
+            Some(Composite::Effect(VisualOp::Blur { radius, .. }, _)) => (*radius, f64::from(root.opacity)),
+            _ => (0.0, 1.0),
+        };
+        let radius = lerp(from_radius, radius, k).max(0.0);
+        root.composite = Some(Box::new(Composite::Effect(VisualOp::Blur { radius, opaque: false }, None)));
+        root.opacity = lerp(from_opacity, effect.opacity.unwrap_or(1.0), k).clamp(0.0, 1.0) as f32;
+    } else if let Some(op) = effect.opacity {
         mul_opacity(nodes, indices, lerp(1.0, op, k) as f32);
     }
     if effect.scale.is_some() || effect.scale_x.is_some() || effect.scale_y.is_some() {
@@ -759,6 +769,8 @@ struct RemovalGhost {
     /// Optional matchedGeometry target rect to morph towards while fading out.
     morph_to: Option<(Rect, MatchedProps, [f64; 2])>,
     container: Rect,
+    /// Blur replacement puts the outgoing view below the incoming children of this parent.
+    replace_parent: Option<NodeKey>,
     /// Self-contained subtree copy: node 0 is the ghost root; parent indices are relative to this vec.
     nodes: Vec<Node>,
 }
@@ -834,6 +846,7 @@ impl Animator {
         for (i, n) in target.nodes.iter().enumerate() {
             target_map.entry(key_ref(n)).or_insert(i);
         }
+        self.ghosts.retain(|ghost| ghost.effect.blur.is_none() || !target_map.contains_key(&key_ref(&ghost.nodes[0])));
 
         // Drop stale insert / match_insert tracks for nodes that disappeared or are being retargeted.
         self.inserts.retain(|k, _| target_map.contains_key(&KeyRef(&k.id, k.anchor.as_deref())));
@@ -880,6 +893,7 @@ impl Animator {
                 effect: TransitionEffect { opacity: Some(0.0), ..TransitionEffect::default() },
                 morph_to: Some((new_rect, m.properties, m.anchor)),
                 container: parent_bounds(&prev, pi),
+                replace_parent: None,
                 nodes: old_sub,
             });
             matched_handled_prev.extend(prev_indices);
@@ -940,6 +954,9 @@ impl Animator {
             };
             let comp_pair = match (&pn.composite, &n.composite) {
                 (Some(a), Some(b)) if composite_diff(a, b) => Some(((**a).clone(), (**b).clone())),
+                (Some(a), None) if n.kind == "transition" && matches!(a.as_ref(), Composite::Effect(VisualOp::Blur { .. }, _)) => {
+                    Some(((**a).clone(), Composite::Effect(VisualOp::Blur { radius: 0.0, opaque: false }, None)))
+                }
                 _ => None,
             };
             let fp_pair = match (&pn.fill_paint, &n.fill_paint) {
@@ -975,7 +992,12 @@ impl Animator {
                 // Preserve physical velocity when retargeting an in-flight track (projecting onto the new delta
                 // so reversing mid-flight decelerates smoothly instead of inverting velocity instantaneously).
                 let new_bounds = bounds_chg.then_some((pn.bounds, n.bounds));
-                let new_opacity = op_chg.then_some((pn.opacity, n.opacity));
+                let new_opacity = if comp_pair.is_some() && n.composite.is_none() {
+                    // During blur recovery the children already carry the target's inherited opacity.
+                    Some((pn.opacity, 1.0))
+                } else {
+                    op_chg.then_some((pn.opacity, n.opacity))
+                };
                 let new_radius = rad_chg.then_some((pn.radius, n.radius));
                 let init_vel = self
                     .props
@@ -1093,6 +1115,11 @@ impl Animator {
         });
         let layout_delete = layout_delete.as_ref();
         let mut remove_covered: HashSet<usize> = matched_handled_prev;
+        for ghost in self.ghosts.iter().filter(|ghost| ghost.effect.blur.is_some()) {
+            if let Some(&root) = prev_map.get(&key_ref(&ghost.nodes[0])) {
+                remove_covered.extend(subtree_indices(&prev.nodes, root));
+            }
+        }
         for (i, n) in prev.nodes.iter().enumerate() {
             if remove_covered.contains(&i) || n.kind == "screen" || is_chrome(n) {
                 continue;
@@ -1134,12 +1161,24 @@ impl Animator {
                 continue;
             }
             let (sub, prev_indices) = extract_ghost_subtree(&prev.nodes, i);
+            let replace_parent = if effect.blur.is_some() {
+                let mut ancestor = n.parent;
+                loop {
+                    let Some(index) = ancestor else { break None };
+                    let parent = &prev.nodes[index];
+                    if target_map.contains_key(&key_ref(parent)) { break Some(node_key(parent)) }
+                    ancestor = parent.parent;
+                }
+            } else {
+                None
+            };
             self.ghosts.push(RemovalGhost {
                 spec,
                 elapsed: 0.0,
                 effect,
                 morph_to: None,
                 container: parent_bounds(&prev, i),
+                replace_parent,
                 nodes: sub,
             });
             remove_covered.extend(prev_indices);
@@ -1315,7 +1354,12 @@ impl Animator {
 
         // 5. Removal ghosts (inserted before chrome so status bar & island stay on top).
         let chrome_pos = out.nodes.iter().position(is_chrome).unwrap_or(out.nodes.len());
-        let mut ghost_nodes: Vec<Node> = Vec::new();
+        let parent_indices: HashMap<_, _> = if self.ghosts.iter().any(|g| g.replace_parent.is_some()) {
+            target.nodes.iter().enumerate().map(|(i, node)| (key_ref(node), i)).collect()
+        } else {
+            HashMap::new()
+        };
+        let mut queued = BTreeMap::<usize, Vec<(usize, Vec<Node>)>>::new();
         for g in &self.ghosts {
             let (p, _, _) = eval_curve(&g.spec, g.elapsed, 0.0);
             let mut sub = g.nodes.clone();
@@ -1327,28 +1371,30 @@ impl Animator {
             } else {
                 apply_transition_effect(&mut sub, &all, rb, g.container, &g.effect, p);
             }
-            let base = chrome_pos + ghost_nodes.len();
-            for (k, mut gn) in sub.into_iter().enumerate() {
-                gn.parent = if k == 0 { Some(0) } else { gn.parent.map(|pi| base + pi) };
-                ghost_nodes.push(gn);
-            }
+            let parent = g.replace_parent.as_ref().and_then(|k| parent_indices.get(&KeyRef(&k.id, k.anchor.as_deref())));
+            let (before, parent) = parent.map_or((chrome_pos, 0), |&p| (p + 1, p));
+            queued.entry(before).or_default().push((parent, sub));
         }
-        for mut gn in extra_ghosts {
-            gn.parent = Some(0);
-            ghost_nodes.push(gn);
+        for ghost in extra_ghosts {
+            queued.entry(chrome_pos).or_default().push((0, vec![ghost]));
         }
 
-        if !ghost_nodes.is_empty() {
-            let added = ghost_nodes.len();
-            // Shift parent indices of chrome nodes that sit at or after `chrome_pos`.
-            for n in &mut out.nodes[chrome_pos..] {
-                if let Some(p) = n.parent {
-                    if p >= chrome_pos {
-                        n.parent = Some(p + added);
+        if !queued.is_empty() {
+            let originals = std::mem::take(&mut out.nodes);
+            let mut remap = Vec::with_capacity(originals.len());
+            for (i, original) in originals.into_iter().map(Some).chain(std::iter::once(None)).enumerate() {
+                for (parent, mut subtree) in queued.remove(&i).into_iter().flatten() {
+                    let base = out.nodes.len();
+                    for (j, ghost) in subtree.iter_mut().enumerate() {
+                        ghost.parent = if j == 0 { remap.get(parent).copied() } else { ghost.parent.map(|p| base + p) };
                     }
+                    out.nodes.append(&mut subtree);
                 }
+                let Some(mut node) = original else { break };
+                node.parent = node.parent.map(|p| remap[p]);
+                remap.push(out.nodes.len());
+                out.nodes.push(node);
             }
-            out.nodes.splice(chrome_pos..chrome_pos, ghost_nodes);
         }
 
         out
@@ -1414,11 +1460,12 @@ fn parent_bounds(scene: &Scene, idx: usize) -> Rect {
 }
 
 fn is_chrome(n: &Node) -> bool {
-    matches!(n.kind, "status_bar" | "island" | "home_indicator" | "keyboard") || n.id.starts_with("status_")
+    matches!(n.kind, "statusbar" | "status_bar" | "island" | "home_indicator" | "keyboard")
+        || n.id.starts_with("status_") || n.id.starts_with("statusbar#")
 }
 
 fn is_identity_effect(e: &TransitionEffect) -> bool {
-    e.opacity.is_none() && e.scale.is_none() && e.scale_x.is_none() && e.scale_y.is_none() && e.offset.is_none() && e.edge.is_none()
+    e.opacity.is_none() && e.scale.is_none() && e.blur.is_none() && e.scale_x.is_none() && e.scale_y.is_none() && e.offset.is_none() && e.edge.is_none()
 }
 
 fn extract_ghost_subtree(nodes: &[Node], root: usize) -> (Vec<Node>, Vec<usize>) {
@@ -1572,6 +1619,56 @@ mod tests {
         let end = a.render_scene(&s2);
         assert_eq!(end.nodes[1].bounds, s2.nodes[1].bounds);
         assert_eq!(end.nodes[1].fill, s2.nodes[1].fill);
+    }
+
+    #[test]
+    fn blur_replace_draws_a_blurred_subtree_and_scales_removal_in_both_directions() {
+        for scale in [0.9, 1.1] {
+            let mut animator = Animator::new();
+            let empty = make_scene(vec![]);
+            let mut transition = Node::new("replace", "transition");
+            transition.bounds = Rect { x: 50.0, y: 100.0, w: 100.0, h: 40.0 };
+            transition.anim = Some(Box::new(NodeAnim {
+                animation: Some(linear(0.4, 1)),
+                transition: Some(TransitionSpec {
+                    insertion: TransitionEffect { opacity: Some(0.0), scale: Some(0.9), blur: Some(10.0), ..Default::default() },
+                    removal: TransitionEffect { opacity: Some(0.0), scale: Some(scale), blur: Some(10.0), ..Default::default() },
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }));
+            let mut fill = Node::new("fill", "shape");
+            fill.bounds = transition.bounds;
+            fill.fill = Some(Color::rgba(0.0, 0.0, 0.0, 1.0));
+            let mut shown = make_scene(vec![transition, fill]);
+            shown.nodes[2].parent = Some(1);
+            animator.update(&empty);
+            animator.update(&shown);
+            assert!(animator.tick(0.2));
+            let middle = animator.render_scene(&shown);
+            assert_eq!(middle.nodes[1].bounds.w, 95.0);
+            assert!(matches!(middle.nodes[1].composite.as_deref(),
+                Some(Composite::Effect(VisualOp::Blur { radius: 5.0, opaque: false }, None))));
+            let frame = crate::render(&middle, &mut crate::Fonts::with_fallback(true), 1.0);
+            let ink = frame.pixel(49, 120).unwrap();
+            assert!(ink.alpha() > 0 && ink.alpha() < 128, "{ink:?}");
+            assert!(!animator.tick(0.2));
+            assert!(animator.render_scene(&shown).nodes[1].composite.is_none());
+
+            let mut marker = Node::new("m", "empty");
+            marker.anim = Some(Box::new(NodeAnim { animation: Some(linear(0.4, 2)), ..Default::default() }));
+            let gone = make_scene(vec![marker]);
+            animator.update(&gone);
+            assert!(animator.tick(0.2));
+            let middle = animator.render_scene(&gone);
+            let ghost = middle.nodes.iter().find(|n| n.id == "replace").unwrap();
+            assert!((ghost.bounds.w - 100.0 * (1.0 + scale) / 2.0).abs() < 1e-6);
+            assert!(matches!(ghost.composite.as_deref(), Some(Composite::Effect(VisualOp::Blur { radius: 5.0, .. }, _))));
+            animator.update(&gone);
+            assert_eq!(animator.render_scene(&gone).nodes.iter().filter(|n| n.id == "replace").count(), 1);
+            assert!(!animator.tick(0.2));
+            assert!(animator.render_scene(&gone).nodes.iter().all(|n| n.id != "replace"));
+        }
     }
 
     #[test]

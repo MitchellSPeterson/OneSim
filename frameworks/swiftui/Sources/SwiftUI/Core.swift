@@ -198,12 +198,15 @@ extension Optional: _Flattenable where Wrapped: View {
     func _children(_ path: String) -> [Node] { map { SwiftUI._children($0, path) } ?? [] }
 }
 
-public struct _ConditionalContent<T: View, F: View>: View, _Flattenable {
-    public typealias Body = Never
-    public var body: Never { fatalError() }
+public struct _ConditionalContent<T, F> {
     enum Storage { case first(T), second(F) }
     let storage: Storage
     init(_ s: Storage) { storage = s }
+}
+
+extension _ConditionalContent: View, _Flattenable where T: View, F: View {
+    public typealias Body = Never
+    public var body: Never { fatalError() }
     func _children(_ path: String) -> [Node] {
         switch storage {
         case .first(let v): return SwiftUI._children(v, path + "/T")
@@ -228,6 +231,7 @@ final class _Runtime {
     var render: () -> Node = { [:] }
     // Per-evaluation context (reset every submit; set while walking modifier subtrees).
     var fields: [UInt64: (String) -> Void] = [:]
+    var sliderEdits: [String: (Bool) -> Void] = [:]
     var textInput = _TextInputContext()
     var textFocus: [String: [_TextFocus]] = [:]
     var disabled = false

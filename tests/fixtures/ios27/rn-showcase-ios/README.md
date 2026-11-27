@@ -4,3 +4,9 @@
 `../../rn-showcase-ios/README.md` (Metro on 8095, Tools button off, opened from Expo Go's Recently opened list).
 Keyboard states were retaken until the snapshot showed `Typing Predictions` (see `../README.md`). Expo Go shows no
 home indicator on iOS 27.
+
+## Status bar states
+
+Open Visuals, then tap its header title. Capture the initial dark-content state
+on the light background. Tap Light Content and then Hidden for the two states
+on the dark background. Use the same 3× normalized capture as the other states.

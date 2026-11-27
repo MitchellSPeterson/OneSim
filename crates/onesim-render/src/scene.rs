@@ -453,6 +453,9 @@ pub struct Node {
     pub value: Option<String>,
     /// Slider: (min, max, thumb width); a tap or drag at x sets the value through `field`.
     pub range: Option<(f64, f64, f64)>,
+    pub(crate) slider_editing: bool,
+    pub(crate) slider_drag_only: bool,
+    pub(crate) slider_rtl: bool,
     pub focused: bool,
     pub disabled: bool,
     /// Caret x offset inside bounds (focused text field).
@@ -521,6 +524,9 @@ impl Node {
             secure: false,
             value: None,
             range: None,
+            slider_editing: false,
+            slider_drag_only: false,
+            slider_rtl: false,
             focused: false,
             disabled: false,
             caret: None,
