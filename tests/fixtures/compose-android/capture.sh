@@ -11,7 +11,8 @@ out=tests/fixtures/compose-android
 pkg=dev.simcore.reference
 
 # Build and install the examples as a real APK (frameworks/compose/reference-app).
-(cd frameworks/compose/reference-app && echo "sdk.dir=${ANDROID_HOME:-$HOME/Library/Android/sdk}" > local.properties && ${GRADLE:-gradle} -q assembleDebug)
+GRADLE=${GRADLE:-$(command -v gradle || ls -d "$HOME"/.gradle/wrapper/dists/gradle-*/*/gradle-*/bin/gradle 2>/dev/null | tail -1)}
+(cd frameworks/compose/reference-app && echo "sdk.dir=${ANDROID_HOME:-$HOME/Library/Android/sdk}" > local.properties && "$GRADLE" -q assembleDebug)
 "$ADB" install -r frameworks/compose/reference-app/app/build/outputs/apk/debug/app-debug.apk >/dev/null
 
 # Normalize the status bar to match OneSim: 9:41, full wifi (no "no internet" mark), full battery, no notifications.
@@ -55,9 +56,26 @@ capture_interaction() {
   "$ADB" shell input motionevent DOWN 362 435; shot interaction-pressed; "$ADB" shell input motionevent UP 362 435
 }
 
+# examples/compose-navigation: bars, tabs, NavHost, drawer, rails. NavHost cross-fades for 700 ms.
+capture_navigation() {
+  launch com.example.navigation.NavigationActivity; shot navigation
+  tap "$(ref Social)"; w 600; tap "$(ref 'Social message 2')"; w 1200; shot navigation-detail
+  "$ADB" shell input keyevent KEYCODE_BACK; w 1200
+  tap "$(ref Search)"; w 1200; shot navigation-changed
+  launch com.example.navigation.DrawerActivity; tap "$(ref 'Open drawer')"; w 1200; shot drawer
+  launch com.example.navigation.BarsActivity; shot bars
+  tap "$(ref Collapse)"; w 600; tap "$(ref Podcasts)"; w 800; tap "$(ref Saved)"; w 800; shot bars-changed
+  launch com.example.navigation.ExpressiveActivity; shot expressive
+  launch com.example.navigation.MoreBarsActivity; shot more-bars
+  launch com.example.navigation.PermanentDrawerActivity; shot drawer-permanent
+  launch com.example.navigation.DismissibleDrawerActivity; tap "$(ref Open)"; w 1200; shot drawer-dismissible
+  launch com.example.navigation.ModalRailActivity; tap "$(ref 'Expand rail')"; w 1200; shot rail-modal
+}
+
 $AD settings appearance light >/dev/null
-# SIMCORE_CAPTURE_ONLY=interaction recaptures just the interaction states.
+# SIMCORE_CAPTURE_ONLY=interaction|navigation recaptures just those states.
 if [ "${SIMCORE_CAPTURE_ONLY:-}" = interaction ]; then capture_interaction; demo exit; exit 0; fi
+if [ "${SIMCORE_CAPTURE_ONLY:-}" = navigation ]; then capture_navigation; demo exit; exit 0; fi
 launch com.example.counter.MainActivity;   shot counter
 tap "$(ref Increment)"; tap "$(ref Increment)"; tap "$(ref Decrement)"; shot counter-changed
 launch com.example.showcase.ShowcaseActivity; shot showcase
@@ -72,4 +90,5 @@ $AD keyboard dismiss >/dev/null
 $AD swipe 226 822 532 822 >/dev/null
 shot input-changed
 capture_interaction
+capture_navigation
 demo exit

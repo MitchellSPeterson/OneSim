@@ -68,7 +68,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `BasicTooltipState` | foundation | ⬜ |  | Experimental |
 | `booleanResource` | ui | ⬜ |  |  |
 | `border` | foundation | ⬜ |  | Experimental |
-| `BottomAppBarState` | material3 | ⬜ |  |  |
+| `BottomAppBarState` | material3 | ✅ | #73 |  |
 | `boundsInParent` | ui | ⬜ |  |  |
 | `boundsInRoot` | ui | ⬜ |  |  |
 | `boundsInWindow` | ui | ⬜ |  |  |
@@ -109,7 +109,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `collectIsPressedAsState` | foundation | ✅ |  |  |
 | `colorResource` | ui | ⬜ |  |  |
 | `columns` | foundation-layout | ⬜ |  |  |
-| `composable` | navigation-compose | ⬜ |  |  |
+| `composable` | navigation-compose | 🟠 | #73 | String routes only: type-safe (`@Serializable`) routes aren't supported |
 | `compositeOver` | ui-graphics | ⬜ |  |  |
 | `CompositeShader` | ui-graphics | ⬜ |  |  |
 | `computeDirection` | ui-graphics | ⬜ |  |  |
@@ -136,7 +136,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `createFromText` | ui | ⬜ |  |  |
 | `createLifecycleAwareWindowRecomposer` | ui | ⬜ |  |  |
 | `createZeroVectorFrom` | animation-core | ⬜ |  |  |
-| `currentBackStackEntryAsState` | navigation-compose | ⬜ |  |  |
+| `currentBackStackEntryAsState` | navigation-compose | ✅ | #73 |  |
 | `currentValueOf` | ui | ⬜ |  |  |
 | `cutText` | ui | ⬜ |  |  |
 | `darkColorScheme` | material3 | ✅ | |  |
@@ -178,7 +178,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `detectTapGestures` | foundation | ✅ |  |  |
 | `detectTransformGestures` | foundation | ✅ |  |  |
 | `detectVerticalDragGestures` | foundation | ✅ |  |  |
-| `dialog` | ui, navigation-compose | ⬜ |  |  |
+| `dialog` | ui, navigation-compose | 🟠 | #73 | Navigation `dialog` destinations draw in a full-screen layer with a 60% dim (no platform dialog window); the default width is capped at 90% of the screen; the ui `Dialog` composable isn't implemented |
 | `dimensionResource` | ui | ⬜ |  |  |
 | `disable` | ui | ⬜ |  |  |
 | `DisableContentCapture` | ui | ⬜ |  | Deprecated; Experimental |
@@ -427,7 +427,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `MorphPolygonShape` | foundation | ⬜ |  |  |
 | `MutableContentTransform` | animation | ⬜ |  |  |
 | `MutableInteractionSource` | foundation | ✅ |  |  |
-| `navigation` | navigation-compose | ⬜ |  |  |
+| `navigation` | navigation-compose | 🟠 | #73 | String routes only: type-safe (`@Serializable`) routes aren't supported |
 | `nestedScrollModifierNode` | ui | ⬜ |  |  |
 | `NoInspectorInfo` | ui | ⬜ |  |  |
 | `NoOpUpdate` | ui | ⬜ |  |  |
@@ -477,7 +477,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `registerOnLayoutRectChanged` | ui | ⬜ |  |  |
 | `remeasureSync` | ui | ⬜ |  |  |
 | `rememberBasicTooltipState` | foundation | ⬜ |  | Experimental |
-| `rememberBottomAppBarState` | material3 | ⬜ |  |  |
+| `rememberBottomAppBarState` | material3 | ✅ | #73 |  |
 | `rememberBottomSheetScaffoldState` | material3 | ⬜ |  | Experimental |
 | `rememberBottomSheetState` | material3 | ⬜ |  | Experimental |
 | `rememberCarouselState` | material3 | ⬜ |  |  |
@@ -487,7 +487,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `rememberDeferredTransition` | animation-core | ⬜ |  |  |
 | `rememberDraggable2DState` | foundation | ✅ |  |  |
 | `rememberDraggableState` | foundation | ✅ |  |  |
-| `rememberDrawerState` | material3 | ⬜ |  |  |
+| `rememberDrawerState` | material3 | ✅ | #73 |  |
 | `rememberFloatingToolbarState` | material3 | ⬜ |  |  |
 | `rememberGraphicsLayer` | ui | ⬜ |  |  |
 | `rememberInfiniteTransition` | animation-core | ⬜ |  |  |
@@ -496,7 +496,7 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `rememberLazyListState` | foundation | ⬜ |  |  |
 | `rememberLazyStaggeredGridState` | foundation | ⬜ |  |  |
 | `rememberModalBottomSheetState` | material3 | ⬜ |  | Deprecated; Experimental |
-| `rememberNavController` | navigation-compose | ⬜ |  |  |
+| `rememberNavController` | navigation-compose | ✅ | #73 |  |
 | `rememberNestedScrollInteropConnection` | ui | ⬜ |  |  |
 | `rememberOverscrollEffect` | foundation | ⬜ |  |  |
 | `rememberPagerState` | foundation | ⬜ |  |  |
@@ -520,12 +520,12 @@ Part of [Jetpack Compose API coverage](README.md): status legend, summary and ho
 | `rememberTextMeasurer` | ui | ⬜ |  |  |
 | `rememberTimePickerState` | material3 | ⬜ |  |  |
 | `rememberTooltipState` | material3 | ⬜ |  | Experimental |
-| `rememberTopAppBarState` | material3 | ⬜ |  |  |
+| `rememberTopAppBarState` | material3 | ✅ | #73 |  |
 | `rememberTransformableState` | foundation | ⬜ |  |  |
 | `rememberTransition` | animation-core | ⬜ |  |  |
 | `rememberUpdatedStyleState` | foundation | ⬜ |  | Experimental |
 | `rememberVectorPainter` | ui | ⬜ |  |  |
-| `rememberWideNavigationRailState` | material3 | ⬜ |  |  |
+| `rememberWideNavigationRailState` | material3 | ✅ | #73 |  |
 | `repeatable` | animation-core | ⬜ |  |  |
 | `requestAutofill` | ui | ⬜ |  |  |
 | `requestFocus` | ui | ⬜ |  |  |

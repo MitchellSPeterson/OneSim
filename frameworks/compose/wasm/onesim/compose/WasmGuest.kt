@@ -32,6 +32,7 @@ object WasmGuest {
             loop.drain()
             Snapshot.sendApplyNotifications()
             loop.drain()
+            Snapshot.sendApplyNotifications() // writes from the drained tasks (see JvmGuest.pump)
             if (clock.hasAwaiters) {
                 frameTimeNs += 16_666_667L
                 clock.sendFrame(frameTimeNs)
@@ -110,4 +111,9 @@ object WasmGuest {
     }
 
     fun version(): Double = Guest.version.toDouble()
+
+    /** The screen size in dp (the host viewport); applies before the next start or environment. */
+    fun viewport(width: Float, height: Float) {
+        Guest.setViewport(width, height)
+    }
 }

@@ -174,7 +174,20 @@ struct Cx<'a> {
     /// Device px per dp.
     density: f32,
     params: Option<&'a SceneParams<'a>>,
+    /// Tab positions of the `TabRow`s being laid out (innermost last), read by `tabIndicator` modifiers.
+    tabs: Vec<Vec<TabPos>>,
 }
+
+/// One tab of a `TabRow` (Material `TabPosition`): left edge and width in the row, and its content's width.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct TabPos {
+    left: f64,
+    width: f64,
+    content: f64,
+}
+
+/// Material's `HorizontalTextPadding` on each side of a tab's text.
+const TAB_TEXT_PADDING: f64 = 16.0;
 
 fn color(v: Option<&Value>) -> Option<Color> {
     let a = v?.as_array()?;
@@ -357,6 +370,28 @@ impl Cx<'_> {
             let (w, h) = (inner.w.max(min), inner.h.max(min));
             return Laid { id: make_id(), w, h, deco: Deco::None, kids: vec![(self.bias(w, inner.w, 0.0), self.bias(h, inner.h, 0.0), inner)] };
         }
+        if let Some(t) = m.get("tabIndicator") {
+            // `tabIndicatorOffset`: inside a TabRow's indicator, the wrapped content takes the selected tab's (or its
+            // content's) width at its place in the row, sliding from where the previous selection was.
+            let Some(tabs) = self.tabs.last().filter(|t| !t.is_empty()).cloned() else { return next(self, c) };
+            let content = t.get("match").and_then(Value::as_str) == Some("content");
+            let at = |i: f64| -> (f64, f64) {
+                let i = (i.max(0.0) as usize).min(tabs.len() - 1);
+                let p = tabs[i];
+                if content { (p.left + (p.width - p.content) / 2.0, p.content) } else { (p.left, p.width) }
+            };
+            let lerp = |a: (f64, f64), b: (f64, f64), f: f64| (a.0 + (b.0 - a.0) * f, a.1 + (b.1 - a.1) * f);
+            let to = at(f(t, "index").unwrap_or(0.0));
+            let from = t.get("from").and_then(Value::as_array).map_or(to, |a| {
+                let n = |k: usize| a.get(k).and_then(Value::as_f64).unwrap_or(0.0);
+                lerp(at(n(0)), at(n(1)), n(2))
+            });
+            let (x, w) = lerp(from, to, f(t, "progress").unwrap_or(1.0).clamp(-1.0, 2.0));
+            let (x, w) = (self.px(x), self.px(w.max(0.0)));
+            let inner = next(self, C { min_w: w, max_w: w, min_h: 0.0, max_h: c.max_h });
+            let row_w = if c.max_w.is_finite() { c.max_w } else { x + w };
+            return Laid { id: make_id(), w: row_w.max(c.min_w), h: inner.h.max(c.min_h), deco: Deco::None, kids: vec![(x, 0.0, inner)] };
+        }
         if m.get("weight").is_some() || m.get("align").is_some() {
             return next(self, c); // parent data, read by the parent
         }
@@ -420,6 +455,7 @@ impl Cx<'_> {
             "Column" => self.linear(n, props, children, c, true),
             "Row" => self.linear(n, props, children, c, false),
             "Box" => self.boxed(n, props, children, c),
+            "TabRow" => self.tab_row(n, props, children, c),
             other => {
                 self.notes.insert(format!("unsupported_component: {other}"));
                 self.boxed(n, props, children, c)
@@ -535,6 +571,94 @@ impl Cx<'_> {
         let col = color(p.get("color")).unwrap_or(Color::rgba(0.0, 0.0, 0.0, 1.0));
         let run = TextRun { text, font: spec, color: col, strike: false, offset_x: 0.0, spans: vec![] };
         Laid { id: n.id.clone(), w, h, deco: Deco::Text(run), kids: vec![] }
+    }
+
+    /// Material's tab rows (`TabRow`: the tabs, then the divider slot and the indicator slot). Fixed rows
+    /// split the width equally (`TabRowImpl`); scrollable ones give each tab its own width, at least `minTabWidth`,
+    /// between `edgePadding`s, and scroll horizontally with the selected tab centred (`ScrollableTabData`).
+    fn tab_row(&mut self, n: &ViewNode, p: &Value, children: &[ViewNode], c: C) -> Laid {
+        let count = children.len().saturating_sub(2);
+        let (tabs, slots) = children.split_at(count);
+        let (divider, indicator) = (slots.first(), slots.get(1));
+        let scrollable = p.get("scrollable").and_then(Value::as_bool) == Some(true);
+        let loose = C { min_w: 0.0, max_w: INF, min_h: 0.0, max_h: INF };
+        // A tab's content width (`maxIntrinsicWidth` less the text padding, at least 24 dp).
+        let natural: Vec<Laid> = tabs.iter().map(|t| self.measure(t, loose)).collect();
+        let content_of = |l: &Laid, cap: f64| (l.w.min(cap) - 2.0 * TAB_TEXT_PADDING).max(24.0);
+        let d = self.density as f64;
+        let width = if c.max_w.is_finite() { c.max_w } else { natural.iter().map(|l| l.w).sum::<f64>() };
+        if !scrollable {
+            // Integer division in pixels, as `tabRowWidth / tabCount`.
+            let tw = if count > 0 && d > 0.0 { ((width * d) / count as f64).floor() / d } else { 0.0 };
+            let h = tabs.iter().map(|t| self.measure(t, C { min_w: tw, max_w: tw, min_h: 0.0, max_h: INF }).h).fold(0.0, f64::max);
+            let positions: Vec<TabPos> =
+                natural.iter().enumerate().map(|(i, l)| TabPos { left: tw * i as f64, width: tw, content: content_of(l, tw) }).collect();
+            let mut kids = vec![];
+            for (i, t) in tabs.iter().enumerate() {
+                kids.push((tw * i as f64, 0.0, self.measure(t, C { min_w: tw, max_w: tw, min_h: h, max_h: h })));
+            }
+            if let Some(dv) = divider {
+                let l = self.measure(dv, C { min_w: 0.0, max_w: width, min_h: 0.0, max_h: h });
+                kids.push((0.0, h - l.h, l));
+            }
+            if let Some(ind) = indicator {
+                self.tabs.push(positions);
+                let l = self.measure(ind, C { min_w: 0.0, max_w: width, min_h: 0.0, max_h: h });
+                self.tabs.pop();
+                kids.push((0.0, h - l.h, l));
+            }
+            let (w, h) = c.size(width, h);
+            return Laid { id: n.id.clone(), w, h, deco: Deco::Core("tab_row"), kids };
+        }
+        let edge = self.px(f(p, "edgePadding").unwrap_or(52.0));
+        let min_tab = self.px(f(p, "minTabWidth").unwrap_or(90.0));
+        let h = natural.iter().map(|l| l.h).fold(0.0, f64::max);
+        let mut positions = vec![];
+        let mut row = vec![];
+        let mut left = edge;
+        for (t, l) in tabs.iter().zip(&natural) {
+            let laid = self.measure(t, C { min_w: min_tab, max_w: INF, min_h: h, max_h: h });
+            let tw = laid.w.max(min_tab);
+            positions.push(TabPos { left, width: tw, content: content_of(l, INF) });
+            row.push((left, 0.0, laid));
+            left += tw;
+        }
+        let content_w = left + edge;
+        if let Some(ind) = indicator {
+            self.tabs.push(positions.clone());
+            let l = self.measure(ind, C { min_w: 0.0, max_w: content_w, min_h: 0.0, max_h: h });
+            self.tabs.pop();
+            row.push((0.0, h - l.h, l));
+        }
+        // The scroller: `fillMaxWidth().wrapContentSize(CenterStart).horizontalScroll()`.
+        let viewport = width.min(content_w);
+        let max = (content_w - viewport).max(0.0);
+        let centred = |i: f64| -> f64 {
+            let i = (i.max(0.0) as usize).min(positions.len().saturating_sub(1));
+            positions.get(i).map_or(0.0, |t| (t.left - (viewport / 2.0 - t.width / 2.0)).clamp(0.0, max))
+        };
+        let selected = f(p, "selected").unwrap_or(0.0);
+        let scroll = p.get("scroll");
+        let target = centred(selected);
+        let animated = scroll.and_then(|s| Some((f(s, "from")?, f(s, "progress")?)))
+            .map(|(from, q)| centred(from) + (target - centred(from)) * q.clamp(0.0, 1.0));
+        // Each selection is a fresh scroll position (centred on the selected tab); a finger scroll keeps its offset.
+        let seq = scroll.and_then(|s| f(s, "seq")).unwrap_or(0.0);
+        let sid = format!("{}@{seq}", n.id);
+        let offset = self.params.and_then(|pp| pp.scroll.get(&sid)).map(|o| o.0).or(animated).unwrap_or(target).clamp(0.0, max);
+        let inner = Laid { id: format!("{}#tabs", n.id), w: content_w, h, deco: Deco::Core("row"), kids: row };
+        let mut node = Node::new(sid.clone(), "compose_scroll");
+        node.clip_radius = Some(0.0);
+        node.scroll = Some(ScrollInfo { max: (max, 0.0), offset: (offset, 0.0), vertical: false, snap: None, content: Some((content_w, h)), page: None, aligned: false });
+        let scroller = Laid { id: sid, w: viewport, h, deco: Deco::Control(Box::new(node)), kids: vec![(-offset, 0.0, inner)] };
+        let mut kids = vec![];
+        if let Some(dv) = divider {
+            let l = self.measure(dv, C { min_w: 0.0, max_w: width, min_h: 0.0, max_h: INF });
+            kids.push((0.0, h - l.h, l));
+        }
+        kids.push((0.0, 0.0, scroller));
+        let (w, h) = c.size(width, h);
+        Laid { id: n.id.clone(), w, h, deco: Deco::Core("tab_row"), kids }
     }
 
     fn boxed(&mut self, n: &ViewNode, p: &Value, children: &[ViewNode], c: C) -> Laid {
@@ -803,7 +927,7 @@ pub(super) fn embedded(
     fonts: &mut Fonts,
     place: Option<Placement<'_>>,
 ) -> (f64, f64) {
-    let mut cx = Cx { fonts, notes: BTreeSet::new(), density: params.device.scale as f32, params: Some(params) };
+    let mut cx = Cx { fonts, notes: BTreeSet::new(), density: params.device.scale as f32, params: Some(params), tabs: vec![] };
     let laid = cx.measure(root, C {
         min_w: 0.0, max_w: available.0.unwrap_or(INF),
         min_h: 0.0, max_h: available.1.unwrap_or(INF),
@@ -819,7 +943,7 @@ pub(super) fn embedded(
 pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene {
     let (w, h) = params.viewport;
     let dark = params.appearance == Appearance::Dark;
-    let mut cx = Cx { fonts, notes: BTreeSet::new(), density: params.device.scale as f32, params: Some(params) };
+    let mut cx = Cx { fonts, notes: BTreeSet::new(), density: params.device.scale as f32, params: Some(params), tabs: vec![] };
     let bg = if dark { 0.0 } else { 1.0 };
     let mut screen = Node::new("root", "screen");
     screen.bounds = Rect { x: 0.0, y: 0.0, w, h };
@@ -834,6 +958,12 @@ pub fn layout(root: &ViewNode, params: &SceneParams, fonts: &mut Fonts) -> Scene
         android_status_bar(&mut nodes, params, cx.fonts, dark);
     }
     android_nav_handle(&mut nodes, params, dark);
+    // The app's window: edge swipes and the back key are Android system back (section X). Not drawn, not hit.
+    let mut back = Node::new("system_back", crate::interaction::SYSTEM_BACK);
+    back.bounds = Rect { x: 0.0, y: 0.0, w, h };
+    back.parent = Some(0);
+    back.inspect = false;
+    nodes.push(back);
     Scene {
         size: params.viewport,
         appearance: params.appearance,
@@ -860,12 +990,77 @@ mod tests {
 
     fn lay_at(v: Value, c: C, density: f32) -> Laid {
         let mut fonts = Fonts::with_fallback(true);
-        let mut cx = Cx { fonts: &mut fonts, notes: BTreeSet::new(), density, params: None };
+        let mut cx = Cx { fonts: &mut fonts, notes: BTreeSet::new(), density, params: None, tabs: vec![] };
         cx.measure(&node(v), c)
     }
 
     fn sized(id: &str, w: f64, h: f64) -> Value {
         json!({"kind":"compose","id":id,"component":"Box","props":{"modifier":[{"width":w},{"height":h}]}})
+    }
+
+    /// A tab like Material's text tab: its content plus 16 dp on each side, at least 48 dp tall.
+    fn tab(id: &str, content_w: f64) -> Value {
+        json!({"kind":"compose","id":id,"component":"Box","props":{"contentAlignment":[0.0,0.0],"modifier":[{"heightIn":[48.0,null]},{"padding":[16.0,0.0,16.0,0.0]}]},
+            "children":[sized(&format!("{id}/t"), content_w, 20.0)]})
+    }
+
+    fn tab_row(props: Value, indicator: Value) -> Value {
+        json!({"kind":"compose","id":"tr","component":"TabRow","props":props,"children":[
+            tab("a", 40.0), tab("b", 40.0), tab("c", 40.0),
+            {"kind":"compose","id":"div","component":"Box","props":{},"children":[
+                {"kind":"compose","id":"line","component":"Box","props":{"modifier":[{"fillMaxWidth":1.0},{"height":1.0}]}}]},
+            {"kind":"compose","id":"ind","component":"Box","props":{},"children":[
+                {"kind":"compose","id":"bar","component":"Box","props":{"modifier":[{"tabIndicator":indicator},{"height":3.0}]}}]}
+        ]})
+    }
+
+    /// (x, width) of the indicator bar inside a laid-out tab row, and the indicator slot's y.
+    fn indicator_of(l: &Laid) -> (f64, f64, f64) {
+        let (_, y, slot) = l.kids.last().expect("indicator slot");
+        let (x, _, bar) = &slot.kids[0].2.kids[0];
+        (*x, bar.w, *y)
+    }
+
+    #[test]
+    fn fixed_tab_rows_split_the_width_and_place_the_indicator() {
+        let c = C { min_w: 0.0, max_w: 300.0, min_h: 0.0, max_h: 800.0 };
+        let l = lay(tab_row(json!({}), json!({"index":1,"match":"content"})), c);
+        assert_eq!((l.w, l.h), (300.0, 48.0));
+        let tabs: Vec<(f64, f64)> = l.kids[..3].iter().map(|k| (k.0, k.2.w)).collect();
+        assert_eq!(tabs, vec![(0.0, 100.0), (100.0, 100.0), (200.0, 100.0)]);
+        // Content width (40 dp) centred under tab 1, at the bottom; the divider spans the row's bottom.
+        assert_eq!(indicator_of(&l), (130.0, 40.0, 45.0));
+        assert_eq!((l.kids[3].1, l.kids[3].2.w), (47.0, 300.0));
+        // The tab's width, and halfway through a slide from tab 0.
+        assert_eq!(indicator_of(&lay(tab_row(json!({}), json!({"index":2,"match":"tab"})), c)), (200.0, 100.0, 45.0));
+        let sliding = lay(tab_row(json!({}), json!({"index":1,"match":"content","from":[0,0,0.0],"progress":0.5})), c);
+        assert_eq!(indicator_of(&sliding).0, 80.0);
+        // Content narrower than 24 dp gets a 24 dp indicator.
+        let narrow = json!({"kind":"compose","id":"tr","component":"TabRow","props":{},"children":[tab("a", 10.0),
+            {"kind":"compose","id":"div","component":"Box","props":{}},
+            {"kind":"compose","id":"ind","component":"Box","props":{},"children":[
+                {"kind":"compose","id":"bar","component":"Box","props":{"modifier":[{"tabIndicator":{"index":0,"match":"content"}},{"height":3.0}]}}]}]});
+        assert_eq!(indicator_of(&lay(narrow, c)), (138.0, 24.0, 45.0));
+    }
+
+    #[test]
+    fn scrollable_tab_rows_scroll_to_centre_the_selected_tab() {
+        let c = C { min_w: 0.0, max_w: 300.0, min_h: 0.0, max_h: 800.0 };
+        let props = |sel: u32| json!({"scrollable":true,"selected":sel,"edgePadding":52.0,"minTabWidth":90.0,"scroll":{"seq":sel}});
+        let l = lay(tab_row(props(2), json!({"index":2,"match":"tab"})), c);
+        let (_, _, scroller) = l.kids.last().expect("scroller");
+        let info = match &scroller.deco { Deco::Control(n) => n.scroll.expect("scroll info"), _ => panic!("scroller") };
+        // Tabs 90 dp (minimum) from 52 dp: content 374 dp in 300, centring tab 2 (left 232) clamps at the end.
+        assert_eq!((info.max.0, info.offset.0), (74.0, 74.0));
+        assert_eq!(scroller.id, "tr@2", "each selection is a fresh scroll position");
+        let row = &scroller.kids[0].2;
+        let lefts: Vec<f64> = row.kids[..3].iter().map(|k| k.0).collect();
+        assert_eq!(lefts, vec![52.0, 142.0, 232.0]);
+        let (x, w) = (row.kids[3].2.kids[0].2.kids[0].0, row.kids[3].2.kids[0].2.kids[0].2.w);
+        assert_eq!((x, w), (232.0, 90.0));
+        let first = lay(tab_row(props(0), json!({"index":0,"match":"tab"})), c);
+        let (_, _, s0) = first.kids.last().expect("scroller");
+        assert_eq!(s0.kids[0].0, 0.0, "the first tab needs no scrolling");
     }
 
     #[test]

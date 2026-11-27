@@ -748,6 +748,7 @@ Material color scheme and dark theme are guest-side). Shapes: `{"corners":[tl,tr
 | `Column` | `arrangement`: Arrangement, `alignment`: horizontal bias -1...1 (Start = -1) |
 | `Row` | `arrangement`: Arrangement, `alignment`: vertical bias -1...1 (Top = -1) |
 | `Text` | `text`, `color`, `fontSize`, `lineHeight` (sp), `fontWeight` (100...900), `letterSpacing` (sp), `textAlign`: `start`\|`center`\|`end`, `maxLines`, `softWrap` |
+| `TabRow` | Material's tab rows. Children: the tabs, then a divider slot and an indicator slot (both `Box`). Fixed rows (no `scrollable`) split the width into equal whole-pixel tabs as tall as the tallest one, with the divider and indicator at the bottom. `scrollable: true` gives each tab its own width (at least `minTabWidth`, default 90 dp) between `edgePadding`s (default 52 dp) in a horizontal scroller under the divider; `selected` is the tab the host centres. `scroll`: `{"seq": n, "from"?: index, "progress"?: f}`: each new `seq` is a new scroll position (its node id is `<id>@<seq>`), animated from where tab `from` was centred by `progress` |
 
 Arrangement: `{"type":"start"|"end"|"center"|"spaceBetween"|"spaceAround"|"spaceEvenly"}` or
 `{"type":"spacedBy","space":dp,"align":bias}` (main axis; Column `start` = Top).
@@ -775,6 +776,7 @@ Arrangement: `{"type":"start"|"end"|"center"|"spaceBetween"|"spaceAround"|"space
 | `{"clickable":{"action":u64,"enabled":bool,"role"?:"button"\|"switch"\|"checkbox"\|"radio"\|"tab","label"?,"key"?:String}}` | `clickable` / `combinedClickable` / `toggleable` / `selectable`; `key` (enabled only) makes the layer a section L gesture view |
 | `{"gesture":{"key":String,"pans":true,"axis"?:"horizontal"\|"vertical"}}` | `pointerInput`, `draggable`, `draggable2D`, `scrollable`: a section L gesture view the size of the wrapped content (`axis` for one-axis drags) |
 | `{"ripple":{"color":[r,g,b,a],"bounded":bool,"radius"?:dp,"layer":f,"ripples":[{"origin":[x,y]\|null,"radius":f,"center":f,"alpha":f}]}}` | an indication drawn over the wrapped content (below) |
+| `{"tabIndicator":{"index":i,"match":"tab"\|"content","from"?:[a,b,p],"progress"?:f}}` | `tabIndicatorOffset` inside a `TabRow`'s indicator slot: the wrapped content takes tab `index`'s width (`content`: its content's width, centred under it, at least 24 dp; the content width is the tab's natural width less 2 x 16 dp) at its place in the row. While sliding, it is `progress` of the way from a place `p` of the way between tabs `a` and `b`. The layer is as wide as the row |
 
 Host → guest: the section B `action`, section L `gesture` touches (keys `<node id>#m<modifier index>`), `environment`
 (appearance → `isSystemInDarkTheme()`), `shutdown`. The guest re-composes and sends a new `tree` after each, once the
@@ -1218,3 +1220,11 @@ the rest close up. A tap outside and a swipe down run `dismiss`. `subject` and `
   as the browser allows. Text converts through the payload type's transfer representations: `String` as is, `URL`
   when it has a scheme and no spaces, `Data` as UTF-8, a `CodableRepresentation` as JSON, a `ProxyRepresentation`
   through its proxy.
+
+## X. v1 additions: Android system back (additive, protocol version stays 1)
+
+- Host → guest `{"type":"back","phase":"start"|"progress"|"cancel"|"commit","progress":f,"edge":"left"|"right"|"none","x","y","time":ms}`: Android system back for Compose sessions, in screen points. A predictive back gesture is `start`, `progress`... then `commit` or `cancel`; the back key is a lone `commit` with edge `none`. Not version-gated; the guest answers each message with a tree. The web build passes it to the Kotlin/Wasm guest on the gesture callback (the `type` tells them apart).
+- Host: the Compose layout adds a scene node of kind `system_back` (the app's window; not drawn, not hit). With it, a drag starting within 24 dp of the left or right screen edge is a back swipe (gesture navigation) instead of a touch on the app: `progress` is the distance swiped toward the other edge over the screen width (0...1), and the swipe commits when released at least 32 dp from where it started, else cancels. A whole `drag` sends start, 8 progress events 16 ms apart and the release; live drags send each phase as the finger moves. Moving the app out of the foreground cancels a swipe in progress.
+- Input: key `back` (`input.key`, CLI `--key back`, web `sim.key("back")`; the web viewer maps Escape to it). It fails for apps without a `system_back` node.
+- Guest: back goes to the activity's `OnBackPressedDispatcher`: the most recently added enabled `OnBackPressedCallback` handles a gesture from start to end (`handleOnBackStarted` / `Progressed` / `Pressed` / `Cancelled`, `BackEventCompat` in window pixels, `swipeEdge` 0 left, 1 right, 2 none). With none enabled, the activity finishes: the guest sends `{"type":"event","name":"activity.finished","detail":{}}` and keeps its last frame.
+

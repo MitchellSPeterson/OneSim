@@ -585,6 +585,11 @@ fn inspection_value(n: &Node) -> Option<String> {
 
 impl Scene {
     /// Topmost node with an action (or RN tag) under the point (points, respecting clips).
+    /// Whether this is an Android app's window: edge swipes and the back key are system back (protocol section X).
+    pub fn has_system_back(&self) -> bool {
+        self.nodes.iter().any(|n| n.kind == crate::interaction::SYSTEM_BACK)
+    }
+
     pub fn hit_test(&self, x: f64, y: f64) -> Option<usize> {
         // Content scrolled under the navigation bar / status bar is not tappable there.
         // Under an alert or sheet only the presentation layer (and chrome drawn after it) is reachable.

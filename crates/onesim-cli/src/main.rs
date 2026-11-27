@@ -98,8 +98,8 @@ struct Opts {
     /// Type text into the focused text field. Repeatable.
     #[arg(long = "type", value_name = "TEXT")]
     texts: Vec<String>,
-    /// Press a key in the focused text field: backspace or enter. Repeatable.
-    #[arg(long = "key", value_name = "backspace|enter")]
+    /// Press a key: backspace or enter in the focused text field, or back (Android system back). Repeatable.
+    #[arg(long = "key", value_name = "backspace|enter|back")]
     keys: Vec<String>,
     /// Scroll the scroller under (X,Y) by (DX,DY) points; positive DY reveals later content. Repeatable.
     #[arg(long = "scroll", value_name = "X,Y,DX,DY")]
@@ -430,8 +430,9 @@ fn drive(host: &mut Host, id: &str, shot: Option<String>, rec: Option<RecordOpts
                         (x, y, dx, dy)
                     }
                 };
-                let (hit, _) = host.pointer(id, PointerEvent::moved(PointerKind::Drag, x, y, dx, dy))?;
-                if hit.is_none() {
+                // An Android back swipe from a screen edge hits no node but acts.
+                let (hit, acted) = host.pointer(id, PointerEvent::moved(PointerKind::Drag, x, y, dx, dy))?;
+                if hit.is_none() && !acted {
                     bail!("nothing to drag at {x},{y}");
                 }
             }

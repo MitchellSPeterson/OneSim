@@ -297,7 +297,7 @@ pub extern "C" fn simcore_web_tick(dt_ms: f64) -> i32 {
 
 /// Keyboard input for the focused field; the payload is `len` UTF-8 bytes in the scratch buffer.
 /// kind 0: text to append (programmatic, like native `--type`: shift untouched); kind 1: key name
-/// (`backspace` or `enter`); kind 2: text typed by a person on a physical keyboard (shift then
+/// (`backspace`, `enter`, or `back` for Android system back); kind 2: text typed by a person on a physical keyboard (shift then
 /// follows iOS auto-capitalization, as when tapping keys). Returns 1 if applied,
 /// 0 if ignored, -1 if no field is focused.
 #[no_mangle]
@@ -305,7 +305,7 @@ pub extern "C" fn simcore_web_key(kind: i32, len: usize) -> i32 {
     let payload = with(|s| String::from_utf8_lossy(&s.buf[..len.min(s.buf.len())]).into_owned());
     let ev = match (kind, payload.as_str()) {
         (0 | 2, _) => KeyboardEvent::Text { text: payload },
-        (1, "backspace" | "enter") => KeyboardEvent::Key { key: payload },
+        (1, "backspace" | "enter" | "back") => KeyboardEvent::Key { key: payload },
         _ => return 0,
     };
     if with(|s| s.rn.is_some()) {

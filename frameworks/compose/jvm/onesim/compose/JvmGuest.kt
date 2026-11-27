@@ -27,6 +27,8 @@ object JvmGuest {
     private val ID_RE = Regex(""""id"\s*:\s*(\d+)""")
     private val FIELD_RE = Regex(""""field"\s*:\s*(\d+)""")
     private val APPEARANCE_RE = Regex(""""appearance"\s*:\s*"(\w+)"""")
+    private val WIDTH_RE = Regex(""""width"\s*:\s*([0-9.]+)""")
+    private val HEIGHT_RE = Regex(""""height"\s*:\s*([0-9.]+)""")
     private val TEXT_RE = Regex(""""text"\s*:\s*"((?:[^"\\]|\\.)*)"""")
     private val ESCAPE_RE = Regex("""\\(u[0-9a-fA-F]{4}|["\\/bfnrt])""")
     private const val FRAME_NS = 16_666_667L
@@ -55,11 +57,15 @@ object JvmGuest {
         System.setOut(System.err)
         Guest.logSink = { System.err.println(it) }
         Guest.errorSink = { error(it) }
+        Guest.messageSink = { send(it) }
         Guest.dark.value = System.getenv("SIMCORE_APPEARANCE") == "dark"
         System.getenv("SIMCORE_SCALE")?.toFloatOrNull()?.takeIf { it > 0f }?.let { Guest.density = it }
         val parts = (System.getenv("SIMCORE_INSETS") ?: "0,0").split(',').map { it.trim().toFloatOrNull() ?: 0f }
         Guest.insetTop = parts.getOrElse(0) { 0f }
         Guest.insetBottom = parts.getOrElse(1) { 0f }
+        System.getenv("SIMCORE_VIEWPORT")?.split('x')?.mapNotNull { it.trim().toFloatOrNull() }?.takeIf { it.size == 2 }?.let {
+            Guest.setViewport(it[0], it[1])
+        }
 
         val activityClass = args.firstOrNull() ?: run {
             System.err.println("usage: JvmGuest <ComponentActivity class>")
@@ -97,6 +103,9 @@ object JvmGuest {
                 loop.drain()
                 Snapshot.sendApplyNotifications()
                 loop.drain()
+                // State the drained tasks wrote (an animation's last frame settling a value) must reach the
+                // recomposer before deciding it is idle.
+                Snapshot.sendApplyNotifications()
                 if (!recomposer.hasPendingWork || frames >= 120) break
                 if (clock.hasAwaiters) {
                     lastFrame = System.nanoTime()
@@ -151,10 +160,10 @@ object JvmGuest {
             val line = next as? String ?: continue
             val type = TYPE_RE.find(line)?.groupValues?.get(1)
             when (type) {
-                "action", "text_input", "gesture" -> {
+                "action", "text_input", "gesture", "back" -> {
                     val before = Guest.version
                     try {
-                        if (type == "gesture") {
+                        if (type == "gesture" || type == "back") {
                             Guest.dispatchGesture(line)
                         } else if (VERSION_RE.find(line)?.groupValues?.get(1)?.toLong() == Guest.version) {
                             if (type == "action") ID_RE.find(line)?.groupValues?.get(1)?.toLong()?.let { Guest.dispatchAction(it) }
@@ -170,6 +179,9 @@ object JvmGuest {
                 }
                 "environment" -> {
                     APPEARANCE_RE.find(line)?.groupValues?.get(1)?.let { Guest.dark.value = it == "dark" }
+                    val w = WIDTH_RE.find(line)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
+                    val h = HEIGHT_RE.find(line)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
+                    Guest.setViewport(w, h)
                     pump()
                     dirty = false
                     emit(force = true)

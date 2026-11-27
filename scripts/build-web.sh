@@ -251,6 +251,10 @@ fun onesimEnvironment(dark: Boolean, insetTop: Float, insetBottom: Float): Strin
 @OptIn(ExperimentalJsExport::class)
 @JsExport
 fun onesimVersion(): Double = WasmGuest.version()
+
+@OptIn(ExperimentalJsExport::class)
+@JsExport
+fun onesimViewport(width: Float, height: Float) = WasmGuest.viewport(width, height)
 KT
   SOURCES+=("$GEN/OneSimWebEntry.kt")
 

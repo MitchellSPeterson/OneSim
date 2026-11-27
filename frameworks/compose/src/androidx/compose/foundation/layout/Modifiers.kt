@@ -55,8 +55,8 @@ class PaddingValues(private val start: Dp = 0.dp, private val top: Dp = 0.dp, pr
 @Stable fun Modifier.heightIn(min: Dp = Dp.Unspecified, max: Dp = Dp.Unspecified): Modifier = wire("""{"heightIn":[${n(min)},${n(max)}]}""")
 @Stable fun Modifier.sizeIn(minWidth: Dp = Dp.Unspecified, minHeight: Dp = Dp.Unspecified, maxWidth: Dp = Dp.Unspecified, maxHeight: Dp = Dp.Unspecified): Modifier =
     widthIn(minWidth, maxWidth).heightIn(minHeight, maxHeight)
-@Stable fun Modifier.requiredWidth(width: Dp): Modifier = wire("""{"requiredWidth":${n(width)}}""")
-@Stable fun Modifier.requiredHeight(height: Dp): Modifier = wire("""{"requiredHeight":${n(height)}}""")
+@Stable fun Modifier.requiredWidth(width: Dp): Modifier = if (width.isUnspecified) this else wire("""{"requiredWidth":${n(width)}}""")
+@Stable fun Modifier.requiredHeight(height: Dp): Modifier = if (height.isUnspecified) this else wire("""{"requiredHeight":${n(height)}}""")
 @Stable fun Modifier.requiredSize(size: Dp): Modifier = requiredWidth(size).requiredHeight(size)
 @Stable fun Modifier.requiredSize(width: Dp, height: Dp): Modifier = requiredWidth(width).requiredHeight(height)
 @Stable fun Modifier.defaultMinSize(minWidth: Dp = Dp.Unspecified, minHeight: Dp = Dp.Unspecified): Modifier =

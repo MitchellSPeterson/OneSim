@@ -418,6 +418,18 @@ pub(crate) fn dispatch(e: Effect) -> i32 {
                 }
             }
         }
+        // Android system back (section X): the Kotlin/Wasm guest takes it on the gesture channel (its `type` tells).
+        Effect::Back(events) => {
+            with(|s| s.stale = true);
+            #[cfg(all(target_family = "wasm", feature = "js-guest"))]
+            for e in events {
+                if let Ok(json) = serde_json::to_string(&HostMessage::Back(e)) {
+                    unsafe { on_gesture(json.as_ptr(), json.len()) };
+                }
+            }
+            #[cfg(not(all(target_family = "wasm", feature = "js-guest")))]
+            drop(events);
+        }
     }
     // The callback re-submits only if the guest state changed; focus/shift may have.
     let deferred = with(|s| {

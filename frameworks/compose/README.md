@@ -35,7 +35,7 @@ Coverage per API: [docs/compatibility/compose](../../docs/compatibility/compose/
 (Android 17, 411.43 x 923.43 dp at 2.625x; status-bar and navigation-bar insets measured on the emulator).
 
 Pixel-checked against the real thing: `scripts/compare-android.sh` renders the examples in the states captured from
-a real APK of the same sources (`reference-app/`, material3 1.4.0) on the Android 17 emulator
+a real APK of the same sources (`reference-app/`, material3 1.5.0-beta01 and navigation-compose 2.10.0-rc01) on the Android 17 emulator
 (`tests/fixtures/compose-android`); every state must differ in < 2% of pixels, like iOS.
 
 `BasicTextField` and Material 3 `TextField` accept string edits from the host keyboard. Material 3
@@ -47,5 +47,13 @@ passes, shared consumption, cancellation) and gesture detectors on the guest's e
 60 fps frame-driven animations such as ripples and flings, in real time). `frameworks/compose/tests/wire_test.sh`
 checks the behaviour over the wire.
 
-Not yet: `Icon`/`Image`, lazy lists and scrolling, navigation, dialogs, animations,
+Navigation: system back (protocol section X: the back key and edge swipes) reaches the activity's
+`OnBackPressedDispatcher`, so `BackHandler` and `PredictiveBackHandler` work. `androidx.navigation` (`src/androidx/
+navigation`) is a reimplementation of the runtime (back stack, string routes with arguments, `popUpTo`, single top,
+saved and restored back stacks, nested graphs) and of `NavHost`, which animates destination changes with their
+enter/exit transitions and follows predictive back. Material's app bars (with nested-scroll behaviors), navigation
+bars and rails, drawers and tab rows are ported; tab rows are laid out by the host (`TabRow` component), which
+measures the tabs. A small `androidx.compose.animation.core` (`Animatable`, specs, `animate*AsState`) backs them.
+
+Not yet: `Icon`/`Image`, lazy lists and `verticalScroll`, ui `Dialog`, `AnimatedVisibility`/`AnimatedContent`,
 `AnnotatedString`, custom fonts, resources (`R.string`, `painterResource`), `ViewModel`.
